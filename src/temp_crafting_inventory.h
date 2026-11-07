@@ -55,6 +55,17 @@ class temp_crafting_inventory : public visitable
 
         size_t size() const;
 
+        /**
+         * Changes whenever an entry is added or removed or the inventory is cleared or copied
+         * into.  The values are unique across all inventories, so a cache that read an
+         * inventory can tell from its address and this whether it still holds what was read.
+         * It does not see items that change in place (charges, contents): those change only
+         * as game time passes.
+         */
+        uint64_t generation() const {
+            return generation_;
+        }
+
         void clear();
 
         /**
@@ -143,6 +154,8 @@ class temp_crafting_inventory : public visitable
         void visit_roots_holding( const itype_id &id,
                                   const std::function<VisitResponse( item_location )> &func ) const;
         void drop_caches() const;
+        // drops the caches and moves to a new generation; every change of the entries calls it
+        void changed();
 
         std::optional<bool> recall_provider_quality( const provider_quality_key &key ) const override;
         void remember_provider_quality( const provider_quality_key &key, bool answer ) const override;
@@ -150,6 +163,7 @@ class temp_crafting_inventory : public visitable
         mutable std::optional<type_index> index;
         mutable std::map<provider_quality_key, bool> provider_quality_answers;
         mutable uint64_t cache_epoch = 0;
+        uint64_t generation_ = 0;
 
         // list of all items in this crafting inventory that know their parent
         cata::colony<item_location> items_loc;

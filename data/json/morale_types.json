@@ -272,11 +272,13 @@
   {
     "id": "morale_perm_masochist",
     "type": "morale_type",
+    "permanent": true,
     "text": "Masochism"
   },
   {
     "id": "morale_perm_radiophile",
     "type": "morale_type",
+    "permanent": true,
     "text": "Tingly feeling"
   },
   {
@@ -297,21 +299,25 @@
   {
     "id": "morale_perm_optimist",
     "type": "morale_type",
+    "permanent": true,
     "text": "Optimist"
   },
   {
     "id": "morale_perm_badtemper",
     "type": "morale_type",
+    "permanent": true,
     "text": "Bad Tempered"
   },
   {
     "id": "morale_perm_numb",
     "type": "morale_type",
+    "permanent": true,
     "text": "Numb"
   },
   {
     "id": "morale_perm_constrained",
     "type": "morale_type",
+    "permanent": true,
     "text": "Uncomfortable gear"
   },
   {
@@ -372,6 +378,7 @@
   {
     "id": "morale_perm_filthy",
     "type": "morale_type",
+    "permanent": true,
     "text": "Filthy gear"
   },
   {
@@ -417,6 +424,7 @@
   {
     "id": "morale_perm_debug",
     "type": "morale_type",
+    "permanent": true,
     "text": "Debug morale"
   },
   {

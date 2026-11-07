@@ -2,16 +2,20 @@
 #ifndef CATA_SRC_IUSE_H
 #define CATA_SRC_IUSE_H
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "calendar.h"
 #include "clone_ptr.h"
 #include "coordinates.h"
 #include "item_location.h"
 #include "point.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
 
@@ -23,7 +27,37 @@ class item;
 class map;
 class monster;
 struct iteminfo;
+struct washing_rules;
 template<typename T> class ret_val;
+
+/**
+ * The JSON parameters of an object-form use action of a C++ use function that takes some, such as
+ * { "type": "FISH_ROD", "duration": "3 h" }. Such a function is registered with the parameters it
+ * reads (Item_factory::add_iuse_with_params); any other member of the object is an error.
+ */
+class iuse_params
+{
+    public:
+        enum class kind : int {
+            integer,
+            // a time string or a number of turns
+            duration,
+            string
+        };
+        struct param {
+            std::string name;
+            kind type;
+        };
+        /** Reads the declared parameters that `jo` has. */
+        void load( const JsonObject &jo, const std::vector<param> &declared );
+        int get_int( const std::string &name, int def ) const;
+        time_duration get_duration( const std::string &name, const time_duration &def ) const;
+        std::string get_string( const std::string &name, const std::string &def ) const;
+    private:
+        // integers, and durations in turns
+        std::map<std::string, int64_t> numbers;
+        std::map<std::string, std::string> strings;
+};
 
 // iuse methods return the number of charges expended, which is usually "1", or no value.
 // Returning 0 indicates the item has not been used up, though it may have been successfully activated.
@@ -54,6 +88,9 @@ std::optional<int> inhaler( Character *p, item *it, const tripoint_bub_ms & );
 std::optional<int> meditate( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> meth( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> petfood( Character *p, item *it, const tripoint_bub_ms & );
+// MONDT-J14: feeds food_item to animal, as PETFOOD does once the animal is chosen; false when the
+// animal takes no pet food at all
+bool feed_pet( Character &feeder, item &food_item, monster &animal );
 std::optional<int> plantblech( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> poison( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> prozac( Character *, item *, const tripoint_bub_ms & );
@@ -103,7 +140,9 @@ std::optional<int> fill_pit( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> firecracker_pack_act( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> fish_trap( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> fish_trap_tick( Character *, item *, const tripoint_bub_ms & );
-std::optional<int> fishing_rod( Character *, item *, const tripoint_bub_ms & );
+// JSON parameters: "duration", how long the fishing activity lasts (default 5 h)
+std::optional<int> fishing_rod( Character *, item *, const tripoint_bub_ms &,
+                                const iuse_params &params = iuse_params() );
 std::optional<int> fitness_check( Character *p, item *it, const tripoint_bub_ms & );
 std::optional<int> foodperson( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> foodperson_voice( Character *, item *, const tripoint_bub_ms & );
@@ -130,7 +169,9 @@ std::optional<int> magic_8_ball( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> measure_resonance( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> change_outfit( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> ebooksave( Character *, item *, const tripoint_bub_ms & );
-std::optional<int> makemound( Character *, item *, const tripoint_bub_ms & );
+// JSON parameters: "moves", how long churning up the soil takes (default 18000)
+std::optional<int> makemound( Character *, item *, const tripoint_bub_ms &,
+                              const iuse_params &params = iuse_params() );
 std::optional<int> mace( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> manage_exosuit( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> mininuke( Character *, item *, const tripoint_bub_ms & );
@@ -184,7 +225,7 @@ std::optional<int> voltmeter( Character *p, item *it, const tripoint_bub_ms & );
 std::optional<int> vortex( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> wash_all_items( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> wash_hard_items( Character *, item *, const tripoint_bub_ms & );
-std::optional<int> wash_items( Character *p, bool soft_items, bool hard_items );
+std::optional<int> wash_items( Character *p, const washing_rules &rules );
 std::optional<int> wash_soft_items( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> water_purifier( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> weak_antibiotic( Character *, item *, const tripoint_bub_ms & );
@@ -213,12 +254,13 @@ std::optional<int> disassemble( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> post_up( Character *, item *, const tripoint_bub_ms & );
 
 // Helper functions for other iuse functions
-void cut_log_into_planks( Character & );
+// Starts p cutting the given number of logs into planks where p stands; the logs are not
+// items (a trunk being cut up), so nothing is used up
+void cut_log_into_planks( Character &p, int logs = 1 );
 void play_music( Character *p, const tripoint_bub_ms &source, int volume, int max_morale,
                  bool play_sounds = true );
 void make_music( Character *p, const tripoint_bub_ms &source, int volume, int max_morale,
                  bool play_sounds = true );
-std::optional<int> purify_water( Character *p, item *purifier, item_location &water );
 int towel_common( Character *, item *, bool );
 
 // Helper for validating a potential target of robot control
@@ -241,8 +283,36 @@ struct washing_requirements {
     int water;
     int cleanser;
     int time;
+    // What one unit of water and one of cleanser is (USE-J06): the requirement's components,
+    // tools and qualities, its components and tools scaled by the counts above. A null id needs
+    // nothing.
+    requirement_id water_requirement = requirement_id::NULL_ID();
+    requirement_id cleanser_requirement = requirement_id::NULL_ID();
+};
+
+// How a washing use action washes: what it washes, what it uses as water and as cleanser and how
+// much of each and how long a volume of items takes (USE-J06). The defaults are the WASH_* use
+// actions'.
+struct washing_rules {
+    bool soft = true;
+    bool hard = true;
+    requirement_id water;
+    requirement_id cleanser;
+    // the volume of items one unit of water, or of cleanser, washes; a started one counts whole
+    units::volume water_per = 125_ml;
+    units::volume cleanser_per = 1_liter;
+    // time for every whole time_per of items
+    time_duration time = 10_seconds;
+    units::volume time_per = 250_ml;
+
+    washing_rules();
+    washing_requirements requirements_for( const units::volume &vol ) const;
 };
 washing_requirements washing_requirements_for_volume( const units::volume & );
+// Whether p has the water and cleanser req needs; if not, tells p which is missing
+bool has_washing_supplies( const Character &p, const washing_requirements &req );
+// Uses up the water, cleanser and tool charges req needs
+void consume_washing_supplies( Character &p, const washing_requirements &req );
 
 struct heating_requirements {
     units::volume volume;
@@ -265,11 +335,15 @@ heating_requirements heating_requirements_for_weight( const units::mass &,
 
 using use_function_pointer = std::optional<int> ( * )( Character *, item *,
                              const tripoint_bub_ms & );
+// A C++ use function that takes JSON parameters (see iuse_params).
+using use_function_pointer_with_params = std::optional<int> ( * )( Character *, item *,
+        const tripoint_bub_ms &, const iuse_params & );
 
 class iuse_actor
 {
     protected:
-        explicit iuse_actor( const std::string &type, int cost = -1 ) : type( type ), cost( cost ) {}
+        explicit iuse_actor( const std::string &type, int cost = -1 ) : type( type ), cost( cost ),
+            id( type ) {}
 
     public:
         /**
@@ -280,6 +354,19 @@ class iuse_actor
 
         /** Units of ammo required per invocation (or use value from base item if negative) */
         int cost;
+
+        /**
+         * The action's id among its item's use actions: its key in the item's use_action (or
+         * tick_action) map, which the use menu, u_activate, ammo_scale and EOCs' _method know it
+         * by. The JSON "id" of an object-form action, else the type.
+         */
+        std::string id;
+
+        /**
+         * The JSON "menu_text" of an object-form action: its name in the use menus, over
+         * get_name(). Empty when unset.
+         */
+        translation menu_text;
 
         virtual ~iuse_actor() = default;
         virtual void load( const JsonObject &jo, const std::string &src ) = 0;
@@ -315,6 +402,14 @@ class iuse_actor
          * Finalizes the actor. Must be called after all items are loaded.
          */
         virtual void finalize( const itype_id &/*my_item_type*/ ) { }
+        /**
+         * Whether a use of an item that has no charges to spend (no ammo, charges or tool
+         * uses) still uses something up when use() reports charges spent: the item itself.
+         * Character::invoke_item then removes it, or one of a stack counted by charges.
+         */
+        virtual bool uses_up_item_without_charges() const {
+            return false;
+        }
 };
 
 struct use_function {
@@ -348,7 +443,9 @@ struct use_function {
 
         /** @return See @ref iuse_actor::type */
         std::string get_type() const;
-        /** @return See @ref iuse_actor::get_name */
+        /** @return See @ref iuse_actor::id; empty without an actor */
+        std::string get_id() const;
+        /** @return the action's "menu_text" if it has one, else @ref iuse_actor::get_name */
         std::string get_name() const;
         /** @return See @ref iuse_actor::get_description */
         std::string get_description() const;

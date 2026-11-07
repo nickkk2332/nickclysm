@@ -322,8 +322,9 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `travel_cost_type` | How to treat this location when planning a route using autotravel on the overmap. Valid values are `road`,`field`,`dirt_road`,`trail`,`forest`,`shore`,`swamp`,`water`,`air`,`structure`,`roof`,`basement`,`tunnel`,`impassable`,`other`. Some types are harder to travel through with different types of vehicles, or on foot. |
 | `extras`          | Reference to a named `map_extras` in region_settings, defines which map extras can be applied.   |
 | `mondensity`      | Summed with values for adjacent overmap terrains to influence density of monsters spawned here.  |
+| `wind_factor`     | Optional, multiplier to the wind on this terrain (outdoors, before height and adjacent walls). Defaults to 0.5 for `forest` and `forest_water` and 1 for everything else. |
 | `spawns`          | Spawns added once at mapgen. Monster group, % chance, population range (min/max).                |
-| `flags`           | See `Overmap terrains` in [JSON_FLAGS.md](JSON_FLAGS.md).                                        |
+| `flags`           | See `Overmap terrains` in [JSON_FLAGS.md](JSON_FLAGS.md). Other names are the mod's own flags.   |
 | `uniform_terrain` | Specifies the terrain that should fill this overmap terrain in place of a JSON mapgen with fill ter for very common maps to save on load time. |
 | `mapgen`          | Specify a C++ mapgen function. Don't do this--use JSON.                                          |
 | `mapgen_straight` | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
@@ -331,17 +332,54 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `mapgen_end`      | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
 | `mapgen_tee`      | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
 | `mapgen_four_way` | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
-| `eoc`             | Supply an effect_on_condition id or an inline effect_on_condition.  The condition of the eoc will be tested to see if the special can be placed.  The effect of the eoc will be run when the special is placed.  See [effect_on_condition.md](EFFECT_ON_CONDITION.md). |
 | `entry_eoc`       | An effect on condition ID that will run when you enter this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
 | `exit_eoc`        | An effect on condition ID that will run when you exit this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
+| `radio`           | A radio station worldgen puts on this terrain when it is on z-level 0, or a list of them to pick one from.  See [`radio`](#radio). |
 | `post_process_generators` | Array of `pp_generator` ids applied after mapgen completes.  See [Post-Process Generators](#post-process-generators).  Supports `copy-from` inheritance and `delete`. |
+| `bridge`          | Optional object: what the overmap generator builds around this terrain when it's on the ground (z = 0). See [Vertical terrain rules](#vertical-terrain-rules). |
+| `below`           | Optional object: terrain the overmap generator places one z-level below this terrain. See [Vertical terrain rules](#vertical-terrain-rules). |
+
+### Vertical terrain rules
+
+`bridge` and `below` let a mod's own terrain get the rules vanilla bridges and manholes have. Both are
+inherited by `copy-from`; `null` removes an inherited one.
+
+`bridge`:
+
+| Identifier          | Description                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| `overpass`          | Overmap terrain type placed above the bridge (z = 1), rotated like it.                              |
+| `support`           | Optional overmap terrain type placed, rotated like the bridge, from the bridge's own tile downwards for as long as the tile there is water (`WATER` flag). Vanilla's `bridge` has no `WATER` flag, so for it this places nothing. |
+| `bridgehead_ground` | Optional (with `bridgehead_ramp`): the bridge's end tiles become this type, rotated to line up with the bridge, with `bridgehead_ramp` above them. Give both the `RAMP` flag so that overmap travel can use them. |
+| `bridgehead_ramp`   | See `bridgehead_ground`.                                                                            |
+
+`below`:
+
+| Identifier | Description                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `terrain`  | Overmap terrain id placed one z-level below.                                                               |
+| `network`  | Optional, `sewer` or `subway`: the placed tile is joined to the region's sewer or subway connection network. |
+
+```jsonc
+{
+  "type": "overmap_terrain",
+  "id": "bridge",
+  "bridge": { "overpass": "bridge_road", "support": "bridge", "bridgehead_ground": "bridgehead_ground", "bridgehead_ramp": "bridgehead_ramp" }
+},
+{
+  "type": "overmap_terrain",
+  "id": "road_nesw_manhole",
+  "below": { "terrain": "sewer_isolated", "network": "sewer" }
+}
+```
 
 ### `entry_eoc` and `exit_eoc`
 
 These run when the avatar moves from one overmap terrain tile (OMT) to another: on foot, up or
-down stairs, by teleport, or carried by a vehicle (driving or a vehicle teleport).  NPCs and
-monsters don't run them, and neither do the avatar's first OMT at game start, travel to another
-dimension or the debug menu's overmap teleport.  When the avatar crosses a boundary, the
+down stairs, by teleport, or carried by a vehicle (driving or a vehicle teleport).  The
+`entry_eoc` of the OMT a new game starts in also runs, once, when the game starts (before the
+scenario's and profession's EOCs).  NPCs and monsters don't run them, and neither do travel to
+another dimension or the debug menu's overmap teleport.  When the avatar crosses a boundary, the
 `exit_eoc` of the terrain being left runs first, then the `entry_eoc` of the terrain being
 entered.  If the avatar is moved again during a move (a teleport trap stepped on, a fall), they
 run once, from where the move started to where it ended.
@@ -352,11 +390,34 @@ beta talker, and get these context variables:
 | Variable          | Description |
 | ----------------- | ----------- |
 | `omt_pos`         | Location variable: the north-west corner, at the OMT's z-level, of the OMT this EOC belongs to (the one being entered for `entry_eoc`, the one being left for `exit_eoc`). |
-| `left_oter_id`    | Id of the overmap terrain being left, with its rotation or line suffix, e.g. `"house_north"`. |
+| `left_oter_id`    | Id of the overmap terrain being left, with its rotation or line suffix, e.g. `"house_north"`.  Empty at game start, when no terrain is left. |
 | `entered_oter_id` | Id of the overmap terrain being entered, in the same form. |
 
 Read them as context variables, e.g. `{ "context_val": "omt_pos" }`.  Both EOC ids are checked
 at load: an unknown id is reported as an error.
+
+### `radio`
+
+When an overmap is generated, each of its z-level 0 tiles whose terrain has a `radio` gets a radio
+station.  `radio` is one station, or a list of stations of which one is picked by `weight`:
+
+| Identifier         | Description                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| `type`             | `broadcast` (default) plays a message; `weather` gives weather reports; `none` places no station, to make a station a chance. |
+| `weight`           | Weight when picking from a list.  Default 1.                                             |
+| `strength`         | Signal strength, a number or `[ min, max ]` to roll from; 1 to 360.  Default `[ 120, 360 ]`.  It is heard about that many submaps away. |
+| `message`          | The broadcast.  `<station_number>` in it becomes the tile's position on its overmap, as `1234`. |
+| `snippet_category` | Broadcast a random snippet of this category instead of a `message`.                      |
+
+```jsonc
+"radio": [
+  { "type": "weather", "weight": 1 },
+  { "type": "broadcast", "weight": 2, "snippet_category": "radio_archive" }
+]
+```
+
+A terrain loaded with `copy-from` keeps its parent's `radio` unless it gives its own; `"radio": []`
+removes it.  EOCs add and remove stations with `add_radio_station` and `remove_radio_station`.
 
 ### `see_cost` values
 
@@ -443,8 +504,10 @@ The field supports `copy-from` inheritance.  To remove a generator inherited fro
 }
 ```
 
-Road overmap terrains currently use hardcoded dispatch for city roads and should not have
-`post_process_generators` set.
+Road overmap terrains should not have `post_process_generators` set: a road in a city gets the
+generators of its region's `road_post_process` (a `region_settings_city` field, default
+`[ "riot_damage_road" ]`, see [REGION_SETTINGS.md](REGION_SETTINGS.md#region-city-settings)), and
+a road outside a city gets none.
 
 ### `pp_generator` definition
 
@@ -453,6 +516,22 @@ Road overmap terrains currently use hardcoded dispatch for city roads and should
 | `type`           | Must be `"pp_generator"`.                                                             |
 | `id`             | Unique id.                                                                            |
 | `sub_generators` | Array of sub-generator objects, executed in order.  See below.                         |
+
+A `pp_generator` with `copy-from` inherits its parent's `sub_generators`; a new
+`sub_generators` array replaces them all.  To change only some, `"delete": { "sub_generators":
+[ "place_blood" ] }` drops every inherited sub-generator of the listed types, then
+`"extend": { "sub_generators": [ ... ] }` adds new ones after the rest (delete runs first, so a
+type can be deleted and re-added in one definition):
+
+```jsonc
+{
+  "type": "pp_generator",
+  "id": "riot_damage_slime",
+  "copy-from": "riot_damage",
+  "delete": { "sub_generators": [ "place_blood" ] },
+  "extend": { "sub_generators": [ { "type": "place_blood", "attempts": 576, "chance": 15, "field": "fd_acid" } ] }
+}
+```
 
 ### Sub-generator fields
 
@@ -471,6 +550,10 @@ Each sub-generator object has the following fields:
 | `scaling_days_start`  | For time-scaled effects, day offset when scaling begins.  Default 0.                  |
 | `scaling_days_end`    | For time-scaled effects, day offset when scaling reaches full strength.  Default 0.   |
 | `scope`               | `"omt"` (default) or `"overmap_special"`.  See [Scope](#scope) below.                 |
+| `condition`           | Optional [dialogue condition](NPCs.md#dialogue-conditions).  The sub-generator runs only on the overmap tiles where it holds.  Its context values are `loc` (the tile's north-west corner) and `oter_id` (its overmap terrain id); `u` is the avatar.  An `overmap_special`-scoped decision is made on the first tile where it holds. |
+| `burnt_wall_ter`, `burnt_floor_ter`, `burnt_ground_ter` | `pre_burn` only.  What a flammable wall, floor (indoors or door) and outdoor ground (z 0) become.  Default `t_wall_burnt`, `t_floor_burnt`, `t_dirt`. |
+| `field`               | `add_fire` and `place_blood` only.  The field placed.  Default `fd_fire` and `fd_blood`. |
+| `ruin_oter`, `ruin_wall_ter`, `ruin_floor_ter`, `ruin_ground_floor_ter`, `ruin_cover_ter`, `wreckage_furn` | `aftershock_ruin` only; see that type below.  |
 
 ### Scope
 
@@ -516,18 +599,18 @@ falls through to the original per-OMT fresh-roll behavior.  No migration needed.
 | `bash_damage`     | Randomly bashes furniture and terrain.  `chance` is percent [0-100] per attempt.  `min_intensity`/`max_intensity` control bash strength (damage range). |
 | `move_items`      | Displaces items on the ground by a random distance.  `chance` is percent [0-100] per attempt.  `max_intensity` is the maximum displacement in tiles.  Respects SEALED/PLANT containers. |
 | `add_fire`        | Places fire fields.  Chance is computed from `scaling_days_end` (fires stop spawning after that many days since the cataclysm).  `min_intensity`/`max_intensity` control fire strength.  `chance` must be 0 (it is derived internally). |
-| `pre_burn`        | Replaces an entire OMT with burnt terrain variants -- walls become `t_wall_burnt`, floors become `t_floor_burnt`, furniture and items are destroyed.  Chance is computed from `scaling_days_start`/`scaling_days_end` and intensity.  Stairs (GOES_UP/GOES_DOWN) are preserved.  `chance` must be 0 (it is derived internally). |
-| `place_blood`     | Places blood streaks, pools, and splatter.  `chance` is permille [0-1000] per attempt.  Outdoor blood fades over 30 days. |
+| `pre_burn`        | Replaces an entire OMT with burnt terrain variants -- walls become `t_wall_burnt`, floors become `t_floor_burnt`, outdoor ground at z 0 becomes `t_dirt` (or the `burnt_*_ter` given), furniture and items are destroyed.  Chance is computed from `scaling_days_start`/`scaling_days_end` and intensity.  Stairs (GOES_UP/GOES_DOWN) are preserved.  `chance` must be 0 (it is derived internally). |
+| `place_blood`     | Places blood streaks, pools, and splatter (`fd_blood`, or the `field` given).  `chance` is permille [0-1000] per attempt.  Outdoor blood fades over 30 days. |
 | `ter_furn_transform`  | Applies `ter_furn_transform_used` on every tile in map. `chance` is percent chance to apply (remember the default chance value, if undefined, is 0) |
 | `modify_items`  | Applies `modify_items` on every tile in map. `filter` allows to define the items affected |
-| `aftershock_ruin`  | Runs the Aftershock ruin generator.  All numeric fields are ignored. |
+| `aftershock_ruin`  | Runs the ruin generator.  All numeric fields are ignored.  The tile is fully ruined when the tile above is already `ruin_oter`, or half the time when the tile above is open air: its overmap terrain becomes `ruin_oter`, most furniture goes, walls become `ruin_wall_ter` (one in five `ruin_floor_ter`), most indoor floors become `ruin_ground_floor_ter` at z 0 and `ruin_cover_ter` elsewhere, and open air at z 0 becomes `ruin_cover_ter`.  Otherwise it is smashed up, with patches of `wreckage_furn`.  The defaults are Aftershock's: `afs_ruins_dynamic`, `t_wall_prefab_metal`, `t_metal_floor`, `t_snow_metal_floor`, `t_snow` and `f_wreckage`. |
 
 ### Built-in generators
 
 | Id                   | Description | Used by |
 | -------------------- | ----------- | ------- |
 | `riot_damage`        | Full riot damage: bash, item displacement, fire, pre-burn, and blood.  `pre_burn` uses `overmap_special` scope.  | Most city buildings (via `generic_city_building`). |
-| `riot_damage_road`   | Same as `riot_damage` but without `pre_burn`.  | City roads (hardcoded dispatch). |
+| `riot_damage_road`   | Same as `riot_damage` but without `pre_burn`.  | City roads (the default `road_post_process` of a region's city settings). |
 | `aftershock_ruin`    | Aftershock ruin effect.  | Aftershock mod buildings with `PP_GENERATE_RUINED` flag. |
 
 
@@ -645,8 +728,12 @@ as it corresponds to the way in which the JSON for mapgen is defined.
 ### Connections
 
 The overmap special can be connected to the road, subway or sewer networks. Specifying a connection
-point causes the appropriate connection to be automatically generated from the nearest matching terrain
-, unless `existing` is set to true.
+point causes the appropriate connection to be automatically generated, unless `existing` is set to true.
+By default it is built from the center of the nearest city (or, if the overmap has no city, from the
+overmap's fallback road point). `"target": "nearest_existing"` builds it from the nearest tile that already
+has that connection instead (e.g. the nearest forest trail), which suits connections that a city
+center can't be part of. The connection's own `special_target` (see [Overmap Connection](#overmap-connection))
+sets the default for every special.
 
 Connections with `existing` set to true are used to test the validity of an overmap special's
 placement. Unlike normal connection points these do not have to reference road/tunnel terrain types.
@@ -698,7 +785,14 @@ specials are placed. Each city gets assigned a size at generation and will begin
 intersection. The city distance field specifies the minimum and maximum distance the special can be
 placed from the edge of the urban radius of a city, and not from the center of the city.
 Both city size and city distance requirements are only checked for the "nearest" city, measured from the
-original intersection.
+original intersection.  That city may be on a neighbouring overmap, if that overmap has already been
+generated: a wilderness special does not spawn right across the border from a city, and a special that
+needs a nearby city can use one across the border.  Specials that missions place check the same way
+(`place_overmap_special` places a special at the given spot without the city rules).
+
+A minimum distance is kept even when the maximum is open-ended (`-1`): a special with
+`"city_distance": [ 5, -1 ]` is placed more than 5 tiles from the edge of every city, whatever its
+`city_sizes`.
 
 
 ### Fields
@@ -715,6 +809,39 @@ original intersection.
 | `priority`      | **Warning: Do not use this unnecessarily.** The generation process is executed in the order of specials with the highest value. Can be used when maps are difficult to generate. (large maps, maps that are or require dependencies etc) It is **strongly recommended** to set it to 1 (HIGH priority) or -1 (LOW priority) if used. (default = 0).  It is adviced that map specials marked with the SAFE_AT_WORLDGEN are given a priority of 1 unless there are reasons not to, in order to exist when specials spawning monsters in an area are spawned, as that will cause the latter not to spawn that close. |
 | `flags`         | See `Overmap specials` in [JSON_FLAGS.md](JSON_FLAGS.md).                                             |
 | `rotate`        | Whether the special can rotate. True if not specified.                                                |
+| `spawns`        | Monsters placed around the special when it is placed: `{ "group": "GROUP_X", "population": [ min, max ], "radius": [ min, max ] }` (radius in overmap tiles).  The special is not placed where the largest radius would reach a `SAFE_AT_WORLDGEN` special. |
+| `eoc`           | An effect_on_condition id or an inline effect_on_condition.  See [The `eoc` of a special](#the-eoc-of-a-special). |
+
+### The `eoc` of a special
+
+The EOC's condition decides whether the special can be placed, and its effect runs after the special
+has been placed.  In both, alpha is the avatar, wherever they are; there is no beta.
+
+The condition is tested once for each overmap the special could be placed on (when the overmap is
+generated, or when a mission or an EOC places the special), not for every spot and rotation tried.  If it
+fails, the special is not placed on that overmap.  Placing the special at a given spot with
+`place_overmap_special`, or as a city building, tests it once for that spot; a forced placement (`"force": true`,
+the debug menu) places the special whatever the condition says.  Its context variable:
+
+| Variable      | Value                                                                      |
+| ------------- | -------------------------------------------------------------------------- |
+| `overmap_pos` | Location of the center of the overmap (its tile at 90, 90 on z-level 0).   |
+
+The effect runs every time the special is placed, including forced and debug placements, with these
+context variables:
+
+| Variable        | Value                                                                              |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `special_id`    | The special's id.                                                                  |
+| `special_pos`   | Location of the special's origin tile (its `[ 0, 0, 0 ]` point).                   |
+| `rotation`      | The direction the special was placed in: `north`, `east`, `south` or `west`.       |
+| `overmap_pos`   | Location of the center of the overmap the special is on.                           |
+| `city_name`     | The name of the special's city (the nearest on its overmap), if there is one.      |
+| `city_size`     | That city's size.                                                                  |
+| `city_distance` | Distance from the special's origin to the edge of that city, in overmap tiles.     |
+
+Locations are absolute map-square positions, as other location variables.  A special loaded with
+`copy-from` takes the parent's `eoc` unless it gives its own.
 
 Depending on the subtype, there are further relevant fields:
 
@@ -778,6 +905,8 @@ Depending on the subtype, there are further relevant fields:
 | `connection` | Id of the `overmap_connection` to build. Optional for now, but you should specify it explicitly.   |
 | `from`       | Optional point `[ x, y, z]` within the special to treat as the origin of the connection.           |
 | `existing`   | Boolean, default false. If the special requires a preexisting terrain to spawn.                    |
+| `target`     | Optional: `city` (the nearest city's center, or the overmap's fallback point if there is no city) or `nearest_existing` (the nearest tile outside the special that already has this connection; as `city` if there is none). Default: the connection's `special_target`, which is `city` unless set. |
+| `max_length` | Optional int. The connection is not built if its source is more than this many overmap tiles (square distance) from `point`; also how far `nearest_existing` looks. |
 
 ### Example mutable special
 
@@ -888,7 +1017,8 @@ Once the mutable special placement is complete, a `local_road` connection will
 be built from the north edge of this overmap (again, 'north' is a relative
 term, that will rotate as the overmap is rotated) in the same way as
 connections are built for fixed specials.  'Existing' connections are not
-supported for mutable specials.
+supported for mutable specials.  `target` and `max_length` work as for fixed
+specials, e.g. `{ "connection": "forest_trail", "target": "nearest_existing", "max_length": 20 }`.
 
 #### Layout phases
 
@@ -1260,6 +1390,7 @@ by the frequency assigned to the city building within the `region_settings`. Con
 | `flags`     | As in `overmap_special`.                                                         |
 | `rotate`    | As in `overmap_special`.                                                         |
 | `city_sizes`| As in `overmap_special`.                                                         |
+| `eoc`       | As in `overmap_special`; the condition is tested for each building placement.    |
 
 ### Example
 
@@ -1295,6 +1426,21 @@ by the frequency assigned to the city building within the `region_settings`. Con
 | `type`     | Must be "overmap_connection".                                                                   |
 | `id`       | Unique id.                                                                                      |
 | `subtypes` | List of entries used to determine valid locations, terrain cost, and resulting overmap terrain. |
+| `special_target` | Optional, `city` (default) or `nearest_existing`: where overmap specials build this connection from when their connection has no `target` (see [Connections](#connections-1)). |
+
+The first subtype whose `terrain` or `locations` allow a tile is used there. A `copy-from` (e.g. of the
+same id, to change vanilla's connection) inherits `subtypes`; `"extend": { "subtypes": [ ... ] }` appends
+subtypes after the inherited ones, and `"delete": { "subtypes": [ { "terrain": "road", "locations": [ "swamp" ] } ] }`
+removes every subtype with that `terrain` (and exactly those `locations`, if given):
+
+```jsonc
+{
+  "type": "overmap_connection",
+  "id": "local_road",
+  "copy-from": "local_road",
+  "extend": { "subtypes": [ { "terrain": "road", "locations": [ "sand" ], "basic_cost": 10 } ] }
+}
+```
 
 
 ### Example
@@ -1339,6 +1485,14 @@ by the frequency assigned to the city building within the `region_settings`. Con
 | `type`     | Must be "overmap_location".                                             |
 | `id`       | Unique id.                                                              |
 | `terrains` | List of `overmap_terrain` that can be considered part of this location. |
+| `flags`    | List of overmap terrain flags: every `overmap_terrain` with one of them is also part of this location. Engine flags and a mod's own flags both work. |
+
+At least one of `terrains` and `flags` must be given. A `copy-from` of a location can `extend` or
+`delete` either list, e.g. a mod adding its own terrain to vanilla's `forest` location:
+
+```jsonc
+{ "type": "overmap_location", "id": "forest", "copy-from": "forest", "extend": { "terrains": [ "my_jungle" ] } }
+```
 
 
 ### Example

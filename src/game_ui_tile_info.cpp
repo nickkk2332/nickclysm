@@ -56,12 +56,12 @@
 enum class om_vision_level : int8_t;
 
 static const json_character_flag json_flag_BLIND( "BLIND" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 
 static const ter_str_id ter_t_grave_new( "t_grave_new" );
 static const ter_str_id ter_t_pit( "t_pit" );
 static const ter_str_id ter_t_pit_shallow( "t_pit_shallow" );
 
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 
 void game::print_all_tile_info( const tripoint_bub_ms &lp, const catacurses::window &w_look,
                                 const std::string_view area_name, int column,
@@ -255,7 +255,7 @@ void game::print_terrain_info( const tripoint_bub_ms &lp, const catacurses::wind
     // Next print the string on any SIGN flagged furniture if any.
     std::string signage = here.get_signage( lp );
     if( !signage.empty() ) {
-        std::string sign_string = u.has_trait( trait_ILLITERATE ) ? "???" : signage;
+        std::string sign_string = u.has_flag( json_flag_ILLITERATE ) ? "???" : signage;
         const int lines = fold_and_print( w_look, point( column, ++line ), max_width, c_light_gray,
                                           _( "Sign: %s" ), sign_string );
         line += lines - 1;

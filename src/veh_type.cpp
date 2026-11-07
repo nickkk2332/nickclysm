@@ -4,10 +4,13 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <list>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -17,8 +20,10 @@
 #include "character.h"
 #include "clzones.h"
 #include "color.h"
+#include "condition.h"
 #include "damage.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "flag.h"
 #include "flat_set.h"
@@ -33,6 +38,7 @@
 #include "json.h"
 #include "magic_enchantment.h"
 #include "map.h"
+#include "npctalk.h"
 #include "output.h"
 #include "pocket_type.h"
 #include "requirements.h"
@@ -60,7 +66,14 @@ generic_factory<vpart_info> vpart_info_factory( "vehicle_part", "id" );
 
 static const ammotype ammo_battery( "battery" );
 
+static const damage_type_id damage_bash( "bash" );
+static const damage_type_id damage_cut( "cut" );
+
 static const itype_id fuel_type_animal( "animal" );
+static const itype_id fuel_type_battery( "battery" );
+static const itype_id fuel_type_mana( "mana" );
+static const itype_id fuel_type_muscle( "muscle" );
+static const itype_id fuel_type_wind( "wind" );
 
 static const quality_id qual_JACK( "JACK" );
 static const quality_id qual_LIFT( "LIFT" );
@@ -214,6 +227,29 @@ void vp_control_req::deserialize( const JsonObject &jo )
 {
     optional( jo, false, "skills", skills, weighted_string_id_reader<skill_id, int> { std::nullopt} );
     optional( jo, false, "proficiencies", proficiencies, string_id_reader<proficiency> {} );
+    // VEH-J08
+    if( jo.has_member( "handling_skill" ) ) {
+        handling_skill = skill_id( jo.get_string( "handling_skill" ) );
+    }
+    if( jo.has_member( "handling_proficiency" ) ) {
+        handling_proficiency = proficiency_id( jo.get_string( "handling_proficiency" ) );
+    }
+    if( jo.has_member( "trains" ) ) {
+        std::vector<proficiency_id> trained;
+        for( const std::string &prof : jo.get_string_array( "trains" ) ) {
+            trained.emplace_back( prof );
+        }
+        trains = trained;
+    }
+    if( jo.has_member( "maintenance_proficiency" ) ) {
+        maintenance_proficiency = proficiency_id( jo.get_string( "maintenance_proficiency" ) );
+    }
+}
+
+bool vp_control_req::empty() const
+{
+    return skills.empty() && proficiencies.empty() && !handling_skill && !handling_proficiency &&
+           !trains && !maintenance_proficiency;
 }
 
 void vehicles::parts::load( const JsonObject &jo, const std::string &src )
@@ -253,6 +289,7 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "location", location );
     optional( jo, was_loaded, "durability", durability, 0 );
     optional( jo, was_loaded, "damage_modifier", dmg_mod, 100 );
+    optional( jo, was_loaded, "collision_damage", collision_damage );
     optional( jo, was_loaded, "energy_consumption", energy_consumption, 0_W );
     optional( jo, was_loaded, "power", power, 0_W );
     optional( jo, was_loaded, "epower", epower, 0_W );
@@ -263,6 +300,10 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "folded_volume", folded_volume, std::nullopt );
     optional( jo, was_loaded, "size", size, 0_ml );
     optional( jo, was_loaded, "bonus", bonus, 0 );
+    optional( jo, was_loaded, "funnel_radius", funnel_radius, std::nullopt );
+    optional( jo, was_loaded, "muffle_factor", muffle_factor, std::nullopt );
+    optional( jo, was_loaded, "seatbelt_strength", seatbelt_strength, std::nullopt );
+    optional( jo, was_loaded, "shock_absorption", shock_absorption, std::nullopt );
     if( jo.has_array( "light_color" ) ) {
         JsonArray jarr = jo.get_array( "light_color" );
         light_color.r = jarr.get_int( 0 ) / 255.0f;
@@ -276,14 +317,80 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "color", color, nc_color_reader{}, c_light_gray );
     optional( jo, was_loaded, "broken_color", color_broken, nc_color_reader{}, c_light_gray );
     optional( jo, was_loaded, "comfort", comfort, 0 );
+    optional( jo, was_loaded, "sound_attenuation", sound_attenuation,
+              numeric_bound_reader<int> { 0, 1000 }, 0 );
     optional( jo, was_loaded, "floor_bedding_warmth", floor_bedding_warmth, 0_C_delta );
     optional( jo, was_loaded, "bonus_fire_warmth_feet", bonus_fire_warmth_feet, 0.6_C_delta );
     optional( jo, was_loaded, "activatable_eoc", activatable_eoc );
+    // MAP-J03
+    if( jo.has_object( "processing_cycle" ) ) {
+        const JsonObject jc = jo.get_object( "processing_cycle" );
+        vpslot_processing_cycle cycle;
+        mandatory( jc, false, "duration", cycle.duration );
+        for( const std::string &flag : jc.get_string_array( "unset_item_flags" ) ) {
+            cycle.unset_item_flags.emplace( flag );
+        }
+        for( const std::string &flag : jc.get_string_array( "set_item_flags" ) ) {
+            cycle.set_item_flags.emplace( flag );
+        }
+        for( const JsonObject jt : jc.get_array( "transform_items" ) ) {
+            itype_id from;
+            itype_id to;
+            mandatory( jt, false, "from", from );
+            mandatory( jt, false, "to", to );
+            cycle.transform_items.emplace_back( from, to );
+        }
+        optional( jc, false, "start_message", cycle.start_message );
+        optional( jc, false, "progress_message", cycle.progress_message );
+        optional( jc, false, "finish_message", cycle.finish_message );
+        if( jc.has_member( "eoc_on_start" ) ) {
+            cycle.eoc_on_start = effect_on_conditions::load_inline_eoc( jc.get_member( "eoc_on_start" ), src );
+        }
+        if( jc.has_member( "eoc_on_finish" ) ) {
+            cycle.eoc_on_finish = effect_on_conditions::load_inline_eoc( jc.get_member( "eoc_on_finish" ),
+                                  src );
+        }
+        // VINT-J08
+        if( jc.has_member( "item_condition" ) ) {
+            read_condition( jc, "item_condition", cycle.item_condition, true );
+        }
+        optional( jc, false, "item_condition_message", cycle.item_condition_message );
+        if( cycle.duration <= 0_turns ) {
+            jc.throw_error_at( "duration", "duration must be more than 0" );
+        }
+        processing_cycle = cycle;
+    }
 
+    // VINT-B07: inline enchantments are named after the part's id, not its (translated, often
+    // empty, inherited) name, so ids neither collide nor change with the language. A part's
+    // "enchantments" replaces the ones it copied; "extend" adds to them and "delete" removes
+    // the named ones.
     int enchant_num = 0;
-    for( JsonValue jv : jo.get_array( "enchantments" ) ) {
-        std::string enchant_name = "INLINE_ENCH_" + name_ + "_" + std::to_string( enchant_num++ );
-        enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+    const auto read_enchantments = [&]( const JsonArray & ja ) {
+        for( JsonValue jv : ja ) {
+            std::string enchant_name = "INLINE_ENCH_vpart_" + id.str() + "_" +
+                                       std::to_string( enchant_num++ );
+            enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+        }
+    };
+    if( jo.has_array( "enchantments" ) ) {
+        enchantments.clear();
+        read_enchantments( jo.get_array( "enchantments" ) );
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const std::string &doomed : del.get_string_array( "enchantments" ) ) {
+            enchantments.erase( std::remove( enchantments.begin(), enchantments.end(),
+                                             enchantment_id( doomed ) ), enchantments.end() );
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        // numbered after the part's own list, so an extend doesn't reuse its ids
+        enchant_num = std::max( enchant_num, static_cast<int>( enchantments.size() ) );
+        read_enchantments( ext.get_array( "enchantments" ) );
     }
 
     if( jo.has_array( "variants" ) ) {
@@ -318,6 +425,7 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
 
         optional( reqs, false, "air", control_air );
         optional( reqs, false, "land", control_land );
+        optional( reqs, false, "water", control_water );
     }
 
     optional( jo, was_loaded, "looks_like", looks_like, looks_like );
@@ -329,8 +437,10 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
 
     optional( jo, was_loaded, "qualities", qualities, weighted_string_id_reader<quality_id, int> {std::nullopt} );
 
-    JsonArray tools = jo.get_array( "pseudo_tools" );
-    if( !tools.empty() ) {
+    // a part's "pseudo_tools" replaces the ones it copied, and "pseudo_tools": [] clears them
+    // (VINT-B08)
+    if( jo.has_array( "pseudo_tools" ) ) {
+        JsonArray tools = jo.get_array( "pseudo_tools" );
         pseudo_tools.clear();
         while( tools.has_more() ) {
             const JsonObject tooldef = tools.next_object();
@@ -391,6 +501,30 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
         }
         mandatory( jo, was_loaded, "transform_terrain", transform_terrain_info );
     }
+
+    // VINT-J05: "reaper": { "plant_yield": [ 1, 4 ], "seed_yield": [ 1, 3 ] }
+    if( jo.has_object( "reaper" ) ) {
+        const JsonObject jr = jo.get_object( "reaper" );
+        const auto read_bounds = [&jr]( const std::string & key, std::pair<int, int> &bounds ) {
+            if( !jr.has_array( key ) ) {
+                return false;
+            }
+            const JsonArray ja = jr.get_array( key );
+            if( ja.size() != 2 ) {
+                ja.throw_error( "should be [ least, most ]" );
+            }
+            bounds = std::make_pair( ja.get_int( 0 ), ja.get_int( 1 ) );
+            if( bounds.first < 0 || bounds.first > bounds.second ) {
+                ja.throw_error( "should be [ least, most ], with 0 <= least <= most" );
+            }
+            return true;
+        };
+        std::pair<int, int> plant_yield;
+        if( read_bounds( "plant_yield", plant_yield ) ) {
+            reaper_plant_yield = plant_yield;
+        }
+        read_bounds( "seed_yield", reaper_seed_yield );
+    }
 }
 
 void vpslot_engine::deserialize( const JsonObject &jo )
@@ -403,6 +537,16 @@ void vpslot_engine::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "muscle_power_factor", muscle_power_factor, 0 );
     optional( jo, was_loaded, "exclusions", exclusions, string_reader{} );
     optional( jo, was_loaded, "fuel_options", fuel_opts, string_id_reader<itype> {} );
+    // VEH-J11
+    if( jo.has_member( "power_math" ) ) {
+        power_math = get_dbl_or_var( jo, "power_math" );
+    }
+    if( jo.has_member( "full_reverse" ) ) {
+        full_reverse = jo.get_bool( "full_reverse" );
+    }
+    if( jo.has_member( "stall_message" ) ) {
+        stall_message = jo.get_bool( "stall_message" );
+    }
 
     was_loaded = true;
 }
@@ -432,6 +576,29 @@ void vpslot_wheel::deserialize( const JsonObject &jo )
     was_loaded = true;
 }
 
+int vpslot_wheel::terrain_move_cost( const std::set<std::string> &ter_flags,
+                                     const int move_cost ) const
+{
+    // The entries used to be tried in turn, stopping at the first that applied. JSON objects
+    // are read in sorted key order, so that was alphabetical, not the order written: a wheel
+    // whose ROAD penalty was bigger than its FLAT one did better off-road than on dirt.
+    std::optional<int> override_cost;
+    std::optional<int> penalty;
+    for( const veh_ter_mod &mod : terrain_modifiers ) {
+        if( ter_flags.count( mod.terrain_flag ) > 0 ) {
+            if( mod.move_override != 0 && ( !override_cost || mod.move_override < *override_cost ) ) {
+                override_cost = mod.move_override;
+            }
+        } else if( mod.move_penalty != 0 && ( !penalty || mod.move_penalty > *penalty ) ) {
+            penalty = mod.move_penalty;
+        }
+    }
+    if( override_cost ) {
+        return *override_cost;
+    }
+    return move_cost + penalty.value_or( 0 );
+}
+
 void vpslot_rotor::deserialize( const JsonObject &jo )
 {
     optional( jo, was_loaded, "rotor_diameter", rotor_diameter, 1 );
@@ -444,6 +611,7 @@ void vpslot_workbench::deserialize( const JsonObject &jo )
     optional( jo, false, "multiplier", multiplier, 1.f );
     optional( jo, false, "mass", allowed_mass, 0_gram );
     optional( jo, false, "volume", allowed_volume, 0_ml );
+    optional( jo, false, "recipe_filter", recipe_filter );
 }
 
 void vpslot_toolkit::deserialize( const JsonObject &jo )
@@ -670,6 +838,14 @@ void vpart_info::finalize()
 {
     if( engine_info && engine_info->fuel_opts.empty() && !fuel_type.is_null() ) {
         engine_info->fuel_opts.push_back( fuel_type );
+    }
+    // VEH-J11: what used to be keyed on these fuel ids is the default
+    if( engine_info && !engine_info->full_reverse ) {
+        engine_info->full_reverse = fuel_type == fuel_type_battery;
+    }
+    if( engine_info && !engine_info->stall_message ) {
+        engine_info->stall_message = fuel_type != fuel_type_animal && fuel_type != fuel_type_muscle &&
+                                     fuel_type != fuel_type_wind && fuel_type != fuel_type_mana;
     }
 
     for( const std::string &flag : get_flags() ) {
@@ -914,11 +1090,47 @@ void vpart_info::check() const
         if( power != 0_W && fuel_type == fuel_type_animal ) {
             debugmsg( "engine part '%s' powered by '%s' can't define non-zero 'power'",
                       id.str(), fuel_type.str() );
-        } else if( power == 0_W && fuel_type != fuel_type_animal ) {
+        } else if( power == 0_W && fuel_type != fuel_type_animal && !engine_info->power_math ) {
             debugmsg( "engine part '%s' powered by '%s' must define non zero 'power'",
                       id.str(), fuel_type.str() );
         }
     }
+    // A fueled reactor makes "power" (as a number of watts) kJ of battery charge per unit of
+    // fuel, and divides by it.
+    if( has_flag( VPFLAG_REACTOR ) && !has_flag( "PERPETUAL" ) && power <= 0_W ) {
+        debugmsg( "reactor part %s needs a positive 'power' (kJ of battery charge per unit of "
+                  "fuel) or the PERPETUAL flag", id.str() );
+    }
+    // VEH-J08
+    const auto check_control_req = [this]( const vp_control_req & req, const std::string_view mode ) {
+        if( req.handling_skill && !req.handling_skill->is_valid() ) {
+            debugmsg( "vehicle part %s has unknown %s handling_skill %s", id.str(), mode,
+                      req.handling_skill->str() );
+        }
+        std::vector<proficiency_id> profs;
+        if( req.handling_proficiency ) {
+            profs.push_back( *req.handling_proficiency );
+        }
+        if( req.trains ) {
+            profs.insert( profs.end(), req.trains->begin(), req.trains->end() );
+        }
+        if( req.maintenance_proficiency ) {
+            profs.push_back( *req.maintenance_proficiency );
+            if( mode != "air" ) {
+                debugmsg( "vehicle part %s sets maintenance_proficiency for %s; only \"air\" has one",
+                          id.str(), mode );
+            }
+        }
+        for( const proficiency_id &prof : profs ) {
+            if( !prof.is_valid() ) {
+                debugmsg( "vehicle part %s has unknown %s control proficiency %s", id.str(), mode,
+                          prof.str() );
+            }
+        }
+    };
+    check_control_req( control_air, "air" );
+    check_control_req( control_land, "land" );
+    check_control_req( control_water, "water" );
     // Parts with non-zero epower must have a flag that affects epower usage
     static const std::vector<std::string> handled = {{
             "ENABLED_DRAINS_EPOWER", "SECURITY", "ENGINE",
@@ -943,6 +1155,22 @@ void vpart_info::check() const
                       id.c_str() );
         }
     }
+    if( collision_damage ) {
+        for( const damage_unit &du : *collision_damage ) {
+            if( !du.type.is_valid() ) {
+                debugmsg( "Invalid collision_damage type \"%s\" for vehicle part %s", du.type.c_str(),
+                          id.c_str() );
+            }
+        }
+    }
+    if( ( funnel_radius && *funnel_radius < 0_mm ) || ( seatbelt_strength && *seatbelt_strength < 0 ) ||
+        ( shock_absorption && *shock_absorption < 0 ) ) {
+        debugmsg( "vehicle part %s has a negative funnel_radius, seatbelt_strength or shock_absorption",
+                  id.str() );
+    }
+    if( muffle_factor && ( *muffle_factor < 0.0 || *muffle_factor > 1.0 ) ) {
+        debugmsg( "vehicle part %s has a muffle_factor outside 0 to 1", id.str() );
+    }
     if( has_flag( "EOC_ACTIVATION" ) != activatable_eoc.has_value() ) {
         debugmsg( "vehicle part %s must have both the EOC_ACTIVATION flag and an activatable_eoc, "
                   "or neither", id.str() );
@@ -950,6 +1178,34 @@ void vpart_info::check() const
     if( activatable_eoc && !activatable_eoc->is_valid() ) {
         debugmsg( "vehicle part %s has unknown activatable_eoc %s", id.str(),
                   activatable_eoc->str() );
+    }
+    if( processing_cycle ) {
+        if( !has_flag( VPFLAG_CARGO ) ) {
+            debugmsg( "vehicle part %s has a processing_cycle but isn't CARGO", id.str() );
+        }
+        for( const std::set<flag_id> *flag_set : {
+                 &processing_cycle->unset_item_flags, &processing_cycle->set_item_flags
+             } ) {
+            for( const flag_id &flag : *flag_set ) {
+                if( !flag.is_valid() ) {
+                    debugmsg( "vehicle part %s: processing_cycle item flag %s doesn't exist", id.str(),
+                              flag.str() );
+                }
+            }
+        }
+        for( const std::pair<itype_id, itype_id> &transform : processing_cycle->transform_items ) {
+            if( !transform.first.is_valid() || !transform.second.is_valid() ) {
+                debugmsg( "vehicle part %s: processing_cycle transforms %s into %s, which aren't both items",
+                          id.str(), transform.first.str(), transform.second.str() );
+            }
+        }
+        for( const std::optional<effect_on_condition_id> *eoc : {
+                 &processing_cycle->eoc_on_start, &processing_cycle->eoc_on_finish
+             } ) {
+            if( *eoc && !( *eoc )->is_valid() ) {
+                debugmsg( "vehicle part %s: processing_cycle has unknown EOC %s", id.str(), ( *eoc )->str() );
+            }
+        }
     }
     if( !!transform_terrain_info && !( transform_terrain_info->post_terrain ||
                                        transform_terrain_info->post_furniture ||
@@ -1101,6 +1357,36 @@ bool vpart_info::is_repairable() const
     return !has_flag( "NO_REPAIR" ) && !repair_requirements().is_empty();
 }
 
+const damage_instance &vpart_info::get_collision_damage() const
+{
+    if( collision_damage ) {
+        return *collision_damage;
+    }
+    static const damage_instance sharp( damage_cut, 1.0f );
+    static const damage_instance blunt( damage_bash, 1.0f );
+    return has_flag( "SHARP" ) ? sharp : blunt;
+}
+
+int vpart_info::get_funnel_radius_mm() const
+{
+    return funnel_radius ? units::to_millimeter( *funnel_radius ) : bonus;
+}
+
+double vpart_info::get_muffle_factor() const
+{
+    return muffle_factor ? *muffle_factor : bonus / 100.0;
+}
+
+int vpart_info::get_seatbelt_strength() const
+{
+    return seatbelt_strength ? *seatbelt_strength : bonus;
+}
+
+int vpart_info::get_shock_absorption() const
+{
+    return shock_absorption ? *shock_absorption : bonus;
+}
+
 static time_duration scale_time( const std::map<skill_id, int> &sk, time_duration mv,
                                  const Character &you )
 {
@@ -1167,8 +1453,8 @@ time_duration vpart_info::get_unfolding_time() const
 
 bool vpart_info::has_control_req() const
 {
-    return !control_air.proficiencies.empty() || !control_air.skills.empty() ||
-           !control_land.proficiencies.empty() || !control_land.skills.empty();
+    // VEH-J08: a part that only names what handling uses still counts
+    return !control_air.empty() || !control_land.empty() || !control_water.empty();
 }
 
 std::string vpart_variant::get_label() const
@@ -1345,14 +1631,45 @@ void vehicle_prototype::zone_def::deserialize( const JsonObject &jo )
     optional( jo, false, "filter", filter );
 }
 
-void vehicle_prototype::load( const JsonObject &jo, std::string_view )
+void vehicle_prototype::load( const JsonObject &jo, std::string_view src )
 {
-    vgroups[vgroup_id( id.str() )].add_vehicle( id, 100 );
+    // every prototype is a group of its own id; an abstract one, which can't be spawned, isn't
+    // (VINT-B09)
+    if( !jo.has_string( "abstract" ) ) {
+        VehicleGroup::add_to_group( vgroup_id( id.str() ), id, 100 );
+    }
     optional( jo, was_loaded, "name", name );
 
     if( jo.has_member( "blueprint" ) ) {
         // currently unused, read to suppress unvisited members warning
         jo.get_array( "blueprint" );
+    }
+
+    // VINT-B08: "delete": { "parts": [ { "x": 0, "y": 1, "part": "stereo" } ] } removes the
+    // copied parts of that id (and variant, if one is given) on that tile, before this
+    // definition's "parts" are appended
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( JsonObject doomed : del.get_array( "parts" ) ) {
+            point_rel_ms pos;
+            mandatory( doomed, false, "x", pos.x() );
+            mandatory( doomed, false, "y", pos.y() );
+            std::string part_str;
+            mandatory( doomed, false, "part", part_str );
+            const size_t sep = part_str.find( vehicles::variant_separator );
+            const vpart_id doomed_id( part_str.substr( 0, sep ) );
+            const std::optional<std::string> doomed_variant = sep == std::string::npos ?
+                    std::nullopt : std::optional<std::string>( part_str.substr( sep + 1 ) );
+            const auto matches = [&]( const part_def & pt ) {
+                return pt.pos == pos && pt.part == doomed_id &&
+                       ( !doomed_variant || pt.variant == *doomed_variant );
+            };
+            if( std::none_of( parts.begin(), parts.end(), matches ) ) {
+                doomed.throw_error( "the vehicle has no such part to delete" );
+            }
+            parts.erase( std::remove_if( parts.begin(), parts.end(), matches ), parts.end() );
+        }
     }
 
     std::vector<part_def> tmp;
@@ -1365,8 +1682,30 @@ void vehicle_prototype::load( const JsonObject &jo, std::string_view )
         parts.insert( parts.end(), tmp.begin(), tmp.end() );
     }
 
-    optional( jo, was_loaded, "items", item_spawns );
+    // "items" is appended to the copied ones, as "parts" is and VEHICLES_JSON.md says; it
+    // replaced them, so cars lost their parent's car_misc, car_kit and spare tire (VINT-B08)
+    if( jo.has_array( "items" ) ) {
+        std::vector<vehicle_item_spawn> own_items;
+        mandatory( jo, false, "items", own_items );
+        item_spawns.insert( item_spawns.end(), own_items.begin(), own_items.end() );
+    }
+    // "zones" is appended to the copied ones too. Without a "zones" list of its own, "extend"
+    // adds zones and "delete" removes equal ones.
+    std::vector<zone_def> copied_zones;
+    if( was_loaded && jo.has_array( "zones" ) ) {
+        copied_zones = zone_defs;
+    }
     optional( jo, was_loaded, "zones", zone_defs, json_read_reader<zone_def> {} );
+    zone_defs.insert( zone_defs.begin(), copied_zones.begin(), copied_zones.end() );
+    optional( jo, was_loaded, "chat_topics", chat_topics );
+    // VEH-J10
+    optional( jo, was_loaded, "variables", variables );
+    if( jo.has_member( "spawn_eocs" ) ) {
+        spawn_eocs.clear();
+        for( const JsonValue jv : jo.get_array( "spawn_eocs" ) ) {
+            spawn_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
 }
 
 void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
@@ -1384,6 +1723,9 @@ void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
     json.member( "id", "/TO_BE_REPLACED/" );
     json.member( "type", "vehicle" );
     json.member( "name", "/TO_BE_REPLACED/" );
+    if( !veh.chat_topics.empty() ) {
+        json.member( "chat_topics", veh.chat_topics );
+    }
     std::map<point_rel_ms, std::list<const vehicle_part *>> vp_map;
     int mount_min_y = 123;
     int mount_max_y = -123;
@@ -1535,6 +1877,22 @@ void vehicles::finalize_prototypes()
         vehicle &blueprint = *proto.blueprint;
         blueprint.type = proto.id;
         blueprint.name = proto.name.translated();
+        // VINT-J01: each vehicle built from it gets a copy, which EOCs can change
+        for( const std::string &topic : proto.chat_topics ) {
+            if( !talk_topic_exists( topic ) ) {
+                debugmsg( "vehicle prototype %s has unknown chat topic %s", proto.id.str(), topic );
+            }
+        }
+        blueprint.chat_topics = proto.chat_topics;
+        // VEH-J10: and starts with these variables
+        for( const auto &[key, value] : proto.variables ) {
+            blueprint.set_value( key, value );
+        }
+        for( const effect_on_condition_id &eoc : proto.spawn_eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "vehicle prototype %s has unknown spawn_eoc %s", proto.id.str(), eoc.str() );
+            }
+        }
 
         blueprint.suspend_refresh();
         for( vehicle_prototype::part_def &pt : proto.parts ) {

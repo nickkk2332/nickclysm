@@ -90,6 +90,7 @@ static const std::string flag_STANDARD( "STANDARD" );
 static const std::string flag_TOUGH( "TOUGH" );
 static const std::string flag_CHALLENGE( "CHALLENGE" );
 static const std::string flag_CITY_START( "CITY_START" );
+static const std::string flag_NO_BONUS_ITEMS( "NO_BONUS_ITEMS" );
 static const std::string flag_SECRET( "SECRET" );
 static const std::string flag_SKIP_DEFAULT_BACKGROUND( "SKIP_DEFAULT_BACKGROUND" );
 
@@ -599,9 +600,9 @@ void Character::randomize( const bool random_scenario, bool play_now )
                 const skill_id aSkill = Skill::random_skill();
                 const int level = get_skill_level( aSkill );
 
-                if( level < p.skill_points_left && level < MAX_SKILL && loops > 10000 ) {
+                if( level < p.skill_points_left && level < aSkill->max_level() && loops > 10000 ) {
                     // For balance reasons, increasing a skill from level 0 gives you 1 extra level for free
-                    set_skill_level( aSkill, ( level == 0 ? 2 : level + 1 ) );
+                    set_skill_level( aSkill, std::min( level == 0 ? 2 : level + 1, aSkill->max_level() ) );
                 }
                 break;
         }
@@ -633,7 +634,10 @@ void Character::add_profession_items()
         return;
     }
 
-    std::list<item> prof_items = prof->items( outfit, get_mutations() );
+    // NO_BONUS_ITEMS works on the avatar's scenario too, as documented (PROG-J01); the player's
+    // scenario is no concern of NPCs
+    const bool bonus_items = !( is_avatar() && get_scenario()->has_flag( flag_NO_BONUS_ITEMS ) );
+    std::list<item> prof_items = prof->items( outfit, get_mutations(), bonus_items );
     std::list<item> try_adding_again;
 
     auto attempt_add_items = [this]( std::list<item> &prof_items, std::list<item> &failed_to_add ) {
@@ -708,7 +712,10 @@ void Character::ensure_portrait_valid()
 void Character::randomize_hobbies()
 {
     hobbies.clear();
-    std::vector<profession_id> choices = get_scenario()->permitted_hobbies( is_npc() );
+    // The same scenario the profession came from (randomize): the player's own for the avatar,
+    // the generic one for NPCs, whom the player's scenario choices don't concern.
+    const scenario *scenario_from = is_avatar() ? get_scenario() : scenario::generic();
+    std::vector<profession_id> choices = scenario_from->permitted_hobbies( is_npc() );
     choices.erase( std::remove_if( choices.begin(), choices.end(),
     [this]( const string_id<profession> &hobby ) {
         return !prof->allows_hobby( hobby );
@@ -742,7 +749,7 @@ void Character::add_random_hobby( std::vector<profession_id> &choices )
 
     // Add or remove traits from hobby
     for( const trait_and_var &cur : hobby->get_locked_traits() ) {
-        toggle_trait( cur.trait );
+        toggle_trait( cur.trait, cur.variant );
     }
 }
 
@@ -795,9 +802,8 @@ bool avatar::create( character_type type, const std::string &tempname )
             //tabs.position.last();
             break;
     }
-    // Don't apply the default backgrounds on a template or scenario with SKIP_DEFAULT_BACKGROUND
-    if( type != character_type::TEMPLATE &&
-        !get_scenario()->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
+    // Not on a template; SKIP_DEFAULT_BACKGROUND is checked by add_default_background (PROG-J01)
+    if( type != character_type::TEMPLATE ) {
         add_default_background();
     }
 
@@ -913,10 +919,18 @@ void Character::initialize( bool learn_recipes )
 
     set_skills_from_hobbies();
 
-    set_trauma( prof->starting_trauma );
+    // Hobbies add their trauma and cash to the profession's (PROG-J04)
+    int trauma = prof->starting_trauma;
+    for( const profession *hobby : hobbies ) {
+        trauma += hobby->starting_trauma;
+    }
+    set_trauma( trauma );
 
     // setup staring bank money
     cash = prof->starting_cash().value_or( rng( -200000, 200000 ) );
+    for( const profession *hobby : hobbies ) {
+        cash += hobby->starting_cash().value_or( 0 );
+    }
 
     randomize_heartrate();
 
@@ -1013,25 +1027,30 @@ void avatar::initialize( character_type type )
     reset_death_state();
     this->as_character()->initialize();
 
-    for( const matype_id &ma : prof->ma_known() ) {
-        if( !martial_arts_data->has_martialart( ma ) ) {
-            martial_arts_data->add_martialart( ma );
-        }
-    }
-
-    if( !prof->ma_choices().empty() ) {
-        for( int i = 0; i < prof->ma_choice_amount; i++ ) {
-            std::vector<matype_id> styles;
-            for( const matype_id &ma : prof->ma_choices() ) {
-                if( !martial_arts_data->has_martialart( ma ) ) {
-                    styles.push_back( ma );
-                }
+    // The profession's styles, then each hobby's (PROG-J04)
+    std::vector<const profession *> backgrounds = { prof };
+    backgrounds.insert( backgrounds.end(), hobbies.begin(), hobbies.end() );
+    for( const profession *background : backgrounds ) {
+        for( const matype_id &ma : background->ma_known() ) {
+            if( !martial_arts_data->has_martialart( ma ) ) {
+                martial_arts_data->add_martialart( ma );
             }
-            if( !styles.empty() ) {
-                const matype_id ma_type = choose_ma_style( type, styles, *this );
-                martial_arts_data->add_martialart( ma_type );
-            } else {
-                break;
+        }
+
+        if( !background->ma_choices().empty() ) {
+            for( int i = 0; i < background->ma_choice_amount; i++ ) {
+                std::vector<matype_id> styles;
+                for( const matype_id &ma : background->ma_choices() ) {
+                    if( !martial_arts_data->has_martialart( ma ) ) {
+                        styles.push_back( ma );
+                    }
+                }
+                if( !styles.empty() ) {
+                    const matype_id ma_type = choose_ma_style( type, styles, *this );
+                    martial_arts_data->add_martialart( ma_type );
+                } else {
+                    break;
+                }
             }
         }
     }
@@ -1064,8 +1083,10 @@ void avatar::initialize( character_type type )
     }
     martial_arts_data->set_style( random_entry( selectable_styles, style_none ) );
 
-    for( const mtype_id &elem : prof->pets() ) {
-        starting_pets.push_back( elem );
+    for( const profession *background : backgrounds ) {
+        for( const mtype_id &elem : background->pets() ) {
+            starting_pets.push_back( elem );
+        }
     }
 
     const scenario *scen = get_scenario();
@@ -1714,7 +1735,9 @@ void draw_profession_inventory( const avatar &u )
     const profession &selected_profession = sorted_profs[selected_profession_index].obj();
 
     if( cc_uistate.cached_profession_inventory.empty() ) {
-        cc_uistate.cached_profession_inventory = selected_profession.items( outfit, u.get_mutations() );
+        // As add_profession_items gives them (PROG-J01)
+        cc_uistate.cached_profession_inventory = selected_profession.items( outfit, u.get_mutations(),
+                !get_scenario()->has_flag( flag_NO_BONUS_ITEMS ) );
     }
     const std::list<item> &prof_items = cc_uistate.cached_profession_inventory;
 
@@ -2120,6 +2143,73 @@ std::vector<std::string> drop_what_profession_excludes( avatar &u )
     return dropped;
 }
 
+std::vector<profession_id> default_background_hobbies( const profession *prof,
+        const scenario *scen )
+{
+    // Only the scenario's flag counted, while the docs (and the professions setting it) said
+    // the profession's, and the group was always adult_basic_background (PROG-J01)
+    std::optional<profession_group_id> group;
+    if( prof != nullptr ) {
+        if( prof->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
+            return {};
+        }
+        group = prof->default_backgrounds();
+    }
+    if( !group && scen != nullptr ) {
+        if( scen->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
+            return {};
+        }
+        group = scen->default_backgrounds();
+    }
+    const profession_group_id &chosen = group ? *group : profession_group_adult_basic_background;
+    std::vector<profession_id> ret;
+    if( chosen.is_empty() || !chosen.is_valid() ) {
+        return ret;
+    }
+    for( const profession_id &hobby : chosen->get_professions() ) {
+        // Not those the profession excludes (PROG-B08)
+        if( prof == nullptr || prof->allows_hobby( hobby ) ) {
+            ret.push_back( hobby );
+        }
+    }
+    return ret;
+}
+
+void change_default_background( avatar &u, const profession *old_prof )
+{
+    const std::vector<profession_id> before = default_background_hobbies( old_prof,
+            get_scenario() );
+    const std::vector<profession_id> after = default_background_hobbies( u.prof, get_scenario() );
+    for( const profession_id &hobby : before ) {
+        if( std::find( after.begin(), after.end(), hobby ) != after.end() ||
+            u.hobbies.erase( &hobby.obj() ) == 0 ) {
+            continue;
+        }
+        // As deselecting it does: its traits go, unless the profession or another hobby has them
+        for( const trait_and_var &cur : hobby->get_locked_traits() ) {
+            bool kept = u.prof->is_locked_trait( cur.trait );
+            for( const profession *other : u.hobbies ) {
+                kept = kept || other->is_locked_trait( cur.trait );
+            }
+            if( !kept && u.has_trait( cur.trait ) ) {
+                u.toggle_trait_deps( cur.trait );
+            }
+        }
+    }
+    for( const profession_id &hobby : after ) {
+        if( std::find( before.begin(), before.end(), hobby ) != before.end() ||
+            !u.hobbies.insert( &hobby.obj() ).second ) {
+            continue;
+        }
+        // As choosing it does
+        for( const trait_and_var &cur : hobby->get_locked_traits() ) {
+            if( !u.has_trait( cur.trait ) ) {
+                u.toggle_trait_deps( cur.trait );
+            }
+        }
+    }
+}
+
 } // namespace char_creation
 
 std::vector<trait_id> Character::get_base_traits() const
@@ -2228,14 +2318,15 @@ void Character::empty_skills()
 void Character::add_traits()
 {
     {
+        // With their variants (PROG-J05)
         for( const trait_and_var &tr : prof->get_locked_traits() ) {
             if( !has_trait( tr.trait ) ) {
-                toggle_trait_deps( tr.trait );
+                toggle_trait_deps( tr.trait, tr.variant );
             }
         }
         for( const trait_id &tr : get_scenario()->get_locked_traits() ) {
             if( !has_trait( tr ) ) {
-                toggle_trait_deps( tr );
+                toggle_trait_deps( tr, get_scenario()->forced_trait_variant( tr ) );
             }
         }
     }
@@ -2257,12 +2348,24 @@ trait_id Character::random_bad_trait()
     } );
 }
 
-trait_id Character::get_random_trait( const std::function<bool( const mutation_branch & )> &func )
+bool Character::forbids_trait_by_background( const trait_id &trait ) const
+{
+    if( prof != nullptr && prof->is_forbidden_trait( trait ) ) {
+        return true;
+    }
+    return std::any_of( hobbies.begin(), hobbies.end(), [&trait]( const profession * hobby ) {
+        return hobby->is_forbidden_trait( trait );
+    } );
+}
+
+trait_id Character::get_random_trait( const std::function<bool( const mutation_branch & )>
+                                      &func ) const
 {
     std::vector<trait_id> vTraits;
 
     for( const mutation_branch &traits_iter : mutation_branch::get_all() ) {
-        if( func( traits_iter ) && get_scenario()->traitquery( traits_iter.id ) ) {
+        if( func( traits_iter ) && get_scenario()->traitquery( traits_iter.id ) &&
+            !forbids_trait_by_background( traits_iter.id ) ) {
             vTraits.push_back( traits_iter.id );
         }
     }
@@ -2321,15 +2424,10 @@ void avatar::character_to_template( const std::string &name )
 
 void Character::add_default_background()
 {
-    for( const profession_group &prof_grp : profession_group::get_all() ) {
-        if( prof_grp.get_id() == profession_group_adult_basic_background ) {
-            for( const profession_id &hobb : prof_grp.get_professions() ) {
-                // Not those the profession excludes (PROG-B08)
-                if( prof == nullptr || prof->allows_hobby( hobb ) ) {
-                    hobbies.insert( &hobb.obj() );
-                }
-            }
-        }
+    // The player's scenario for the avatar; NPCs come from the generic one (PROG-B03)
+    const scenario *scen = is_avatar() ? get_scenario() : scenario::generic();
+    for( const profession_id &hobb : char_creation::default_background_hobbies( prof, scen ) ) {
+        hobbies.insert( &hobb.obj() );
     }
 }
 
@@ -2436,9 +2534,8 @@ void reset_scenario( avatar &u, const scenario *scen )
     u.prof = &default_prof.obj();
 
     u.hobbies.clear();
-    if( !scen->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
-        u.add_default_background();
-    };
+    // Which the scenario and profession give, if any (PROG-J01)
+    u.add_default_background();
     u.clear_mutations();
     u.recalc_hp();
     u.empty_skills();
@@ -2763,7 +2860,7 @@ void character_creator_ui::update_uilist_entries()
                 entry.text_color = u.has_trait( current_trait ) ? COL_SELECTED : COL_NOT_SELECTED;
                 entry.enabled = !( u.has_conflicting_trait( current_trait ) ||
                                    get_scenario()->is_forbidden_trait( current_trait ) ||
-                                   u.prof->is_forbidden_trait( current_trait ) );
+                                   u.forbids_trait_by_background( current_trait ) );
                 menu->addentry( entry );
             }
             break;
@@ -3310,6 +3407,16 @@ bool character_creator_uistate::hobby_conflict_check( const avatar &u )
         }
         return false;
     }
+    // A hobby's forbidden_traits (PROG-J04); deselecting it is always possible
+    if( u.hobbies.count( &*selected_hobby ) == 0 ) {
+        for( const trait_id &trait : u.get_mutations() ) {
+            if( selected_hobby->is_forbidden_trait( trait ) ) {
+                popup( _( "The background %1$s can't be taken with the trait %2$s." ),
+                       selected_hobby->gender_appropriate_name( u.male ), u.mutation_name( trait ) );
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -3509,7 +3616,7 @@ bool character_creator_ui::handle_action( const std::string &action )
     auto mod_skill = [&you]( int mod_value ) {
         const skill_id selected_skill = cc_uistate.get_selected_skill();
         if( ( you.get_skill_level( selected_skill ) == MIN_SKILL && mod_value < 0 ) ||
-            ( you.get_skill_level( selected_skill ) == MAX_SKILL && mod_value > 0 ) ) {
+            ( you.get_skill_level( selected_skill ) >= selected_skill->max_level() && mod_value > 0 ) ) {
             return;
         }
         you.mod_skill_level( selected_skill, mod_value );
@@ -3769,6 +3876,7 @@ void character_creator_callback::confirm( uilist *menu )
                 u.toggle_trait_deps( old.trait );
             }
 
+            const profession *old_prof = u.prof;
             u.prof = &*selected_profession;
 
             // Remove pre-selected traits that conflict
@@ -3790,6 +3898,8 @@ void character_creator_callback::confirm( uilist *menu )
             for( const std::string &dropped : char_creation::drop_what_profession_excludes( u ) ) {
                 popup( dropped );
             }
+            // A profession can give other default hobbies, or none (PROG-J01)
+            char_creation::change_default_background( u, old_prof );
 
             cc_uistate.recalc_hobbies = true;
             cc_uistate.recalc_hobbies_taken = true;
@@ -3820,7 +3930,7 @@ void character_creator_callback::confirm( uilist *menu )
                 const trait_id &trait = cur.trait;
                 if( enabling ) {
                     if( !u.has_trait( trait ) ) {
-                        u.toggle_trait_deps( trait );
+                        u.toggle_trait_deps( trait, cur.variant );
                     }
                     continue;
                 }
@@ -3912,6 +4022,14 @@ void character_creator_callback::confirm( uilist *menu )
             } else if( u.prof->is_forbidden_trait( cur_trait ) ) {
                 popup( _( "Your profession of %s prevents you from taking this trait." ),
                        u.prof->gender_appropriate_name( u.male ) );
+            } else if( u.forbids_trait_by_background( cur_trait ) ) {
+                for( const profession *hobby : u.hobbies ) {
+                    if( hobby->is_forbidden_trait( cur_trait ) ) {
+                        popup( _( "Your background of %s prevents you from taking this trait." ),
+                               hobby->gender_appropriate_name( u.male ) );
+                        break;
+                    }
+                }
             } else if( !cbms_blocking_trait.empty() ) {
                 // Grab a list of the names of the bionics that block this trait
                 // So that the player know what is preventing them from taking it
@@ -3948,10 +4066,11 @@ void character_creator_callback::confirm( uilist *menu )
             int previous_skill_level = u.get_skill_level( skill_queried );
             number_input_popup<int> skill_query( 0, previous_skill_level,
                                                  string_format( _( "Set new %s skill level (between %d and %d):" ),
-                                                         skill_queried->name(), MIN_SKILL, MAX_SKILL ) );
+                                                         skill_queried->name(), MIN_SKILL, skill_queried->max_level() ) );
             int skill_queried_result = skill_query.query();
             if( skill_queried_result != previous_skill_level ) {
-                const int skill_result_clamped = std::clamp( skill_queried_result, MIN_SKILL, MAX_SKILL );
+                const int skill_result_clamped = std::clamp( skill_queried_result, MIN_SKILL,
+                                                 skill_queried->max_level() );
                 u.set_skill_level( skill_queried, skill_result_clamped );
                 u.set_knowledge_level( skill_queried, skill_result_clamped );
             }

@@ -1,0 +1,205 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_PROG_J04_SET",
+    "//": "PROG-J04: run by the profession and hobby EOCs below",
+    "effect": [ { "math": [ "u_test_prog_j04_ran++" ] } ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j04_npc_prof",
+    "name": "PROG-J04 NPC profession",
+    "description": "Its EOCs run for NPCs too.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "run_eocs_for_npcs": true,
+    "effect_on_conditions": [ "EOC_TEST_PROG_J04_SET" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j04_avatar_prof",
+    "name": "PROG-J04 avatar profession",
+    "description": "Its EOCs run for the avatar only.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "effect_on_conditions": [ "EOC_TEST_PROG_J04_SET" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j04_cash_prof",
+    "name": "PROG-J04 cash profession",
+    "description": "Starts with some money and some trauma.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "starting_cash": 5000,
+    "starting_trauma": 20
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_j04_hobby",
+    "name": "PROG-J04 test hobby",
+    "description": "Uses the profession fields hobbies used to ignore.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "run_eocs_for_npcs": true,
+    "effect_on_conditions": [ "EOC_TEST_PROG_J04_SET" ],
+    "forbidden_traits": [ "ILLITERATE" ],
+    "starting_cash": 1000,
+    "starting_trauma": 10,
+    "pets": [ { "name": "mon_cat", "amount": 1 } ],
+    "starting_styles": [ "style_karate" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j05_variant_prof",
+    "name": "PROG-J05 variant profession",
+    "description": "Starts with a trait in a given variant.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ { "trait": "hair_buzzcut", "variant": "green" } ]
+  },
+  {
+    "type": "scenario",
+    "id": "test_prog_j07_scen_parent",
+    "name": "PROG-J07 parent scenario",
+    "description": "A scenario the PROG-J07 tests copy.",
+    "points": 0,
+    "allowed_locs": [ "sloc_shelter_safe" ],
+    "start_name": "Evac Shelter",
+    "flags": [ "CHALLENGE" ],
+    "start_of_game": { "hour": 18, "day": 7, "season": "summer", "year": 4 },
+    "surround_groups": [ [ "GROUP_ZOMBIE", 50 ] ],
+    "forced_traits": [ { "trait": "hair_buzzcut", "variant": "blue" } ]
+  },
+  {
+    "type": "scenario",
+    "id": "test_prog_j07_scen_child",
+    "copy-from": "test_prog_j07_scen_parent",
+    "start_of_game": { "season": "winter" },
+    "delete": { "surround_groups": [ "GROUP_ZOMBIE" ] },
+    "extend": { "surround_groups": [ [ "GROUP_DOMESTIC", 10 ] ] }
+  },
+  {
+    "type": "scenario",
+    "id": "test_prog_j07_scen_replace",
+    "copy-from": "test_prog_j07_scen_parent",
+    "surround_groups": [ [ "GROUP_DOMESTIC", 5 ] ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j07_prof_parent",
+    "name": "PROG-J07 parent profession",
+    "description": "A profession the PROG-J07 tests copy.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "pets": [ { "name": "mon_dog", "amount": 2 }, { "name": "mon_cat", "amount": 1 } ],
+    "spells": [ { "id": "test_ability_spell", "level": 1 }, { "id": "test_ability_formula_spell", "level": 2 } ],
+    "effect_on_conditions": [ "EOC_TEST_PROG_J04_SET" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j07_prof_child",
+    "copy-from": "test_prog_j07_prof_parent",
+    "extend": { "spells": [ { "id": "test_ability_spell", "level": 3 } ] },
+    "delete": { "pets": [ "mon_cat" ], "effect_on_conditions": [ "EOC_TEST_PROG_J04_SET" ] }
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j07_prof_replace",
+    "copy-from": "test_prog_j07_prof_parent",
+    "pets": [ { "name": "mon_cat", "amount": 1 } ],
+    "spells": [ { "id": "test_ability_formula_spell", "level": 5 } ]
+  },
+  {
+    "type": "trait_group",
+    "id": "test_prog_j07_group",
+    "subtype": "collection",
+    "traits": [ { "trait": "ILLITERATE" } ]
+  },
+  {
+    "type": "trait_group",
+    "id": "test_prog_j07_group",
+    "//": "a second definition adds to the group",
+    "subtype": "collection",
+    "traits": [ { "trait": "FLEET" } ]
+  },
+  {
+    "type": "trait_group",
+    "id": "test_prog_j07_override",
+    "subtype": "collection",
+    "traits": [ { "trait": "ILLITERATE" } ]
+  },
+  {
+    "type": "trait_group",
+    "id": "test_prog_j07_override",
+    "//": "replaces the group",
+    "subtype": "collection",
+    "override": true,
+    "traits": [ { "trait": "FLEET" } ]
+  },
+  {
+    "type": "skill",
+    "id": "test_prog_j08_skill",
+    "//": "PROG-J08: it still rusts (skill_rust_occurs checks every skill), just after 12 hours and twice as fast",
+    "name": { "str": "test progression skill" },
+    "description": "A skill with its own progression rules.",
+    "display_category": "display_crafting",
+    "sort_rank": 900201,
+    "consumes_focus": false,
+    "training_multiplier": 2.0,
+    "book_learning_multiplier": 0.5,
+    "catchup_multiplier": 1.0,
+    "rust": { "grace_period": "12 h", "multiplier": 2.0 }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_PROG_J06_PRACTICAL",
+    "eoc_type": "EVENT",
+    "required_event": "gains_skill_level",
+    "condition": {
+      "and": [
+        { "compare_string": [ { "context_val": "skill" }, "test_prog_j08_skill" ] },
+        { "compare_string": [ { "context_val": "type" }, "practical" ] }
+      ]
+    },
+    "effect": [ { "math": [ "u_test_prog_j06_practical = _new_level" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_PROG_J06_THEORETICAL",
+    "eoc_type": "EVENT",
+    "required_event": "gains_skill_level",
+    "condition": {
+      "and": [
+        { "compare_string": [ { "context_val": "skill" }, "test_prog_j08_skill" ] },
+        { "compare_string": [ { "context_val": "type" }, "theoretical" ] }
+      ]
+    },
+    "effect": [ { "math": [ "u_test_prog_j06_theoretical = _new_level" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_PROG_J06_LOSES",
+    "eoc_type": "EVENT",
+    "required_event": "loses_skill_level",
+    "condition": {
+      "and": [
+        { "compare_string": [ { "context_val": "skill" }, "test_prog_j08_skill" ] },
+        { "compare_string": [ { "context_val": "type" }, "practical" ] }
+      ]
+    },
+    "effect": [ { "math": [ "u_test_prog_j06_lost = _new_level" ] } ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_j09_prof",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-J09 test proficiency" },
+    "description": "Has a fractional archery bonus, an enchantment and a flag.",
+    "can_learn": false,
+    "bonuses": { "archery": [ { "type": "strength", "value": 0.5 } ] },
+    "enchantments": [ { "values": [ { "value": "SKILL_RUST_RESIST", "add": 100 } ] } ],
+    "flags": [ "TEST_PROG_J09_FLAG" ]
+  }
+]

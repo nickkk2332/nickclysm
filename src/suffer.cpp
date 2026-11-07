@@ -141,13 +141,11 @@ json_flag_SUNBURN_SUPERNATURAL_REDUCTION( "SUNBURN_SUPERNATURAL_REDUCTION" );
 
 static const morale_type morale_feeling_bad( "morale_feeling_bad" );
 static const morale_type morale_feeling_good( "morale_feeling_good" );
-static const morale_type morale_moodswing( "morale_moodswing" );
 static const morale_type morale_pyromania_nearfire( "morale_pyromania_nearfire" );
 static const morale_type morale_pyromania_nofire( "morale_pyromania_nofire" );
 static const morale_type morale_pyromania_startfire( "morale_pyromania_startfire" );
 static const morale_type morale_wet( "morale_wet" );
 
-static const trait_id trait_ADDICTIVE( "ADDICTIVE" );
 static const trait_id trait_ASTHMA( "ASTHMA" );
 static const trait_id trait_CHAOTIC( "CHAOTIC" );
 static const trait_id trait_CHAOTIC_BAD( "CHAOTIC_BAD" );
@@ -159,12 +157,9 @@ static const trait_id trait_JITTERY( "JITTERY" );
 static const trait_id trait_LEAVES( "LEAVES" );
 static const trait_id trait_LEAVES2( "LEAVES2" );
 static const trait_id trait_LEAVES3( "LEAVES3" );
-static const trait_id trait_MOODSWINGS( "MOODSWINGS" );
 static const trait_id trait_MUCUS_SECRETION( "MUCUS_SECRETION" );
 static const trait_id trait_M_BLOSSOMS( "M_BLOSSOMS" );
 static const trait_id trait_M_SPORES( "M_SPORES" );
-static const trait_id trait_NARCOLEPTIC( "NARCOLEPTIC" );
-static const trait_id trait_NONADDICTIVE( "NONADDICTIVE" );
 static const trait_id trait_PER_SLIME( "PER_SLIME" );
 static const trait_id trait_PYROMANIA( "PYROMANIA" );
 static const trait_id trait_RADIOACTIVE1( "RADIOACTIVE1" );
@@ -175,10 +170,6 @@ static const trait_id trait_RADIOPHILE( "RADIOPHILE" );
 static const trait_id trait_SHARKTEETH( "SHARKTEETH" );
 static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_SHELL3( "SHELL3" );
-static const trait_id trait_SHOUT1( "SHOUT1" );
-static const trait_id trait_SHOUT2( "SHOUT2" );
-static const trait_id trait_SHOUT3( "SHOUT3" );
-static const trait_id trait_SNAIL_TRAIL( "SNAIL_TRAIL" );
 static const trait_id trait_SORES( "SORES" );
 static const trait_id trait_TROGLO( "TROGLO" );
 static const trait_id trait_TROGLO2( "TROGLO2" );
@@ -187,7 +178,6 @@ static const trait_id trait_UNDINE_ABSORB_WATER( "UNDINE_ABSORB_WATER" );
 static const trait_id trait_UNSTABLE( "UNSTABLE" );
 static const trait_id trait_VOMITOUS( "VOMITOUS" );
 static const trait_id trait_WEB_SPINNER( "WEB_SPINNER" );
-static const trait_id trait_WEB_WEAVER( "WEB_WEAVER" );
 static const trait_id trait_WINGS_INSECT_active( "WINGS_INSECT_active" );
 
 static const vitamin_id vitamin_vitC( "vitC" );
@@ -266,7 +256,7 @@ void suffer::mutation_power( Character &you, const trait_id &mut_id )
                 you.deactivate_mutation( mut_id );
             } else {
                 // does not directly modify hunger, but burns kcal
-                you.mod_stored_kcal( -mut_id->cost );
+                you.mod_stored_kcal( -mut_id->kcal_cost );
             }
         }
         if( mut_id->thirst ) {
@@ -277,7 +267,7 @@ void suffer::mutation_power( Character &you, const trait_id &mut_id )
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.mod_thirst( mut_id->cost );
+                you.mod_thirst( mut_id->thirst_cost );
             }
         }
         if( mut_id->sleepiness ) {
@@ -288,30 +278,42 @@ void suffer::mutation_power( Character &you, const trait_id &mut_id )
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.mod_sleepiness( mut_id->cost );
+                you.mod_sleepiness( mut_id->sleepiness_cost );
             }
         }
         if( mut_id->mana ) {
             // no enough mana
-            if( you.magic->available_mana() < mut_id->cost ) {
+            if( you.magic->available_mana() < mut_id->mana_cost ) {
                 you.add_msg_if_player( m_warning,
                                        _( "You don't have enough mana to keep your %s going." ),
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.magic->mod_mana( you, -mut_id->cost );
+                you.magic->mod_mana( you, -mut_id->mana_cost );
             }
         }
 
         if( mut_id->stamina ) {
             // no enough stamina
-            if( you.get_stamina() < mut_id->cost ) {
+            if( you.get_stamina() < mut_id->stamina_cost ) {
                 you.add_msg_if_player( m_warning,
                                        _( "You don't have enough stamina to keep your %s going." ),
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.mod_stamina( -mut_id->cost );
+                you.mod_stamina( -mut_id->stamina_cost );
+            }
+        }
+
+        // MUT-J11: a trait can run on bionic power
+        if( mut_id->power_cost > 0_kJ ) {
+            if( you.get_power_level() < mut_id->power_cost ) {
+                you.add_msg_if_player( m_warning,
+                                       _( "You don't have enough bionic power to keep your %s going." ),
+                                       you.mutation_name( mut_id ) );
+                you.deactivate_mutation( mut_id );
+            } else {
+                you.mod_power_level( -mut_id->power_cost );
             }
         }
 
@@ -456,12 +458,8 @@ void suffer::while_grabbed( Character &you )
 
 void suffer::from_addictions( Character &you )
 {
-    time_duration timer = -6_hours;
-    if( you.has_trait( trait_ADDICTIVE ) ) {
-        timer = -10_hours;
-    } else if( you.has_trait( trait_NONADDICTIVE ) ) {
-        timer = -3_hours;
-    }
+    // HLTH-J11: the recovery times come from the addiction_type and the ADDICTION_RECOVERY
+    // enchantment value (Addictive Personality, Addiction Resistant), not from trait ids.
     for( addiction &cur_addiction : you.addictions ) {
         if( cur_addiction.sated <= 0_turns &&
             cur_addiction.intensity >= MIN_ADDICTION_LEVEL ) {
@@ -471,16 +469,9 @@ void suffer::from_addictions( Character &you )
             }
             cur_addiction.run_effect( you );
         }
-        cur_addiction.sated -= 1_turns;
-        // Higher intensity addictions heal faster
-        if( cur_addiction.sated - 10_minutes * cur_addiction.intensity < timer ) {
-            if( cur_addiction.intensity <= 2 ) {
-                you.rem_addiction( cur_addiction.type );
-                break;
-            } else {
-                cur_addiction.intensity--;
-                cur_addiction.sated = 0_turns;
-            }
+        if( cur_addiction.recover( you ) ) {
+            you.rem_addiction( cur_addiction.type );
+            break;
         }
     }
 }
@@ -510,13 +501,8 @@ void suffer::while_awake( Character &you, const int current_stim )
         suffer::from_chemimbalance( you );
     }
 
-    if( you.has_trait( trait_NARCOLEPTIC ) ) {
-        if( one_turn_in( 8_hours ) ) {
-            you.add_msg_if_player( m_bad,
-                                   _( "You're suddenly overcome with the urge to sleep and you pass out." ) );
-            you.fall_asleep( 20_minutes );
-        }
-    }
+    // HLTH-J14: Narcoleptic, Mood Swings and the Shouter traits are processed_eocs on the traits
+    // now (data/json/effects_on_condition/mutation_eocs/trait_side_effects.json).
 
     int resonance = you.enchantment_cache->get_value_add( enchant_vals::mod::ARTIFACT_RESONANCE );
     if( resonance > 0 ) {
@@ -532,16 +518,7 @@ void suffer::while_awake( Character &you, const int current_stim )
         }
     }
 
-    if( you.has_trait( trait_MOODSWINGS ) && one_turn_in( 6_hours ) ) {
-        if( rng( 1, 20 ) > 9 ) {
-            // 55% chance
-            you.add_morale( morale_moodswing, -20, -100 );
-        } else {
-            // 45% chance
-            you.add_morale( morale_moodswing, 20, 100 );
-        }
-    }
-
+    // Vomitous stays here: it is an activated trait, whose processed_eocs run only while it's on.
     if( you.has_trait( trait_VOMITOUS ) && one_turn_in( 7_hours ) ) {
         you.vomit();
     }
@@ -550,15 +527,6 @@ void suffer::while_awake( Character &you, const int current_stim )
         you.signal_nemesis();
     }
 
-    if( you.has_trait( trait_SHOUT1 ) && one_turn_in( 6_hours ) ) {
-        you.shout();
-    }
-    if( you.has_trait( trait_SHOUT2 ) && one_turn_in( 4_hours ) ) {
-        you.shout();
-    }
-    if( you.has_trait( trait_SHOUT3 ) && one_turn_in( 3_hours ) ) {
-        you.shout();
-    }
     if( you.has_trait( trait_M_SPORES ) && one_turn_in( 4_hours ) ) {
         you.spores();
     }
@@ -1125,13 +1093,14 @@ void suffer::from_other_mutations( Character &you )
         }
     }
     //Web Weavers...weave web
-    if( you.has_active_mutation( trait_WEB_WEAVER ) && !you.in_vehicle ) {
+    if( !you.in_vehicle && you.has_active_builtin_activation( mutation_builtin_activation::web ) ) {
         // this adds intensity to if its not already there.
         here.add_field( position, fd_web, 1 );
 
     }
 
-    if( you.has_active_mutation( trait_SNAIL_TRAIL ) && !you.in_vehicle ) {
+    if( !you.in_vehicle &&
+        you.has_active_builtin_activation( mutation_builtin_activation::sludge_trail ) ) {
         here.add_field( position, fd_sludge, 1 );
 
     }
@@ -2145,14 +2114,10 @@ void Character::add_addiction( const addiction_id &type, int strength )
     if( type.is_null() ) {
         return;
     }
-    time_duration timer = 2_hours;
-    if( has_trait( trait_ADDICTIVE ) ) {
-        strength *= 2;
-        timer = 1_hours;
-    } else if( has_trait( trait_NONADDICTIVE ) ) {
-        strength /= 2;
-        timer = 6_hours;
-    }
+    // HLTH-J11: the addiction_type's dose_satiation and max_intensity, and the ADDICTION_STRENGTH
+    // and ADDICTION_SATIATION enchantment values (Addictive Personality, Addiction Resistant).
+    const time_duration timer = type->dose_satiation_for( *this );
+    strength = addiction_strength_for( *this, strength );
     //Update existing addiction
     for( addiction &i : addictions ) {
         if( i.type != type ) {
@@ -2167,7 +2132,7 @@ void Character::add_addiction( const addiction_id &type, int strength )
         } else {
             i.sated += timer / 2;
         }
-        if( i.intensity < MAX_ADDICTION_LEVEL && strength > i.intensity * rng( 2, 5 ) ) {
+        if( i.intensity < type->get_max_intensity() && strength > i.intensity * rng( 2, 5 ) ) {
             i.intensity++;
         }
 

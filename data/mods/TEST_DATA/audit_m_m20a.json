@@ -1,0 +1,114 @@
+[
+  {
+    "type": "mutation",
+    "id": "audit_m20a_distributed",
+    "name": "Test Distributed Damage",
+    "points": 0,
+    "description": "MONDT-B06: damage is spread over the whole body.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "DISTRIBUTED_DAMAGE" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_watcher",
+    "copy-from": "mon_test_non_shearable",
+    "name": { "str": "MONDT-B07 watcher" },
+    "upgrades": false
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_truesight",
+    "copy-from": "mon_audit_m20a_watcher",
+    "name": { "str": "MONDT-B07 true-sighted watcher" },
+    "extend": { "flags": [ "TRUESIGHT" ] }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_infrared",
+    "copy-from": "mon_audit_m20a_watcher",
+    "name": { "str": "MONDT-B07 infrared watcher" },
+    "extend": { "flags": [ "INFRARED_VISION" ] }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_salvage",
+    "copy-from": "mon_test_CBM",
+    "name": { "str": "MONDT-B08 salvage" },
+    "upgrades": false,
+    "dissect": "dissect_audit_m20a_salvage"
+  },
+  {
+    "id": "dissect_audit_m20a_salvage",
+    "type": "harvest",
+    "message": "MONDT-B08: one salvaged power storage module.",
+    "entries": [
+      {
+        "drop": "bio_power_storage",
+        "type": "bionic",
+        "flags": [ "FILTHY" ],
+        "faults": [ "fault_bionic_salvaged" ],
+        "base_num": [ 1, 1 ],
+        "scale_num": [ 0, 0 ],
+        "max": 1
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_mount",
+    "copy-from": "mon_horse",
+    "name": { "str": "MONDT-B11 mount" },
+    "mount_items": { "tied": "rope_30", "tack": "horse_tack", "armor": "kevlar_armor_horse", "storage": "saddlebag" }
+  },
+  {
+    "type": "monstergroup",
+    "id": "GROUP_AUDIT_M20A",
+    "is_animal": true,
+    "is_safe": true,
+    "monsters": [ { "monster": "mon_audit_m20a_watcher", "weight": 1 } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_block_parent",
+    "copy-from": "mon_audit_m20a_watcher",
+    "name": { "str": "MONDT-B14 blocking parent" },
+    "block": { "chance": 50, "effectiveness": 30, "count": 2 }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_block_child",
+    "copy-from": "mon_audit_m20a_block_parent",
+    "name": { "str": "MONDT-B14 blocking child" },
+    "block": { "chance": 80 }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_keeps_range",
+    "copy-from": "mon_test_non_shearable",
+    "name": { "str": "MONDT-B14 multiple spawns kept" },
+    "upgrades": { "half_life": 0 }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_single_spawn",
+    "copy-from": "mon_test_non_shearable",
+    "name": { "str": "MONDT-B14 multiple spawns dropped" },
+    "upgrades": { "half_life": 0, "multiple_spawns": false }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_bash_number",
+    "copy-from": "mon_audit_m20a_watcher",
+    "name": { "str": "MONDT-B14 bash skill number" },
+    "bash_skill": 30
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m20a_bash_zero",
+    "copy-from": "mon_audit_m20a_watcher",
+    "name": { "str": "MONDT-B14 bash skill zero" },
+    "bash_skill": 0
+  }
+]

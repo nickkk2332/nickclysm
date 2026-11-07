@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "body_part_set.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "color.h"
 #include "dialogue_helpers.h"
@@ -25,9 +26,22 @@ class JsonObject;
 class JsonOut;
 class JsonValue;
 class item;
+class item_location;
 class monster;
 class vehicle;
 struct const_dialogue;
+
+// MAGIC-J08: what gives a character an enchantment, so that its condition and values can read
+// it. An item is the dialogue's beta talker (its variables are n_ variables); an effect, bionic or
+// trait sets the context vals source_effect (and source_intensity), source_bionic or source_trait.
+struct enchantment_source {
+    const item_location *item = nullptr;
+    std::string effect;
+    // the effect's highest intensity on any body part
+    int intensity = 0;
+    std::string bionic;
+    std::string trait;
+};
 
 namespace enchant_vals
 {
@@ -107,6 +121,7 @@ enum class mod : int {
     VITAMIN_ABSORB_MOD,
     MELEE_STAMINA_CONSUMPTION,
     OBTAIN_COST_MULTIPLIER,
+    STORE_COST_MULTIPLIER,
     CASTING_TIME_MULTIPLIER,
     CRAFTING_SPEED_MULTIPLIER,
     BIONIC_MANA_PENALTY,
@@ -128,6 +143,8 @@ enum class mod : int {
     KNOCKBACK_RESIST,
     KNOCKDOWN_RESIST,
     FALL_DAMAGE,
+    CLIMB_SLIP_CHANCE,
+    MOVE_MODE_SWITCH_COST, // moves to change movement mode (CHAR-J07)
     FORCEFIELD,
     EVASION,
     OVERKILL_DAMAGE,
@@ -159,6 +176,33 @@ enum class mod : int {
     FUEL_USAGE,
     TURNING_DIFFICULTY,
     CROWD_CRUSH_RESIST,
+    DRUG_DURATION, // the duration of a consume_drug action's effects
+    // HLTH-J11: addiction lifecycle (a dose's strength and satiation, time to lose a level)
+    ADDICTION_STRENGTH,
+    ADDICTION_SATIATION,
+    ADDICTION_RECOVERY,
+    // HLTH-J12: sleeping through light, noise, alarms and pain
+    SLEEP_LIGHT_TOLERANCE,
+    WAKE_RESISTANCE,
+    WAKE_PAIN_THRESHOLD,
+    // added to and multiplies how much fun reading a book is (PROG-J03)
+    BOOK_FUN,
+    BIONIC_SURGERY_SKILL,
+    MUT_OUT_OF_TREE_INSTABILITY_MULT,
+    BLOCK_EFFECTIVENESS,
+    BLOCK_STAMINA_COST,
+    // VEH-J09: vehicle values (see is_vehicle_relevant())
+    VEH_ENGINE_POWER,
+    VEH_MAX_VELOCITY,
+    VEH_ACCELERATION,
+    VEH_AIR_DRAG,
+    VEH_ROLLING_RESISTANCE,
+    VEH_WATER_DRAG,
+    VEH_TRACTION,
+    VEH_PART_DAMAGE_TAKEN,
+    VEH_COLLISION_DAMAGE,
+    VEH_RENEWABLE_OUTPUT,
+    VEH_EPOWER_DRAIN,
     NUM_MOD
 };
 
@@ -170,6 +214,11 @@ enum class spell_mod : int {
     DURATION,
     COST,
     CAST_TIME,
+    // MAGIC-J02: the fail chance (a fraction, 0 to 1), difficulty, casting XP and sound
+    FAIL,
+    DIFFICULTY,
+    EXP,
+    SOUND,
     NUM_SPELL_MOD
 };
 } // namespace enchant_vals
@@ -208,7 +257,12 @@ class enchantment
 
         static void load_enchantment( const JsonObject &jo, const std::string &src );
         static void finalize_all();
+        // Checks every enchantment, inline ones too (a mutation's, an effect's, ...)
+        static void check_consistency();
         static void reset();
+        // Reports the mutations, effects, spells, emitter, skills, body parts and damage types
+        // it names that don't exist
+        void check() const;
         void load( const JsonObject &jo, std::string_view src = {},
                    const std::optional<std::string> &inline_id = std::nullopt, bool is_child = false );
 
@@ -216,13 +270,25 @@ class enchantment
         // If the input is a string return it as an enchantment_id otherwise create an enchantment with id inline_id and return inline_id as an enchantment id
         static enchantment_id load_inline_enchantment( const JsonValue &jv, std::string_view src,
                 std::string &inline_id );
+        // Reads the list member `member` of a trait's or bionic's JSON (`owner` is its id):
+        // enchantment ids or inline enchantments, named INLINE_ENCH_<owner>_<n>, n counted on
+        // from `inline_count` so a copy's inline enchantments never replace its parent's.
+        // Given, the list replaces `list`; in a copy (`was_loaded`), "extend" adds to it and
+        // "delete" takes enchantment ids out (MUT-J08).
+        static void load_enchantment_list( const JsonObject &jo, bool was_loaded,
+                                           std::string_view member, const std::string &owner, int &inline_count,
+                                           std::string_view src, std::vector<enchantment_id> &list );
 
         // this enchantment has a valid condition and is in the right location
         bool is_active( const Character &guy, const item &parent ) const;
+        // the same, with the item as its dialog condition's beta talker (MAGIC-J08)
+        bool is_active( const Character &guy, const item_location &parent ) const;
 
         // this enchantment has a valid item independent conditions
         // @active means the container for the enchantment is active, for comparison to active flag.
         bool is_active( const Character &guy, bool active ) const;
+        // the same, with its dialog condition seeing @p source (MAGIC-J08)
+        bool is_active( const Character &guy, bool active, const enchantment_source &source ) const;
 
         // same as above except for monsters. Much more limited.
         bool is_active( const monster &mon ) const;
@@ -281,6 +347,8 @@ class enchantment
         // the exact same as above, though specifically for skills
         std::map<skill_id, dbl_or_var> skill_values_add; // NOLINT(cata-serialize)
         std::map<skill_id, dbl_or_var> skill_values_multiply; // NOLINT(cata-serialize)
+        // the least each skill counts as, after the values above (CMBT-J08)
+        std::map<skill_id, dbl_or_var> skill_floor; // NOLINT(cata-serialize)
 
         std::map<bodypart_str_id, dbl_or_var> encumbrance_values_add; // NOLINT(cata-serialize)
         std::map<bodypart_str_id, dbl_or_var> encumbrance_values_multiply; // NOLINT(cata-serialize)
@@ -367,6 +435,9 @@ class enchant_cache : public enchantment
                                    double value ) const;
         // adds two enchantments together and ignores their conditions
         void force_add( const enchantment &rhs, const Character &guy );
+        // with its values seeing @p source (MAGIC-J08)
+        void force_add( const enchantment &rhs, const Character &guy,
+                        const enchantment_source &source );
         void force_add( const enchantment &rhs, const monster &mon );
         void force_add( const enchantment &rhs, const vehicle &veh );
         void force_add( const enchantment &rhs );
@@ -389,6 +460,8 @@ class enchant_cache : public enchantment
         int get_encumbrance_add( const bodypart_str_id &value ) const;
         int get_extra_damage_add( const damage_type_id &value ) const;
         double get_skill_value_multiply( const skill_id &value ) const;
+        // the least the skill counts as (0 if no enchantment sets one)
+        double get_skill_floor( const skill_id &value ) const;
         double get_damage_multiply( const damage_type_id &value ) const;
         double get_armor_multiply( const damage_type_id &value ) const;
         double get_encumbrance_multiply( const bodypart_str_id &value ) const;
@@ -400,18 +473,27 @@ class enchant_cache : public enchantment
         bool add( const enchant_cache &rhs );
         // checks if the enchantments have the same active_conditions
         bool stacks_with( const enchantment &rhs ) const;
-        // performs cooldown and distance checks before casting enchantment spells
+        // performs cooldown and distance checks before casting enchantment spells; a hit_you_effect
+        // or hit_me_effect spell gets the kind of hit, which its EOCs read as the context value
+        // "hit_type", and a hit_me_effect one the body part hit, as "hit_bodypart"
         void cast_enchantment_spell( Creature &caster, const Creature *target,
-                                     const fake_spell &sp ) const;
+                                     const fake_spell &sp, std::optional<hit_type> hit = std::nullopt,
+                                     const std::optional<bodypart_id> &hit_bp = std::nullopt ) const;
         //Clears all the maps and vectors in the cache.
         void clear();
 
-        // casts all the hit_you_effects on the target
-        void cast_hit_you( Character &caster, const Creature &target ) const;
+        // casts the hit_you_effects for this kind of hit (see fake_spell::hit_types) on the target
+        void cast_hit_you( Character &caster, const Creature &target,
+                           hit_type hit = hit_type::melee ) const;
+        // monsters cast them on their melee hits
         void cast_hit_you( Creature &caster, const Creature &target ) const;
-        // casts all the hit_me_effects on self or a target depending on the enchantment definition
-        void cast_hit_me( Character &caster, const Creature *target ) const;
-        void cast_hit_me( Creature &caster, const Creature *target ) const;
+        // casts the hit_me_effects for this kind of hit on self or a target depending on the
+        // enchantment definition.  A character casts one on a ranged hit only if its hit_types
+        // were given and name it; a monster casts those without hit_types on every hit.
+        void cast_hit_me( Character &caster, const Creature *target, hit_type hit = hit_type::melee,
+                          const std::optional<bodypart_id> &hit_bp = std::nullopt ) const;
+        void cast_hit_me( Creature &caster, const Creature *target, hit_type hit = hit_type::melee,
+                          const std::optional<bodypart_id> &hit_bp = std::nullopt ) const;
 
         template<typename TKey>
         void save_add_and_multiply( JsonOut &jsout, const std::string_view &member_key,
@@ -461,6 +543,8 @@ class enchant_cache : public enchantment
         // the exact same as above, though specifically for skills
         std::map<skill_id, double> skill_values_add; // NOLINT(cata-serialize)
         std::map<skill_id, double> skill_values_multiply; // NOLINT(cata-serialize)
+        // the highest floor of each skill among the enchantments
+        std::map<skill_id, double> skill_floor; // NOLINT(cata-serialize)
 
         std::map<bodypart_str_id, double> encumbrance_values_add; // NOLINT(cata-serialize)
         std::map<bodypart_str_id, double> encumbrance_values_multiply; // NOLINT(cata-serialize)

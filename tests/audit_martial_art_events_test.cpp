@@ -1,5 +1,7 @@
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "bodypart.h"
@@ -10,6 +12,8 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "damage.h"
+#include "explosion.h"
+#include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "math_parser_diag_value.h"
@@ -17,11 +21,13 @@
 #include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "projectile.h"
 #include "ret_val.h"
 #include "type_id.h"
 
 static const damage_type_id damage_bash( "bash" );
 
+static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_winded( "winded" );
 
 static const matec_id test_tech_cmbt_j01_post_hit( "test_tech_cmbt_j01_post_hit" );
@@ -108,4 +114,45 @@ TEST_CASE( "cmbt-j01_onhit_onkill_and_post_hit_eocs_see_the_target_and_damage",
     // The technique's post_hit_eocs saw the damage dealt and the kill
     CHECK( num_var( target, "cmbt_j01_post_hit_damage" ) > 0 );
     CHECK( num_var( you, "cmbt_j01_post_hit_killed" ) == 1 );
+    // The technique's own eocs, before the hit, got the attack's context too
+    CHECK( str_var( you, "cmbt_j01_pre_hit_technique" ) == test_tech_cmbt_j01_post_hit.str() );
+    CHECK( str_var( you, "cmbt_j01_pre_hit_style" ) == test_style_cmbt_j01.str() );
+    CHECK_FALSE( str_var( you, "cmbt_j01_pre_hit_bp" ).empty() );
+    CHECK( num_var( you, "cmbt_j01_pre_hit_damage" ) > 0 );
+}
+
+// CMBT-J01: ongethit only ran for melee hits; a bullet, a fragment or a blast that hit you ran
+// nothing
+TEST_CASE( "cmbt-j01_ongethit_eocs_run_for_projectiles_and_explosions", "[audit][martial_arts]" )
+{
+    clear_map();
+    clear_avatar();
+    avatar &you = get_avatar();
+    use_event_style( you );
+    you.set_all_parts_hp_cur( 10000 );
+    // asleep, so the shot can't be dodged
+    you.add_effect( effect_sleep, 1_hours );
+    monster &attacker = spawn_test_monster( "mon_test_non_shearable",
+                                            you.pos_bub() + tripoint_rel_ms( 3, 0, 0 ) );
+
+    SECTION( "a projectile, with the shooter as npc_" ) {
+        dealt_projectile_attack shot{};
+        shot.proj.speed = 1000;
+        shot.proj.range = 60;
+        shot.proj.impact = damage_instance( damage_bash, 5.0f );
+        you.deal_projectile_attack( &get_map(), &attacker, shot, 0, false );
+        CHECK( str_var( you, "cmbt_j01_gethit_by" ) == "projectile" );
+        CHECK( num_var( you, "cmbt_j01_gethits" ) == 1 );
+        CHECK( num_var( attacker, "cmbt_j01_hit_them" ) == 1 );
+        CHECK( num_var( you, "cmbt_j01_gethit_damage" ) > 0 );
+        CHECK_FALSE( str_var( you, "cmbt_j01_gethit_bp" ).empty() );
+    }
+
+    SECTION( "an explosion, once" ) {
+        explosion_handler::explosion( &attacker, you.pos_bub() + tripoint_rel_ms::east, 60.0f, 0.8f,
+                                      false, 0 );
+        explosion_handler::process_explosions();
+        CHECK( str_var( you, "cmbt_j01_gethit_by" ) == "explosion" );
+        CHECK( num_var( you, "cmbt_j01_gethits" ) == 1 );
+    }
 }

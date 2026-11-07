@@ -7,11 +7,14 @@
 #include <string>
 #include <unordered_map>
 
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_assert.h"
 #include "cata_scope_helpers.h"
 #include "cata_utility.h"
+#include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "enum_traits.h"
 #include "enums.h"
 #include "flag.h"
@@ -33,6 +36,7 @@
 #include "ret_val.h"
 #include "rng.h"
 #include "string_formatter.h"
+#include "talker.h" // IWYU pragma: keep
 #include "type_id.h"
 #include "units.h"
 
@@ -981,8 +985,17 @@ void Item_group::check_consistency( bool actually_spawn ) const
 
 int Item_spawn_data::get_probability( bool skip_event_check ) const
 {
+    if( skip_event_check ) {
+        return probability;
+    }
+    if( condition ) {
+        const const_dialogue d( get_const_talker_for( get_avatar() ), nullptr );
+        if( !condition( d ) ) {
+            return 0;
+        }
+    }
     // Use probability as normal
-    if( skip_event_check || event == holiday::none ) {
+    if( event == holiday::none ) {
         return probability;
     }
 
@@ -999,6 +1012,23 @@ int Item_spawn_data::get_probability( bool skip_event_check ) const
 
     // Not currently the item's holiday
     return 0;
+}
+
+bool Item_group::remove_entries( const std::string &id, Single_item_creator::Type entry_type )
+{
+    bool removed = false;
+    for( prop_list::iterator a = items.begin(); a != items.end(); ) {
+        const Single_item_creator *sic = dynamic_cast<const Single_item_creator *>( a->get() );
+        if( sic != nullptr && sic->type == entry_type && sic->id == id ) {
+            sum_prob -= ( *a )->get_probability( true );
+            a = items.erase( a );
+            cached_cum_prob.clear();
+            removed = true;
+        } else {
+            ++a;
+        }
+    }
+    return removed;
 }
 
 bool Item_group::remove_item( const itype_id &itemid )

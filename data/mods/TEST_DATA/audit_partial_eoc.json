@@ -1,0 +1,270 @@
+[
+  {
+    "//": "OMAP-J01 fixture: a horde group of test zombies, one per point of population.",
+    "type": "monstergroup",
+    "id": "GROUP_TEST_OMAPJ01_HORDE",
+    "default": "mon_test_zombie",
+    "monsters": [ { "monster": "mon_test_zombie", "weight": 1, "cost_multiplier": 1, "pack_size": [ 1, 1 ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_OMAPJ01_HORDE",
+    "//": "OMAP-J01: places a horde of 5 at horde_loc and counts it there, next to it and around the tile next to it.",
+    "effect": [
+      { "spawn_overmap_horde": "GROUP_TEST_OMAPJ01_HORDE", "target_var": { "context_val": "horde_loc" }, "population": 5 },
+      { "math": [ "omapj01_horde_here = horde_size(_horde_loc)" ] },
+      { "math": [ "omapj01_horde_next = horde_size(_near_loc)" ] },
+      { "math": [ "omapj01_horde_around = horde_size(_near_loc, 'radius': 1)" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_OMAPJ01_CITY",
+    "//": "OMAP-J01: closest_city with each filter, and the overmap math, searching from search_loc.",
+    "effect": [
+      { "copy_var": { "context_val": "search_loc" }, "target_var": { "context_val": "c_known" } },
+      {
+        "closest_city": { "context_val": "c_known" },
+        "true_eocs": [
+          {
+            "id": "EOC_TEST_OMAPJ01_CITY_KNOWN",
+            "effect": [
+              { "math": [ "omapj01_known_size = _city_size" ] },
+              { "math": [ "omapj01_known_distance = _city_distance" ] },
+              { "copy_var": { "context_val": "c_known" }, "target_var": { "global_val": "omapj01_known_loc" } }
+            ]
+          }
+        ]
+      },
+      { "copy_var": { "context_val": "search_loc" }, "target_var": { "context_val": "c_any" } },
+      {
+        "closest_city": { "context_val": "c_any" },
+        "known": false,
+        "true_eocs": [
+          {
+            "id": "EOC_TEST_OMAPJ01_CITY_ANY",
+            "effect": [ { "math": [ "omapj01_any_size = _city_size" ] }, { "math": [ "omapj01_any_distance = _city_distance" ] } ]
+          }
+        ]
+      },
+      { "copy_var": { "context_val": "search_loc" }, "target_var": { "context_val": "c_big" } },
+      {
+        "closest_city": { "context_val": "c_big" },
+        "known": false,
+        "min_size": 5,
+        "true_eocs": [ { "id": "EOC_TEST_OMAPJ01_CITY_BIG", "effect": [ { "math": [ "omapj01_big_size = _city_size" ] } ] } ]
+      },
+      { "copy_var": { "context_val": "search_loc" }, "target_var": { "context_val": "c_named" } },
+      {
+        "closest_city": { "context_val": "c_named" },
+        "known": false,
+        "name": "Audit Farburg",
+        "true_eocs": [ { "id": "EOC_TEST_OMAPJ01_CITY_NAMED", "effect": [ { "math": [ "omapj01_named_size = _city_size" ] } ] } ]
+      },
+      { "copy_var": { "context_val": "search_loc" }, "target_var": { "context_val": "c_tiny" } },
+      {
+        "closest_city": { "context_val": "c_tiny" },
+        "known": false,
+        "max_size": 1,
+        "true_eocs": [ { "id": "EOC_TEST_OMAPJ01_CITY_TINY", "effect": [ { "math": [ "omapj01_tiny_found = 1" ] } ] } ],
+        "false_eocs": [ { "id": "EOC_TEST_OMAPJ01_CITY_TINY_NONE", "effect": [ { "math": [ "omapj01_tiny_none = 1" ] } ] } ]
+      },
+      { "copy_var": { "context_val": "search_loc" }, "target_var": { "context_val": "c_near_big" } },
+      {
+        "closest_city": { "context_val": "c_near_big" },
+        "known": false,
+        "min_size": 5,
+        "max_distance": 20,
+        "false_eocs": [ { "id": "EOC_TEST_OMAPJ01_CITY_NEAR_BIG_NONE", "effect": [ { "math": [ "omapj01_near_big_none = 1" ] } ] } ]
+      },
+      { "math": [ "omapj01_m_known_distance = city_distance(_search_loc)" ] },
+      { "math": [ "omapj01_m_any_distance = city_distance(_search_loc, 'known': 0)" ] },
+      { "math": [ "omapj01_m_big_size = city_size(_search_loc, 'known': 0, 'min_size': 5)" ] },
+      { "math": [ "omapj01_m_named_size = city_size(_search_loc, 'known': 0, 'name': 'Audit Farburg')" ] },
+      { "math": [ "omapj01_m_none_distance = city_distance(_search_loc, 'known': 0, 'name': 'Nowhere')" ] },
+      { "math": [ "omapj01_m_none_size = city_size(_search_loc, 'known': 0, 'max_distance': 3)" ] },
+      { "math": [ "omapj01_m_omt_distance = omt_distance(_search_loc, _other_loc)" ] }
+    ]
+  },
+  {
+    "//": "MONAI-J01 fixture: a plain hostile monster that walks straight where it wants to go.",
+    "type": "MONSTER",
+    "id": "mon_test_monaij01_walker",
+    "name": { "str": "test walker", "//~": "NO_I18N" },
+    "description": { "str": "A hostile test monster that walks where it is going.", "//~": "NO_I18N" },
+    "default_faction": "zombie",
+    "material": [ "flesh" ],
+    "symbol": "W",
+    "color": "white",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 100,
+    "speed": 100,
+    "aggression": 100,
+    "morale": 100,
+    "melee_skill": 4,
+    "melee_dice": 1,
+    "melee_dice_sides": 2,
+    "vision_day": 40,
+    "flags": [ "SEES", "HEARS" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MONAIJ01_DESTINATION",
+    "//": "MONAI-J01: the monster (u) is sent to dest, with the range and duration in the globals.",
+    "effect": [
+      {
+        "u_set_monster_destination": { "context_val": "dest" },
+        "range": { "global_val": "monaij01_range" },
+        "duration": { "global_val": "monaij01_duration" }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MONAIJ01_TARGET",
+    "//": "MONAI-J01: the monster (u) goes after the creature at target_loc.",
+    "effect": [ { "u_set_monster_target": { "context_val": "target_loc" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MONAIJ01_CLEAR",
+    "//": "MONAI-J01: the monster (u) forgets its forced goal.",
+    "effect": [ "u_clear_monster_goal" ]
+  },
+  {
+    "//": "MUT-J02 fixture: a costly setup mutation whose activation EOC turns it back off while u_mutj02_refund_refuse is 1.",
+    "type": "mutation",
+    "id": "TEST_MUTJ02_REFUND",
+    "name": { "str": "Test Refund", "//~": "NO_I18N" },
+    "points": 0,
+    "description": { "str": "Test mutation whose activation EOC can cancel it.", "//~": "NO_I18N" },
+    "active": true,
+    "activated_is_setup": true,
+    "cost": 100,
+    "kcal": true,
+    "activated_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ02_REFUND",
+        "effect": [
+          { "math": [ "u_mutj02_refund_ran += 1" ] },
+          {
+            "if": { "math": [ "u_mutj02_refund_refuse == 1" ] },
+            "then": [ { "u_deactivate_trait": { "context_val": "this" } } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "//": "NPC-J01 fixture: a combat CBM with the default priority.",
+    "id": "test_bio_npcj01_low",
+    "type": "bionic",
+    "name": { "str": "NPC Test Low Priority", "//~": "NO_I18N" },
+    "description": { "str": "Test toggled bionic NPCs switch on in combat, after the important ones.", "//~": "NO_I18N" },
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "act_cost": "1 kJ",
+    "npc_use": "combat",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "NPC-J01 fixture: a combat CBM NPCs switch on first.",
+    "id": "test_bio_npcj01_high",
+    "type": "bionic",
+    "name": { "str": "NPC Test High Priority", "//~": "NO_I18N" },
+    "description": { "str": "Test toggled bionic NPCs switch on first in combat.", "//~": "NO_I18N" },
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "act_cost": "1 kJ",
+    "npc_use": { "when": "combat", "priority": 10 },
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "NPC-J01 fixture: a spell CBM NPCs cast on themselves for a fight.",
+    "id": "test_bio_npcj01_spell",
+    "type": "bionic",
+    "name": { "str": "NPC Test Spell", "//~": "NO_I18N" },
+    "description": { "str": "Test bionic that casts a spell on its user.", "//~": "NO_I18N" },
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "act_cost": "1 kJ",
+    "npc_use": "combat",
+    "spell_on_activation": { "id": "test_npcj01_self_spell" },
+    "flags": [ "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "NPC-J01 fixture: a spell CBM that can only hit a hostile creature next to its user.",
+    "id": "test_bio_npcj01_zap",
+    "type": "bionic",
+    "name": { "str": "NPC Test Zap", "//~": "NO_I18N" },
+    "description": { "str": "Test bionic that casts a spell on an adjacent enemy.", "//~": "NO_I18N" },
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "act_cost": "1 kJ",
+    "spell_on_activation": { "id": "test_npcj01_hostile_spell" },
+    "flags": [ "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "type": "SPELL",
+    "id": "test_npcj01_self_spell",
+    "name": { "str": "Test NPC CBM Self Spell", "//~": "NO_I18N" },
+    "description": { "str": "Counts the casts on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_NPCJ01_SPELL",
+    "shape": "blast",
+    "flags": [ "NO_HANDS", "NO_LEGS", "NO_FAIL", "SILENT" ],
+    "base_casting_time": 100
+  },
+  {
+    "type": "SPELL",
+    "id": "test_npcj01_hostile_spell",
+    "name": { "str": "Test NPC CBM Hostile Spell", "//~": "NO_I18N" },
+    "description": { "str": "Counts the casts on an adjacent enemy.", "//~": "NO_I18N" },
+    "valid_targets": [ "hostile" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_NPCJ01_SPELL",
+    "shape": "blast",
+    "flags": [ "NO_HANDS", "NO_LEGS", "NO_FAIL", "SILENT" ],
+    "min_range": 1,
+    "max_range": 1,
+    "base_casting_time": 100
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_NPCJ01_SPELL",
+    "effect": [ { "math": [ "u_npcj01_spell_cast += 1" ] } ]
+  },
+  {
+    "//": "USE-J01 fixture: copies the method and item_pos context values of its use action to globals.",
+    "id": "test_usej01_marker",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "test use marker", "//~": "NO_I18N" },
+    "description": { "str": "Records what its use action was told.", "//~": "NO_I18N" },
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": ",",
+    "color": "blue",
+    "use_action": {
+      "type": "effect_on_conditions",
+      "menu_text": "Mark",
+      "effect_on_conditions": [
+        {
+          "id": "EOC_TEST_USEJ01_MARK",
+          "effect": [
+            { "copy_var": { "context_val": "method" }, "target_var": { "global_val": "usej01_method" } },
+            { "copy_var": { "context_val": "item_pos" }, "target_var": { "global_val": "usej01_item_pos" } },
+            { "copy_var": { "context_val": "use_location" }, "target_var": { "global_val": "usej01_use_location" } }
+          ]
+        }
+      ]
+    }
+  }
+]

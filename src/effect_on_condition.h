@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -16,8 +17,10 @@
 #include "type_id.h"
 
 class Character;
+class Creature;
 class JsonObject;
 class JsonValue;
+class monster;
 class time_duration;
 enum class event_type : int;
 struct effect_on_condition;
@@ -31,6 +34,7 @@ enum eoc_type {
     NPC_DEATH,
     PREVENT_DEATH,
     EVENT,
+    PREVENT_MONSTER_DEATH,
     NUM_EOC_TYPES
 };
 
@@ -65,6 +69,9 @@ struct effect_on_condition {
         bool has_condition = false;
         bool has_false_effect = false;
         event_type required_event;
+        // For an EVENT EOC: the mod-defined event (trigger_custom_event) it runs on instead of
+        // required_event; empty for one on a game event (EOC-J06)
+        std::string custom_event;
         duration_or_var recurrence;
         /**
          * @param on_done if set, called with the copy of @p d the effects ran on (not the
@@ -100,12 +107,25 @@ void load_new_character( Character &you );
 void load_existing_character( Character &you );
 /** Loads an inline eoc */
 effect_on_condition_id load_inline_eoc( const JsonValue &jv, std::string_view src );
+/** Loads an effect_on_condition_migration: a saved queued or inactive EOC renamed or dropped */
+void load_migration( const JsonObject &jo );
+/** The EOC a saved queued or inactive EOC @p id loads as: @p id itself without a migration,
+ *  none when a migration drops it */
+std::optional<effect_on_condition_id> migrate_saved( const effect_on_condition_id &id );
+/** Applies the migrations to a saved list of inactive EOCs */
+void migrate_saved( std::vector<effect_on_condition_id> &eocs );
 /** Runs @p check from check_consistency(), once all data is loaded: for ids written in EOC
  *  JSON whose type may load later. The check reports problems with debugmsg. */
 void add_load_check( std::function<void()> check );
 /** queue an eoc to happen in the future */
 void queue_effect_on_condition( time_duration duration, effect_on_condition_id eoc,
                                 Character &you, global_variables::impl_t const &context );
+/** queue an eoc that runs with the u and npc these handles name (run_eocs' keep_talkers): on
+ *  @p you's queue when @p alpha is empty and the EOC isn't global, otherwise on the game's, with
+ *  the avatar as u if @p alpha is empty */
+void queue_effect_on_condition( time_duration duration, effect_on_condition_id eoc,
+                                Character &you, global_variables::impl_t const &context,
+                                const std::string &alpha, const std::string &beta );
 /** called every turn to process the queued eocs */
 void process_effect_on_conditions( Character &you );
 /** called after certain events to test whether to reactivate eocs */
@@ -120,6 +140,18 @@ void write_global_eocs_to_file();
 void prevent_death();
 /** Run all avatar death eocs */
 void avatar_death();
+/** The EVENT EOCs that run on the mod-defined event @p name, in load order (EOC-J06) */
+const std::vector<effect_on_condition_id> &custom_event_eocs( const std::string &name );
+/**
+ * Runs the PREVENT_MONSTER_DEATH EOCs for @p mon, which is about to die, with the killer as
+ * beta (EOC-J10).  Returns true if one of them prevented the death (u_prevent_death).
+ */
+bool prevent_monster_death( monster &mon, Creature *killer );
+/**
+ * Puts the RECURRING @p eoc back in the queue if it was deactivated (EOC-J04): the global
+ * queue for a global EOC, else @p you's.  Returns false if it wasn't deactivated.
+ */
+bool reactivate( const effect_on_condition_id &eoc, Character &you, dialogue &d );
 } // namespace effect_on_conditions
 
 template<>

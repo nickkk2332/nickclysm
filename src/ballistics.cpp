@@ -70,10 +70,6 @@ static const ammo_effect_str_id ammo_effect_STREAM_TINY( "STREAM_TINY" );
 static const ammo_effect_str_id ammo_effect_TANGLE( "TANGLE" );
 static const ammo_effect_str_id ammo_effect_WIDE( "WIDE" );
 
-static const damage_type_id damage_bash( "bash" );
-static const damage_type_id damage_cut( "cut" );
-static const damage_type_id damage_stab( "stab" );
-
 static const itype_id itype_glass_shard( "glass_shard" );
 
 static const json_character_flag json_flag_HARDTOHIT( "HARDTOHIT" );
@@ -152,12 +148,16 @@ static void drop_or_embed_projectile( map *here, const dealt_projectile_attack &
         embed = embed && ( critter_size > creature_size::small || vol < 500_ml );
         // And if we deal enough damage
         // Item volume bumps up the required damage too
-        // FIXME: Hardcoded damage types
-        embed = embed &&
-                ( attack.dealt_dam.type_damage( damage_cut ) / 2 ) +
-                attack.dealt_dam.type_damage( damage_stab ) >
-                attack.dealt_dam.type_damage( damage_bash ) +
-                vol * 3 / 250_ml + rng( 0, 5 );
+        // CMBT-J12: each damage type's "embed_weight" (cut 0.5, stab 1, bash -1)
+        if( embed ) {
+            int embedding = 0;
+            for( const std::pair<const damage_type_id, int> &dealt : attack.dealt_dam.dealt_dams ) {
+                if( dealt.second != 0 && dealt.first.is_valid() ) {
+                    embedding += static_cast<int>( dealt.second * dealt.first->embed_weight );
+                }
+            }
+            embed = embedding > vol * 3 / 250_ml + rng( 0, 5 );
+        }
     }
 
     if( embed ) {

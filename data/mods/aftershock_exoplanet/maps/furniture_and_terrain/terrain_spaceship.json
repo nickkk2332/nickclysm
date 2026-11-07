@@ -297,6 +297,7 @@
   {
     "type": "terrain",
     "id": "t_afs_gun_ship_ruined_hull_wall",
+    "sound_attenuation": 0,
     "name": "ruined hull",
     "description": "This patch of hull has more holes in it than an ancient terran cheese.  It may provide some cover or it might get shot through.",
     "roof": "t_metal_flat_roof",

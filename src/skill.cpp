@@ -5,17 +5,22 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <initializer_list>
 #include <iterator>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "character.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
+#include "generic_factory.h"
 #include "item.h"
 #include "options.h"
 #include "recipe.h"
 #include "rng.h"
+#include "string_formatter.h"
 
 static const skill_id skill_archery( "archery" );
 static const skill_id skill_bashing( "bashing" );
@@ -52,6 +57,13 @@ std::vector<SkillDisplayType> SkillDisplayType::skillTypes;
 static const Skill invalid_skill;
 static const SkillDisplayType invalid_skill_type;
 
+namespace
+{
+// Holds every skill definition; Skill::skills and Skill::contextual_skills are built from it.
+generic_factory<Skill> skill_factory( "skill" );
+uint64_t next_skill_load_order = 0;
+} // namespace
+
 /** @relates string_id */
 template<>
 const Skill &string_id<Skill>::obj() const
@@ -85,8 +97,8 @@ Skill::Skill() : Skill( skill_id::NULL_ID(), to_translation( "nothing" ),
 
 Skill::Skill( const skill_id &ident, const translation &name, const translation &description,
               const std::set<std::string> &tags, skill_displayType_id display_type )
-    : _ident( ident ), _name( name ), _description( description ), _tags( tags ),
-      _display_type( display_type )
+    : _name( name ), _description( description ), _tags( tags ), _display_type( display_type ),
+      id( ident )
 {
 }
 
@@ -130,8 +142,10 @@ std::vector<const Skill *> Skill::get_skills_sorted_by(
 
 void Skill::reset()
 {
+    skill_factory.reset();
     skills.clear();
     contextual_skills.clear();
+    next_skill_load_order = 0;
 }
 
 void Skill::check_consistency()
@@ -157,69 +171,163 @@ void Skill::check_consistency()
     }
 }
 
-void Skill::load_skill( const JsonObject &jsobj )
+void Skill::load_skill( const JsonObject &jsobj, const std::string &src_name )
 {
-    skill_id ident = skill_id( jsobj.get_string( "id" ) );
-    skills.erase( std::remove_if( begin( skills ), end( skills ), [&]( const Skill & s ) {
-        return s._ident == ident;
-    } ), end( skills ) );
+    skill_factory.load( jsobj, src_name );
+    update_skill_lists();
+}
 
-    translation name;
-    jsobj.read( "name", name );
-    translation desc;
-    jsobj.read( "description", desc );
-    std::unordered_map<std::string, int> companion_skill_practice;
-    for( JsonObject jo_csp : jsobj.get_array( "companion_skill_practice" ) ) {
-        companion_skill_practice.emplace( jo_csp.get_string( "skill" ), jo_csp.get_int( "weight" ) );
+void Skill::finalize_all()
+{
+    skill_factory.finalize();
+    update_skill_lists();
+}
+
+void Skill::update_skill_lists()
+{
+    skills.clear();
+    std::set<skill_id> contextual_ids;
+    for( const Skill &sk : skill_factory.get_all() ) {
+        if( sk.is_contextual_skill() ) {
+            // assigned in place, so references to the skills that stay remain valid
+            contextual_skills[sk.ident()] = sk;
+            contextual_ids.insert( sk.ident() );
+        } else {
+            skills.push_back( sk );
+        }
     }
-    std::map<int, translation> level_descriptions_theory;
-    std::map<int, translation> level_descriptions_practice;
-    for( JsonObject jo : jsobj.get_array( "level_descriptions_theory" ) ) {
-        translation desc;
-        jo.read( "description", desc );
-        level_descriptions_theory.emplace( jo.get_int( "level" ), desc );
+    for( auto it = contextual_skills.begin(); it != contextual_skills.end(); ) {
+        it = contextual_ids.count( it->first ) > 0 ? std::next( it ) : contextual_skills.erase( it );
     }
-    for( JsonObject jo : jsobj.get_array( "level_descriptions_practice" ) ) {
-        translation desc;
-        jo.read( "description", desc );
-        level_descriptions_practice.emplace( jo.get_int( "level" ), desc );
+    std::stable_sort( skills.begin(), skills.end(), []( const Skill & a, const Skill & b ) {
+        return a._load_order < b._load_order;
+    } );
+}
+
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void Skill::load( const JsonObject &jsobj, std::string_view )
+{
+    _load_order = next_skill_load_order++;
+
+    optional( jsobj, was_loaded, "name", _name );
+    optional( jsobj, was_loaded, "description", _description );
+    if( jsobj.has_member( "companion_skill_practice" ) ) {
+        _companion_skill_practice.clear();
+        for( JsonObject jo_csp : jsobj.get_array( "companion_skill_practice" ) ) {
+            _companion_skill_practice.emplace( jo_csp.get_string( "skill" ), jo_csp.get_int( "weight" ) );
+        }
     }
-    time_info_t time_to_attack;
+    const auto read_level_descriptions = [&jsobj]( const std::string_view member,
+    std::map<int, translation> &descriptions ) {
+        if( !jsobj.has_member( member ) ) {
+            return;
+        }
+        descriptions.clear();
+        for( JsonObject jo : jsobj.get_array( member ) ) {
+            translation desc;
+            jo.read( "description", desc );
+            descriptions.emplace( jo.get_int( "level" ), desc );
+        }
+    };
+    read_level_descriptions( "level_descriptions_theory", _level_descriptions_theory );
+    read_level_descriptions( "level_descriptions_practice", _level_descriptions_practice );
+    // a copy's "time_to_attack" changes the members it names
+    if( !was_loaded ) {
+        _time_to_attack = time_info_t();
+    }
     if( jsobj.has_object( "time_to_attack" ) ) {
         JsonObject jso_tta = jsobj.get_object( "time_to_attack" );
-        jso_tta.read( "min_time", time_to_attack.min_time );
-        jso_tta.read( "base_time", time_to_attack.base_time );
-        jso_tta.read( "time_reduction_per_level", time_to_attack.time_reduction_per_level );
+        jso_tta.read( "min_time", _time_to_attack.min_time );
+        jso_tta.read( "base_time", _time_to_attack.base_time );
+        jso_tta.read( "time_reduction_per_level", _time_to_attack.time_reduction_per_level );
     }
-    skill_displayType_id display_type = skill_displayType_id( jsobj.get_string( "display_category" ) );
-    Skill sk( ident, name, desc, jsobj.get_tags( "tags" ), display_type );
+    mandatory( jsobj, was_loaded, "display_category", _display_type );
+    optional( jsobj, was_loaded, "tags", _tags, string_reader{} );
     if( jsobj.has_int( "sort_rank" ) ) {
-        sk._sort_rank = jsobj.get_int( "sort_rank" );
-    } else {
-        sk._sort_rank = 1000000;
-        debugmsg( "skill '%s' missing 'sort_rank' field.", ident.str() );
+        _sort_rank = jsobj.get_int( "sort_rank" );
+    } else if( !was_loaded ) {
+        _sort_rank = 1000000;
+        debugmsg( "skill '%s' missing 'sort_rank' field.", id.str() );
     }
 
-    if( jsobj.has_bool( "consumes_focus" ) ) {
-        sk.consumes_focus = jsobj.get_bool( "consumes_focus" );
+    optional( jsobj, was_loaded, "consumes_focus", consumes_focus, true );
+    optional( jsobj, was_loaded, "companion_combat_rank_factor", _companion_combat_rank_factor, 0 );
+    optional( jsobj, was_loaded, "companion_survival_rank_factor", _companion_survival_rank_factor,
+              0 );
+    optional( jsobj, was_loaded, "companion_industry_rank_factor", _companion_industry_rank_factor,
+              0 );
+    optional( jsobj, was_loaded, "obsolete", _obsolete, false );
+    optional( jsobj, was_loaded, "teachable", _teachable, true );
+    optional( jsobj, was_loaded, "training_time", _training_time );
+    optional( jsobj, was_loaded, "training_cost", _training_cost );
+    optional( jsobj, was_loaded, "max_level", _max_level, MAX_SKILL );
+    if( _max_level < 0 || _max_level > MAX_SKILL ) {
+        jsobj.throw_error_at( "max_level", string_format( "max_level must be between 0 and %d",
+                              MAX_SKILL ) );
+    }
+    optional( jsobj, was_loaded, "requires_all_traits", _requires_all_traits, string_reader{} );
+    optional( jsobj, was_loaded, "requires_any_traits", _requires_any_traits, string_reader{} );
+
+    // How the skill progresses (PROG-J08); a copy's "rust" changes the members it names
+    optional( jsobj, was_loaded, "training_multiplier", _training_multiplier, 1.0f );
+    optional( jsobj, was_loaded, "catchup_multiplier", _catchup_multiplier, 1.0f );
+    optional( jsobj, was_loaded, "book_learning_multiplier", _book_learning_multiplier, 1.0f );
+    for( const char *member : {
+             "training_multiplier", "catchup_multiplier", "book_learning_multiplier"
+         } ) {
+        if( jsobj.has_member( member ) && jsobj.get_float( member ) < 0 ) {
+            jsobj.throw_error_at( member, "must not be negative" );
+        }
+    }
+    if( !was_loaded ) {
+        _rusts = true;
+        _rust_grace_period = 24_hours;
+        _rust_multiplier = 1.0f;
+        _rust_max_levels = 3.0f;
+    }
+    if( jsobj.has_object( "rust" ) ) {
+        JsonObject jo_rust = jsobj.get_object( "rust" );
+        jo_rust.read( "enabled", _rusts );
+        jo_rust.read( "grace_period", _rust_grace_period );
+        jo_rust.read( "multiplier", _rust_multiplier );
+        jo_rust.read( "max_levels", _rust_max_levels );
+        if( _rust_grace_period < 0_turns ) {
+            jo_rust.throw_error_at( "grace_period", "must not be negative" );
+        }
+        if( _rust_multiplier < 0 ) {
+            jo_rust.throw_error_at( "multiplier", "must not be negative" );
+        }
+        if( _rust_max_levels < 0 ) {
+            jo_rust.throw_error_at( "max_levels", "must not be negative" );
+        }
     }
 
-    sk._time_to_attack = time_to_attack;
-    sk._companion_combat_rank_factor = jsobj.get_int( "companion_combat_rank_factor", 0 );
-    sk._companion_survival_rank_factor = jsobj.get_int( "companion_survival_rank_factor", 0 );
-    sk._companion_industry_rank_factor = jsobj.get_int( "companion_industry_rank_factor", 0 );
-    sk._companion_skill_practice = companion_skill_practice;
-    sk._level_descriptions_theory = level_descriptions_theory;
-    sk._level_descriptions_practice = level_descriptions_practice;
-    sk._obsolete = jsobj.get_bool( "obsolete", false );
-    sk._teachable = jsobj.get_bool( "teachable", true );
-    sk._requires_all_traits = jsobj.get_tags( "requires_all_traits" );
-    sk._requires_any_traits = jsobj.get_tags( "requires_any_traits" );
-
-    if( sk.is_contextual_skill() ) {
-        contextual_skills[sk.ident()] = sk;
-    } else {
-        skills.push_back( sk );
+    // How crafting uses it (UIINV-J04); the defaults are the built-in rules
+    optional( jsobj, was_loaded, "vision_penalty", _vision_penalty, 0.0f );
+    if( _vision_penalty < 0 ) {
+        jsobj.throw_error_at( "vision_penalty", "must not be negative" );
+    }
+    if( jsobj.has_member( "crafting_stat" ) ) {
+        static const std::array<std::pair<std::string_view, scaling_stat>, 4> crafting_stats = { {
+                { "str", STAT_STR }, { "dex", STAT_DEX }, { "int", STAT_INT }, { "per", STAT_PER }
+            }
+        };
+        const std::string stat = jsobj.get_string( "crafting_stat" );
+        const auto found = std::find_if( crafting_stats.begin(), crafting_stats.end(),
+        [&stat]( const std::pair<std::string_view, scaling_stat> &entry ) {
+            return entry.first == stat;
+        } );
+        if( found == crafting_stats.end() ) {
+            jsobj.throw_error_at( "crafting_stat", R"(must be "str", "dex", "int" or "per")" );
+        }
+        _crafting_stat = found->second;
+    } else if( !was_loaded ) {
+        _crafting_stat = STAT_INT;
+    }
+    optional( jsobj, was_loaded, "crafting_stat_divisor", _crafting_stat_divisor, 4.0f );
+    if( _crafting_stat_divisor <= 0 ) {
+        jsobj.throw_error_at( "crafting_stat_divisor", "must be more than 0" );
     }
 }
 
@@ -441,9 +549,10 @@ bool SkillLevel::isRusty() const
            _knowledgeExperience - _exercise >= pow( level() + 1, 2U ) * 10;
 }
 
-bool SkillLevel::rust( int rust_resist, float rust_multiplier )
+bool SkillLevel::rust( int rust_resist, float rust_multiplier, const time_duration &grace_period,
+                       float max_levels )
 {
-    if( ( calendar::turn - _lastPracticed ) < 24_hours ) {
+    if( ( calendar::turn - _lastPracticed ) < grace_period ) {
         // don't rust within the grace period
         return false;
     }
@@ -455,7 +564,7 @@ bool SkillLevel::rust( int rust_resist, float rust_multiplier )
 
     const int level_multiplier = pow( unadjustedLevel() + 1, 2U );
     float level_exp = level_multiplier * 10000.0f;
-    if( _rustAccumulator > level_exp * 3 ) {
+    if( _rustAccumulator > level_exp * max_levels ) {
         // at this point the numbers ahead will be too small to bother.  Just cap it off.
         return false;
     }
@@ -492,10 +601,14 @@ void SkillLevel::practice()
     _lastPracticed = calendar::turn;
 }
 
-void SkillLevel::readBook( int minimumGain, int maximumGain, int maximumLevel )
+void SkillLevel::readBook( int minimumGain, int maximumGain, int maximumLevel, float multiplier )
 {
     if( knowledgeLevel() < maximumLevel || maximumLevel < 0 ) {
-        knowledge_train( ( knowledgeLevel() + 1 ) * rng( minimumGain, maximumGain ) * 100 );
+        int amount = ( knowledgeLevel() + 1 ) * rng( minimumGain, maximumGain ) * 100;
+        if( multiplier != 1.0f ) {
+            amount = static_cast<int>( std::lround( amount * multiplier ) );
+        }
+        knowledge_train( amount );
     }
 
     practice();
@@ -510,6 +623,26 @@ void SkillLevel::set_exercise( int value, bool raw )
 {
     _exercise = raw ? value : value * ( 100 * ( level() + 1 ) * ( level() + 1 ) );
     on_exercise_change( true );
+}
+
+void SkillLevel::set_knowledge_exercise( int value, bool raw )
+{
+    const auto xp_to_level = [this]() {
+        return 100 * 100 * pow( unadjustedKnowledgeLevel() + 1, 2U );
+    };
+    _knowledgeExperience = std::max( raw ? value : value * ( 100 * ( _knowledgeLevel + 1 ) *
+                                     ( _knowledgeLevel + 1 ) ), 0 );
+    while( _knowledgeExperience >= xp_to_level() && unadjustedKnowledgeLevel() < MAX_SKILL ) {
+        _knowledgeExperience -= xp_to_level();
+        ++_knowledgeLevel;
+    }
+    if( unadjustedKnowledgeLevel() >= MAX_SKILL ) {
+        _knowledgeExperience = std::min<int>( _knowledgeExperience, xp_to_level() - 1 );
+    }
+    // Theory doesn't lag the practice it comes from
+    if( level() == knowledgeLevel() && _knowledgeExperience < _exercise ) {
+        _knowledgeExperience = _exercise;
+    }
 }
 
 void SkillLevel::on_exercise_change( bool allow_multilevel )

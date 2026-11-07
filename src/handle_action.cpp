@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <list>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -30,6 +31,8 @@
 #include "clzones.h"
 #include "color.h"
 #include "construction.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "cursesdef.h"
 #include "damage.h"
@@ -75,10 +78,12 @@
 #include "math_parser_diag_value.h"
 #include "mdarray.h"
 #include "messages.h"
+#include "mod_keybinding.h"
 #include "monster.h"
 #include "move_mode.h"
 #include "mtype.h"
 #include "mutation.h"
+#include "npc.h"
 #include "options.h"
 #include "output.h"
 #include "overmap_ui.h"
@@ -145,7 +150,7 @@ static const itype_id itype_radiocontrol( "radiocontrol" );
 static const json_character_flag json_flag_ALARMCLOCK( "ALARMCLOCK" );
 static const json_character_flag json_flag_BIONIC_SLEEP_FRIENDLY( "BIONIC_SLEEP_FRIENDLY" );
 static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
-static const json_character_flag json_flag_HANDS_CANNOT_USE_FIREARMS( "HANDS_CANNOT_USE_FIREARMS" );
+static const json_character_flag json_flag_CANNOT_USE_RANGED( "CANNOT_USE_RANGED" );
 static const json_character_flag json_flag_LEVITATION( "LEVITATION" );
 static const json_character_flag json_flag_PHASE_MOVEMENT( "PHASE_MOVEMENT" );
 static const json_character_flag json_flag_SUBTLE_SPELL( "SUBTLE_SPELL" );
@@ -158,8 +163,6 @@ static const quality_id qual_CUT( "CUT" );
 
 static const skill_id skill_melee( "melee" );
 
-static const trait_id trait_BRAWLER( "BRAWLER" );
-static const trait_id trait_GUNSHY( "GUNSHY" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_SHELL2( "SHELL2" );
@@ -599,7 +602,13 @@ static void pldrive( const tripoint_rel_ms &p )
         }
     }
     if( !veh->is_flying_in_air() ) {
-        if( !veh->can_control_on_land( player_character ) ) {
+        // VEH-J08: in deep water the "water" control requirements apply instead of the "land" ones
+        if( veh->is_in_water( true ) ) {
+            if( !veh->can_control_in_water( player_character ) ) {
+                player_character.add_msg_if_player( m_info, _( "You have no idea how to steer the vessel." ) );
+                return;
+            }
+        } else if( !veh->can_control_on_land( player_character ) ) {
             player_character.add_msg_if_player( m_info, _( "You have no idea how to make the vehicle move." ) );
             return;
         }
@@ -982,7 +991,7 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
     }
 
     get_event_bus().send<event_type::character_smashes_tile>(
-        getID(), here.ter( smashp ).id(), here.furn( smashp ).id() );
+        getID(), here.ter( smashp ).id(), here.furn( smashp ).id(), here.get_abs( smashp ).raw() );
     if( is_mounted() ) {
         monster *crit = mounted_creature.get();
         if( crit->has_flag( mon_flag_RIDEABLE_MECH ) ) {
@@ -1387,7 +1396,7 @@ static void sleep()
     }
     for( auto &mut : player_character.get_functioning_mutations() ) {
         const mutation_branch &mdata = mut.obj();
-        if( mdata.cost > 0 && player_character.has_active_mutation( mut ) ) {
+        if( mdata.has_cost() && player_character.has_active_mutation( mut ) ) {
             active.push_back( player_character.mutation_name( mut ) );
         }
     }
@@ -1795,20 +1804,20 @@ static void fire()
         reach_attack( you );
         return;
     }
-    if( you.has_trait( trait_BRAWLER ) ) {
+    // CMBT-J03: the same checks as every other way to fire (Character::ranged_ban_reason)
+    if( you.has_flag( json_flag_CANNOT_USE_RANGED ) ) {
         add_msg( m_bad, _( "You refuse to use ranged weapons." ) );
         return;
     }
-    if( you.has_trait( trait_GUNSHY ) && weapon && weapon->is_firearm() ) {
-        add_msg( m_bad, _( "You refuse to use firearms." ) );
-        return;
+    if( weapon && weapon->is_gun() ) {
+        const std::string ban = you.ranged_ban_reason( *weapon, true );
+        if( !ban.empty() ) {
+            add_msg( m_bad, ban );
+            return;
+        }
     }
     if( you.has_flag( json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS ) ) {
         add_msg( m_bad, _( "You have no hands and cannot use ranged weapons!" ) );
-        return;
-    }
-    if( you.has_flag( json_flag_HANDS_CANNOT_USE_FIREARMS ) && weapon && weapon->is_firearm() ) {
-        add_msg( m_bad, _( "Your hands aren't suited for using firearms!" ) );
         return;
     }
     // try firing gun
@@ -1887,7 +1896,7 @@ static void cast_spell( bool recast_spell = false )
     Character &player_character = get_player_character();
     player_character.magic->clear_opens_spellbook_data();
     get_event_bus().send<event_type::opens_spellbook>( player_character.getID() ); // trigger EoC
-    player_character.magic->evaluate_opens_spellbook_data();
+    player_character.magic->evaluate_opens_spellbook_data( player_character );
     std::vector<spell_id> spells = player_character.magic->spells();
 
     if( player_character.has_flag( json_flag_CANNOT_ATTACK ) ) {
@@ -1978,15 +1987,53 @@ bool Character::cast_spell( spell &sp, bool fake_spell,
     return true;
 }
 
+// Where an NPC casts a spell CBM: at the creature it fights if the spell can hit it from here,
+// otherwise at itself if the spell can target the caster.
+static std::optional<tripoint_bub_ms> npc_bionic_spell_target( const npc &guy, const spell &sp )
+{
+    const map &here = get_map();
+    const tripoint_bub_ms own_pos = guy.pos_bub( here );
+    if( const Creature *target = guy.current_target() ) {
+        const tripoint_bub_ms target_pos = target->pos_bub( here );
+        if( rl_dist( own_pos, target_pos ) <= sp.range( guy ) && guy.sees( here, *target ) &&
+            sp.is_valid_target( guy, target_pos ) ) {
+            return target_pos;
+        }
+    }
+    if( sp.is_valid_target( spell_target::self ) && sp.is_valid_target( guy, own_pos ) ) {
+        return own_pos;
+    }
+    return std::nullopt;
+}
+
 // this is here because it shares some things in common with cast_spell
 bool bionic::activate_spell( Character &caster ) const
 {
-    if( !caster.is_avatar() || !id->spell_on_activate ) {
+    if( !id->spell_on_activate ) {
         // the return value tells us if the spell fails. if it has no spell it can't fail
         return true;
     }
     spell sp = id->spell_on_activate->get_spell( caster );
-    return caster.cast_spell( sp, true );
+    if( caster.is_avatar() ) {
+        return caster.cast_spell( sp, true );
+    }
+    npc *guy = caster.as_npc();
+    if( guy == nullptr ) {
+        return true;
+    }
+    // An NPC casts it like its attack spells, at a target it picks itself.  A spell it can't
+    // cast fails the activation quietly, before anything is paid.
+    // (cast_spell()'s own checks would tell the player why it failed)
+    const std::optional<tripoint_bub_ms> target = npc_bionic_spell_target( *guy, sp );
+    const bool needs_hands = !sp.no_hands() && !guy->has_flag( json_flag_SUBTLE_SPELL );
+    if( !target || !sp.can_cast( *guy ) || ( needs_hands && guy->has_effect( effect_stunned ) ) ||
+        ( needs_hands && guy->is_armed() &&
+          !guy->get_wielded_item()->has_flag( flag_MAGIC_FOCUS ) &&
+          !sp.check_if_component_in_hand( *guy ) ) ||
+        ( sp.energy_source() == magic_energy_type::hp && !guy->has_quality( qual_CUT ) ) ) {
+        return false;
+    }
+    return guy->cast_spell( sp, true, target );
 }
 
 void game::open_consume_item_menu()
@@ -2230,29 +2277,6 @@ static const std::set<action_id> actions_disabled_in_incorporeal {
     ACTION_CONTROL_VEHICLE,
 };
 
-static std::map<action_id, std::string> get_actions_disabled_in_handless_temporary_shapeshift()
-{
-    return std::map<action_id, std::string> {
-        { ACTION_OPEN,               _( "You can't open things while shapeshifted." ) },
-        { ACTION_CLOSE,              _( "You can't close things while shapeshifted." ) },
-        { ACTION_ADVANCEDINV,        _( "You can't move mass quantities while shapeshifted." ) },
-        { ACTION_PICKUP,             _( "You can't pick anything up while shapeshifted." ) },
-        { ACTION_PICKUP_ALL,         _( "You can't pick anything up while shapeshifted." ) },
-        { ACTION_GRAB,               _( "You can't grab things while shapeshifted." ) },
-        { ACTION_HAUL,               _( "You can't haul things while shapeshifted." ) },
-        { ACTION_HAUL_TOGGLE,        _( "You can't haul things while shapeshifted." ) },
-        { ACTION_BUTCHER,            _( "You can't butcher while shapeshifted." ) },
-        { ACTION_DROP,               _( "You can't drop things while shapeshifted." ) },
-        { ACTION_DIR_DROP,           _( "You can't drop things while shapeshifted." ) },
-        { ACTION_CRAFT,              _( "You can't craft while shapeshifted." ) },
-        { ACTION_RECRAFT,            _( "You can't craft while shapeshifted." ) },
-        { ACTION_LONGCRAFT,          _( "You can't craft while shapeshifted." ) },
-        { ACTION_DISASSEMBLE,        _( "You can't disassemble while shapeshifted." ) },
-        { ACTION_CONSTRUCT,          _( "You can't construct while shapeshifted." ) },
-        { ACTION_CONTROL_VEHICLE,    _( "You can't operate a vehicle while shapeshifted." ) },
-    };
-}
-
 static std::map<action_id, std::string> get_actions_disabled_mounted()
 {
     return std::map<action_id, std::string> {
@@ -2297,8 +2321,6 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
 
     const std::map<action_id, std::string> actions_disabled_mounted = get_actions_disabled_mounted();
     const std::map<action_id, std::string> actions_disabled_in_shell = get_actions_disabled_in_shell();
-    const std::map<action_id, std::string> actions_disabled_while_handless_shapeshifted =
-        get_actions_disabled_in_handless_temporary_shapeshift();
 
     if( in_shell && actions_disabled_in_shell.count( act ) > 0 ) {
         add_msg( m_info, actions_disabled_in_shell.at( act ) );
@@ -2310,9 +2332,9 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
         return true;
     }
 
-    if( u.has_flag( json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS ) &&
-        actions_disabled_while_handless_shapeshifted.count( act ) > 0 ) {
-        add_msg( m_info, _( "You can't do that while shapeshifted." ) );
+    // json_flag blocked_actions, e.g. TEMPORARY_SHAPESHIFT_NO_HANDS
+    if( const std::optional<std::string> blocked = action_blocked_by_flags( player_character, act ) ) {
+        add_msg( m_info, *blocked );
         return true;
     }
 
@@ -3417,6 +3439,14 @@ bool game::handle_action()
             // timeout delay.
             player_character.clear_destination();
             destination_preview.clear();
+        }
+    }
+
+    // A hotkey a mod added runs its effect_on_condition; it takes a turn only if that spends moves
+    if( act == ACTION_NULL && uquit != QUIT_WATCH && !player_character.is_dead_state() ) {
+        const int moves_before = player_character.get_moves();
+        if( mod_keybindings::run( action, player_character ) ) {
+            return player_character.get_moves() != moves_before;
         }
     }
 

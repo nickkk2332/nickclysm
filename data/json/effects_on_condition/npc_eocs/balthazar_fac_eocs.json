@@ -31,8 +31,7 @@
         "if": { "and": [ { "math": [ "balthazar_solar_power != 1" ] }, { "math": [ "balthazar_power >= 50" ] } ] },
         "then": { "run_eocs": "EOC_BALTHAZAR_SET_UP_SOLAR" }
       }
-    ],
-    "deactivate_condition": { "math": [ "balthazar_destroyed == 1" ] }
+    ]
   },
   {
     "type": "effect_on_condition",

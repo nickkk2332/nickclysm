@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "json.h"
@@ -35,6 +36,9 @@ void computer_option::serialize( JsonOut &jout ) const
     jout.member( "action" );
     jout.write_as_string( action );
     jout.member( "security", security );
+    if( !eocs.empty() ) {
+        jout.member( "eocs", eocs );
+    }
     jout.end_object();
 }
 
@@ -43,6 +47,9 @@ void computer_option::deserialize( const JsonObject &jo )
     name = jo.get_string( "name" );
     action = jo.get_enum_value<computer_action>( "action" );
     security = jo.get_int( "security" );
+    // saves before 2.0 have none
+    eocs.clear();
+    jo.read( "eocs", eocs );
 }
 
 computer_failure::computer_failure()
@@ -55,12 +62,17 @@ void computer_failure::serialize( JsonOut &jout ) const
     jout.start_object();
     jout.member( "action" );
     jout.write_as_string( type );
+    if( !eocs.empty() ) {
+        jout.member( "eocs", eocs );
+    }
     jout.end_object();
 }
 
 void computer_failure::deserialize( const JsonObject &jo )
 {
     type = jo.get_enum_value<computer_failure_type>( "action" );
+    eocs.clear();
+    jo.read( "eocs", eocs );
 }
 
 computer::computer( const std::string &new_name, int new_security, map &here,
@@ -209,6 +221,9 @@ void computer::serialize( JsonOut &jout ) const
     jout.member( "failures", failures );
     jout.member( "access_denied", access_denied );
     jout.member( "eocs", eocs );
+    if( eocs_on_login ) {
+        jout.member( "eocs_on_login", eocs_on_login );
+    }
     jout.member( "chat_topics", chat_topics );
     jout.member( "values", values );
     jout.member( "location", loc );
@@ -230,8 +245,11 @@ void computer::deserialize( const JsonValue &jv )
         jo.read( "failures", failures );
         jo.read( "access_denied", access_denied );
         jo.read( "eocs", eocs );
+        eocs_on_login = false;
+        jo.read( "eocs_on_login", eocs_on_login );
         jo.read( "chat_topics", chat_topics );
         jo.read( "values", values );
+        get_globals().migrate_vars( values, var_scope::computer );
         if( !jo.read( "location", loc ) ) {
             // Backward compatibility code for change made 2025-02-19.
             tripoint_bub_ms temp;
@@ -433,19 +451,60 @@ struct enum_traits<computer_failure_type> {
     static constexpr computer_failure_type last = NUM_COMPUTER_FAILURES;
 };
 
+effect_on_condition_id load_computer_eoc( const JsonValue &jv )
+{
+    // jmapgen_computer::check checks the ids
+    if( jv.test_string() ) {
+        return effect_on_condition_id( jv.get_string() );
+    }
+    if( jv.test_object() ) {
+        // each tile of a multi-tile mapgen sets up the same JSON: a second definition of the
+        // inline EOC would be an error
+        JsonObject jeoc = jv.get_object();
+        // only the id is read here; load_inline_eoc() reads (and checks) the rest
+        jeoc.allow_omitted_members();
+        const effect_on_condition_id id( jeoc.get_string( "id" ) );
+        if( id.is_valid() ) {
+            return id;
+        }
+    }
+    // mapgen is set up after the EOCs are loaded: credited to the base game, as mapgen "eoc"
+    return effect_on_conditions::load_inline_eoc( jv, "dda" );
+}
+
+// "eocs" of an option or a failure; whether there are any
+static bool load_computer_eocs( const JsonObject &jo, std::vector<effect_on_condition_id> &eocs )
+{
+    for( JsonValue jv : jo.get_array( "eocs" ) ) {
+        eocs.push_back( load_computer_eoc( jv ) );
+    }
+    return !eocs.empty();
+}
+
 computer_option computer_option::from_json( const JsonObject &jo )
 {
     translation name;
     jo.read( "name", name );
-    const computer_action action = jo.get_enum_value<computer_action>( "action" );
+    std::vector<effect_on_condition_id> eocs;
+    const bool has_eocs = load_computer_eocs( jo, eocs );
+    // an option with eocs needs no action
+    const computer_action action = has_eocs && !jo.has_member( "action" ) ? COMPACT_NULL :
+                                   jo.get_enum_value<computer_action>( "action" );
     const int sec = jo.get_int( "security", 0 );
-    return computer_option( name.translated(), action, sec );
+    computer_option ret( name.translated(), action, sec );
+    ret.eocs = std::move( eocs );
+    return ret;
 }
 
 computer_failure computer_failure::from_json( const JsonObject &jo )
 {
-    const computer_failure_type type = jo.get_enum_value<computer_failure_type>( "action" );
-    return computer_failure( type );
+    std::vector<effect_on_condition_id> eocs;
+    const bool has_eocs = load_computer_eocs( jo, eocs );
+    const computer_failure_type type = has_eocs && !jo.has_member( "action" ) ? COMPFAIL_NULL :
+                                       jo.get_enum_value<computer_failure_type>( "action" );
+    computer_failure ret( type );
+    ret.eocs = std::move( eocs );
+    return ret;
 }
 
 std::unique_ptr<talker> get_talker_for( computer &me )

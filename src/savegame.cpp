@@ -22,11 +22,13 @@
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "execution_runtime.h"
 #include "execution_combat.h"
 #include "ability_runtime.h"
 #include "explosion.h"
 #include "faction.h"
+#include "global_vars.h"
 #include "hash_utils.h"
 #include "horde_entity.h"
 #include "input.h"
@@ -38,6 +40,7 @@
 #include "mapgen_post_process.h"
 #include "messages.h"
 #include "mission.h"
+#include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -53,6 +56,7 @@
 #include "regional_settings.h"
 #include "scent_map.h"
 #include "stats_tracker.h"
+#include "string_formatter.h"
 #include "timed_event.h"
 
 class overmap_connection;
@@ -160,11 +164,21 @@ void game::serialize_json( std::ostream &fout )
     json.member( "queued_global_effect_on_conditions" );
     json.start_array();
     while( !temp_queued.empty() ) {
-        json.start_object();
-        json.member( "time", temp_queued.top().time );
-        json.member( "eoc", temp_queued.top().eoc );
-        json.member( "context", temp_queued.top().context );
-        json.end_object();
+        const queued_eoc &top = temp_queued.top();
+        if( !top.cancelled ) {
+            json.start_object();
+            json.member( "time", top.time );
+            json.member( "eoc", top.eoc );
+            json.member( "context", top.context );
+            // the u and npc kept by run_eocs' keep_talkers
+            if( !top.alpha.empty() ) {
+                json.member( "alpha", top.alpha );
+            }
+            if( !top.beta.empty() ) {
+                json.member( "beta", top.beta );
+            }
+            json.end_object();
+        }
         temp_queued.pop();
     }
     json.end_array();
@@ -334,12 +348,22 @@ void game::unserialize_impl( const JsonObject &data )
     data.read( "player", u );
     data.read( "inactive_global_effect_on_condition_vector",
                inactive_global_effect_on_condition_vector );
+    effect_on_conditions::migrate_saved( inactive_global_effect_on_condition_vector );
     //load queued_eocs
     for( JsonObject elem : data.get_array( "queued_global_effect_on_conditions" ) ) {
         queued_eoc temp;
         temp.time = time_point( elem.get_int( "time" ) );
-        temp.eoc = effect_on_condition_id( elem.get_string( "eoc" ) );
+        const std::optional<effect_on_condition_id> eoc = effect_on_conditions::migrate_saved(
+                    effect_on_condition_id( elem.get_string( "eoc" ) ) );
+        if( !eoc ) {
+            // An effect_on_condition_migration drops it
+            elem.allow_omitted_members();
+            continue;
+        }
+        temp.eoc = *eoc;
         elem.read( "context", temp.context );
+        elem.read( "alpha", temp.alpha );
+        elem.read( "beta", temp.beta );
         queued_global_effect_on_conditions.push( temp );
     }
     global_variables_instance.unserialize( data );
@@ -678,11 +702,18 @@ void overmap::unserialize( const JsonObject &jsobj )
                                                   ( monster_location ) );
                 if( monster_map_json.test_string() ) {
                     mtype_id monster_id( monster_map_json.next_string() );
-                    result = hordes.spawn_entity( monster_location, monster_id );
+                    // A monster_migration can rename the type or remove the monster
+                    if( !monster_migrations::removes( monster_id ) ) {
+                        result = hordes.spawn_entity( monster_location,
+                                                      monster_migrations::migrate( monster_id ) );
+                    }
                 } else {
-                    monster new_monster;
-                    new_monster.deserialize( monster_map_json.next_object() );
-                    result = hordes.spawn_entity( monster_location, new_monster );
+                    const JsonObject saved_monster = monster_map_json.next_object();
+                    if( !monster_migrations::removes( saved_monster ) ) {
+                        monster new_monster;
+                        new_monster.deserialize( saved_monster );
+                        result = hordes.spawn_entity( monster_location, new_monster );
+                    }
                 }
 
                 if( result.has_value() ) {
@@ -1611,6 +1642,9 @@ void mongroup::deserialize_legacy( const JsonObject &jo )
         } else if( name == "monsters" ) {
             JsonArray ja = json;
             for( JsonObject monster_json : ja ) {
+                if( monster_migrations::removes( monster_json ) ) {
+                    continue;
+                }
                 monster new_monster;
                 new_monster.deserialize( monster_json );
                 monsters.push_back( new_monster );
@@ -1651,6 +1685,7 @@ void game::unserialize_master( const JsonValue &jv )
     // Reset state that has no clear-on-load hook of its own; otherwise a
     // save without the field inherits the previous game's queue.
     get_item_wakeups().clear();
+    monfactions::clear_attitude_overrides();
     JsonObject game_json = jv;
     for( JsonMember jsin : game_json ) {
         std::string name = jsin.name();
@@ -1662,6 +1697,10 @@ void game::unserialize_master( const JsonValue &jv )
             int64_t saved = 1;
             jsin.read( saved );
             next_monster_uid = std::max( next_monster_uid, saved );
+        } else if( name == "next_vehicle_uid" ) {
+            int64_t saved = 1;
+            jsin.read( saved );
+            next_vehicle_uid = std::max( next_vehicle_uid, saved );
         } else if( name == "next_item_uid" ) {
             jsin.read( next_item_uid );
         } else if( name == "active_missions" ) {
@@ -1676,6 +1715,9 @@ void game::unserialize_master( const JsonValue &jv )
             timed_event_manager::unserialize_all( jsin );
         } else if( name == "item_wakeups" ) {
             get_item_wakeups().deserialize( jsin );
+        } else if( name == "monfaction_attitudes" ) {
+            // MONDT-J12: set_monfaction_attitude
+            monfactions::deserialize_attitude_overrides( jsin );
         } else if( name == "overmapbuffer" ) {
             overmap_buffer.global_state.deserialize( jsin );
         } else if( name == "placed_unique_specials" ) {
@@ -1714,6 +1756,10 @@ void game::unserialize_dimension_data( const JsonValue &jv )
             int64_t saved = 1;
             jsin.read( saved );
             next_monster_uid = std::max( next_monster_uid, saved );
+        } else if( name == "next_vehicle_uid" ) {
+            int64_t saved = 1;
+            jsin.read( saved );
+            next_vehicle_uid = std::max( next_vehicle_uid, saved );
         } else if( name == "next_item_uid" ) {
             // Dimension travel saves this with the maps, but not the master save
             int64_t saved = 0;
@@ -1861,13 +1907,7 @@ void global_variables::unserialize( const JsonObject &jo )
     // global variables
     jo.read( "global_vals", global_values );
     // potentially migrate some variable names
-    for( std::pair<std::string, std::string> migration : migrations ) {
-        if( global_values.count( migration.first ) != 0 ) {
-            auto extracted = global_values.extract( migration.first );
-            extracted.key() = migration.second;
-            global_values.insert( std::move( extracted ) );
-        }
-    }
+    migrate_vars( global_values, var_scope::global );
 
     game::legacy_migrate_npctalk_var_prefix( global_values );
 }
@@ -1925,6 +1965,21 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
         if( jo.has_object( "explosion" ) ) {
             jo.read( "explosion", added.expl_data );
         }
+        // Written only for an update with settings (MGEN-J02)
+        if( jo.has_object( "mapgen_update" ) ) {
+            const JsonObject jm = jo.get_object( "mapgen_update" );
+            timed_mapgen_update &how = added.mapgen_update;
+            jm.read( "parameters", how.parameters );
+            jm.read( "rotation", how.rotation );
+            jm.read( "mirror_horizontal", how.mirror_horizontal );
+            jm.read( "mirror_vertical", how.mirror_vertical );
+            if( jm.has_member( "anchor" ) ) {
+                point_omt_ms anchor;
+                jm.read( "anchor", anchor );
+                how.anchor = anchor;
+            }
+            jm.read( "cancel_on_collision", how.cancel_on_collision );
+        }
         // Not written for the main dimension, nor by older builds
         added.dimension = dimension_world_default;
         jo.read( "dimension", added.dimension );
@@ -1948,6 +2003,7 @@ void game::serialize_master( std::ostream &fout )
         json.member( "next_npc_id", next_npc_id );
         json.member( "next_item_uid", next_item_uid );
         json.member( "next_monster_uid", next_monster_uid );
+        json.member( "next_vehicle_uid", next_vehicle_uid );
 
         json.member( "active_missions" );
         mission::serialize_all( json );
@@ -1957,6 +2013,9 @@ void game::serialize_master( std::ostream &fout )
 
         json.member( "item_wakeups" );
         get_item_wakeups().serialize( json );
+
+        json.member( "monfaction_attitudes" );
+        monfactions::serialize_attitude_overrides( json );
 
         json.member( "factions", *faction_manager_ptr );
         json.member( "seed", seed );
@@ -1988,6 +2047,7 @@ void game::serialize_dimension_data( std::ostream &fout )
         // items saved in the maps
         json.member( "next_item_uid", next_item_uid );
         json.member( "next_monster_uid", next_monster_uid );
+        json.member( "next_vehicle_uid", next_vehicle_uid );
 
         json.end_object();
     } catch( const JsonError &e ) {
@@ -2012,11 +2072,75 @@ void global_variables::serialize( JsonOut &jsout ) const
 
 void global_variables::load_migrations( const JsonObject &jo, std::string_view )
 {
+    static const std::map<std::string, var_scope> scope_names = {
+        { "global", var_scope::global },
+        { "character", var_scope::character },
+        { "monster", var_scope::monster },
+        { "item", var_scope::item },
+        { "vehicle", var_scope::vehicle },
+        { "computer", var_scope::computer },
+    };
     const std::string from( jo.get_string( "from" ) );
-    const std::string to = jo.has_string( "to" )
-                           ? jo.get_string( "to" )
-                           : "NULL_VALUE";
-    get_globals().migrations.emplace( from, to );
+    if( from.empty() ) {
+        jo.throw_error_at( "from", "var_migration needs a variable name" );
+    }
+    var_migration migration;
+    // Without "to" the variable is erased
+    if( jo.has_member( "to" ) ) {
+        migration.to = jo.get_string( "to" );
+    }
+    jo.read( "prefix", migration.prefix );
+    if( jo.has_member( "scope" ) ) {
+        for( const std::string &name : jo.get_as_string_array( "scope" ) ) {
+            const auto it = scope_names.find( name );
+            if( it == scope_names.end() ) {
+                jo.throw_error_at( "scope", string_format( "unknown var_migration scope \"%s\"", name ) );
+            }
+            migration.scopes.insert( it->second );
+        }
+    }
+    get_globals().migrations.insert_or_assign( from, migration );
+}
+
+void global_variables::migrate_vars( impl_t &vars, const var_scope scope ) const
+{
+    if( vars.empty() ) {
+        return;
+    }
+    for( const std::pair<const std::string, var_migration> &entry : migrations ) {
+        const std::string &from = entry.first;
+        const var_migration &migration = entry.second;
+        if( !migration.applies_to( scope ) ) {
+            continue;
+        }
+        std::vector<std::string> keys;
+        if( migration.prefix ) {
+            for( const std::pair<const std::string, diag_value> &var : vars ) {
+                if( var.first.compare( 0, from.size(), from ) == 0 ) {
+                    keys.push_back( var.first );
+                }
+            }
+            // The same result whatever the map's order
+            std::sort( keys.begin(), keys.end() );
+        } else if( vars.count( from ) != 0 ) {
+            keys.push_back( from );
+        }
+        for( const std::string &key : keys ) {
+            impl_t::node_type extracted = vars.extract( key );
+            if( migration.to ) {
+                extracted.key() = *migration.to + key.substr( from.size() );
+                // A variable already saved under the new name is kept
+                vars.insert( std::move( extracted ) );
+            }
+        }
+    }
+}
+
+void global_variables::load_watched( const JsonObject &jo, std::string_view )
+{
+    for( const std::string &name : jo.get_as_string_array( "variables" ) ) {
+        get_globals().watched.insert( name );
+    }
 }
 
 void timed_event_manager::serialize_all( JsonOut &jsout )
@@ -2051,6 +2175,20 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
             jsout.member( "recovery", ex.shrapnel.recovery );
             jsout.member( "drop", ex.shrapnel.drop );
             jsout.end_object();
+            jsout.end_object();
+        }
+        if( elem.type == timed_event_type::UPDATE_MAPGEN && !elem.mapgen_update.is_default() ) {
+            const timed_mapgen_update &how = elem.mapgen_update;
+            jsout.member( "mapgen_update" );
+            jsout.start_object();
+            jsout.member( "parameters", how.parameters );
+            jsout.member( "rotation", how.rotation );
+            jsout.member( "mirror_horizontal", how.mirror_horizontal );
+            jsout.member( "mirror_vertical", how.mirror_vertical );
+            if( how.anchor ) {
+                jsout.member( "anchor", *how.anchor );
+            }
+            jsout.member( "cancel_on_collision", how.cancel_on_collision );
             jsout.end_object();
         }
         if( elem.revert.is_uniform() ) {
@@ -2119,9 +2257,14 @@ void creature_tracker::deserialize( const JsonArray &ja )
     monsters_by_location.clear();
     monsters_by_uid.clear();
     for( JsonValue jv : ja ) {
+        const JsonObject saved_monster = jv.get_object();
+        // A monster_migration can remove it
+        if( monster_migrations::removes( saved_monster ) ) {
+            continue;
+        }
         // TODO: would be nice if monster had a constructor using JsonIn or similar, so this could be one statement.
         shared_ptr_fast<monster> mptr = make_shared_fast<monster>();
-        jv.read( *mptr );
+        mptr->deserialize( saved_monster );
         add( mptr );
     }
 }

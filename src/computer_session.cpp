@@ -20,6 +20,8 @@
 #include "creature.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
@@ -206,6 +208,10 @@ void computer_session::use()
         query_any( _( "Login successful.  Press any key…" ) );
         reset_terminal();
     }
+    // mapgen "eocs_mode": "on_login"
+    if( comp.eocs_on_login && !run_eocs( comp.eocs ) ) {
+        return;
+    }
 
     // Main computer loop
     int sel = 0;
@@ -246,11 +252,15 @@ void computer_session::use()
                 } else {
                     // Successfully hacked function
                     comp.options[sel].security = 0;
-                    activate_function( current.action );
+                    if( !activate_option( current ) ) {
+                        return;
+                    }
                 }
             }
         } else { // No need to hack, just activate
-            activate_function( current.action );
+            if( !activate_option( current ) ) {
+                return;
+            }
         }
         reset_terminal();
         // Done processing a selected option.
@@ -424,6 +434,44 @@ bool computer_session::can_activate( computer_action action )
         default:
             return true;
     }
+}
+
+bool computer_session::run_eocs( const std::vector<effect_on_condition_id> &eocs )
+{
+    if( eocs.empty() ) {
+        return true;
+    }
+    // what comp is, to find it again: an EOC can do anything
+    const tripoint_abs_ms loc = comp.loc;
+    const computer *const self = &comp;
+    for( const effect_on_condition_id &eoc : eocs ) {
+        // an EOC of a mod that is no longer loaded, in a save
+        if( !eoc.is_valid() ) {
+            continue;
+        }
+        dialogue d( get_talker_for( get_avatar() ), get_talker_for( comp ) );
+        d.set_value( "pos", loc );
+        eoc->activate( d );
+        map &here = get_map();
+        const tripoint_bub_ms where = here.get_bub( loc );
+        if( !here.inbounds( where ) || here.computer_at( where ) != self ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool computer_session::activate_option( const computer_option &opt )
+{
+    activate_function( opt.action );
+    if( opt.eocs.empty() ) {
+        return true;
+    }
+    // as activate_function's token cost, for an option that is only EOCs
+    if( opt.action == COMPACT_NULL ) {
+        get_player_character().mod_moves( -to_moves<int>( 1_seconds ) * 0.3 );
+    }
+    return run_eocs( opt.eocs );
 }
 
 void computer_session::activate_function( computer_action action )
@@ -1494,8 +1542,10 @@ void computer_session::activate_random_failure()
 {
     comp.next_attempt = calendar::turn + 45_minutes;
     static const computer_failure default_failure( COMPFAIL_SHUTDOWN );
-    const computer_failure &fail = random_entry( comp.failures, default_failure );
+    // a copy: a failure can change the computer
+    const computer_failure fail = random_entry( comp.failures, default_failure );
     activate_failure( fail.type );
+    run_eocs( fail.eocs );
 }
 
 const std::map<computer_failure_type, void( computer_session::* )()>

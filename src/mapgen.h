@@ -3,8 +3,10 @@
 #define CATA_SRC_MAPGEN_H
 
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -33,6 +35,7 @@ class map;
 class mapgendata;
 class mission;
 class tinymap;
+struct const_dialogue;
 struct mapgen_arguments;
 struct oter_t;
 template <typename E> struct enum_traits;
@@ -172,6 +175,9 @@ struct jmapgen_setmap {
      * on the same map. Returns the name of the vehicle if a collision, and an empty string otherwise.
      **/
     ret_val<void> has_vehicle_collision( const mapgendata &dat, const tripoint_rel_ms &offset ) const;
+
+    // This, turned clockwise by @p turns quarter turns within a square of @p size (MGEN-B08)
+    jmapgen_setmap rotated( int turns, int size ) const;
 };
 
 /**
@@ -234,6 +240,31 @@ class jmapgen_piece_with_has_vehicle_collision : public jmapgen_piece
 
 
 /**
+ * MGEN-J08: which tiles a "place_*" entry may go on, its "place_on". Its x and y are rolled
+ * until a tile passes, up to @ref attempts times; with none, that repeat places nothing.
+ */
+struct jmapgen_place_filter {
+    // the terrain is one of these (any terrain when empty)
+    std::vector<ter_str_id> ter;
+    // the terrain has all of these flags, and none of not_ter_flags
+    std::vector<std::string> ter_flags;
+    std::vector<std::string> not_ter_flags;
+    bool no_furniture = false;
+    bool passable = false;
+    // "near": another tile at most near_radius away has a terrain that is one of near_ter (any,
+    // when empty) with all of near_ter_flags
+    bool has_near = false;
+    std::vector<ter_str_id> near_ter;
+    std::vector<std::string> near_ter_flags;
+    int near_radius = 1;
+    int attempts = 20;
+
+    void load( const JsonObject &jo );
+    void check( const std::string &context ) const;
+    bool test( const map &m, const tripoint_bub_ms &p ) const;
+};
+
+/**
  * Where to place something on a map.
  */
 class jmapgen_place
@@ -244,10 +275,16 @@ class jmapgen_place
                     1 ) { }
         explicit jmapgen_place( const JsonObject &jsi );
         void offset( const tripoint_rel_ms & );
+        // Turns the place clockwise by @p turns quarter turns within a square of @p size (MGEN-B08)
+        void rotate( int turns, int size );
         jmapgen_int x;
         jmapgen_int y;
         jmapgen_int z;
         jmapgen_int repeat;
+        // MGEN-J07: "condition", checked for each repeat; nothing is placed when it fails
+        std::shared_ptr<const std::function<bool( const_dialogue const & )>> condition;
+        // MGEN-J08: "place_on"
+        std::shared_ptr<const jmapgen_place_filter> place_on;
 };
 
 // Strong typedef for strings used as map/palette keys
@@ -508,6 +545,10 @@ class mapgen_function_json_base
         std::string context_;
         enum_bitset<jmapgen_flags> flags_;
         bool is_ready;
+        // finalize_parameters_common() has run (or is running): parameters are finalized once,
+        // bottom-up, a chunk before whatever places it (MGEN-B09)
+        bool parameters_finalized_ = false;
+        bool parameters_finalizing_ = false;
 
         point_rel_ms mapgensize;
         tripoint_rel_ms m_offset;
@@ -560,10 +601,13 @@ class update_mapgen_function_json : public mapgen_function_json_base
         void finalize_parameters();
         void check() const;
         // Returns an empty string on success and the name of a colliding "vehicle" on failure.
+        // With @p anchor, @p offset is replaced by the one that puts the update's ( 0, 0 ) on
+        // that tile, once the map is rotated and mirrored (MGEN-J02)
         ret_val<void> update_map(
             const tripoint_abs_omt &omt_pos, const mapgen_arguments &, const tripoint_rel_ms &offset,
             mission *miss, bool verify = false, bool mirror_horizontal = false,
-            bool mirror_vertical = false, int rotation = 0 ) const;
+            bool mirror_vertical = false, int rotation = 0,
+            const std::optional<point_omt_ms> &anchor = std::nullopt ) const;
         // Returns an empty string on success and the name of a colliding "vehicle" on failure.
         ret_val<void> update_map( const mapgendata &md,
                                   const tripoint_rel_ms &offset = tripoint_rel_ms::zero,
@@ -590,6 +634,9 @@ class mapgen_function_json_nested : public mapgen_function_json_base
 
     private:
         jmapgen_int rotation;
+        // "rotation" turns the chunk only with "allow_rotation": most chunks that ask for a
+        // rotation were written for one orientation (MGEN-B08)
+        bool allow_rotation_ = false;
 };
 
 class nested_mapgen

@@ -1,17 +1,14 @@
-#include <algorithm>
 #include <string>
-#include <vector>
 
 #include "behavior.h"
 #include "coordinates.h"
-#include "item.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "mapdata.h"
-#include "material.h"
 #include "monster.h"
 #include "monster_oracle.h"
-#include "type_id.h"
+
+class item;
 
 namespace behavior
 {
@@ -19,6 +16,11 @@ namespace behavior
 const Creature *monster_oracle_t::creature() const
 {
     return subject;
+}
+
+const Creature *monster_oracle_t::target() const
+{
+    return subject == nullptr ? nullptr : subject->attack_target();
 }
 
 status_t monster_oracle_t::not_hallucination( std::string_view ) const
@@ -41,55 +43,10 @@ status_t monster_oracle_t::items_available( std::string_view ) const
 
     if( !here.has_flag( ter_furn_flag::TFLAG_SEALED, subject->pos_bub() ) &&
         here.has_items( subject->pos_bub() ) ) {
-        std::vector<material_id> absorb_material = subject->get_absorb_material();
-        std::vector<material_id> no_absorb_material = subject->get_no_absorb_material();
-
-        // base case: there are no specified conditions for what it can eat
-        if( absorb_material.empty() && no_absorb_material.empty() ) {
-            return status_t::running;
-        }
-        // case 2: no whitelist specified (it is approved for everything) but a blacklist specified
-        if( absorb_material.empty() && !no_absorb_material.empty() ) {
-            bool found = false;
-            for( item &it : here.i_at( subject->pos_bub() ) ) {
-                for( const material_type *mat_type : it.made_of_types() ) {
-                    if( !( std::find( no_absorb_material.begin(), no_absorb_material.end(),
-                                      mat_type->id ) != no_absorb_material.end() ) ) {
-                        //we found something that wasn't on the blacklist
-                        found = true;
-                    }
-                }
-            }
-            if( found ) {
+        // The same material rule as the ABSORB_ITEMS attack (MONAI-B09)
+        for( const item &it : here.i_at( subject->pos_bub() ) ) {
+            if( subject->can_absorb_item( it ) ) {
                 return status_t::running;
-            } else {
-                return status_t::failure;
-            }
-        }
-        // Case 3: there is a whitelist but no blacklist, so only allow the whitelisted ones
-        if( !absorb_material.empty() && no_absorb_material.empty() ) {
-            for( item &it : here.i_at( subject->pos_bub() ) ) {
-                for( const material_type *mat_type : it.made_of_types() ) {
-                    if( std::find( absorb_material.begin(), absorb_material.end(),
-                                   mat_type->id ) != absorb_material.end() ) {
-                        return status_t::running;
-                    }
-                }
-            }
-        }
-        // case 4: no whitelist specified (it is approved for everything) but a blacklist specified
-        if( !absorb_material.empty() && !no_absorb_material.empty() ) {
-            for( item &it : here.i_at( subject->pos_bub() ) ) {
-                for( const material_type *mat_type : it.made_of_types() ) {
-                    if( !( std::find( no_absorb_material.begin(), no_absorb_material.end(),
-                                      mat_type->id ) != no_absorb_material.end() ) ) {
-                        //we found something that wasn't on the blacklist, so now check the whitelist
-                        if( std::find( absorb_material.begin(), absorb_material.end(),
-                                       mat_type->id ) != absorb_material.end() ) {
-                            return status_t::running;
-                        }
-                    }
-                }
             }
         }
     }

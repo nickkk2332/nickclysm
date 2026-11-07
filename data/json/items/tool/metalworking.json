@@ -129,6 +129,7 @@
   },
   {
     "id": "char_forge",
+    "disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "charcoal forge" },
@@ -196,6 +197,7 @@
   },
   {
     "id": "crucible",
+    "disassembly_substitute": {  },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "crucible" },
@@ -250,6 +252,7 @@
   },
   {
     "id": "forge",
+    "disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "electric forge" },

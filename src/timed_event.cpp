@@ -10,7 +10,6 @@
 #include "avatar_action.h"
 #include "character.h"
 #include "coordinates.h"
-#include "debug.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
@@ -124,7 +123,15 @@ void timed_event::actualize()
 
     switch( type ) {
         case timed_event_type::HELP:
-            debugmsg( "Currently disabled while NPC and monster factions are being rewritten." );
+            // Does nothing (disabled while NPC and monster factions are rewritten); old saves can
+            // still have one queued
+            break;
+
+        case timed_event_type::ROBOT_ATTACK:
+            // An eyebot photographed the avatar here (mattack::photograph). What follows is
+            // content's: an EVENT EOC on becomes_wanted spawns the robots.
+            get_event_bus().send<event_type::becomes_wanted>( player_character.getID(),
+                    map_square.raw() );
             break;
 
         case timed_event_type::SPAWN_WYRMS: {
@@ -330,12 +337,18 @@ void timed_event::actualize()
                                  map_square );
             break;
         }
-        case timed_event_type::UPDATE_MAPGEN:
-            run_mapgen_update_func(
-                update_mapgen_id( string_id ), project_to<coords::omt>( map_point ), {}, nullptr );
+        case timed_event_type::UPDATE_MAPGEN: {
+            const update_mapgen_id update( string_id );
+            // As the EOC mapgen_update that queued it asked (MGEN-J02)
+            const timed_mapgen_update &how = mapgen_update;
+            run_mapgen_update_func( update, project_to<coords::omt>( map_point ),
+                                    update_mapgen_arguments( update, how.parameters ), how.anchor,
+                                    nullptr, how.cancel_on_collision, how.mirror_horizontal,
+                                    how.mirror_vertical, how.rotation );
             set_queued_points();
             reality_bubble().invalidate_map_cache( map_point.z() );
             break;
+        }
 
         case timed_event_type::REVERT_SUBMAP: {
             submap *sm = MAPBUFFER.lookup_submap( map_point );
@@ -467,6 +480,13 @@ void timed_event_manager::add( timed_event_type type, const time_point &when,
     events.emplace_back( type, when, where, expl_data );
 }
 
+void timed_event_manager::add_mapgen_update( const time_point &when, const tripoint_abs_ms &where,
+        const std::string &update_id, const std::string &key, const timed_mapgen_update &settings )
+{
+    events.emplace_back( timed_event_type::UPDATE_MAPGEN, when, -1, where, 0, update_id, key );
+    events.back().mapgen_update = settings;
+}
+
 void timed_event_manager::add( timed_event_type type, const time_point &when,
                                const int faction_id,
                                const tripoint_abs_ms &where,
@@ -513,6 +533,39 @@ void timed_event_manager::set_all( const std::string &key, time_duration time_in
             e.when = calendar::turn + time_in_future;
         }
     }
+}
+
+int timed_event_manager::count_keyed( const std::string &key ) const
+{
+    int count = 0;
+    // the events the game queues itself have no key: an empty one names none
+    if( key.empty() ) {
+        return 0;
+    }
+    for( const timed_event &e : events ) {
+        count += e.key == key ? 1 : 0;
+    }
+    return count;
+}
+
+int timed_event_manager::cancel_all( const std::string &key )
+{
+    int cancelled = 0;
+    if( key.empty() ) {
+        return 0;
+    }
+    // Not erased: an EOC run while process() goes through the list (by an explosion's deaths,
+    // say) can cancel the very event being processed. A cancelled event does nothing and is
+    // removed the next time the list is processed.
+    for( timed_event &e : events ) {
+        if( e.key == key && e.type != timed_event_type::NONE ) {
+            e.type = timed_event_type::NONE;
+            e.key.clear();
+            e.when = calendar::turn_zero;
+            ++cancelled;
+        }
+    }
+    return cancelled;
 }
 
 bool you_know_where_you_are()

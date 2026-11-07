@@ -58,11 +58,13 @@
 #include "craft_reservation.h"
 #include "crafting_enums.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
 #include "dialogue_chatbin.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enum_conversions.h"
 #include "errand.h"
@@ -75,6 +77,7 @@
 #include "flat_set.h"
 #include "game.h"
 #include "game_constants.h"
+#include "global_vars.h"
 #include "inventory.h"
 #include "item.h"
 #include "item_contents.h"
@@ -118,6 +121,7 @@
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "submap.h"
+#include "talker.h"
 #include "text_snippets.h"
 #include "tileray.h"
 #include "units_utility.h"
@@ -406,6 +410,9 @@ void player_activity::serialize( JsonOut &json ) const
         json.member( "relative_placement", relative_placement );
         json.member( "values", values );
         json.member( "str_values", str_values );
+        if( !eoc_context.empty() ) {
+            json.member( "eoc_context", eoc_context );
+        }
         json.member( "auto_resume", auto_resume );
         json.member( "monsters", monsters );
     }
@@ -419,23 +426,16 @@ void player_activity::deserialize( const JsonObject &data )
     int tmppos = 0;
 
     bool is_obsolete = false;
-    std::set<std::string> obs_activities {
-        "ACT_EAT_MENU", // Remove after 0.J
-        "ACT_CONSUME_FOOD_MENU", // Remove after 0.J
-        "ACT_CONSUME_DRINK_MENU", // Remove after 0.J
-        "ACT_CONSUME_MEDS_MENU", // Remove after 0.J
-        "ACT_ARMOR_LAYERS", // Remove after 0.J
-        "ACT_TRAIN_TEACHER", // Remove after 0.J
-        "ACT_TIDY_UP", // Remove after 0.J
-        "ACT_FERTILIZE_PLOT" // Remove after 0.J
-    };
     if( !data.read( "type", tmptype ) ) {
         // Then it's a legacy save.
         int tmp_type_legacy = data.get_int( "type" );
         deserialize_legacy_type( tmp_type_legacy, type );
-    } else if( !obs_activities.count( tmptype ) ) {
-        type = activity_id( tmptype );
+    } else if( const std::optional<activity_id> migrated = activity_type::migrate_saved(
+                   activity_id( tmptype ) ) ) {
+        // An activity_migration can rename the type
+        type = *migrated;
     } else {
+        // or drop the activity (obsolete activities are activity_migrations without "to")
         is_obsolete = true;
     }
 
@@ -474,6 +474,7 @@ void player_activity::deserialize( const JsonObject &data )
     data.read( "relative_placement", relative_placement );
     values = data.get_int_array( "values" );
     str_values = data.get_string_array( "str_values" );
+    data.read( "eoc_context", eoc_context );
     data.read( "auto_resume", auto_resume );
     data.read( "monsters", monsters );
 
@@ -705,6 +706,10 @@ void Character::load( const JsonObject &data )
         randomize_blood();
     }
     data.read( "avg_nat_bpm", avg_nat_bpm );
+    // CHAR-J09: what effects did to blood pressure, heart rate and breathing; older saves lack it
+    data.read( "bp_effect_mod", bp_effect_mod );
+    data.read( "heart_rate_effect_mod", heart_rate_effect_mod );
+    data.read( "resp_rate_effect_mod", resp_rate_effect_mod );
 
     data.read( "custom_profession", custom_profession );
 
@@ -892,6 +897,9 @@ void Character::load( const JsonObject &data )
     []( const bionic & it ) {
         return it.id.is_null(); // remove obsoleted bionics
     } ), my_bionics->end() );
+    // before the rebuild below, which builds the body from them too
+    data.read( "eoc_added_bodyparts", eoc_added_bodyparts );
+    data.read( "eoc_removed_bodyparts", eoc_removed_bodyparts );
     // We need to ensure that cached_mutations contains no invalid mutations before we do this
     // As every time we add a mutation, we rebuild the enchantment cache, causing errors if
     // we have invalid mutations.
@@ -1218,13 +1226,22 @@ void Character::load( const JsonObject &data )
     for( JsonObject elem : data.get_array( "queued_effect_on_conditions" ) ) {
         queued_eoc temp;
         temp.time = time_point( elem.get_int( "time" ) );
-        temp.eoc = effect_on_condition_id( elem.get_string( "eoc" ) );
+        const std::optional<effect_on_condition_id> eoc = effect_on_conditions::migrate_saved(
+                    effect_on_condition_id( elem.get_string( "eoc" ) ) );
+        if( !eoc ) {
+            // An effect_on_condition_migration drops it
+            elem.allow_omitted_members();
+            continue;
+        }
+        temp.eoc = *eoc;
         elem.read( "context", temp.context );
         game::legacy_migrate_npctalk_var_prefix( temp.context );
+        elem.read( "beta", temp.beta );
 
         queued_effect_on_conditions.push( temp );
     }
     data.read( "inactive_eocs", inactive_effect_on_condition_vector );
+    effect_on_conditions::migrate_saved( inactive_effect_on_condition_vector );
 
     walk.reset();
     if( data.has_object( "walk" ) ) {
@@ -1239,6 +1256,14 @@ void Character::load( const JsonObject &data )
 void Character::store( JsonOut &json ) const
 {
     Creature::store( json );
+
+    // u_add_body_part and u_lose_body_part
+    if( eoc_added_bodyparts.any() ) {
+        json.member( "eoc_added_bodyparts", eoc_added_bodyparts );
+    }
+    if( eoc_removed_bodyparts.any() ) {
+        json.member( "eoc_removed_bodyparts", eoc_removed_bodyparts );
+    }
 
     if( !weapon.is_null() ) {
         json.member( "weapon", weapon ); // also saves contents
@@ -1264,6 +1289,9 @@ void Character::store( JsonOut &json ) const
     json.member_as_string( "blood_type", my_blood_type );
     json.member( "blood_rh_factor", blood_rh_factor );
     json.member( "avg_nat_bpm", avg_nat_bpm );
+    json.member( "bp_effect_mod", bp_effect_mod );
+    json.member( "heart_rate_effect_mod", heart_rate_effect_mod );
+    json.member( "resp_rate_effect_mod", resp_rate_effect_mod );
 
     json.member( "custom_profession", custom_profession );
 
@@ -1456,11 +1484,18 @@ void Character::store( JsonOut &json ) const
     json.member( "queued_effect_on_conditions" );
     json.start_array();
     while( !temp_queued.empty() ) {
-        json.start_object();
-        json.member( "time", temp_queued.top().time );
-        json.member( "eoc", temp_queued.top().eoc );
-        json.member( "context", temp_queued.top().context );
-        json.end_object();
+        const queued_eoc &top = temp_queued.top();
+        if( !top.cancelled ) {
+            json.start_object();
+            json.member( "time", top.time );
+            json.member( "eoc", top.eoc );
+            json.member( "context", top.context );
+            // the npc kept by run_eocs' keep_talkers
+            if( !top.beta.empty() ) {
+                json.member( "beta", top.beta );
+            }
+            json.end_object();
+        }
         temp_queued.pop();
     }
 
@@ -2469,7 +2504,8 @@ void monster::load( const JsonObject &data )
     // Allocate legacy identities when loading, before another master save can be written.
     persistent_id();
 
-    const mtype_id montype( data.get_string( "typeid", "invalid*type" ) );
+    const mtype_id montype = monster_migrations::migrate( mtype_id( data.get_string( "typeid",
+                             "invalid*type" ) ) );
     if( montype.is_valid() ) {
         type = &montype.obj();
     } else { // type is invalid (monster deleted from data - replace with something neutral)
@@ -2480,6 +2516,15 @@ void monster::load( const JsonObject &data )
     data.read( "unique_name", unique_name );
     data.read( "nickname", nickname );
     data.read( "goal", goal );
+    // A destination or target forced by an EOC; only saved while there is one
+    forced_dest = std::nullopt;
+    forced_dest_range = 0;
+    forced_target = creature_ref();
+    forced_goal_until = calendar::turn_max;
+    data.read( "forced_dest", forced_dest );
+    data.read( "forced_dest_range", forced_dest_range );
+    data.read( "forced_target", forced_target );
+    data.read( "forced_goal_until", forced_goal_until );
     data.read( "provocative_sound", provocative_sound );
     data.read( "wandf", wandf );
     data.read( "wander_pos", wander_pos );
@@ -2532,7 +2577,8 @@ void monster::load( const JsonObject &data )
                 if( ptimeout >= 0 ) {
                     entry.cooldown = ptimeout;
                 } else { // -1 means disabled, unclear what <-1 values mean in old saves
-                    dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+                    // No target while loading: an empty npc, as at spawn (MONAI-J03)
+                    dialogue d( get_talker_for( this ), std::make_unique<talker>() );
                     entry.cooldown = type->special_attacks.at( aname )->cooldown.evaluate( d );
                     entry.enabled = false;
                 }
@@ -2556,7 +2602,8 @@ void monster::load( const JsonObject &data )
         const std::string &aname = sa.first;
         if( special_attacks.find( aname ) == special_attacks.end() ) {
             auto &entry = special_attacks[aname];
-            dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+            // No target while loading: an empty npc, as at spawn (MONAI-J03)
+            dialogue d( get_talker_for( this ), std::make_unique<talker>() );
             entry.cooldown = rng( 0, sa.second->cooldown.evaluate( d ) );
         }
     }
@@ -2598,7 +2645,12 @@ void monster::load( const JsonObject &data )
     }
 
     biosignatures = data.get_bool( "biosignatures", type->biosignatures );
-    biosig_timer = time_point( data.get_int( "biosig_timer", -1 ) );
+    // Older saves stored an unset timer as -1, which would drop 51 items at once (MONAI-B05)
+    biosig_timer.reset();
+    data.read( "biosig_timer", biosig_timer );
+    if( biosig_timer && *biosig_timer == calendar::before_time_starts ) {
+        biosig_timer.reset();
+    }
 
     data.read( "udder_timer", udder_timer );
     data.read( "times_combatted_player", times_combatted_player );
@@ -2645,6 +2697,12 @@ void monster::store( JsonOut &json ) const
     json.member( "unique_name", unique_name );
     json.member( "nickname", nickname );
     json.member( "goal", goal );
+    if( has_forced_goal() ) {
+        json.member( "forced_dest", forced_dest );
+        json.member( "forced_dest_range", forced_dest_range );
+        json.member( "forced_target", forced_target );
+        json.member( "forced_goal_until", forced_goal_until );
+    }
     json.member( "wander_pos", wander_pos );
     json.member( "wandf", wandf );
     json.member( "provocative_sound", provocative_sound );
@@ -3322,6 +3380,12 @@ void load_temperature_removal_blacklist( const JsonObject &jo, std::string_view/
     temperature_removal_blacklist.insert( new_blacklist.begin(), new_blacklist.end() );
 }
 
+void reset_removal_blacklists()
+{
+    charge_removal_blacklist.clear();
+    temperature_removal_blacklist.clear();
+}
+
 template<typename Archive>
 void item::io( Archive &archive )
 {
@@ -3560,16 +3624,8 @@ void item::io( Archive &archive )
         }
     }
 
-    static const std::set<std::string> removed_item_vars = {
-        // Searchlight monster setting vars
-        "SL_PREFER_UP", "SL_PREFER_DOWN", "SL_PREFER_RIGHT", "SL_PREFER_LEFT", "SL_SPOT_X", "SL_SPOT_Y", "SL_POWER", "SL_DIR",
-        // Remove stored translated gerund in favor of storing the inscription tool type
-        "item_label_type", "item_note_type"
-    };
-
-    for( const std::string &var : removed_item_vars ) {
-        item_vars.erase( var );
-    }
+    // Renamed and removed item variables are var_migrations with the "item" scope
+    get_globals().migrate_vars( *item_vars, var_scope::item );
 
     current_phase = static_cast<phase_id>( cur_phase );
     // override phase if frozen, needed for legacy save
@@ -3952,7 +4008,11 @@ void vehicle::deserialize( const JsonObject &data )
     data.read( "faceDir", fdir );
     data.read( "moveDir", mdir );
     data.read( "values", values );
+    get_globals().migrate_vars( values, var_scope::vehicle );
     data.read( "chat_topics", chat_topics );
+    int64_t saved_uid = 0;
+    data.read( "vehicle_uid", saved_uid );
+    persistent_uid.load( saved_uid );
     int turn_dir_int;
     data.read( "turn_dir", turn_dir_int );
     turn_dir = units::from_degrees( turn_dir_int );
@@ -4071,6 +4131,9 @@ void vehicle::serialize( JsonOut &json ) const
     json.member( "om_id", om_id );
     json.member( "values", values );
     json.member( "chat_topics", chat_topics );
+    if( persistent_uid.peek() != 0 ) {
+        json.member( "vehicle_uid", persistent_uid.peek() );
+    }
     json.member( "faceDir", std::lround( to_degrees( face.dir() ) ) );
     json.member( "moveDir", std::lround( to_degrees( move.dir() ) ) );
     json.member( "turn_dir", std::lround( to_degrees( turn_dir ) ) );
@@ -4372,6 +4435,10 @@ void Creature::store( JsonOut &jsout ) const
 
     jsout.member( "body", body );
     jsout.member( "lifespan_end", lifespan_end );
+    // kill credit and COPY_SUMMONER_LOOK need it after a reload (MONDT-B12)
+    if( summoner.type != creature_ref::kind::none ) {
+        jsout.member( "summoner", summoner );
+    }
     // fake is not stored, it's temporary anyway, only used to fire with a gun.
 }
 
@@ -4391,13 +4458,7 @@ void Creature::load( const JsonObject &jsin )
     // u/npc variables
     jsin.read( "values", values );
     // potentially migrate some values
-    for( std::pair<std::string, std::string> migration : get_globals().migrations ) {
-        if( values.count( migration.first ) != 0 ) {
-            auto extracted = values.extract( migration.first );
-            extracted.key() = migration.second;
-            values.insert( std::move( extracted ) );
-        }
-    }
+    get_globals().migrate_vars( values, is_monster() ? var_scope::monster : var_scope::character );
 
     game::legacy_migrate_npctalk_var_prefix( values );
 
@@ -4438,6 +4499,11 @@ void Creature::load( const JsonObject &jsin )
 
     fake = false; // see Creature::load
     jsin.read( "lifespan_end", lifespan_end );
+    // saves from before MONDT-B12 have none
+    summoner = creature_ref();
+    if( jsin.has_object( "summoner" ) ) {
+        jsin.read( "summoner", summoner );
+    }
     on_stat_change( "pain", pain );
 }
 
@@ -4856,15 +4922,8 @@ void basecamp::serialize( JsonOut &json ) const
                 json.end_object();
             }
             json.end_array();
-            json.member( "in_progress" );
-            json.start_array();
-            for( const auto &working : expansion.second.in_progress ) {
-                json.start_object();
-                json.member( "id", working.first );
-                json.member( "amount", working.second );
-                json.end_object();
-            }
-            json.end_array();
+            // no "in_progress": what is being built comes from the companions out building
+            // (CAMP-B13); old saves' list is left unread
             json.member( "pos", expansion.second.pos );
             json.end_object();
         }
@@ -4960,12 +5019,6 @@ void basecamp::deserialize( const JsonObject &data )
         const std::string &initial_provide = base_camps::faction_encode_abs( e, 0 );
         if( e.provides.find( initial_provide ) == e.provides.end() ) {
             e.provides[ initial_provide ] = 1;
-        }
-        for( JsonObject in_progress_data : edata.get_array( "in_progress" ) ) {
-            in_progress_data.allow_omitted_members();
-            std::string id = in_progress_data.get_string( "id" );
-            int amount = in_progress_data.get_int( "amount" );
-            e.in_progress[ id ] = amount;
         }
         edata.read( "pos", e.pos );
         expansions[ dir ] = e;
@@ -5218,6 +5271,60 @@ void field_type_migrations::check()
     }
 }
 
+// monster_migration entries: the type a saved monster becomes; none: it is removed
+static std::map<mtype_id, std::optional<mtype_id>> mon_migrations;
+
+void monster_migrations::load( const JsonObject &jo )
+{
+    const mtype_id from( jo.get_string( "from" ) );
+    std::optional<mtype_id> to;
+    if( jo.has_member( "to" ) ) {
+        to = mtype_id( jo.get_string( "to" ) );
+    }
+    // A later migration of the same id replaces the earlier one
+    mon_migrations.insert_or_assign( from, to );
+}
+
+void monster_migrations::reset()
+{
+    mon_migrations.clear();
+}
+
+void monster_migrations::check()
+{
+    for( const auto &[from, to] : mon_migrations ) {
+        if( to && !to->is_valid() ) {
+            debugmsg( "monster_migration from %s names a monster type that does not exist: %s",
+                      from.str(), to->str() );
+        }
+    }
+}
+
+mtype_id monster_migrations::migrate( const mtype_id &id )
+{
+    const auto it = mon_migrations.find( id );
+    if( it == mon_migrations.end() || !it->second ) {
+        return id;
+    }
+    return *it->second;
+}
+
+bool monster_migrations::removes( const mtype_id &id )
+{
+    const auto it = mon_migrations.find( id );
+    return it != mon_migrations.end() && !it->second;
+}
+
+bool monster_migrations::removes( const JsonObject &saved_monster )
+{
+    if( mon_migrations.empty() || !saved_monster.has_string( "typeid" ) ||
+        !removes( mtype_id( saved_monster.get_string( "typeid" ) ) ) ) {
+        return false;
+    }
+    saved_monster.allow_omitted_members();
+    return true;
+}
+
 void submap::store_phase_reverts( JsonOut &jsout ) const
 {
     jsout.member( "phase_reverts" );
@@ -5230,6 +5337,109 @@ void submap::store_phase_reverts( JsonOut &jsout ) const
         jsout.end_array();
     }
     jsout.end_array();
+}
+
+void spawn_data::serialize_saved( JsonOut &jsout ) const
+{
+    jsout.start_object();
+    if( !ammo.empty() ) {
+        jsout.member( "ammo" );
+        jsout.start_array();
+        for( const std::pair<const itype_id, jmapgen_int> &a : ammo ) {
+            jsout.start_array();
+            jsout.write( a.first );
+            jsout.write( a.second.val );
+            jsout.write( a.second.valmax );
+            jsout.end_array();
+        }
+        jsout.end_array();
+    }
+    if( !patrol.empty() ) {
+        // MGEN-J06: kept as ranges, rolled when the monster is placed
+        jsout.member( "patrol_ranges" );
+        jsout.start_array();
+        for( const spawn_patrol_point &pt : patrol ) {
+            jsout.start_array();
+            jsout.write( pt.x.val );
+            jsout.write( pt.x.valmax );
+            jsout.write( pt.y.val );
+            jsout.write( pt.y.valmax );
+            jsout.end_array();
+        }
+        jsout.end_array();
+    }
+    if( !effects.empty() ) {
+        jsout.member( "effects" );
+        jsout.start_array();
+        for( const spawn_effect &eff : effects ) {
+            jsout.start_array();
+            jsout.write( eff.id );
+            jsout.write( eff.duration.val );
+            jsout.write( eff.duration.valmax );
+            jsout.write( eff.intensity.val );
+            jsout.write( eff.intensity.valmax );
+            jsout.write( eff.permanent );
+            jsout.end_array();
+        }
+        jsout.end_array();
+    }
+    if( !str_variables.empty() ) {
+        jsout.member( "str_variables", str_variables );
+    }
+    if( !num_variables.empty() ) {
+        jsout.member( "num_variables", num_variables );
+    }
+    if( !faction.is_empty() ) {
+        jsout.member( "faction", faction );
+    }
+    if( !eocs.empty() ) {
+        jsout.member( "eocs", eocs );
+    }
+    jsout.end_object();
+}
+
+void spawn_data::deserialize_saved( const JsonObject &jo )
+{
+    jo.allow_omitted_members();
+    for( JsonArray a : jo.get_array( "ammo" ) ) {
+        const itype_id id( a.next_string() );
+        const int val = a.next_int();
+        ammo.emplace( id, jmapgen_int( val, a.next_int() ) );
+    }
+    // saves before MGEN-J06 keep the points already rolled
+    std::vector<point_rel_ms> rolled_points;
+    jo.read( "patrol", rolled_points );
+    for( const point_rel_ms &pt : rolled_points ) {
+        spawn_patrol_point fixed;
+        fixed.x = jmapgen_int( pt.x() );
+        fixed.y = jmapgen_int( pt.y() );
+        patrol.push_back( fixed );
+    }
+    for( JsonArray a : jo.get_array( "patrol_ranges" ) ) {
+        spawn_patrol_point pt;
+        // the x range, then the y range
+        std::array<int, 4> range{};
+        for( int &bound : range ) {
+            bound = a.next_int();
+        }
+        pt.x = jmapgen_int( range[0], range[1] );
+        pt.y = jmapgen_int( range[2], range[3] );
+        patrol.push_back( pt );
+    }
+    for( JsonArray e : jo.get_array( "effects" ) ) {
+        spawn_effect eff;
+        eff.id = efftype_id( e.next_string() );
+        const int dur = e.next_int();
+        eff.duration = jmapgen_int( dur, e.next_int() );
+        const int intensity = e.next_int();
+        eff.intensity = jmapgen_int( intensity, e.next_int() );
+        eff.permanent = e.next_bool();
+        effects.push_back( eff );
+    }
+    jo.read( "str_variables", str_variables );
+    jo.read( "num_variables", num_variables );
+    jo.read( "faction", faction );
+    jo.read( "eocs", eocs );
 }
 
 void submap::store_spawns( JsonOut &jsout ) const
@@ -5247,6 +5457,11 @@ void submap::store_spawns( JsonOut &jsout ) const
         jsout.write( elem.mission_id );
         jsout.write( elem.friendly );
         jsout.write( elem.name );
+        // MONDT-J01: the spawn data, which a pending spawn used to lose when its submap was saved;
+        // left out when there is none, as older saves have it
+        if( !elem.data.empty() ) {
+            elem.data.serialize_saved( jsout );
+        }
         jsout.end_array();
     }
     jsout.end_array();
@@ -5729,7 +5944,8 @@ void submap::load( const JsonValue &jv, const std::string &member_name, int vers
         JsonArray spawns_json = jv;
         for( JsonArray spawn_entry : spawns_json ) {
             // TODO: json should know how to read an string_id
-            const mtype_id type = mtype_id( spawn_entry.next_string() );
+            const mtype_id saved_type( spawn_entry.next_string() );
+            const mtype_id type = monster_migrations::migrate( saved_type );
             int count = spawn_entry.next_int();
             int i = spawn_entry.next_int();
             int j = spawn_entry.next_int();
@@ -5739,10 +5955,17 @@ void submap::load( const JsonValue &jv, const std::string &member_name, int vers
             bool friendly = spawn_entry.next_bool();
             std::optional<std::string> name = std::nullopt;
             spawn_entry.read_next( name );
+            spawn_data data;
+            if( spawn_entry.has_more() ) {
+                data.deserialize_saved( spawn_entry.next_object() );
+            }
             if( spawn_entry.has_more() ) {
                 spawn_entry.throw_error( "Too many values for spawn" );
             }
-            spawn_point tmp( type, count, p, faction_id, mission_id, friendly, name );
+            if( monster_migrations::removes( saved_type ) ) {
+                continue;
+            }
+            spawn_point tmp( type, count, p, faction_id, mission_id, friendly, name, data );
             spawns.push_back( tmp );
         }
     } else if( member_name == "vehicles" ) {

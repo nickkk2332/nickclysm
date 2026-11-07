@@ -1,6 +1,7 @@
 #include "requirements.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstdlib>
 #include <exception>
@@ -11,8 +12,11 @@
 #include <set>
 #include <sstream>
 #include <stack>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "cata_assert.h"
 #include "cata_utility.h"
@@ -46,22 +50,8 @@
 static const flag_id json_flag_UNRECOVERABLE( "UNRECOVERABLE" );
 
 static const itype_id itype_UPS( "UPS" );
-static const itype_id itype_char_forge( "char_forge" );
-static const itype_id itype_crucible( "crucible" );
-static const itype_id itype_fire( "fire" );
-static const itype_id itype_forge( "forge" );
-static const itype_id itype_oxy_torch( "oxy_torch" );
-static const itype_id itype_press( "press" );
-static const itype_id itype_welder( "welder" );
-static const itype_id itype_welder_crude( "welder_crude" );
 
 static const quality_id qual_BOIL( "BOIL" );
-static const quality_id qual_CUT( "CUT" );
-static const quality_id qual_GLARE( "GLARE" );
-static const quality_id qual_KNIT( "KNIT" );
-static const quality_id qual_PULL( "PULL" );
-static const quality_id qual_SAW_M_FINE( "SAW_M_FINE" );
-static const quality_id qual_SEW( "SEW" );
 
 static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
 
@@ -173,6 +163,11 @@ void quality::load( const JsonObject &jo, std::string_view )
             usages.emplace_back( level, line );
         }
     }
+
+    if( jo.has_object( "disassembly_substitute" ) ) {
+        disassembly_sub.emplace();
+        disassembly_sub->load( jo.get_object( "disassembly_substitute" ) );
+    }
 }
 
 /** @relates string_id */
@@ -187,6 +182,40 @@ template<>
 bool string_id<quality>::is_valid() const
 {
     return quality_factory.is_valid( *this );
+}
+
+void disassembly_substitute::load( const JsonObject &jo )
+{
+    qualities.clear();
+    for( const JsonObject jq : jo.get_array( "qualities" ) ) {
+        const int level = jq.get_int( "level", 0 );
+        if( level < 0 ) {
+            jq.throw_error_at( "level", "a substitute quality level cannot be negative" );
+        }
+        qualities.emplace_back( quality_id( jq.get_string( "id" ) ), level );
+    }
+    drop_tools.clear();
+    for( const std::string tool : jo.get_array( "drop_tools" ) ) {
+        drop_tools.emplace_back( tool );
+    }
+}
+
+std::string disassembly_substitute::check() const
+{
+    std::string errors;
+    for( const std::pair<quality_id, int> &q : qualities ) {
+        if( !q.first.is_valid() ) {
+            errors += string_format( "unknown quality %s in disassembly_substitute.  ",
+                                     q.first.str() );
+        }
+    }
+    for( const itype_id &tool : drop_tools ) {
+        if( !item::type_is_defined( tool ) ) {
+            errors += string_format( "unknown item %s in disassembly_substitute drop_tools.  ",
+                                     tool.str() );
+        }
+    }
+    return errors;
 }
 
 std::string quality_requirement::to_string( const int, const int ) const
@@ -495,7 +524,7 @@ requirement_data requirement_data::operator+( const std::pair<requirement_id, in
 }
 
 void requirement_data::load_requirement( const JsonObject &jsobj, const requirement_id &id,
-        const bool check_extend, const bool is_abstract )
+        const bool check_extend )
 {
     requirement_data req;
     requirement_data ext;
@@ -515,24 +544,12 @@ void requirement_data::load_requirement( const JsonObject &jsobj, const requirem
 
     if( ext.components.empty() || jsobj.has_member( "components" ) ) {
         load_obj_list( jsobj.get_array( "components" ), req.components );
-        if( is_abstract && !req.components.empty() ) {
-            debugmsg( "Abstract recipe %s has components, which cannot be inherited.  "
-                      "This is probably an error.", id.str() );
-        }
     }
     if( ext.qualities.empty() || jsobj.has_member( "qualities" ) ) {
         load_obj_list( jsobj.get_array( "qualities" ), req.qualities );
-        if( is_abstract && !req.qualities.empty() ) {
-            debugmsg( "Abstract recipe %s has qualities, which cannot be inherited.  "
-                      "This is probably an error.", id.str() );
-        }
     }
     if( ext.tools.empty() || jsobj.has_member( "tools" ) ) {
         load_obj_list( jsobj.get_array( "tools" ), req.tools );
-        if( is_abstract && !req.tools.empty() ) {
-            debugmsg( "Abstract recipe %s has tools, which cannot be inherited.  "
-                      "This is probably an error.", id.str() );
-        }
     }
 
     if( !id.is_null() ) {
@@ -550,6 +567,106 @@ void requirement_data::load_requirement( const JsonObject &jsobj, const requirem
     }
 
     save_requirement( req, string_id<requirement_data>::NULL_ID(), &ext );
+}
+
+namespace
+{
+// Takes the entries whose id is one of ids out of every group and drops the groups left empty.
+// Returns the ids no entry had.
+template<typename T>
+std::vector<std::string> delete_from_groups( std::vector<std::vector<T>> &groups,
+        const std::vector<std::string> &ids )
+{
+    std::vector<std::string> missing;
+    for( const std::string &del : ids ) {
+        bool found = false;
+        for( std::vector<T> &group : groups ) {
+            const auto removed = std::remove_if( group.begin(), group.end(), [&del]( const T & entry ) {
+                return entry.type.str() == del;
+            } );
+            found |= removed != group.end();
+            group.erase( removed, group.end() );
+        }
+        if( !found ) {
+            missing.push_back( del );
+        }
+    }
+    groups.erase( std::remove_if( groups.begin(), groups.end(), []( const std::vector<T> &group ) {
+        return group.empty();
+    } ), groups.end() );
+    return missing;
+}
+} // namespace
+
+void requirement_data::load_inline_requirement( const JsonObject &jsobj, const requirement_id &id,
+        const requirement_data &inherited, const bool was_loaded )
+{
+    requirement_data req;
+    req.components = inherited.components;
+    req.tools = inherited.tools;
+    req.qualities = inherited.qualities;
+    const auto load_group = [&jsobj]( const std::string_view member, auto & groups ) {
+        if( jsobj.has_member( member ) ) {
+            groups.clear();
+            load_obj_list( jsobj.get_array( member ), groups );
+        }
+    };
+    load_group( "components", req.components );
+    load_group( "tools", req.tools );
+    load_group( "qualities", req.qualities );
+
+    static const std::array<std::string_view, 3> members = { "components", "tools", "qualities" };
+    if( !was_loaded ) {
+        for( const std::string_view member : members ) {
+            warn_disabled_feature( jsobj, "extend", member, "no copy-from" );
+            warn_disabled_feature( jsobj, "delete", member, "no copy-from" );
+        }
+    } else {
+        if( jsobj.has_object( "extend" ) ) {
+            JsonObject jext = jsobj.get_object( "extend" );
+            jext.allow_omitted_members();
+            // each entry is a group, as in the member itself
+            if( jext.has_member( "components" ) ) {
+                load_obj_list( jext.get_array( "components" ), req.components );
+            }
+            if( jext.has_member( "tools" ) ) {
+                load_obj_list( jext.get_array( "tools" ), req.tools );
+            }
+            if( jext.has_member( "qualities" ) ) {
+                load_obj_list( jext.get_array( "qualities" ), req.qualities );
+            }
+        }
+        if( jsobj.has_object( "delete" ) ) {
+            JsonObject jdel = jsobj.get_object( "delete" );
+            jdel.allow_omitted_members();
+            const auto delete_ids = [&jdel]( const std::string_view member, auto & groups ) {
+                if( !jdel.has_member( member ) ) {
+                    return;
+                }
+                std::vector<std::string> ids;
+                for( const std::string del : jdel.get_array( member ) ) {
+                    ids.push_back( del );
+                }
+                const std::vector<std::string> missing = delete_from_groups( groups, ids );
+                if( !missing.empty() ) {
+                    jdel.throw_error_at( member, string_format( "no %s %s to delete", member,
+                                         missing.front() ) );
+                }
+            };
+            delete_ids( "components", req.components );
+            delete_ids( "tools", req.tools );
+            delete_ids( "qualities", req.qualities );
+        }
+    }
+
+    req.id_ = id;
+    if( was_loaded && inherited.id_ == id ) {
+        // a copy of itself (a mod changing a recipe): what was stored is the parent, which req
+        // already started from, so req replaces it whole and an emptied group stays empty
+        requirements_all[id] = req;
+    } else {
+        save_requirement( req );
+    }
 }
 
 void requirement_data::save_requirement( const requirement_data &req, const requirement_id &id,
@@ -719,6 +836,14 @@ void requirement_data::check_consistency()
         check_consistency( r.second.tools, r.first.str() );
         check_consistency( r.second.components, r.first.str() );
         check_consistency( r.second.qualities, r.first.str() );
+    }
+    for( const quality &q : quality_factory.get_all() ) {
+        if( q.disassembly_sub ) {
+            const std::string errors = q.disassembly_sub->check();
+            if( !errors.empty() ) {
+                debugmsg( "tool quality %s: %s", q.id.str(), errors );
+            }
+        }
     }
 }
 
@@ -1337,94 +1462,88 @@ requirement_data::alter_item_comp_vector &requirement_data::get_components()
 
 requirement_data requirement_data::disassembly_requirements() const
 {
-    // TODO:
-    // Allow jsonizing those tool replacements
-
     // Make a copy
     // Maybe TODO: Cache it somewhere and return a reference instead
     requirement_data ret = *this;
-    auto new_qualities = std::vector<quality_requirement>();
-    bool remove_fire = false;
-    for( auto &it : ret.tools ) {
-        bool replaced = false;
-        for( const tool_comp &tool : it ) {
-            const itype_id &type = tool.type;
-
-            // If crafting required a welder or forge then disassembly requires metal sawing
-            if( type == itype_welder || type == itype_welder_crude || type == itype_oxy_torch ||
-                type == itype_forge || type == itype_char_forge ) {
-                new_qualities.emplace_back( qual_SAW_M_FINE, 1, 1 );
-                replaced = true;
-                break;
-            }
-            if( type == itype_crucible ) {
-                replaced = true;
-                break;
-            }
-            //This ensures that you don't need a hand press to break down reloaded ammo.
-            if( type == itype_press ) {
-                replaced = true;
-                remove_fire = true;
-                new_qualities.emplace_back( qual_PULL, 1, 1 );
-                break;
-            }
-            if( type == itype_fire && remove_fire ) {
-                replaced = true;
-                break;
-            }
+    // CRAFT-J07: the tools and qualities that stand in for others come from JSON
+    // ("disassembly_substitute" on items and tool qualities) rather than a fixed table.
+    std::vector<quality_requirement> new_qualities;
+    std::set<itype_id> drop_tools;
+    const auto substitute = [&new_qualities, &drop_tools]( const disassembly_substitute & sub,
+    int asked_level ) {
+        for( const std::pair<quality_id, int> &q : sub.qualities ) {
+            new_qualities.emplace_back( q.first, 1, q.second > 0 ? q.second : asked_level );
         }
-
-        if( replaced ) {
-            // Replace the entire block of variants
-            // This avoids the pesky integrated toolset
-            it.clear();
+        drop_tools.insert( sub.drop_tools.begin(), sub.drop_tools.end() );
+    };
+    for( std::vector<tool_comp> &group : ret.tools ) {
+        for( const tool_comp &tool : group ) {
+            if( !tool.type.is_valid() ) {
+                continue;
+            }
+            const std::shared_ptr<const disassembly_substitute> &sub = tool.type->disassembly_sub;
+            if( sub ) {
+                substitute( *sub, 1 );
+                // Replace the entire block of variants
+                // This avoids the pesky integrated toolset
+                group.clear();
+                break;
+            }
         }
     }
-
-    // Warning: This depends on the fact that tool qualities
-    // are all mandatory (don't use variants)
-    // If that ever changes, this will be wrong!
-    if( ret.qualities.empty() ) {
-        ret.qualities.resize( 1 );
-    } else {
-        //If the required quality level is not empty, iterate through and replace or remove
-        //qualities with deconstruction equivalents
-        for( auto &it : ret.qualities ) {
-            bool replaced = false;
-            for( const quality_requirement &quality : it ) {
-                if( quality.type == qual_SEW ) {
-                    replaced = true;
-                    new_qualities.emplace_back( qual_CUT, 1, quality.level );
-                    break;
-                }
-                if( quality.type == qual_GLARE ) {
-                    replaced = true;
-                    //Just remove the glare protection requirement from deconstruction
-                    //This only happens in case of a reversible recipe, an explicit
-                    //deconstruction recipe can still specify glare protection
-                    break;
-                }
-                if( quality.type == qual_KNIT ) {
-                    replaced = true;
-                    //Ditto for knitting needles
-                    break;
-                }
+    for( std::vector<quality_requirement> &group : ret.qualities ) {
+        for( const quality_requirement &qual : group ) {
+            if( !qual.type.is_valid() ) {
+                continue;
             }
-            if( replaced ) {
-                it.clear();
+            const std::optional<disassembly_substitute> &sub = qual.type->disassembly_sub;
+            if( sub ) {
+                substitute( *sub, qual.level );
+                group.clear();
+                break;
+            }
+        }
+    }
+    // A second pass, so a dropped tool goes whichever order the groups came in (reloaded shot
+    // lists its fire before its press).
+    if( !drop_tools.empty() ) {
+        for( std::vector<tool_comp> &group : ret.tools ) {
+            if( std::any_of( group.begin(), group.end(), [&drop_tools]( const tool_comp & tool ) {
+            return drop_tools.count( tool.type ) > 0;
+            } ) ) {
+                group.clear();
             }
         }
     }
 
-    auto &qualities = ret.qualities[0];
-    qualities.insert( qualities.end(), new_qualities.begin(), new_qualities.end() );
-    // Remove duplicate qualities
-    {
-        const auto itr = std::unique( qualities.begin(), qualities.end(),
-        []( const quality_requirement & a, const quality_requirement & b ) {
-            return a.type == b.type;
+    // CRAFT-B04: each group is a list of alternatives, so a substitute is a group of its own
+    // (it was added to the first group, as an alternative to it).  Emptied groups go, and one
+    // quality needed in several single-entry groups is needed once, at the highest level.
+    ret.qualities.erase( std::remove_if( ret.qualities.begin(), ret.qualities.end(),
+    []( const std::vector<quality_requirement> &group ) {
+        return group.empty();
+    } ), ret.qualities.end() );
+    for( const quality_requirement &added : new_qualities ) {
+        ret.qualities.push_back( { added } );
+    }
+    for( auto it = ret.qualities.begin(); it != ret.qualities.end(); ) {
+        if( it->size() != 1 ) {
+            ++it;
+            continue;
+        }
+        const quality_requirement &q = it->front();
+        const auto earlier = std::find_if( ret.qualities.begin(), it,
+        [&q]( const std::vector<quality_requirement> &group ) {
+            return group.size() == 1 && group.front().type == q.type;
         } );
-        qualities.resize( std::distance( qualities.begin(), itr ) );
+        if( earlier == it ) {
+            ++it;
+            continue;
+        }
+        quality_requirement &kept = earlier->front();
+        kept.level = std::max( kept.level, q.level );
+        kept.count = std::max( kept.count, q.count );
+        it = ret.qualities.erase( it );
     }
 
     // Remove empty variant sections

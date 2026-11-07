@@ -35,7 +35,6 @@
 #include "damage.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
@@ -97,7 +96,6 @@
 
 static const anatomy_id anatomy_human_anatomy( "human_anatomy" );
 
-static const bionic_id bio_cqb( "bio_cqb" );
 static const bionic_id bio_heat_absorb( "bio_heat_absorb" );
 static const bionic_id bio_shock( "bio_shock" );
 
@@ -118,7 +116,6 @@ static const damage_type_id damage_stab( "stab" );
 
 static const efftype_id effect_amigara( "amigara" );
 static const efftype_id effect_beartrap( "beartrap" );
-static const efftype_id effect_contacts( "contacts" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_fearparalyze( "fearparalyze" );
 static const efftype_id effect_heavysnare( "heavysnare" );
@@ -129,7 +126,6 @@ static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_natural_stance( "natural_stance" );
 static const efftype_id effect_pet( "pet" );
 static const efftype_id effect_stunned( "stunned" );
-static const efftype_id effect_transition_contacts( "transition_contacts" );
 static const efftype_id effect_winded( "winded" );
 
 static const itype_id itype_fur( "fur" );
@@ -141,9 +137,10 @@ static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_TAKE_DAMAGE( "CANNOT_TAKE_DAMAGE" );
 static const json_character_flag json_flag_CBQ_LEARN_BONUS( "CBQ_LEARN_BONUS" );
+static const json_character_flag json_flag_CQB_LEARNING( "CQB_LEARNING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_HARDTOHIT( "HARDTOHIT" );
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
+static const json_character_flag json_flag_NO_MELEE_PRACTICE( "NO_MELEE_PRACTICE" );
 static const json_character_flag json_flag_PSEUDOPOD_GRASP( "PSEUDOPOD_GRASP" );
 
 static const limb_score_id limb_score_block( "block" );
@@ -175,6 +172,11 @@ static const trait_id trait_PROF_SKATER( "PROF_SKATER" );
 
 static const weapon_category_id weapon_category_UNARMED( "UNARMED" );
 
+static const std::string block_counter_max_glass_percent( "BLOCK_COUNTER_MAX_GLASS_PERCENT" );
+static const std::string block_min_stamina( "BLOCK_MIN_STAMINA" );
+static const std::string block_reaction_per_skill( "BLOCK_REACTION_PER_SKILL" );
+static const std::string block_size_margin( "BLOCK_SIZE_MARGIN" );
+static const std::string block_stamina_cost_mult( "BLOCK_STAMINA_COST_MULT" );
 static const std::string player_base_stamina_burn_rate( "PLAYER_BASE_STAMINA_BURN_RATE" );
 
 static void player_hit_message( Character *attacker, const std::string &message,
@@ -370,12 +372,8 @@ float Character::get_hit_weapon( const item &weap ) const
     /** @EFFECT_BASHING improves hit chance for bashing weapons */
     /** @EFFECT_CUTTING improves hit chance for cutting weapons */
     /** @EFFECT_STABBING improves hit chance for piercing weapons */
+    // An enchantment's "skill_floor" (the CQB bionic's, for one) is part of the skill level
     float skill = get_skill_level( weap.melee_skill() );
-
-    // CQB bionic acts as a lower bound providing item uses a weapon skill
-    if( skill < BIO_CQB_LEVEL && has_active_bionic( bio_cqb ) ) {
-        skill = BIO_CQB_LEVEL;
-    }
 
     /** @EFFECT_MELEE improves hit chance for all items (including non-weapons) */
     return ( skill / 3.0f ) + ( get_skill_level( skill_melee ) / 2.0f ) + weap.get_to_hit();
@@ -402,9 +400,7 @@ float Character::hit_roll() const
     float hit = get_melee_hit_base();
 
     // Farsightedness makes us hit worse
-    if( has_flag( json_flag_HYPEROPIC ) && !worn_with_flag( flag_FIX_FARSIGHT ) &&
-        !has_effect( effect_contacts ) &&
-        !has_effect( effect_transition_contacts ) ) {
+    if( has_uncorrected_farsight() ) {
         hit -= 2.0f;
     }
 
@@ -467,10 +463,7 @@ std::string Character::get_miss_reason()
     add_miss_reason(
         _( "Your torso encumbrance throws you off-balance." ),
         roll_remainder( avg_encumb_of_limb_type( bp_type::torso ) / 10.0 ) );
-    const int farsightedness = 2 * ( has_flag( json_flag_HYPEROPIC ) &&
-                                     !worn_with_flag( flag_FIX_FARSIGHT ) &&
-                                     !has_effect( effect_contacts ) &&
-                                     !has_effect( effect_transition_contacts ) );
+    const int farsightedness = 2 * has_uncorrected_farsight();
     add_miss_reason(
         _( "You can't hit reliably due to your farsightedness." ),
         farsightedness );
@@ -881,9 +874,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     const int skill_training_cap = t.is_monster() ? t.as_monster()->type->melee_training_cap :
                                    MAX_SKILL;
-    // Practice melee and relevant weapon skill (if any) except when using CQB bionic, if the creature is a hallucination, if the creature cannot move,
+    // Practice melee and relevant weapon skill (if any) except with NO_MELEE_PRACTICE (the CQB bionic), if the creature is a hallucination, if the creature cannot move,
     // if the creature cannot take damage, or if the monster has already trained someone an excessive number of times.
-    const bool can_train_melee = !has_active_bionic( bio_cqb ) &&
+    const bool can_train_melee = !has_flag( json_flag_NO_MELEE_PRACTICE ) &&
                                  !t.is_hallucination() &&
                                  !t.has_flag( json_flag_CANNOT_MOVE ) &&
                                  !t.has_flag( json_flag_CANNOT_TAKE_DAMAGE ) &&
@@ -1011,6 +1004,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         }
 
         const ma_technique &technique = attack_id.obj();
+        // CMBT-B02: the technique's effects that need the hit to do damage, applied once it
+        // is known whether it got through armor and blocks
+        std::vector<const tech_effect_data *> effects_after_hit;
         ma_ctx.weapon = cur_weap.typeId();
         ma_ctx.weapon_uid = cur_weapon ? cur_weapon->uid().get_value() : 0;
         ma_ctx.technique = technique.id;
@@ -1022,11 +1018,12 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         // Handles effects as well; not done in melee_affect_*
         if( technique.id != tec_none ) {
             perform_technique( technique, t, d, move_cost, cur_weapon,
-                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec );
+                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec, &ma_ctx,
+                               &effects_after_hit );
         }
 
         //player has a very small chance, based on their intelligence, to learn a style whilst using the CQB bionic
-        if( has_active_bionic( bio_cqb ) && !martial_arts_data->knows_selected_style() ) {
+        if( has_flag( json_flag_CQB_LEARNING ) && !martial_arts_data->knows_selected_style() ) {
             /** @EFFECT_INT slightly increases chance to learn techniques when using CQB bionic */
             // Enhanced Memory Banks bionic doubles chance to learn martial art
             const int learn_boost = has_flag( json_flag_CBQ_LEARN_BONUS ) ? 2 : 1;
@@ -1056,6 +1053,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                 execution_contact.set_critical( critical_hit );
                 const execution_combat::primary_hit_scope primary( execution_contact );
                 t.deal_melee_hit( this, hit_spread, critical_hit, d, dealt_dam, attack, &target_bp );
+            }
+            if( dealt_dam.total_damage() > 0 ) {
+                for( const tech_effect_data *eff : effects_after_hit ) {
+                    apply_tech_effect( *eff, t );
+                }
             }
             execution_contact.resolve( true, critical_hit, dealt_dam );
             ma_ctx.damage = dealt_dam.total_damage();
@@ -1122,6 +1124,14 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         // The technique's post-hit EOCs see the damage dealt and whether the target died
         if( technique.id != tec_none ) {
             ma_ctx.activate( *this, technique.post_hit_eocs );
+        }
+        // CMBT-J04: the hit, once its damage, technique and kill are known, for any EOC
+        if( !t.is_hallucination() ) {
+            const cata::event hit_event = cata::event::make<event_type::character_melee_hits>(
+                                              getID(), ma_ctx.weapon, ma_ctx.technique.str(), ma_ctx.bp,
+                                              static_cast<int>( ma_ctx.damage.value_or( 0.0 ) ),
+                                              ma_ctx.crit.value_or( false ), ma_ctx.killed.value_or( false ) );
+            get_event_bus().send_with_talker( this, &t, hit_event );
         }
     }
 
@@ -1385,9 +1395,6 @@ double Character::crit_chance( float roll_hit, float target_dodge, const item &w
     /** @EFFECT_STABBING increases critical chance with piercing weapons */
     /** @EFFECT_UNARMED increases critical chance with unarmed weapons */
     float sk = get_skill_level( weap.melee_skill() );
-    if( has_active_bionic( bio_cqb ) ) {
-        sk = std::max( sk, static_cast<float>( BIO_CQB_LEVEL ) );
-    }
 
     /** @EFFECT_MELEE slightly increases critical chance with any item */
     sk += get_skill_level( skill_melee ) / 2.5;
@@ -1521,10 +1528,6 @@ static void roll_melee_damage_internal( const Character &u, const damage_type_id
 
     float skill = u.get_skill_level( unarmed ? skill_unarmed : dt->skill );
 
-    if( u.has_active_bionic( bio_cqb ) ) {
-        skill = BIO_CQB_LEVEL;
-    }
-
     // FIXME: Hardcoded damage type effects (bash)
     if( dt == damage_bash ) {
         /** @ARM_STR increases bashing damage */
@@ -1587,22 +1590,16 @@ static void roll_melee_damage_internal( const Character &u, const damage_type_id
 
     float armor_mult = 1.0f;
     if( crit ) {
-        // FIXME: Hardcoded damage type effects (stab, cut, bash)
-        if( dt == damage_stab ) {
-            // Critical damage bonus for stabbing scales with skill
-            dmg_mul *= 1.0 + ( skill / 10.0 ) * crit_mod;
-            // Stab criticals have extra %arpen
-            armor_mult = 1.f - 0.34f * crit_mod;
-        } else if( dt == damage_cut ) {
-            dmg_mul *= 1.f + 0.25f * crit_mod;
-            arpen += static_cast<int>( 5.f * crit_mod );
-            // 25% armor penetration
-            armor_mult = 1.f - 0.25f * crit_mod;
-        } else if( dt == damage_bash ) {
-            dmg_mul *= 1.f + 0.5f * crit_mod;
-            // 50% armor penetration
-            armor_mult = 1.f - 0.5f * crit_mod;
+        // CMBT-J12: the damage type's "melee_crit" (bash: +50% damage, 50% of armor ignored;
+        // cut: +25%, 25% and 5 arpen; stab: +10% per skill level and 34%)
+        const melee_crit_data &crit_data = dt->melee_crit;
+        if( crit_data.damage_mult_per_skill != 0.0 ) {
+            dmg_mul *= 1.0 + ( crit_data.damage_mult + crit_data.damage_mult_per_skill * skill ) * crit_mod;
+        } else {
+            dmg_mul *= 1.f + static_cast<float>( crit_data.damage_mult ) * crit_mod;
         }
+        arpen += static_cast<int>( static_cast<float>( crit_data.arpen ) * crit_mod );
+        armor_mult = 1.f - static_cast<float>( crit_data.armor_ignored ) * crit_mod;
     }
 
     di.add_damage( dt, dmg, arpen, armor_mult, dmg_mul );
@@ -2086,9 +2083,20 @@ std::optional<std::string> melee::knockback_aim_refusal( const Character &attack
 std::function<std::optional<tripoint_bub_ms>( const Creature &, int )>
 melee::knockback_aim_test_answer;
 
+void Character::apply_tech_effect( const tech_effect_data &eff, Creature &t )
+{
+    // "target": "self" (TLG's hit_self) puts the effect on the attacker
+    Creature &recipient = eff.on_self ? static_cast<Creature &>( *this ) : t;
+    recipient.add_effect( eff.id, time_duration::from_turns( eff.duration ), eff.permanent,
+                          eff.intensity );
+    add_msg_if_player( m_good, _( eff.message ), recipient.disp_name() );
+}
+
 void Character::perform_technique( const ma_technique &technique, Creature &t,
                                    damage_instance &di,
-                                   int &move_cost, item_location &cur_weapon, bool chosen )
+                                   int &move_cost, item_location &cur_weapon, bool chosen,
+                                   const ma_event_context *attack,
+                                   std::vector<const tech_effect_data *> *after_hit )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = pos_bub( here );
@@ -2122,15 +2130,18 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
     for( int i = 0; i < rep; i++ ) {
         for( const tech_effect_data &eff : technique.tech_effects ) {
             const_dialogue d( get_const_talker_for( *this ), get_const_talker_for( t ) );
-            // Add the tech's effects if it rolls the chance and either did damage or ignores it
-            if( x_in_y( eff.chance, 100 ) && ( di.total_damage() != 0 || !eff.on_damage ) ) {
+            // Add the tech's effects if it rolls the chance and either did damage or ignores it.
+            // Whether it did damage is only known after armor and blocks: with after_hit, an
+            // "on_damage" effect waits there for the caller.
+            const bool deferred = eff.on_damage && after_hit != nullptr;
+            if( x_in_y( eff.chance, 100 ) && ( deferred || di.total_damage() != 0 || !eff.on_damage ) ) {
                 // An effect without a condition always applies
                 if( !eff.has_condition || eff.condition( d ) ) {
-                    // "target": "self" (TLG's hit_self) puts the effect on the attacker
-                    Creature &recipient = eff.on_self ? static_cast<Creature &>( *this ) : t;
-                    recipient.add_effect( eff.id, time_duration::from_turns( eff.duration ),
-                                          eff.permanent, eff.intensity );
-                    add_msg_if_player( m_good, _( eff.message ), recipient.disp_name() );
+                    if( deferred ) {
+                        after_hit->push_back( &eff );
+                    } else {
+                        apply_tech_effect( eff, t );
+                    }
                 }
             }
         }
@@ -2149,10 +2160,14 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
             t.add_effect( effect_stunned, rng( 1_turns, time_duration::from_turns( technique.stun_dur ) ) );
         }
 
-        for( const effect_on_condition_id &eoc : technique.eocs ) {
-            dialogue d( get_talker_for( *this ), get_talker_for( t ) );
-            eoc->activate_activation_only( d, "a technique activation", "technique being activated",
-                                           "technique" );
+        if( !technique.eocs.empty() ) {
+            // The attack's context (weapon, style, technique, body part, crit), and the damage
+            // the hit will deal before armor, now that the technique has changed it
+            ma_event_context technique_ctx = attack != nullptr ? *attack : ma_event_context();
+            technique_ctx.opponent = &t;
+            technique_ctx.technique = technique.id;
+            technique_ctx.damage = di.total_damage();
+            technique_ctx.activate( *this, technique.eocs );
         }
     }
 
@@ -2357,8 +2372,12 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
     }
 }
 
-int melee::blocking_ability( const item &shield )
+int melee::wielded_blocking_ability( const item &shield )
 {
+    // CMBT-J07: the item's "block" "bonus", else the legacy WBLOCK technique tiers
+    if( shield.type->block.bonus ) {
+        return *shield.type->block.bonus;
+    }
     int block_bonus = 0;
     if( shield.has_technique( WBLOCK_3 ) ) {
         block_bonus = 10;
@@ -2366,18 +2385,24 @@ int melee::blocking_ability( const item &shield )
         block_bonus = 6;
     } else if( shield.has_technique( WBLOCK_1 ) ) {
         block_bonus = 4;
-    } else if( shield.has_flag( flag_BLOCK_WHILE_WORN ) ) {
-        block_bonus = 2;
     }
     return block_bonus;
+}
+
+int melee::blocking_ability( const item &shield )
+{
+    const int block_bonus = wielded_blocking_ability( shield );
+    if( block_bonus > 0 || shield.type->block.bonus ) {
+        return block_bonus;
+    }
+    return shield.has_flag( flag_BLOCK_WHILE_WORN ) ? 2 : 0;
 }
 
 item_location Character::best_shield()
 {
     // Note: wielded weapon, not one used for attacks
-    int best_value = melee::blocking_ability( weapon );
-    // "BLOCK_WHILE_WORN" without a blocking tech need to be worn for the bonus
-    best_value = best_value == 2 ? 0 : best_value;
+    // "BLOCK_WHILE_WORN" without a blocking tech or bonus need to be worn for the bonus
+    const int best_value = melee::wielded_blocking_ability( weapon );
     item_location best = best_value > 0 ? get_wielded_item() : item_location();
     item *best_worn = worn.best_shield();
     if( best_worn && melee::blocking_ability( *best_worn ) >= best_value ) {
@@ -2395,6 +2420,7 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     gethit_ctx.opponent = source;
     gethit_ctx.bp = bp_hit.id();
     gethit_ctx.damage = dam.total_damage();
+    gethit_ctx.hit_by = "melee";
     martial_arts_data->ma_ongethit_effects( *this, gethit_ctx );
 
     // Shouldn't block if player is asleep or winded
@@ -2414,21 +2440,25 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     // which is affected by stamina, pain, and so on and when it hits
     // zero, that's when you get the message that you can't dodge, but
     // currently none of that affects blocking
-    if( get_stamina() < 2000 ) {
+    // CMBT-J07: the thresholds are external options (data/core/external_options.json)
+    if( get_stamina() < get_option<int>( block_min_stamina ) ) {
         add_msg_if_player( m_warning,
                            _( "You're close to exhaustion and cannot block effectively." ) );
         return false;
     }
 
     // Can't block attacks from attackers two sizes greater than you
-    if( ( get_size() + 1 < source->get_size() ) && !has_flag( json_flag_BLOCK_HUGE_ATTACKS ) ) {
+    if( ( get_size() + get_option<int>( block_size_margin ) < source->get_size() ) &&
+        !has_flag( json_flag_BLOCK_HUGE_ATTACKS ) ) {
         return false;
     }
 
     // Melee skill and reaction score governs if you can react in time
     // Skill of 5 without relevant encumbrance guarantees a block attempt
-    float melee_skill = has_active_bionic( bio_cqb ) ? 5 : get_skill_level( skill_melee );
-    if( !x_in_y( melee_skill * 20.0 * get_limb_score( limb_score_reaction ), 100 ) ) {
+    // the CQB bionic's skill_floor enchantment is already in get_skill_level (CMBT-J08)
+    float melee_skill = get_skill_level( skill_melee );
+    const double reaction_per_skill = get_option<float>( block_reaction_per_skill );
+    if( !x_in_y( melee_skill * reaction_per_skill * get_limb_score( limb_score_reaction ), 100 ) ) {
         add_msg_debug( debugmode::DF_MELEE, "Block roll failed" );
         return false;
     }
@@ -2445,6 +2475,8 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     // Check if we are going to block with an item. This could
     // be worn equipment with the BLOCK_WHILE_WORN flag.
     const bool has_shield = !!shield;
+    // Its type: the shield itself may break from wear while it blocks
+    const itype *const shield_type = has_shield ? shield->type : nullptr;
     bool worn_shield = has_shield && shield->has_flag( flag_BLOCK_WHILE_WORN );
 
     bool conductive_shield = false;
@@ -2494,12 +2526,21 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
 
     // add martial arts block effectiveness bonus
     block_score += mabuff_block_effectiveness_bonus();
+    // CMBT-J07: and the BLOCK_EFFECTIVENESS enchantment value
+    block_score = static_cast<int>( enchantment_cache->modify_value(
+                                        enchant_vals::mod::BLOCK_EFFECTIVENESS, block_score ) );
 
     // weapon blocks are preferred to limb blocks
     std::string thing_blocked_with;
+    // The item that blocks, for the character_blocks event; null for a limb
+    itype_id blocked_with = itype_id::NULL_ID();
+    // Its "block" data; nullptr for a limb block
+    const item_block_data *item_block = nullptr;
     // Do we block with a weapon? Handle melee wear but leave bp the same
     if( !( unarmed || force_unarmed || worn_shield || armed_body_block ) && allow_weapon_blocking ) {
         thing_blocked_with = shield->tname();
+        blocked_with = shield->typeId();
+        item_block = &shield->type->block;
         // TODO: Change this depending on damage blocked
         float wear_modifier = 1.0f;
         if( source != nullptr && source->is_hallucination() ) {
@@ -2514,6 +2555,8 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
         add_msg_debug( debugmode::DF_MELEE, "Block score after multiplier %d", block_score );
         if( worn_shield && shield->covers( bp_hit ) ) {
             thing_blocked_with = shield->tname();
+            blocked_with = shield->typeId();
+            item_block = &shield->type->block;
 
             if( source != nullptr && !source->is_hallucination() ) {
                 for( damage_unit &du : dam.damage_units ) {
@@ -2561,7 +2604,19 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
             }
 
             float previous_amount = elem.amount;
-            elem.amount *= physical_block_multiplier;
+            // CMBT-J07: an item blocks a damage type as well as its "effectiveness" says
+            const float *effectiveness = nullptr;
+            if( item_block != nullptr ) {
+                const auto found = item_block->effectiveness.find( elem.type );
+                if( found != item_block->effectiveness.end() ) {
+                    effectiveness = &found->second;
+                }
+            }
+            if( effectiveness != nullptr ) {
+                elem.amount *= 1.0f - *effectiveness * ( 1.0f - physical_block_multiplier );
+            } else {
+                elem.amount *= physical_block_multiplier;
+            }
             damage_blocked += previous_amount - elem.amount;
         }
 
@@ -2573,7 +2628,12 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
             // Unarmed weapons won't block those
             if( item_blocking && can_block ) {
                 float previous_amount = elem.amount;
-                elem.amount /= 5;
+                // CMBT-J07: the shield's "elemental_mult", a fifth by default
+                if( shield_type != nullptr && shield_type->block.elemental_mult ) {
+                    elem.amount *= *shield_type->block.elemental_mult;
+                } else {
+                    elem.amount /= 5;
+                }
                 damage_blocked += previous_amount - elem.amount;
             }
         }
@@ -2617,8 +2677,11 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     // TODO: account for enemy melee scale, add diminishing returns.
     const int base_burn_rate = get_option<int>( player_base_stamina_burn_rate );
     const float block_skill_modifier = ( 20.0f - get_skill_level( skill_melee ) ) / 20.0f;
-    const float block_stamina_cost = static_cast<float>( base_burn_rate )  * 6.0f *
-                                     block_skill_modifier;
+    // CMBT-J07: an external option and the BLOCK_STAMINA_COST enchantment value
+    const float block_stamina_cost = static_cast<float>( enchantment_cache->modify_value(
+                                         enchant_vals::mod::BLOCK_STAMINA_COST,
+                                         static_cast<float>( base_burn_rate ) * get_option<float>( block_stamina_cost_mult ) *
+                                         block_skill_modifier ) );
     burn_energy_legs( -block_stamina_cost );
     set_activity_level( EXTRA_EXERCISE );
     add_msg_debug( debugmode::DF_MELEE, "Blocking stamina cost %.1f", block_stamina_cost );
@@ -2629,15 +2692,20 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     block_ctx.bp = bp_hit.id();
     block_ctx.damage = dam.total_damage();
     martial_arts_data->ma_onblock_effects( *this, block_ctx );
+    // CMBT-J04: for any EOC, not only the selected style's
+    get_event_bus().send_with_talker( this, source,
+                                      cata::event::make<event_type::character_blocks>( getID(), blocked_with, bp_hit.id(),
+                                              static_cast<int>( std::round( damage_blocked ) ) ) );
 
     // Check if we have any block counters
     matec_id tec = std::get<0>( pick_technique( *source, shield, false, false, true ) );
 
     if( tec != tec_none && !is_dead_state() ) {
-        int twenty_percent = std::round( ( 20 * weapon.type->mat_portion_total ) / 100.0f );
+        int glass_limit = std::round( ( get_option<int>( block_counter_max_glass_percent ) *
+                                        weapon.type->mat_portion_total ) / 100.0f );
         if( get_stamina() < get_stamina_max() / 3 ) {
             add_msg( m_bad, _( "You try to counterattack, but you are too exhausted!" ) );
-        } else if( weapon.made_of( material_glass ) > twenty_percent ) {
+        } else if( weapon.made_of( material_glass ) > glass_limit ) {
             add_msg( m_bad, _( "The item you are wielding is too fragile to counterattack with!" ) );
         } else {
             melee_attack( *source, false, tec );
@@ -3120,8 +3188,7 @@ void player_hit_message( Character *attacker, const std::string &message,
 int Character::attack_speed( const item &weap ) const
 {
     const int base_move_cost = weap.attack_time( *this ) / 2;
-    const float melee_skill = has_active_bionic( bionic_id( bio_cqb ) ) ? BIO_CQB_LEVEL :
-                              get_skill_level( skill_melee );
+    const float melee_skill = get_skill_level( skill_melee );
     /** @EFFECT_MELEE increases melee attack speed */
     const int skill_cost = static_cast<int>( ( base_move_cost * ( 15 - melee_skill ) / 15 ) );
     /** @EFFECT_DEX increases attack speed */
@@ -3205,7 +3272,10 @@ double Character::evaluate_weapon_internal( const item &maybe_weapon, bool can_u
     // Needed because evaluation includes electricity via linked cables.
     const map &here = get_map();
 
-    bool allowed = can_use_gun && maybe_weapon.is_gun() && ( !use_silent || maybe_weapon.is_silent() );
+    // CMBT-J03: NPCs refuse the guns the avatar would (BRAWLER, GUNSHY, paws, no hands)
+    bool allowed = can_use_gun && maybe_weapon.is_gun() && ( !use_silent ||
+                   maybe_weapon.is_silent() ) &&
+                   ranged_ban_reason( maybe_weapon, true ).empty();
     // According to unmodified evaluation score, NPCs almost always prioritize wielding guns if they have one.
     // This is relatively reasonable, as players can issue commands to NPCs when we do not want them to use ranged weapons.
     // Conversely, we cannot directly issue commands when we want NPCs to prioritize ranged weapons.

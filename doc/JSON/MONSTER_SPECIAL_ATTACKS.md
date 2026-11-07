@@ -17,6 +17,8 @@
     - ["spell" Monster Spells](#spell-monster-spells)
     - ["leap"](#leap)
   - [Monster defensive attacks](#monster-defensive-attacks)
+  - [EOC attack](#eoc-attack)
+  - [Polymorph](#polymorph)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -53,7 +55,7 @@ Generally [hardcoded special attacks](#hardcoded-special-attacks) are declared t
 
 It contains either: 
 * An `id` of a [hardcoded special attack](#hardcoded-special-attacks), or a [JSON-declared attacks](/data/json/monster_special_attacks).
-* A `type` member (string) plus a `cooldown` member (integer or this can be a Variable Object, see the [doc](EFFECT_ON_CONDITION.md) for more info.) pair, for [partially hardcoded special attacks](#partially-hardcoded-special-attacks).
+* A `type` member (string) plus a `cooldown` member (integer or this can be a Variable Object, see the [doc](EFFECT_ON_CONDITION.md) for more info.) pair, for [partially hardcoded special attacks](#partially-hardcoded-special-attacks).  In a variable or `math` cooldown `u` is the monster and `npc` its current target: the creature it just attacked when the cooldown restarts after a use.  With no target, as when the monster is created, `npc` is empty and its values read as 0.  (It used to be the avatar, wherever it was.)
 * A spell (see [MAGIC.md](MAGIC.md)).
 
 Depending on the kind of attack, it may contain additional required members.  Example:
@@ -90,7 +92,7 @@ This monster can attempt an acid attack every ten turns, a leap with a maximum r
 
 These special attacks are mostly hardcoded in C++ and are generally not configurable with JSON (unless otherwise documented).  JSON-declared replacements are mentioned when available.
 
-- ```ABSORB_ITEMS``` Consumes objects it moves over to gain HP.  A movement cost per ml consumed can be enforced with `absorb_move_cost_per_ml` (default 0.025). The movement cost can have a minimum and maximum value specified by `absorb_move_cost_min` (default 1) and `absorb_move_cost_max` (default -1 for no limit). The volume in milliliters the monster must consume to gain 1 HP can be specified with `absorb_ml_per_hp` (default 250 ml). A list of materials that the monster can absorb can be specified with `absorb_materials` (can be string or string array, not specified = absorb all materials) and forbidden with `no_absorb_materials` (can be string or string array, not specified = absorb all materials specified by absorb_materials).
+- ```ABSORB_ITEMS``` Consumes objects it moves over to gain HP.  A movement cost per ml consumed can be enforced with `absorb_move_cost_per_ml` (default 0.025). The movement cost can have a minimum and maximum value specified by `absorb_move_cost_min` (default 1) and `absorb_move_cost_max` (default -1 for no limit). The volume in milliliters the monster must consume to gain 1 HP can be specified with `absorb_ml_per_hp` (default 250 ml). A list of materials that the monster can absorb can be specified with `absorb_material` (can be string or string array, not specified = absorb all materials) and forbidden with `no_absorb_material` (can be string or string array, not specified = absorb all materials specified by absorb_material).  An item with any material on `no_absorb_material` is never absorbed; otherwise one of its materials must be on `absorb_material`, if that is given.  The `items_available` behavior predicate uses the same rule.
 - ```ABSORB_MEAT``` Absorbs adjacent meat items (maximum absorbable item volume depends on the monster's volume), regenerating health in the process.
 - ```ACID``` Spits acid.
 - ```ACID_BARF``` Barfs corroding, blinding acid.
@@ -205,7 +207,8 @@ These special attacks are defined in [JSON](/data/json/monster_special_attacks),
 | `self_effects_onhit`         | Array of `effects` the monster applies to itself when successfully hitting with the attack.
 | `self_effects_ondmg`         | Array of `effects` the monster applies to itself when damaging its target.
 | `throw_strength`		      | Integer, if larger than 0 the attack will attempt to throw the target, every 10 strength equals one tile of distance thrown.
-| `eoc`                       | Array of ids, runs effect on condition, with `u` as attacker, and `npc` as victim, and `damage` as context variable with total damage dealt. See `NPCs.md`
+| `eoc`                       | Array of ids, runs effect on condition after a hit, with `u` as attacker, and `npc` as victim.  Context variables: `damage` (total damage dealt), `bodypart` (id of the body part hit, the last one for several hits) and `damage_<type>` for each damage type dealt (for example `damage_cut`). See `NPCs.md`
+| `eoc_on_miss`               | Array of ids, runs effect on condition when the target dodges the attack (a normal or an uncanny dodge), with `u` as attacker, `npc` as the target, and `bodypart` (id of the body part aimed at) as context variable.
 | `miss_msg_u`			      | String, message for missed attack against the player.
 | `miss_msg_npc`		      | String, message for missed attack against an NPC.
 | `hit_dmg_u`                 | String, message for successful attack against the player.
@@ -293,7 +296,8 @@ The monster fires a gun at a target.  If the monster is friendly, it will avoid 
 | `fake_per`                  | Perception stat of the fake NPC that will execute the attack.  8 if not specified.                                    |
 | `fake_skills`               | Array of 2 element arrays of skill id and skill level pairs.                                                          |
 | `move_cost`                 | Move cost of executing the attack.                                                                                    |
-| `condition`                 | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the monster.
+| `condition`                 | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the monster and `npc` to the creature it would shoot at (none when it shoots at a moving vehicle, or when a friendly turret finds no target).  It is tested once that target is chosen.
+| `eoc`                       | Array of effect_on_condition ids, run after each attack that fires, with `u` as the monster, `npc` as the creature shot at (none for a vehicle) and context variable `loc` as the location aimed at.  Whether the shots hit isn't known here.
 | `require_targeting_player`  | If true, the monster will need to "target" the player, wasting `targeting_cost` moves, putting the attack on cooldown and making warning sounds, unless it attacked something that needs to be targeted recently.  Gives "grace period" to player.                                                               |
 | `require_targeting_npc`     | As above, but with NPCs.                                                                                              |
 | `require_targeting_monster` | As above, but with monsters.                                                                                          |
@@ -320,8 +324,9 @@ Casts a separately-defined spell at the monster's target.  Spells with `target_s
 | `min_level`                    | The level at which the spell is cast. Spells cast by monsters do not gain levels like player spells.    |
 | `cooldown `                    | Integer or a Variable Object, see the [doc](EFFECT_ON_CONDITION.md) for more info. How often the monster can cast this spell.
 | `monster_message`              | Message to print when the spell is cast, replacing the `message` in the spell definition. Dynamic fields correspond to `<Monster Display Name> / <Spell Name> / <Target name>`. |
-| `condition`                    | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the casting monster and `npc` to the target unless the spell allows no target (in which case only self-conditions can be defined).
-| `allow_no_target`              | Bool, default `false`. If `true` the monster will cast it even without a hostile target.                |
+| `condition`                    | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the casting monster and `npc` to the target the spell is aimed at.  With `allow_no_target` (and without `target_optional`) there is no `npc`, so only self-conditions can be defined; with `target_optional`, test for one first.
+| `allow_no_target`              | Bool, default `false`. If `true` the monster will cast it even without a hostile target, always at its own tile, even when it has a target.                |
+| `target_optional`              | Bool, default `false`. If `true` the monster casts it at its target when it has one within the spell's range, and at its own tile otherwise.  Overrides `allow_no_target`. |
 
 
 ### "leap"
@@ -340,8 +345,9 @@ Makes the monster leap a few tiles over passable terrain as long as it can see i
 | `move_cost`             | Moves needed to complete special attack. 100 move_cost with 100 speed is equal to 1 second/turn.     |
 | `min_consider_range`    | Minimal distance to target to consider for using specific attack.                                    |
 | `max_consider_range`    | Maximal distance to target to consider for using specific attack.        
-| `condition`             | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the monster.
+| `condition`             | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the monster and `npc` to its target, if it has one (test for one when `allow_no_target` is true).
 | `self_effects`          | Array of `effects` to apply after a successful leap.                                                 |
+| `eoc`                   | Array of effect_on_condition ids, run after landing, with `u` as the monster and `npc` as its target, if any. |
 | `message`               | String, message to print when the player sees the monster jump (or land).                            |
 
 ## Monster defensive attacks
@@ -352,18 +358,39 @@ A special defense attack, triggered when the monster is attacked.  It should con
 "special_when_hit": [ "ZAPBACK", 100 ]
 ```
 
+It can also be an array of objects, for several defenses or effect_on_conditions: see [special_when_hit in MONSTERS.md](MONSTERS.md#special_when_hit).
+
 - ```ACIDSPLASH``` Splashes acid on the attacker.
 - ```NONE``` No special attack to the attacker.
-- ```ZAPBACK``` Shocks attacker on hit.
+- ```RETURN_FIRE``` When hit by a noisy projectile from an attacker it can't see, fires back blindly at the attacker's tile with one of its `gun` special attacks in range.  Not for melee hits, silent shots or shots that did no damage.
+- ```SHOT_RICOCHET``` Fires a copy of the projectile that hit it, with 1.5 times its damage, at a random spot.
+- ```ZAPBACK``` Shocks a melee attacker that isn't immune to electricity on hit, from 1 to 5 electric damage to each arm.  A character is spared by non-conductive gloves, or by hitting with a non-conductive weapon.  The monster is also immune to electric damage.
 
 ## EOC attack
 
-Triggers the specified `effect_on_condition` with the monster as `alpha_talker` and its target as `beta_talker`, the attack requires vision of the target. 
+`"attack_type": "eoc"`.  Runs the listed `effect_on_condition`s with the monster as `alpha_talker` (`u`) and its target as `beta_talker` (`npc`).  The target is the hostile creature at the monster's destination, which the monster must see.
 
 | Field             | Description                                                                                                |
 | ---               | ---------------------------------------------------------------------------------------------------------- |
-| `range`           | (Required) Float, maximal range of the jump.  Respects circular distance setting!                          |
-| `cooldown`        | Disregard target location entirely when leaping, leading to completely random jumps.                       |
-| `eoc`             | (Required) Array of ids, the effect on condition . See `NPCs.md`                                           |
-| `condition`       | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the monster.                |
-| `allow_no_target` | Default `false`. If true the script will always run, the beta talker will be discarded.                    |
+| `eoc`             | (Required) Array of effect_on_condition ids. See `NPCs.md`                                                 |
+| `cooldown`        | Integer or variable object, turns between uses.                                                            |
+| `range`           | Integer, default -1.  The farthest the target may be, in tiles (`1` is melee range); -1 is any distance.     |
+| `move_cost`       | Integer, default 0.  Moves the monster spends on the attack, after the EOCs run.  The EOCs can also spend the monster's moves with `turn_cost`. |
+| `no_adjacent`     | Boolean, default `false`.  The attack isn't used while its target is adjacent.                              |
+| `condition`       | Object, dialogue conditions enabling the attack.  See `NPCs.md` for the possible conditions, `u` refers to the monster and `npc` to the target, when there is one. |
+| `allow_no_target` | Boolean, default `false`.  If true the EOCs run without a target, and the target is dropped even when there is one: there is no `npc`. |
+| `target_optional` | Boolean, default `false`.  If true the EOCs run without a target too, but when there is one within `range` it is the `npc`.  Overrides `allow_no_target`; test `npc` with a condition such as `has_beta` before using it. |
+
+## Polymorph
+
+`"attack_type": "polymorph_special"`.  The monster turns into another monster type when the attack is used.
+
+| Field             | Description                                                                                                |
+| ---               | ---------------------------------------------------------------------------------------------------------- |
+| `mon_id`          | (Required) The monster type it turns into.  An unknown id is reported at load.                             |
+| `cooldown`        | Integer or variable object, turns between uses.                                                            |
+| `poly_keep_speed`, `poly_keep_hp`, `poly_keep_anger` | Booleans, default `true`.  Keep the current base speed, hit points or anger instead of the new type's. |
+| `condition`       | Object, dialogue conditions for the change.  `u` refers to the monster and `npc` to its target, when it has one. |
+| `allow_no_target` | Boolean, default `true`.  If false the monster only changes while it has a hostile target it can see; use this when the condition reads `npc`. |
+
+The monster must be able to act (not stunned, downed or out of moves).

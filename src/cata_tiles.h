@@ -36,6 +36,7 @@
 #include "sdl_geometry.h"
 #include "sdl_wrappers.h"
 #include "smooth_lighting.h"
+#include "tile_lookup_memo.h"
 #include "type_id.h"
 #include "units.h"
 #include "weather.h"
@@ -70,6 +71,10 @@ enum class visibility_type : int;
 
 
 /** Structures */
+// How many subtiles a multitile can have: "center", "corner", "edge", "t_connection",
+// "end_piece", "unconnected", "open" and "broken" (multitile_keys in cata_tiles.cpp).
+constexpr size_t multitile_key_count = 8;
+
 struct tile_type {
     // fg and bg are both a weighted list of lists of sprite IDs
     weighted_int_list<std::vector<int>> fg, bg;
@@ -83,7 +88,25 @@ struct tile_type {
     std::optional<smooth_lighting::light_anchor> light_anchor;
 
     std::vector<std::string> available_subtiles;
+    // For a multitile, by subtile number: the full id of the subtile (this tile's id, "_" and
+    // the subtile's key) as stored in its tileset, or nullptr if this tile lists no such
+    // subtile or the subtile wasn't loaded.  Linked once the tileset is loaded, so a draw
+    // doesn't build the id or search available_subtiles.
+    std::array<const std::string *, multitile_key_count> subtile_ids = {};
+    // Linked with subtile_ids, by subtile number and season ([subtile * NUM_SEASONS + season]):
+    // the found id and the tile that looking up the linked subtile id in that season finds
+    // (tileset::find_tile_type_by_season), or nulls where it finds nothing.  Empty unless
+    // a subtile is linked.  With the experimental sprite lookup cache on, the draw takes the
+    // subtile from here instead of drawing the subtile id over again.
+    std::vector<std::pair<const std::string *, const tile_type *>> subtiles_by_season;
 };
+
+// The pick (weighted_int_list::pick) into the fg and bg of an idle animation ("animated":
+// true) `ms` milliseconds into the steady clock: each sprite shows for as many ~17 ms frames
+// as its weight, and the loop is the fg's total weight, or the bg's for a tile with one fg
+// sprite or none.  `offset` shifts the loop, so tiles don't all blink at once.  A tile with
+// no sprites at all isn't animated: `offset` is returned as it is.
+unsigned int idle_animation_pick( int fg_weight, int bg_weight, int64_t ms, unsigned int offset );
 
 // Make sure to change TILE_CATEGORY_IDS if this changes!
 enum class TILE_CATEGORY {
@@ -340,6 +363,13 @@ struct drawn_sprite_record {
     draw_light light = draw_light::scene;
     // light anchor it took: its tile's, else the default for what it shows
     std::optional<smooth_lighting::light_anchor> anchor;
+    // the tile it is part of, and where and how it was drawn
+    const tile_type *tile = nullptr;
+    point p;
+    point offset;
+    int rota = 0;
+    int retract = 0;
+    unsigned int loc_rand = 0;
 };
 
 /**
@@ -368,9 +398,9 @@ class layer_context_sprites
         std::string id;
         std::map<std::string, int> sprite;
         //draw order is sorted by layer
-        int layer;
+        int layer = 0;
         point offset;
-        int total_weight;
+        int total_weight = 0;
         //if set, appends to the sprite name for handling contexts
         std::string append_suffix;
 };
@@ -446,6 +476,9 @@ class tileset
 
         std::unordered_set<std::string> duplicate_ids;
 
+        // "overlay_ordering" of the tileset and its mod tilesets, by mutation or bionic id
+        std::map<std::string, int> mutation_overlay_ordering;
+
         std::unordered_map<std::string, tile_type> tile_ids;
         // caches both "default" and "_season_XXX" tile variants (to reduce the number of lookups)
         // either variant can be either a `nullptr` or a pointer/reference to the real value (stored inside `tile_ids`)
@@ -517,6 +550,9 @@ class tileset
         const std::unordered_set<std::string> &get_duplicate_ids() const {
             return duplicate_ids;
         }
+        const std::map<std::string, int> &get_mutation_overlay_ordering() const {
+            return mutation_overlay_ordering;
+        }
 
         std::unordered_set<std::string> get_all_portrait_tile_ids( bool male ) const;
 
@@ -573,6 +609,8 @@ class tileset
 
         tile_type &create_tile_type( const std::string &id, tile_type &&new_tile_type );
         const tile_type *find_tile_type( const std::string &id ) const;
+        // Fills each multitile's subtile_ids; the loader calls it once tile_ids is final.
+        void link_multitile_subtiles();
 
         /**
          * Looks up tile by id + season suffix AND just raw id
@@ -806,15 +844,26 @@ class cata_tiles
                                       std::string &draw_id );
 
     private:
+        /**
+         * find_tile_looks_like( id + suffix, category, variant ), where the suffix is nothing,
+         * "_transparent" or "_int<intensity>", answered from lookup_memo when this lookup
+         * was made before with the same tileset, game data and season.  `lookup_int_id`, if
+         * not negative, is the int id of `id` in its category (see draw_from_int_id), and the
+         * answer is remembered by it.  Only for the experimental sprite lookup cache.
+         */
+        std::optional<tile_lookup_res> find_tile_looks_like_memoized( const std::string &id,
+                TILE_CATEGORY category, const std::string &variant, tile_lookup_suffix suffix,
+                int intensity, int lookup_int_id );
         unsigned int get_variant_seed( const tile_type &display_tile, TILE_CATEGORY category,
                                        const tripoint_bub_ms &pos, const std::string &found_id );
         bool draw_from_id_string_internal( const std::string &id, const tripoint_bub_ms &pos, int subtile,
                                            int rota,
                                            lit_level ll, int retract, bool apply_night_vision_goggles, int &height_3d );
+        // lookup_int_id: see draw_from_int_id; -1 for none
         bool draw_from_id_string_internal( const std::string &id, TILE_CATEGORY category,
                                            const std::string &subcategory, const tripoint_bub_ms &pos, int subtile, int rota,
                                            lit_level ll, int retract, bool apply_night_vision_goggles, int &height_3d, int intensity_level,
-                                           const std::string &variant, const point &offset );
+                                           const std::string &variant, const point &offset, int lookup_int_id = -1 );
     protected:
         bool draw_from_id_string( const std::string &id, const tripoint_bub_ms &pos, int subtile, int rota,
                                   lit_level ll,
@@ -857,6 +906,17 @@ class cata_tiles
                                   const std::string &subcategory, const tripoint_bub_ms &pos, int subtile, int rota,
                                   lit_level ll, bool apply_night_vision_goggles, int &height_3d, int intensity_level,
                                   const std::string &variant, const point &offset );
+        /**
+         * draw_from_id_string( id, category, "", pos, subtile, rota, ll,
+         * apply_night_vision_goggles, height_3d, intensity_level ) for an id the caller also
+         * holds as an int id of what the category draws: `lookup_int_id` is the to_i() of the
+         * ter_id (TERRAIN), furn_id (FURNITURE), trap_id (TRAP) or field_type_id (FIELD) whose
+         * string id is `id`.  With the experimental sprite lookup cache on, the lookups are
+         * remembered by that int id, without hashing `id`; off, it is not used.
+         */
+        bool draw_from_int_id( const std::string &id, int lookup_int_id, TILE_CATEGORY category,
+                               const tripoint_bub_ms &pos, int subtile, int rota, lit_level ll,
+                               bool apply_night_vision_goggles, int &height_3d, int intensity_level );
         bool draw_sprite_at(
             const tile_type &tile, const weighted_int_list<std::vector<int>> &svlist,
             const point &, unsigned int loc_rand, bool rota_fg, int rota,
@@ -1117,6 +1177,11 @@ class cata_tiles
         // Variant pass is process-lifetime, owned alongside the renderer.
         // Consumers reach it via get_shared_variant_pass in sdltiles.h.
         std::shared_ptr<const tileset> tileset_ptr;
+        // what the sprite lookups of draw_from_id_string_internal resolved to, misses
+        // included; see find_tile_looks_like_memoized.  Used only while the experimental
+        // TILE_LOOKUP_CACHE option is on, and emptied whenever it changes.
+        tile_lookup_memo<std::optional<tile_lookup_res>, NUM_SEASONS,
+                         static_cast<size_t>( TILE_CATEGORY::last )> lookup_memo;
 
         // the scaled default sprite width and height. in non-isometric mode,
         // the basic tile width and height equal the default sprite width and
@@ -1176,6 +1241,9 @@ class cata_tiles
         // its subtile and fallback calls reuse it
         bool m_anchor_decided = false;
         std::optional<smooth_lighting::light_anchor> m_shown_anchor;
+        // while draw_entity_with_overlays draws a character or monster: the seed its sprite
+        // and overlays pick their weighted variants with (get_variant_seed), from who it is
+        std::optional<unsigned int> m_entity_variant_seed;
         // test seam: draw_sprite_at records each sprite's id, light policy and
         // anchor
         std::vector<drawn_sprite_record> *test_draw_light_log = nullptr;

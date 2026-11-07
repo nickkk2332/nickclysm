@@ -1,7 +1,7 @@
 #include "mtype.h"
 
+#include <stddef.h>
 #include <algorithm>
-#include <cmath>
 #include <initializer_list>
 #include <unordered_map>
 
@@ -11,30 +11,17 @@
 #include "enums.h"
 #include "field_type.h"
 #include "game_constants.h"
-#include "item.h"
-#include "itype.h"
 #include "monstergenerator.h"
 #include "translations.h"
 #include "units.h"
 
 static const harvest_id harvest_list_human( "human" );
 
-static const itype_id itype_bone( "bone" );
-static const itype_id itype_bone_tainted( "bone_tainted" );
-static const itype_id itype_fish( "fish" );
-static const itype_id itype_human_flesh( "human_flesh" );
-static const itype_id itype_meat( "meat" );
-static const itype_id itype_meat_tainted( "meat_tainted" );
-static const itype_id itype_veggy( "veggy" );
-static const itype_id itype_veggy_tainted( "veggy_tainted" );
-
-static const material_id material_bone( "bone" );
 static const material_id material_flesh( "flesh" );
-static const material_id material_hflesh( "hflesh" );
 static const material_id material_iflesh( "iflesh" );
 static const material_id material_veggy( "veggy" );
 
-static const species_id species_MOLLUSK( "MOLLUSK" );
+static const skill_id skill_survival( "survival" );
 
 // NOLINTNEXTLINE(cata-static-int_id-constants)
 mon_flag_id mon_flag_ACIDPROOF,
@@ -290,6 +277,7 @@ void set_mon_flag_ids()
     mon_flag_PUSH_VEH = mon_flag_id( "PUSH_VEH" );
     mon_flag_QUEEN = mon_flag_id( "QUEEN" );
     mon_flag_QUIETDEATH = mon_flag_id( "QUIETDEATH" );
+    mon_flag_QUIETMOVES = mon_flag_id( "QUIETMOVES" );
     mon_flag_RANGED_ATTACKER = mon_flag_id( "RANGED_ATTACKER" );
     mon_flag_REVIVES = mon_flag_id( "REVIVES" );
     mon_flag_REVIVES_HEALTHY = mon_flag_id( "REVIVES_HEALTHY" );
@@ -297,6 +285,7 @@ void set_mon_flag_ids()
     mon_flag_SEES = mon_flag_id( "SEES" );
     mon_flag_SHORTACIDTRAIL = mon_flag_id( "SHORTACIDTRAIL" );
     mon_flag_SILENT_DISAPPEAR = mon_flag_id( "SILENT_DISAPPEAR" );
+    mon_flag_SILENTMOVES = mon_flag_id( "SILENTMOVES" );
     mon_flag_SLUDGEPROOF = mon_flag_id( "SLUDGEPROOF" );
     mon_flag_SLUDGETRAIL = mon_flag_id( "SLUDGETRAIL" );
     mon_flag_SMALLSLUDGETRAIL = mon_flag_id( "SMALLSLUDGETRAIL" );
@@ -329,7 +318,6 @@ mtype::mtype()
     weight = 81499_gram;
     mat = { { material_flesh, 1 } };
     phase = phase_id::SOLID;
-    def_chance = 0;
     upgrades = false;
     upgrade_multi_range = std::optional<int>();
     upgrade_null_despawn = false;
@@ -344,8 +332,12 @@ mtype::mtype()
     biosignatures = false;
     biosig_item = itype_id::NULL_ID();
 
+    // Unset: finalize makes it 5 times max_dist. Set here, not only by the path_settings loader, so
+    // that a copy-from monster that adds path_settings to a parent without them gets it too
+    // (SPAT-J02's load check found those with max_length 0, which routes nowhere).
+    path_settings.max_length = -1;
+
     burn_into = mtype_id::NULL_ID();
-    sp_defense = nullptr;
     melee_training_cap = MAX_SKILL;
     harvest = harvest_list_human;
     decay = harvest_id::NULL_ID();
@@ -353,6 +345,7 @@ mtype::mtype()
     bash_skill = {};
 
     aggro_character = true;
+    mount_rules.skill = skill_survival;
 
     pre_flags_.emplace( "HUMAN" );
 }
@@ -407,6 +400,36 @@ bool mtype::has_placate_trigger( mon_trigger trigger ) const
     return placate[trigger];
 }
 
+int mtype::trigger_amount( mon_trigger_kind kind, mon_trigger trigger, int def ) const
+{
+    const std::map<mon_trigger, mon_trigger_tuning> &tunings =
+        trigger_tunings[static_cast<size_t>( kind )];
+    const auto iter = tunings.find( trigger );
+    return iter == tunings.end() ? def : iter->second.amount.value_or( def );
+}
+
+int mtype::trigger_range( mon_trigger_kind kind, mon_trigger trigger, int def ) const
+{
+    const std::map<mon_trigger, mon_trigger_tuning> &tunings =
+        trigger_tunings[static_cast<size_t>( kind )];
+    const auto iter = tunings.find( trigger );
+    return iter == tunings.end() ? def : iter->second.range.value_or( def );
+}
+
+int mtype::trigger_cap( mon_trigger_kind kind, mon_trigger trigger, int def ) const
+{
+    const std::map<mon_trigger, mon_trigger_tuning> &tunings =
+        trigger_tunings[static_cast<size_t>( kind )];
+    const auto iter = tunings.find( trigger );
+    return iter == tunings.end() ? def : iter->second.cap.value_or( def );
+}
+
+const std::vector<mon_condition_trigger> &mtype::get_condition_triggers(
+    mon_trigger_kind kind ) const
+{
+    return condition_triggers[static_cast<size_t>( kind )];
+}
+
 bool mtype::in_category( const std::string &category ) const
 {
     return categories.find( category ) != categories.end();
@@ -415,6 +438,14 @@ bool mtype::in_category( const std::string &category ) const
 bool mtype::in_species( const species_id &spec ) const
 {
     return species.count( spec ) > 0;
+}
+
+bool mtype::has_special_defense( const mon_action_defend defense ) const
+{
+    return std::any_of( special_defenses.begin(), special_defenses.end(),
+    [defense]( const mon_special_defense & def ) {
+        return def.defense == defense;
+    } );
 }
 
 std::vector<std::string> mtype::species_descriptions() const
@@ -449,6 +480,10 @@ bool mtype::same_species( const mtype &other ) const
 
 field_type_id mtype::bloodType() const
 {
+    // MONDT-J11: a blood_field in JSON wins over the flags, materials and species
+    if( blood_field ) {
+        return *blood_field;
+    }
     if( has_flag( mon_flag_ACID_BLOOD ) )
         //A monster that has the death effect "ACID" does not need to have acid blood.
     {
@@ -474,8 +509,15 @@ field_type_id mtype::bloodType() const
 
 field_type_id mtype::gibType() const
 {
-    if( in_species( species_MOLLUSK ) ) {
-        return fd_gibs_invertebrate;
+    // MONDT-J11: a gib_field in JSON, then the first species with "gibs" (MOLLUSK's are
+    // fd_gibs_invertebrate), then the materials
+    if( gib_field ) {
+        return *gib_field;
+    }
+    for( const species_id &s : species ) {
+        if( !s->gibs.is_null() ) {
+            return s->gibs;
+        }
     }
     if( made_of( material_veggy ) ) {
         return fd_gibs_veggy;
@@ -500,46 +542,6 @@ int mtype::get_difficulty_adjustment() const
     return difficulty_adjustment;
 }
 
-itype_id mtype::get_meat_itype() const
-{
-    if( has_flag( mon_flag_POISON ) ) {
-        if( made_of( material_flesh ) || made_of( material_hflesh ) ||
-            //In the future, insects could drop insect flesh rather than plain ol' meat.
-            made_of( material_iflesh ) ) {
-            return itype_meat_tainted;
-        } else if( made_of( material_veggy ) ) {
-            return itype_veggy_tainted;
-        } else if( made_of( material_bone ) ) {
-            return itype_bone_tainted;
-        }
-    } else {
-        if( made_of( material_flesh ) || made_of( material_hflesh ) ) {
-            if( has_flag( mon_flag_HUMAN ) ) {
-                return itype_human_flesh;
-            } else if( has_flag( mon_flag_AQUATIC ) ) {
-                return itype_fish;
-            } else {
-                return itype_meat;
-            }
-        } else if( made_of( material_iflesh ) ) {
-            //In the future, insects could drop insect flesh rather than plain ol' meat.
-            return itype_meat;
-        } else if( made_of( material_veggy ) ) {
-            return itype_veggy;
-        } else if( made_of( material_bone ) ) {
-            return itype_bone;
-        }
-    }
-    return itype_id::NULL_ID();
-}
-
-int mtype::get_meat_chunks_count() const
-{
-    const float ch = to_gram( weight ) * ( 0.40f - 0.02f * std::log10( to_gram( weight ) ) );
-    const itype *chunk = item::find_type( get_meat_itype() );
-    return static_cast<int>( ch / to_gram( chunk->weight ) );
-}
-
 std::string mtype::get_description() const
 {
     return description.translated();
@@ -556,6 +558,21 @@ std::string mtype::get_footsteps() const
         return species.begin()->obj().get_footsteps();
     }
     return _( "footsteps." );
+}
+
+float mtype::get_hearing_mult() const
+{
+    return hearing_mult.value_or( has_flag( mon_flag_GOODHEARING ) ? 2.0f : 1.0f );
+}
+
+int mtype::get_scent_min() const
+{
+    return scent_min.value_or( has_flag( mon_flag_KEENNOSE ) ? 1 : 10 );
+}
+
+int mtype::get_scent_max() const
+{
+    return scent_max.value_or( has_flag( mon_flag_KEENNOSE ) ? 400 : 200 );
 }
 
 void mtype::set_strategy()

@@ -56,6 +56,9 @@
     "color": "light_blue",
     "see_cost": "medium",
     "spawns": { "group": "GROUP_MIL_BASE", "population": [ 6, 16 ], "chance": 100 },
+    "radio": {
+      "message": "This is FEMA camp <station_number>.  Supplies are limited, please bring supplemental food, water, and bedding.  This is FEMA camp <station_number>.  A designated long-term emergency shelter."
+    },
     "flags": [ "RISK_EXTREME" ],
     "post_process_generators": [ "riot_damage" ]
   },
@@ -107,6 +110,10 @@
     "color": "red",
     "vision_levels": "natural_outcropping",
     "see_cost": "spaced_high",
+    "radio": {
+      "strength": [ 60, 180 ],
+      "message": "This is automated emergency shelter beacon <station_number>.  Supplies, amenities and shelter are stocked."
+    },
     "flags": [ "KNOWN_DOWN", "SOURCE_PEOPLE", "SOURCE_SAFETY", "SOURCE_GUN", "SOURCE_AMMO", "SOURCE_FOOD" ]
   },
   {

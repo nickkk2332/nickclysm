@@ -544,7 +544,8 @@ TEST_CASE( "big_butchery_fetch_takes_one_of_each_tool", "[activities][zones][fet
     here.add_item( loot_mid, item( itype_saw_bronze ) );
 
     u.assign_activity( multi_butchery_activity_actor() );
-    REQUIRE( process_activity_with_travel( u, 100000 ) );
+    // butchering a cow without the proficiencies takes longer since MONDT-B10
+    REQUIRE( process_activity_with_travel( u, 400000 ) );
     CHECK( corpses_at( corpse_pos ) == 0 );
     CHECK( carried( u, itype_knife_hunting ) == 1 );
     // one saw per saw quality line

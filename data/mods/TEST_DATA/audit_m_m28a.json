@@ -1,0 +1,46 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28A_TRAP_COUNT",
+    "effect": [ { "math": [ "m28a_trap_hits += 1" ] } ]
+  },
+  {
+    "type": "trap",
+    "id": "test_m28a_unconsumed_eoc_trap",
+    "name": "unconsumed eoc test trap",
+    "color": "magenta",
+    "symbol": "_",
+    "visibility": 0,
+    "avoidance": 10,
+    "difficulty": 10,
+    "action": "eocs",
+    "eocs": [ "EOC_TEST_M28A_TRAP_COUNT" ],
+    "flags": [ "UNCONSUMED", "UNDODGEABLE" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28A_TRAP_REARM",
+    "effect": [
+      { "math": [ "m28a_trap_rearms += 1" ] },
+      {
+        "set_trap": "test_m28a_unconsumed_eoc_trap",
+        "location": { "context_val": "trap_location" },
+        "radius": 0,
+        "square": true
+      }
+    ]
+  },
+  {
+    "type": "trap",
+    "id": "test_m28a_rearming_eoc_trap",
+    "name": "rearming eoc test trap",
+    "color": "magenta",
+    "symbol": "_",
+    "visibility": 0,
+    "avoidance": 10,
+    "difficulty": 10,
+    "action": "eocs",
+    "eocs": [ "EOC_TEST_M28A_TRAP_REARM" ],
+    "flags": [ "UNDODGEABLE" ]
+  }
+]

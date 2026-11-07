@@ -1,13 +1,17 @@
 #include "mattack_common.h" // IWYU pragma: associated
 #include "monstergenerator.h" // IWYU pragma: associated
 
+#include <stddef.h>
 #include <algorithm>
+#include <array>
+#include <initializer_list>
 #include <optional>
 #include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
+#include "behavior.h"
 #include "cached_options.h"
 #include "calendar.h"
 #include "cata_utility.h"
@@ -16,6 +20,9 @@
 #include "creature.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
+#include "enum_conversions.h"
 #include "enums.h"
 #include "execution_fatal.h"
 #include "field_type.h"
@@ -25,6 +32,7 @@
 #include "incapacitation.h"
 #include "item.h"
 #include "item_group.h"
+#include "lightmap.h"
 #include "magic.h"
 #include "math_parser_jmath.h"
 #include "mattack_actors.h"
@@ -48,6 +56,8 @@ static const damage_type_id damage_bash( "bash" );
 
 static const harvest_id harvest_list_human( "human" );
 
+static const itype_id itype_id_military( "id_military" );
+
 static const material_id material_flesh( "flesh" );
 
 static const speed_description_id speed_description_DEFAULT( "DEFAULT" );
@@ -57,12 +67,78 @@ static const spell_id spell_pseudo_dormant_trap_setup( "pseudo_dormant_trap_setu
 namespace
 {
 generic_factory<mon_flag> mon_flags( "monster flags" );
-} // namespace
 
-namespace behavior
+// MONAI-J07: an "effect_immunities" entry, "EFFECT" (always immune) or
+// { "id": "EFFECT", "chance": 0-100 } (the chance in percent of resisting it each time)
+class effect_immunity_reader : public generic_typed_reader<effect_immunity_reader>
 {
-class node_t;
-}  // namespace behavior
+    public:
+        std::pair<efftype_id, int> get_next( const JsonValue &jv ) const {
+            if( jv.test_string() ) {
+                return { efftype_id( jv.get_string() ), 100 };
+            }
+            JsonObject jo = jv.get_object();
+            int chance = 100;
+            optional( jo, false, "chance", chance, numeric_bound_reader<int> { 0, 100 }, 100 );
+            return { efftype_id( jo.get_string( "id" ) ), chance };
+        }
+};
+
+// MONAI-J08: a trigger, "NAME" or { "id": "NAME", ... } (mtype::load_trigger_tunings reads the
+// rest of the object)
+class mon_trigger_reader : public generic_typed_reader<mon_trigger_reader>
+{
+    public:
+        mon_trigger get_next( const JsonValue &jv ) const {
+            std::string name;
+            if( jv.test_object() ) {
+                JsonObject jo = jv.get_object();
+                jo.allow_omitted_members();
+                name = jo.get_string( "id" );
+            } else {
+                name = jv.get_string();
+            }
+            try {
+                return io::string_to_enum<mon_trigger>( name );
+            } catch( const io::InvalidEnumString & ) {
+                jv.throw_error( string_format( "invalid monster trigger: \"%s\"", name ) );
+                throw; // ^^ throws already
+            }
+        }
+};
+
+// MONAI-J08: which members of a trigger's object form the code reads, for each list
+bool trigger_takes( mon_trigger_kind kind, mon_trigger trig, const std::string_view setting )
+{
+    const bool anger = kind == mon_trigger_kind::anger;
+    const bool anger_or_fear = anger || kind == mon_trigger_kind::fear;
+    if( setting == "amount" ) {
+        switch( trig ) {
+            case mon_trigger::STALK:
+            case mon_trigger::BRIGHT_LIGHT:
+            case mon_trigger::FIRE:
+            case mon_trigger::FRIEND_DIED:
+            case mon_trigger::FRIEND_ATTACKED:
+                return true;
+            case mon_trigger::HOSTILE_CLOSE:
+            case mon_trigger::HOSTILE_SEEN:
+                return anger_or_fear;
+            case mon_trigger::MATING_SEASON:
+            case mon_trigger::PLAYER_NEAR_BABY:
+                return anger;
+            default:
+                return false;
+        }
+    }
+    if( setting == "range" ) {
+        return trig == mon_trigger::FIRE || ( trig == mon_trigger::HOSTILE_CLOSE && anger_or_fear ) ||
+               ( trig == mon_trigger::PLAYER_NEAR_BABY && anger );
+    }
+    // "cap"
+    return anger && ( trig == mon_trigger::HOSTILE_CLOSE || trig == mon_trigger::HOSTILE_SEEN ||
+                      trig == mon_trigger::MATING_SEASON || trig == mon_trigger::HOSTILE_WEAK );
+}
+} // namespace
 
 namespace io
 {
@@ -84,6 +160,7 @@ std::string enum_to_string<mon_trigger>( mon_trigger data )
         case mon_trigger::PLAYER_NEAR_BABY: return "PLAYER_NEAR_BABY";
         case mon_trigger::MATING_SEASON: return "MATING_SEASON";
         case mon_trigger::BRIGHT_LIGHT: return "BRIGHT_LIGHT";
+        case mon_trigger::CONDITION: return "CONDITION";
         // *INDENT-ON*
         case mon_trigger::LAST:
             break;
@@ -107,6 +184,22 @@ std::string enum_to_string<mdeath_type>( mdeath_type data )
             break;
     }
     cata_fatal( "Invalid mdeath_type" );
+}
+
+template<>
+std::string enum_to_string<monster_safemode>( monster_safemode data )
+{
+    switch( data ) {
+        case monster_safemode::rules:
+            return "rules";
+        case monster_safemode::always:
+            return "always";
+        case monster_safemode::ignore:
+            return "ignore";
+        case monster_safemode::last:
+            break;
+    }
+    cata_fatal( "Invalid monster_safemode" );
 }
 
 } // namespace io
@@ -211,15 +304,6 @@ bool string_id<mon_flag>::is_valid() const
     return mon_flags.is_valid( *this );
 }
 
-std::optional<mon_action_death> MonsterGenerator::get_death_function( const std::string &f ) const
-{
-    const auto it = death_map.find( f );
-
-    return it != death_map.cend()
-           ? std::optional<mon_action_death>( it->second )
-           : std::optional<mon_action_death>();
-}
-
 MonsterGenerator::MonsterGenerator()
     : mon_templates( "monster type" )
     , mon_species( "species" )
@@ -283,6 +367,8 @@ namespace
 {
 struct monster_adjustment {
     species_id species;
+    // when not empty, only these monsters (MONDT-B14)
+    std::set<mtype_id> monsters;
     std::string stat;
     float stat_adjust = 0.0f;
     std::string flag;
@@ -294,7 +380,10 @@ struct monster_adjustment {
 
 void monster_adjustment::apply( mtype &mon ) const
 {
-    if( !mon.in_species( species ) ) {
+    if( !species.is_empty() && !mon.in_species( species ) ) {
+        return;
+    }
+    if( !monsters.empty() && monsters.count( mon.id ) == 0 ) {
         return;
     }
     if( !stat.empty() ) {
@@ -326,11 +415,20 @@ void reset_monster_adjustment()
 void load_monster_adjustment( const JsonObject &jsobj )
 {
     monster_adjustment adj;
-    adj.species = species_id( jsobj.get_string( "species" ) );
+    if( jsobj.has_member( "species" ) || !jsobj.has_member( "monsters" ) ) {
+        adj.species = species_id( jsobj.get_string( "species" ) );
+    }
+    optional( jsobj, false, "monsters", adj.monsters, string_id_reader<::mtype> {} );
+    // an unknown stat or special used to change nothing, silently (MONDT-B14)
     if( jsobj.has_member( "stat" ) ) {
         JsonObject stat = jsobj.get_object( "stat" );
         stat.read( "name", adj.stat );
         stat.read( "modifier", adj.stat_adjust );
+        if( adj.stat != "speed" && adj.stat != "hp" && adj.stat != "bleed_rate" ) {
+            stat.throw_error_at( "name", string_format(
+                                     "unknown monster_adjustment stat \"%s\"; valid stats are speed, hp and "
+                                     "bleed_rate", adj.stat ) );
+        }
     }
     if( jsobj.has_member( "flag" ) ) {
         JsonObject flag = jsobj.get_object( "flag" );
@@ -339,6 +437,11 @@ void load_monster_adjustment( const JsonObject &jsobj )
     }
     if( jsobj.has_member( "special" ) ) {
         jsobj.read( "special", adj.special );
+        if( adj.special != "nightvision" ) {
+            jsobj.throw_error_at( "special", string_format(
+                                      "unknown monster_adjustment special \"%s\"; the only one is nightvision",
+                                      adj.special ) );
+        }
     }
     adjustments.push_back( adj );
 }
@@ -346,8 +449,15 @@ void load_monster_adjustment( const JsonObject &jsobj )
 static void build_behavior_tree( mtype &type )
 {
     type.set_strategy();
+    // MONAI-J09: the monster's own "behavior" nodes come first
+    std::set<std::string> added;
+    for( const string_id<behavior::node_t> &node : type.behaviors ) {
+        if( node.is_valid() && added.insert( node.str() ).second ) {
+            type.add_goal( node.str() );
+        }
+    }
     for( const std::pair<const std::string, mtype_special_attack> &attack : type.special_attacks ) {
-        if( string_id<behavior::node_t>( attack.first ).is_valid() ) {
+        if( string_id<behavior::node_t>( attack.first ).is_valid() && added.count( attack.first ) == 0 ) {
             type.add_goal( attack.first );
         } /* TODO: Make this an error once all the special attacks are migrated. */
     }
@@ -585,6 +695,10 @@ mtype MonsterGenerator::generate_fake_pseudo_dormant_monster( const mtype &mon )
 
 void MonsterGenerator::apply_species_attributes( mtype &mon )
 {
+    // MONAI-J07: of its species, the highest chance for each effect, and the bleed effect of the
+    // first species (by id) that has one
+    mon.effect_immunity_chances.clear();
+    std::optional<species_id> bleed_from;
     for( const auto &spec : mon.species ) {
         if( !spec.is_valid() ) {
             continue;
@@ -598,6 +712,27 @@ void MonsterGenerator::apply_species_attributes( mtype &mon )
         mon.anger |= mspec.anger;
         mon.fear |= mspec.fear;
         mon.placate |= mspec.placate;
+        for( const std::pair<const efftype_id, int> &immunity : mspec.effect_immunities ) {
+            const auto [it, inserted] = mon.effect_immunity_chances.emplace( immunity );
+            if( !inserted ) {
+                it->second = std::max( it->second, immunity.second );
+            }
+        }
+        if( !mspec.bleed_effect.is_null() && ( !bleed_from ||
+                                               spec.str().compare( bleed_from->str() ) < 0 ) ) {
+            bleed_from = spec;
+        }
+    }
+    // ... and the monster's own entries replace those of its species
+    for( const std::pair<const efftype_id, int> &immunity : mon.effect_immunities ) {
+        mon.effect_immunity_chances.insert_or_assign( immunity.first, immunity.second );
+    }
+    if( !mon.bleed_effect_json.is_null() ) {
+        mon.bleed_effect = mon.bleed_effect_json;
+    } else if( bleed_from ) {
+        mon.bleed_effect = bleed_from->obj().bleed_effect;
+    } else {
+        mon.bleed_effect = efftype_id::NULL_ID();
     }
 }
 
@@ -611,12 +746,18 @@ void MonsterGenerator::finalize_pathfinding_settings( mtype &mon )
         mon.path_settings.bash_strength = mon.bash_skill;
     }
 
-    if( mon.move_skills.climb.has_value() ) {
+    if( mon.path_climb_cost ) {
+        mon.path_settings.climb_cost = *mon.path_climb_cost;
+    } else if( mon.move_skills.climb.has_value() ) {
         mon.path_settings.climb_cost = move_skills_data::max_movemod_penalty -
                                        ( mon.move_skills.climb.value() * ( move_skills_data::max_movemod_penalty / 10 ) );
     } else if( mon.has_flag( mon_flag_CLIMBS ) ) {
         mon.path_settings.climb_cost = 3;
     }
+
+    // The pathfinder keeps creatures too big for a tile (SMALL_PASSAGE, max_creature_size) off it,
+    // as moving there does.
+    mon.path_settings.size = mon.path_size.value_or( mon.size );
 }
 
 void MonsterGenerator::init_phases()
@@ -860,6 +1001,42 @@ struct special_attacks_reader : generic_typed_reader<special_attacks_reader> {
     }
 };
 
+// MONDT-J14: "pet_interactions" of a monster or a species; an array replaces the inherited one
+static void load_pet_interactions( const JsonObject &jo, bool was_loaded, std::string_view src,
+                                   std::vector<pet_interaction> &interactions )
+{
+    if( jo.has_array( "pet_interactions" ) ) {
+        interactions.clear();
+        for( const JsonObject entry : jo.get_array( "pet_interactions" ) ) {
+            pet_interaction interaction;
+            interaction.load( entry, src );
+            interactions.push_back( interaction );
+        }
+    } else if( !was_loaded ) {
+        interactions.clear();
+    }
+}
+
+void pet_interaction::load( const JsonObject &jo, std::string_view src )
+{
+    mandatory( jo, false, "id", id );
+    mandatory( jo, false, "name", name );
+    if( jo.has_member( "key" ) ) {
+        const std::string key_str = jo.get_string( "key" );
+        if( key_str.size() != 1 ) {
+            jo.throw_error_at( "key", "pet interaction key must be a single character" );
+        }
+        key = static_cast<unsigned char>( key_str[0] );
+    }
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    }
+    if( !jo.has_member( "effect" ) ) {
+        jo.throw_error( "pet interaction needs an \"effect\"" );
+    }
+    effect = std::make_shared<const talk_effect_t>( jo, "effect", src );
+}
+
 void mtype::load( const JsonObject &jo, const std::string_view src )
 {
     MonsterGenerator &gen = MonsterGenerator::generator();
@@ -911,6 +1088,15 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     //In its 1920 Manual of Horse Management, The U.S. Cavalry suggested a horse should not be asked to carry more than 20% of its body weight. This assumed a combined weight of rider, saddle, bridle, and other equipment.
     optional( jo, was_loaded, "mountable_weight_ratio", mountable_weight_ratio, 0.2f );
+    if( jo.has_object( "mount_rules" ) ) {
+        // Rules not given keep what they were (from copy-from, or the defaults)
+        JsonObject jmount = jo.get_object( "mount_rules" );
+        optional( jmount, true, "skill", mount_rules.skill );
+        optional( jmount, true, "saddled_level", mount_rules.saddled_level );
+        optional( jmount, true, "unsaddled_level", mount_rules.unsaddled_level );
+        optional( jmount, true, "tack_level", mount_rules.tack_level );
+        optional( jmount, true, "size_difference", mount_rules.size_difference );
+    }
 
     optional( jo, was_loaded, "attack_cost", attack_cost, numeric_bound_reader<int> {0}, 100 );
     optional( jo, was_loaded, "melee_skill", melee_skill, numeric_bound_reader<int> {0}, 0 );
@@ -926,10 +1112,11 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     if( jo.has_member( "block" ) ) {
         JsonObject block_jo = jo.get_object( "block" );
 
-        block.chance = block_jo.get_int( "chance", 0 );
-        block.effectiveness = block_jo.get_int( "effectiveness", 0 );
-        block.count = block_jo.get_int( "count", 0 );
-        block.ranged = block_jo.get_bool( "ranged", false );
+        // a member left out keeps what copy-from gave (MONDT-B14); a new monster starts at 0
+        block.chance = block_jo.get_int( "chance", block.chance );
+        block.effectiveness = block_jo.get_int( "effectiveness", block.effectiveness );
+        block.count = block_jo.get_int( "count", block.count );
+        block.ranged = block_jo.get_bool( "ranged", block.ranged );
     }
     if( jo.has_object( "armor" ) ) {
         armor = load_resistances_instance( jo.get_object( "armor" ) );
@@ -989,13 +1176,31 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "no_absorb_material", no_absorb_material );
 
     optional( jo, was_loaded, "bleed_rate", bleed_rate, 100 );
+    optional( jo, was_loaded, "effect_immunities", effect_immunities, effect_immunity_reader{} );
+    optional( jo, was_loaded, "bleed_effect", bleed_effect_json, efftype_id::NULL_ID() );
+    optional( jo, was_loaded, "blood_field", blood_field );
+    optional( jo, was_loaded, "gib_field", gib_field );
 
-    optional( jo, was_loaded, "petfood", petfood );
+    if( jo.has_object( "petfood" ) ) {
+        petfood = pet_food_data();
+        petfood.load( jo.get_object( "petfood" ), src );
+    } else if( !was_loaded ) {
+        petfood = pet_food_data();
+    }
+    load_pet_interactions( jo, was_loaded, src, pet_interactions );
 
     optional( jo, was_loaded, "move_skills", move_skills );
 
     optional( jo, was_loaded, "vision_day", vision_day, numeric_bound_reader{0}, 40 );
     optional( jo, was_loaded, "vision_night", vision_night, numeric_bound_reader{0}, 1 );
+    // MONAI-J04: unset, the GOODHEARING, KEENNOSE and *MOVES flags and the size decide
+    optional( jo, was_loaded, "hearing_mult", hearing_mult );
+    if( jo.has_member( "scent_sensitivity" ) ) {
+        const JsonObject scent = jo.get_object( "scent_sensitivity" );
+        optional( scent, was_loaded, "min", scent_min );
+        optional( scent, was_loaded, "max", scent_max );
+    }
+    optional( jo, was_loaded, "footstep_volume", footstep_volume );
 
     optional( jo, was_loaded, "regenerates", regenerates, 0 );
     optional( jo, was_loaded, "regenerates_in_dark", regenerates_in_dark, false );
@@ -1006,15 +1211,32 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     optional( jo, was_loaded, "starting_ammo", starting_ammo );
     optional( jo, was_loaded, "luminance", luminance, 0 );
+    if( jo.has_array( "light_color" ) ) {
+        JsonArray jarr = jo.get_array( "light_color" );
+        light_color.r = jarr.get_int( 0 ) / 255.0f;
+        light_color.g = jarr.get_int( 1 ) / 255.0f;
+        light_color.b = jarr.get_int( 2 ) / 255.0f;
+    }
     optional( jo, was_loaded, "revert_to_itype", revert_to_itype, itype_id() );
+    optional( jo, was_loaded, "emp_deactivate_one_in", emp_deactivate_one_in,
+              numeric_bound_reader<int> { -1 }, -1 );
     optional( jo, was_loaded, "broken_itype", broken_itype, itype_id() );
     optional( jo, was_loaded, "mech_weapon", mech_weapon, itype_id() );
+    optional( jo, was_loaded, "mech_activation_item", mech_activation_item, itype_id_military );
     optional( jo, was_loaded, "mech_str_bonus", mech_str_bonus, 0 );
     optional( jo, was_loaded, "mech_battery", mech_battery, itype_id() );
 
     optional( jo, was_loaded, "mount_items", mount_items );
 
     optional( jo, was_loaded, "revive_forms", revive_types );
+    optional( jo, was_loaded, "corpse_shelf_life", corpse_shelf_life, 24_hours );
+    optional( jo, was_loaded, "corpse_rot_away", corpse_rot_away, 10_days );
+    if( jo.has_object( "revive_delay" ) ) {
+        // a member left out keeps the inherited (or default) value
+        JsonObject delay = jo.get_object( "revive_delay" );
+        optional( delay, true, "min", revive_min_age );
+        optional( delay, true, "guaranteed", revive_guaranteed );
+    }
 
     optional( jo, was_loaded, "zombify_into", zombify_into, string_id_reader<::mtype> {},
               mtype_id() );
@@ -1023,6 +1245,7 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
               mtype_id() );
 
     optional( jo, was_loaded, "aggro_character", aggro_character, true );
+    optional( jo, was_loaded, "safemode", safemode, monster_safemode::rules );
 
     optional( jo, was_loaded, "attack_effs", atk_effs );
 
@@ -1037,7 +1260,9 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
                                          "death_drops for mtype " + id.str() );
     }
 
-    // FIXME: there's code to check if harvest is null, which will never trigger as it defaults to human
+    // Without one a monster is butchered as a human (MONDT-B14: about 400 monsters in the game
+    // and its mods leave it out, most without a corpse); the null check in
+    // check_monster_definitions() catches an explicit "null".
     optional( jo, was_loaded, "harvest", harvest, harvest_list_human );
 
     optional( jo, was_loaded, "dissect", dissect );
@@ -1053,15 +1278,44 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     if( jo.has_member( "special_when_hit" ) ) {
         JsonArray jsarr = jo.get_array( "special_when_hit" );
-        const auto iter = gen.defense_map.find( jsarr.get_string( 0 ) );
-        if( iter == gen.defense_map.end() ) {
-            jsarr.throw_error( "Invalid monster defense function" );
+        special_defenses.clear();
+        if( !jsarr.empty() && jsarr.has_object( 0 ) ) {
+            // [ { "id": "ZAPBACK", "chance": 100 }, { "eoc": ..., "melee": false }, ... ]
+            for( JsonObject jdef : jsarr ) {
+                mon_special_defense def;
+                if( jdef.has_member( "id" ) == jdef.has_member( "eoc" ) ) {
+                    jdef.throw_error( R"(a special_when_hit entry needs either "id" or "eoc")" );
+                }
+                if( jdef.has_member( "id" ) ) {
+                    const auto iter = gen.defense_map.find( jdef.get_string( "id" ) );
+                    if( iter == gen.defense_map.end() ) {
+                        jdef.throw_error_at( "id", "Invalid monster defense function" );
+                    }
+                    def.defense = iter->second;
+                } else {
+                    def.eoc = effect_on_conditions::load_inline_eoc( jdef.get_member( "eoc" ), src );
+                }
+                optional( jdef, false, "chance", def.chance, 100 );
+                optional( jdef, false, "melee", def.melee, true );
+                optional( jdef, false, "ranged", def.ranged, true );
+                special_defenses.push_back( def );
+            }
+        } else {
+            // [ "ZAPBACK", 100 ]
+            const auto iter = gen.defense_map.find( jsarr.get_string( 0 ) );
+            if( iter == gen.defense_map.end() ) {
+                jsarr.throw_error( "Invalid monster defense function" );
+            }
+            mon_special_defense def;
+            def.defense = iter->second;
+            def.chance = jsarr.get_int( 1 );
+            special_defenses.push_back( def );
         }
-        sp_defense = iter->second;
-        def_chance = jsarr.get_int( 1 );
     } else if( !was_loaded ) {
-        sp_defense = &mdefense::none;
-        def_chance = 0;
+        // No defense, rolled for on every hit all the same
+        mon_special_defense def;
+        def.defense = &mdefense::none;
+        special_defenses.push_back( def );
     }
 
     // this is really gross, and special_attacks + special_attacks_names should be combined into one struct
@@ -1075,6 +1329,8 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
             jo.throw_error( string_format( "Invalid special attack format for %s", atk.first ) );
         }
     }
+
+    optional( jo, was_loaded, "behavior", behaviors, string_id_reader<behavior::node_t> {} );
 
     optional( jo, was_loaded, "melee_training_cap", melee_training_cap, std::min( melee_skill + 2,
               MAX_SKILL ) );
@@ -1100,14 +1356,18 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
             mandatory( up, was_loaded, "into", upgrade_into, string_id_reader<::mtype> {} );
             upgrade_group = mongroup_id::NULL_ID();
         }
+        // the members of "upgrades", not of the monster (MONDT-B14)
         bool multi = !!upgrade_multi_range;
         optional( up, was_loaded, "multiple_spawns", multi, false );
-        if( multi && jo.has_bool( "multiple_spawns" ) ) {
-            mandatory( up, was_loaded, "spawn_range", upgrade_multi_range );
-        } else if( multi ) {
+        if( multi ) {
             optional( up, was_loaded, "spawn_range", upgrade_multi_range );
+            if( !upgrade_multi_range ) {
+                up.throw_error( R"("spawn_range" is mandatory when "multiple_spawns" is true)" );
+            }
         } else {
-            jo.get_int( "spawn_range", 0 ); // ignore if defined
+            // false clears a range copy-from gave
+            upgrade_multi_range.reset();
+            up.get_int( "spawn_range", 0 ); // ignore if defined
         }
         optional( up, was_loaded, "despawn_when_null", upgrade_null_despawn, false );
         upgrades = true;
@@ -1184,19 +1444,27 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     // Can't calculate yet - we want all flags first
     if( jo.has_int( "bash_skill" ) ) {
-        int skill;
-        optional( jo, false, "bash_skill", skill, -1 );
-        if( skill <= 0 ) {
+        // a number is bash damage; 0 or less is calculated from the melee damage, as an empty
+        // object is (MONDT-B14)
+        int skill = 0;
+        optional( jo, false, "bash_skill", skill, 0 );
+        if( skill > 0 ) {
             bash_skill = {{{damage_bash, skill}}};
+        } else {
+            bash_skill.clear();
         }
     } else {
         optional( jo, was_loaded, "bash_skill", bash_skill );
     }
 
-    const auto trigger_reader = enum_flags_reader<mon_trigger> { "monster trigger" };
+    // MONAI-J08: also { "id": ..., "amount": ..., "range": ..., "cap": ... }, and CONDITION
+    const mon_trigger_reader trigger_reader{};
     optional( jo, was_loaded, "anger_triggers", anger, trigger_reader );
     optional( jo, was_loaded, "placate_triggers", placate, trigger_reader );
     optional( jo, was_loaded, "fear_triggers", fear, trigger_reader );
+    load_trigger_tunings( jo, "anger_triggers", mon_trigger_kind::anger );
+    load_trigger_tunings( jo, "placate_triggers", mon_trigger_kind::placate );
+    load_trigger_tunings( jo, "fear_triggers", mon_trigger_kind::fear );
 
     if( jo.has_member( "path_settings" ) ) {
         JsonObject jop = jo.get_object( "path_settings" );
@@ -1209,6 +1477,127 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
         optional( jop, was_loaded, "allow_climb_stairs", path_settings.allow_climb_stairs, true );
         optional( jop, was_loaded, "avoid_sharp", path_settings.avoid_sharp, false );
         optional( jop, was_loaded, "avoid_dangerous_fields", path_settings.avoid_dangerous_fields, false );
+        optional( jop, was_loaded, "allow_unlock_doors", path_settings.allow_unlock_doors, false );
+        optional( jop, was_loaded, "avoid_rough_terrain", path_settings.avoid_rough_terrain, false );
+        // Unset, these come from move_skills and the CLIMBS flag, and from the monster's size
+        optional( jop, was_loaded, "climb_cost", path_climb_cost );
+        if( jop.has_member( "size" ) ) {
+            const std::string size_name = jop.get_string( "size" );
+            const auto size_found = Creature::size_map.find( size_name );
+            if( size_found == Creature::size_map.end() ) {
+                jop.throw_error_at( "size", string_format( "Invalid creature size \"%s\": use TINY, "
+                                    "SMALL, MEDIUM, LARGE or HUGE", size_name ) );
+            }
+            path_size = size_found->second;
+        }
+    }
+}
+
+void mtype::load_trigger_tunings( const JsonObject &jo, const std::string &member,
+                                  const mon_trigger_kind kind )
+{
+    std::map<mon_trigger, mon_trigger_tuning> &tunings = trigger_tunings[static_cast<size_t>( kind )];
+    std::vector<mon_condition_trigger> &conditions = condition_triggers[static_cast<size_t>( kind )];
+    const auto trigger_of = []( const JsonObject & entry ) {
+        return io::string_to_enum<mon_trigger>( entry.get_string( "id" ) );
+    };
+    const auto read_entry = [&]( const JsonObject & entry ) {
+        const mon_trigger trig = trigger_of( entry );
+        if( trig == mon_trigger::CONDITION ) {
+            mon_condition_trigger cond;
+            if( !entry.has_member( "condition" ) ) {
+                entry.throw_error( R"(A "CONDITION" trigger needs a "condition".)" );
+            }
+            read_condition( entry, "condition", cond.condition, false );
+            cond.amount = get_dbl_or_var( entry, "amount", true );
+            if( entry.has_member( "aggro_character" ) && kind != mon_trigger_kind::anger ) {
+                entry.throw_error_at( "aggro_character", R"("aggro_character" is for anger triggers.)" );
+            }
+            optional( entry, false, "aggro_character", cond.aggro_character, false );
+            conditions.push_back( cond );
+            return;
+        }
+        mon_trigger_tuning tuning;
+        for( const std::string_view setting : {
+                 std::string_view( "amount" ), std::string_view( "range" ), std::string_view( "cap" )
+             } ) {
+            if( entry.has_member( setting ) && !trigger_takes( kind, trig, setting ) ) {
+                entry.throw_error_at( setting, string_format( "Trigger %s in %s has no \"%s\".",
+                                      io::enum_to_string( trig ), member, setting ) );
+            }
+        }
+        const auto read_setting = [&entry]( const std::string_view setting, int low, int high,
+        std::optional<int> &out ) {
+            if( entry.has_member( setting ) ) {
+                int value = 0;
+                optional( entry, false, setting, value, numeric_bound_reader<int> { low, high }, 0 );
+                out = value;
+            }
+        };
+        read_setting( "amount", 0, 100, tuning.amount );
+        read_setting( "range", 0, 60, tuning.range );
+        read_setting( "cap", -100, 100, tuning.cap );
+        tunings.insert_or_assign( trig, tuning );
+    };
+    // An array of entries, or a single one, as the trigger reader takes them
+    const auto read_entries = [&]( const JsonValue & jv ) {
+        if( jv.test_array() ) {
+            for( const JsonValue entry : jv.get_array() ) {
+                if( entry.test_object() ) {
+                    read_entry( entry.get_object() );
+                }
+            }
+        } else if( jv.test_object() ) {
+            read_entry( jv.get_object() );
+        }
+    };
+    if( jo.has_member( member ) ) {
+        tunings.clear();
+        conditions.clear();
+        read_entries( jo.get_member( member ) );
+    } else if( was_loaded ) {
+        // as the trigger reader does: delete, then extend
+        if( jo.has_object( "delete" ) ) {
+            JsonObject del = jo.get_object( "delete" );
+            del.allow_omitted_members();
+            if( del.has_member( member ) ) {
+                const auto erase = [&]( const JsonValue & entry ) {
+                    mon_trigger trig;
+                    if( entry.test_object() ) {
+                        JsonObject eo = entry.get_object();
+                        eo.allow_omitted_members();
+                        trig = trigger_of( eo );
+                    } else {
+                        trig = io::string_to_enum<mon_trigger>( entry.get_string() );
+                    }
+                    tunings.erase( trig );
+                    if( trig == mon_trigger::CONDITION ) {
+                        conditions.clear();
+                    }
+                };
+                const JsonValue jv = del.get_member( member );
+                if( jv.test_array() ) {
+                    for( const JsonValue entry : jv.get_array() ) {
+                        erase( entry );
+                    }
+                } else {
+                    erase( jv );
+                }
+            }
+        }
+        if( jo.has_object( "extend" ) ) {
+            JsonObject ext = jo.get_object( "extend" );
+            ext.allow_omitted_members();
+            if( ext.has_member( member ) ) {
+                read_entries( ext.get_member( member ) );
+            }
+        }
+    }
+    const enum_bitset<mon_trigger> &listed = kind == mon_trigger_kind::anger ? anger :
+            kind == mon_trigger_kind::fear ? fear : placate;
+    if( listed[mon_trigger::CONDITION] != !conditions.empty() ) {
+        jo.throw_error_at( member, R"(A "CONDITION" trigger is an object with a "condition" and an )"
+                           R"("amount", not a name.)" );
     }
 }
 
@@ -1222,7 +1611,7 @@ void species_type::finalize_all()
     MonsterGenerator::generator().mon_species->finalize();
 }
 
-void species_type::load( const JsonObject &jo, std::string_view )
+void species_type::load( const JsonObject &jo, std::string_view src )
 {
     optional( jo, was_loaded, "description", description );
     optional( jo, was_loaded, "footsteps", footsteps, to_translation( "footsteps." ) );
@@ -1233,8 +1622,16 @@ void species_type::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "anger_triggers", anger, trigger_reader );
     optional( jo, was_loaded, "placate_triggers", placate, trigger_reader );
     optional( jo, was_loaded, "fear_triggers", fear, trigger_reader );
+    if( anger[mon_trigger::CONDITION] || fear[mon_trigger::CONDITION] ||
+        placate[mon_trigger::CONDITION] ) {
+        jo.throw_error( R"(A species can't have a "CONDITION" trigger; its monsters can.)" );
+    }
 
     optional( jo, was_loaded, "bleeds", bleeds, string_id_reader<::field_type> {}, fd_null );
+    optional( jo, was_loaded, "effect_immunities", effect_immunities, effect_immunity_reader{} );
+    optional( jo, was_loaded, "bleed_effect", bleed_effect, efftype_id::NULL_ID() );
+    optional( jo, was_loaded, "gibs", gibs, string_id_reader<::field_type> {}, fd_null );
+    load_pet_interactions( jo, was_loaded, src, pet_interactions );
 }
 
 void mon_flag::load_mon_flags( const JsonObject &jo, const std::string &src )
@@ -1397,8 +1794,51 @@ void MonsterGenerator::load_monster_attack( const JsonObject &jo, const std::str
     add_attack( create_actor( jo, src ) );
 }
 
+// MONAI-J09: the "eoc:ID" goals of a monster's goal tree name EOCs
+static void check_goal_eocs( const mtype &mon, const behavior::node_t &node,
+                             std::set<const behavior::node_t *> &seen )
+{
+    if( !seen.insert( &node ).second ) {
+        return;
+    }
+    const std::string goal = node.goal();
+    if( goal.rfind( "eoc:", 0 ) == 0 && !effect_on_condition_id( goal.substr( 4 ) ).is_valid() ) {
+        debugmsg( "monster %s has the behavior goal %s, which names no effect_on_condition",
+                  mon.id.c_str(), goal );
+    }
+    for( const behavior::node_t *child : node.get_children() ) {
+        check_goal_eocs( mon, *child, seen );
+    }
+}
+
 void MonsterGenerator::check_monster_definitions() const
 {
+    for( const species_type &spec : mon_species->get_all() ) {
+        for( const std::pair<const efftype_id, int> &immunity : spec.effect_immunities ) {
+            if( !immunity.first.is_valid() ) {
+                debugmsg( "species %s has unknown effect %s in effect_immunities", spec.id.c_str(),
+                          immunity.first.c_str() );
+            }
+        }
+        if( !spec.bleed_effect.is_null() && !spec.bleed_effect.is_valid() ) {
+            debugmsg( "species %s has unknown bleed_effect %s", spec.id.c_str(),
+                      spec.bleed_effect.c_str() );
+        }
+        if( !spec.bleeds.is_empty() && !spec.bleeds.is_valid() ) {
+            debugmsg( "species %s has unknown bleeds field: %s", spec.id.c_str(), spec.bleeds.c_str() );
+        }
+        if( !spec.gibs.is_empty() && !spec.gibs.is_valid() ) {
+            debugmsg( "species %s has unknown gibs field: %s", spec.id.c_str(), spec.gibs.c_str() );
+        }
+    }
+
+    for( const monster_adjustment &adj : adjustments ) {
+        for( const mtype_id &mon : adj.monsters ) {
+            if( !mon.is_valid() ) {
+                debugmsg( "monster_adjustment for unknown monster %s", mon.str() );
+            }
+        }
+    }
     for( const mtype &mon : mon_templates->get_all() ) {
         if( !mon.src.empty() && mon.src.back().second.str() == "dda" ) {
             std::string mon_id = mon.id.str();
@@ -1409,6 +1849,10 @@ void MonsterGenerator::check_monster_definitions() const
         }
         if( mon.harvest.is_null() && !mon.has_flag( mon_flag_ELECTRONIC ) && !mon.id.is_null() ) {
             debugmsg( "monster %s has no harvest entry", mon.id.c_str(), mon.harvest.c_str() );
+        }
+        if( mon.corpse_shelf_life <= 0_turns ) {
+            debugmsg( "monster %s has a corpse_shelf_life of %s: it must be positive", mon.id.c_str(),
+                      to_string( mon.corpse_shelf_life ) );
         }
         if( mon.has_flag( mon_flag_MILKABLE ) && mon.starting_ammo.empty() ) {
             debugmsg( "monster %s is flagged milkable, but has no starting ammo", mon.id.c_str() );
@@ -1427,6 +1871,15 @@ void MonsterGenerator::check_monster_definitions() const
                 debugmsg( "monster %s has invalid species %s", mon.id.c_str(), spec.c_str() );
             }
         }
+        if( mon.path_settings.max_length < mon.path_settings.max_dist ) {
+            debugmsg( "monster %s has path_settings max_length %d shorter than its max_dist %d: "
+                      "no path that far fits", mon.id.c_str(), mon.path_settings.max_length,
+                      mon.path_settings.max_dist );
+        }
+        if( mon.path_climb_cost && *mon.path_climb_cost < 0 ) {
+            debugmsg( "monster %s has a negative path_settings climb_cost %d (0 for none)",
+                      mon.id.c_str(), *mon.path_climb_cost );
+        }
         if( !mon.death_drops.is_empty() && !item_group::group_is_defined( mon.death_drops ) ) {
             debugmsg( "monster %s has unknown death drop item group: %s", mon.id.c_str(),
                       mon.death_drops.c_str() );
@@ -1435,6 +1888,13 @@ void MonsterGenerator::check_monster_definitions() const
             if( m.first.str() == "null" || !m.first.is_valid() ) {
                 debugmsg( "monster %s has unknown material: %s", mon.id.c_str(), m.first.c_str() );
             }
+        }
+        if( mon.blood_field && !mon.blood_field->is_valid() ) {
+            debugmsg( "monster %s has unknown blood_field: %s", mon.id.c_str(),
+                      mon.blood_field->c_str() );
+        }
+        if( mon.gib_field && !mon.gib_field->is_valid() ) {
+            debugmsg( "monster %s has unknown gib_field: %s", mon.id.c_str(), mon.gib_field->c_str() );
         }
         if( !mon.revert_to_itype.is_empty() && !item::type_is_defined( mon.revert_to_itype ) ) {
             debugmsg( "monster %s has unknown revert_to_itype: %s", mon.id.c_str(),
@@ -1459,6 +1919,15 @@ void MonsterGenerator::check_monster_definitions() const
         if( !mon.mech_weapon.is_empty() && !item::type_is_defined( mon.mech_weapon ) ) {
             debugmsg( "monster %s has unknown mech_weapon: %s", mon.id.c_str(),
                       mon.mech_weapon.c_str() );
+        }
+        if( mon.has_flag( mon_flag_RIDEABLE_MECH ) &&
+            !item::type_is_defined( mon.mech_activation_item ) ) {
+            debugmsg( "monster %s has unknown mech_activation_item: %s", mon.id.c_str(),
+                      mon.mech_activation_item.c_str() );
+        }
+        if( !mon.mount_rules.skill.is_valid() ) {
+            debugmsg( "monster %s has unknown mount_rules skill: %s", mon.id.c_str(),
+                      mon.mount_rules.skill.c_str() );
         }
         if( !mon.mech_battery.is_empty() && !item::type_is_defined( mon.mech_battery ) ) {
             debugmsg( "monster %s has unknown mech_battery: %s", mon.id.c_str(),
@@ -1509,6 +1978,25 @@ void MonsterGenerator::check_monster_definitions() const
             if( !e.id.is_valid() ) {
                 debugmsg( "attack effect %s of monster %s is unknown", e.id.c_str(), mon.id.c_str() );
             }
+        }
+        for( const std::pair<const efftype_id, int> &immunity : mon.effect_immunities ) {
+            if( !immunity.first.is_valid() ) {
+                debugmsg( "monster %s has unknown effect %s in effect_immunities", mon.id.c_str(),
+                          immunity.first.c_str() );
+            }
+        }
+        if( !mon.bleed_effect_json.is_null() && !mon.bleed_effect_json.is_valid() ) {
+            debugmsg( "monster %s has unknown bleed_effect %s", mon.id.c_str(),
+                      mon.bleed_effect_json.c_str() );
+        }
+        for( const string_id<behavior::node_t> &node : mon.behaviors ) {
+            if( !node.is_valid() ) {
+                debugmsg( "monster %s has unknown behavior %s", mon.id.c_str(), node.c_str() );
+            }
+        }
+        if( !mon.behaviors.empty() ) {
+            std::set<const behavior::node_t *> seen;
+            check_goal_eocs( mon, *mon.get_goals(), seen );
         }
 
         for( const std::pair<const emit_id, time_duration> &e : mon.emit_fields ) {
@@ -1596,7 +2084,33 @@ void MonsterGenerator::check_monster_definitions() const
             }
         }
 
+        // MONAI-B09: absorb_items divides by it
+        if( mon.absorb_ml_per_hp <= 0 ) {
+            debugmsg( "absorb_ml_per_hp (%d) of monster %s must be above 0", mon.absorb_ml_per_hp,
+                      mon.id.c_str() );
+        }
+        // MONAI-J04
+        if( mon.get_hearing_mult() < 0.0f ) {
+            debugmsg( "hearing_mult (%g) of monster %s is negative", mon.get_hearing_mult(),
+                      mon.id.c_str() );
+        }
+        if( mon.get_scent_min() < 0 || mon.get_scent_min() > mon.get_scent_max() ) {
+            debugmsg( "scent_sensitivity of monster %s needs 0 <= min (%d) <= max (%d)", mon.id.c_str(),
+                      mon.get_scent_min(), mon.get_scent_max() );
+        }
+        if( mon.footstep_volume && *mon.footstep_volume < 0 ) {
+            debugmsg( "footstep_volume (%d) of monster %s is negative", *mon.footstep_volume,
+                      mon.id.c_str() );
+        }
+
         for( const std::pair<const std::string, mtype_special_attack> &spatk : mon.special_attacks ) {
+            // MONAI-B04: a polymorph into an unknown monster
+            if( const polymorph_special *poly = dynamic_cast<const polymorph_special *>( &*spatk.second ) ) {
+                if( !poly->mon_id.is_valid() ) {
+                    debugmsg( "Monster %s attack %s polymorphs into unknown monster \"%s\"", mon.id.c_str(),
+                              spatk.first, poly->mon_id.str() );
+                }
+            }
             const melee_actor *atk = dynamic_cast<const melee_actor *>( &*spatk.second );
             if( !atk ) {
                 continue;
@@ -1636,16 +2150,31 @@ void monster_death_effect::deserialize( const JsonObject &data )
     load( data );
 }
 
-void pet_food_data::load( const JsonObject &jo )
+void pet_food_data::load( const JsonObject &jo, std::string_view src )
 {
     optional( jo, was_loaded, "food", food );
     optional( jo, was_loaded, "feed", feed );
     optional( jo, was_loaded, "pet", pet );
-}
-
-void pet_food_data::deserialize( const JsonObject &data )
-{
-    load( data );
+    // MONDT-J14
+    optional( jo, was_loaded, "chance", chance, numeric_bound_reader<int> { 0, 100 }, 100 );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    } else {
+        condition = nullptr;
+    }
+    on_tame_eocs.clear();
+    if( jo.has_array( "on_tame_eocs" ) ) {
+        for( const JsonValue jv : jo.get_array( "on_tame_eocs" ) ) {
+            on_tame_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    on_fail_eocs.clear();
+    if( jo.has_array( "on_fail_eocs" ) ) {
+        for( const JsonValue jv : jo.get_array( "on_fail_eocs" ) ) {
+            on_fail_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    optional( jo, was_loaded, "bite_on_feed", bite_on_feed, false );
 }
 
 void move_skills_data::load( const JsonObject &jo )
@@ -1662,9 +2191,10 @@ void move_skills_data::load( const JsonObject &jo )
         debugmsg( "dig value out of range.  It has to be between 0 and 10" );
         dig = std::max( std::min( dig.value(), 10 ), 0 );
     }
-    if( dig && ( dig.value() < 0 || dig.value() > 10 ) ) {
-        debugmsg( "dig value out of range.  It has to be between 0 and 10" );
-        dig = std::max( std::min( dig.value(), 10 ), 0 );
+    // swim was never checked; dig was checked twice (MONDT-B14)
+    if( swim && ( swim.value() < 0 || swim.value() > 10 ) ) {
+        debugmsg( "swim value out of range.  It has to be between 0 and 10" );
+        swim = std::max( std::min( swim.value(), 10 ), 0 );
     }
 }
 

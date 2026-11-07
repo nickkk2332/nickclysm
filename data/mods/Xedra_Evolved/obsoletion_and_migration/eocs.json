@@ -183,7 +183,7 @@
     },
     "effect": [
       {
-        "if": { "math": [ "u_skill('computers') > 0" ] },
+        "if": { "math": [ "u_skill('computer') > 0" ] },
         "then": { "math": [ "u_proficiency('prof_paraclesian_computer_understanding', 'format': 'percent', 'direct': true) += 100" ] }
       },
       {

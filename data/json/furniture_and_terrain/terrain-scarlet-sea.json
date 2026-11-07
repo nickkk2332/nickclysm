@@ -102,6 +102,7 @@
     "color": "dark_gray",
     "move_cost": 0,
     "coverage": 100,
+    "sound_attenuation": 12,
     "roof": "t_nl_scrap_floor",
     "flags": [ "NOITEM", "SUPPORTS_ROOF", "WALL", "REDUCE_SCENT", "AUTO_WALL_SYMBOL", "MINEABLE", "BLOCK_WIND", "CLIMBABLE" ],
     "bash": {

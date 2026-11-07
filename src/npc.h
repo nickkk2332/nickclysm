@@ -525,10 +525,14 @@ struct healing_options {
     bool bleed = false;
     bool bite = false;
     bool infect = false;
+    // NPC-J08: effects a healing item's "cures" removes
+    std::set<efftype_id> cure;
     void clear_all();
     void set_all();
     bool any_true() const;
     bool all_false() const;
+    // a wound: bandage, disinfect, bleed, bite or infect, not a cure
+    bool any_wound() const;
 };
 
 // Data relevant only for this action
@@ -553,12 +557,13 @@ struct npc_short_term_cache {
 
     npc_attack_rating current_attack_evaluation;
     std::shared_ptr<npc_attack> current_attack;
+    // the turn the NPC last sent opens_spellbook before rating its spells (NPC-B06)
+    time_point opens_spellbook_turn = calendar::before_time_starts;
 
 
     // Use weak_ptr to avoid circular references between Creatures
     // attitude of creatures the npc can see
     std::vector<weak_ptr_fast<Creature>> hostile_guys;
-    std::vector<weak_ptr_fast<Creature>> neutral_guys;
     std::vector<weak_ptr_fast<Creature>> friends;
     std::vector<sphere> dangerous_explosives;
     std::map<direction, float> threat_map;
@@ -569,6 +574,8 @@ struct npc_short_term_cache {
     // within the turn don't invalidate it
     mutable npc_trip last_trip;
     npc_retained_trip retained_trip;
+    // NPC-J09: how much of the charge it is drinking from a terrain source is still to sip
+    units::volume terrain_sip_left = 0_ml;
     // diagnostic count of route() calls made while resolving self-care walks
     mutable int trip_route_calls = 0;
     // last sleep search found no spot the NPC may use; holds sleep back until it
@@ -1094,15 +1101,19 @@ class npc : public Character
         void drop( const drop_locations &what, const tripoint_bub_ms &target,
                    bool stash ) override;
         bool adjust_worn();
-        bool has_healing_item( healing_options try_to_fix );
-        healing_options patient_assessment( const Character &c );
+        bool has_healing_item( const healing_options &try_to_fix );
+        healing_options patient_assessment( const Character &c ) const;
         healing_options has_healing_options();
-        healing_options has_healing_options( healing_options try_to_fix );
+        healing_options has_healing_options( const healing_options &try_to_fix );
         item &get_healing_item( healing_options try_to_fix, bool first_best = false );
         bool has_painkiller() const;
         bool took_painkiller() const;
         void use_painkiller();
         item *most_appropriate_painkiller();
+        // NPC-J07: the first medicine that isn't a painkiller whose "npc_use" condition holds
+        // now, nullptr for none; take_medicine() takes it
+        item *medicine_to_take();
+        bool take_medicine();
         void activate_item( item &it );
         bool has_identified( const itype_id & ) const override {
             return true;
@@ -1615,6 +1626,11 @@ class npc : public Character
         weak_ptr_fast<Creature> get_ai_target() const {
             return ai_cache.target;
         }
+        // threat per direction, as assess_danger() last left it
+        float get_ai_threat( direction dir ) const {
+            const auto found = ai_cache.threat_map.find( dir );
+            return found == ai_cache.threat_map.end() ? 0.0f : found->second;
+        }
         bool has_ai_sound_alerts() const {
             return !ai_cache.sound_alerts.empty();
         }
@@ -1975,12 +1991,25 @@ class standard_npc : public npc
 };
 
 // instances of this can be accessed via string_id<npc_template>.
+// The JSON "npc" type: what npc::load_npc_template() gives an npc.  Loaded through
+// generic_factory, so it takes copy-from, abstract, extend and delete (NPC-J02).
 class npc_template
 {
     public:
         npc_template() = default;
 
-        npc guy;
+        npc_template_id id;
+        bool was_loaded = false;
+
+        faction_id fac_id = faction_id::NULL_ID();
+        npc_class_id myclass = npc_class_id::NULL_ID();
+        npc_attitude attitude = NPCATT_NULL;
+        npc_mission mission = NPC_MISSION_NULL;
+        // first_topic ("chat") and the talk_* topics
+        dialogue_chatbin chatbin;
+        // "mission_offered"
+        std::vector<mission_type_id> miss_ids;
+        std::vector<effect_on_condition_id> death_eocs;
         character_portrait_id unique_portrait_filename;
         dialogue_chatbin_snippets snippets;
         translation name_unique;
@@ -2000,11 +2029,15 @@ class npc_template
         std::optional<int> per;
         std::optional<npc_personality> personality;
 
-        static void load( const JsonObject &jsobj, std::string_view src );
+        void load( const JsonObject &jsobj, std::string_view src );
+
+        static void load_npc_template( const JsonObject &jsobj, const std::string &src );
         static void reset();
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
         static void check_consistency();
 
-        static std::map<npc_template_id, npc_template> &get_npc_templates();
+        static const std::vector<npc_template> &get_all();
 };
 
 std::ostream &operator<< ( std::ostream &os, const npc_need &need );

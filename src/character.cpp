@@ -64,6 +64,7 @@
 #include "item_stack.h"
 #include "item_tname.h"
 #include "itype.h"
+#include "iuse.h"
 #include "lightmap.h"
 #include "line.h"
 #include "localized_comparator.h"
@@ -119,6 +120,7 @@
 #include "vitamin.h"
 #include "vpart_position.h"
 #include "weather.h"
+#include "weather_gen.h"
 
 static const activity_id ACT_AUTODRIVE( "ACT_AUTODRIVE" );
 static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
@@ -142,7 +144,6 @@ static const activity_id ACT_WAIT_FOLLOWERS( "ACT_WAIT_FOLLOWERS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 static const activity_id ACT_WAIT_STAMINA( "ACT_WAIT_STAMINA" );
 
-static const addiction_id addiction_opiate( "opiate" );
 static const addiction_id addiction_sleeping_pill( "sleeping pill" );
 
 static const anatomy_id anatomy_human_anatomy( "human_anatomy" );
@@ -180,7 +181,6 @@ static const damage_type_id damage_bash( "bash" );
 static const damage_type_id damage_cut( "cut" );
 static const damage_type_id damage_electric( "electric" );
 static const damage_type_id damage_heat( "heat" );
-static const damage_type_id damage_stab( "stab" );
 
 static const effect_on_condition_id effect_on_condition_add_effect( "add_effect" );
 
@@ -188,7 +188,6 @@ static const efftype_id effect_adrenaline( "adrenaline" );
 static const efftype_id effect_beartrap( "beartrap" );
 static const efftype_id effect_bite( "bite" );
 static const efftype_id effect_bleed( "bleed" );
-static const efftype_id effect_blind( "blind" );
 static const efftype_id effect_blood_spiders( "blood_spiders" );
 static const efftype_id effect_bloodworms( "bloodworms" );
 static const efftype_id effect_boomered( "boomered" );
@@ -258,12 +257,14 @@ static const json_character_flag json_flag_DEAF( "DEAF" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_EYE_MEMBRANE( "EYE_MEMBRANE" );
 static const json_character_flag json_flag_FEATHER_FALL( "FEATHER_FALL" );
+static const json_character_flag json_flag_FIX_FARSIGHT( "FIX_FARSIGHT" );
 static const json_character_flag json_flag_FREEZE_EFFECTS( "FREEZE_EFFECTS" );
 static const json_character_flag json_flag_GLIDE( "GLIDE" );
 static const json_character_flag json_flag_GLIDING( "GLIDING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HEATSINK( "HEATSINK" );
+static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_IMMUNE_HEARING_DAMAGE( "IMMUNE_HEARING_DAMAGE" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
 static const json_character_flag json_flag_INSECTBLOOD( "INSECTBLOOD" );
@@ -333,7 +334,6 @@ static const scenttype_id scent_sc_human( "sc_human" );
 
 static const skill_id skill_archery( "archery" );
 static const skill_id skill_dodge( "dodge" );
-static const skill_id skill_driving( "driving" );
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_pistol( "pistol" );
 static const skill_id skill_swimming( "swimming" );
@@ -345,8 +345,6 @@ static const start_location_id start_location_sloc_shelter_safe( "sloc_shelter_s
 
 static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
 static const trait_id trait_ARACHNID_ARMS_OK( "ARACHNID_ARMS_OK" );
-static const trait_id trait_BIRD_EYE( "BIRD_EYE" );
-static const trait_id trait_CF_HAIR( "CF_HAIR" );
 static const trait_id trait_CHITIN2( "CHITIN2" );
 static const trait_id trait_CHITIN3( "CHITIN3" );
 static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
@@ -372,9 +370,6 @@ static const trait_id trait_INSOMNIA( "INSOMNIA" );
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
 static const trait_id trait_LIGHTSTEP( "LIGHTSTEP" );
 static const trait_id trait_M_IMMUNE( "M_IMMUNE" );
-static const trait_id trait_NIGHTVISION( "NIGHTVISION" );
-static const trait_id trait_NIGHTVISION2( "NIGHTVISION2" );
-static const trait_id trait_NIGHTVISION3( "NIGHTVISION3" );
 static const trait_id trait_NOMAD( "NOMAD" );
 static const trait_id trait_NOMAD2( "NOMAD2" );
 static const trait_id trait_NOMAD3( "NOMAD3" );
@@ -386,7 +381,6 @@ static const trait_id trait_PER_SLIME( "PER_SLIME" );
 static const trait_id trait_PER_SLIME_OK( "PER_SLIME_OK" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
 static const trait_id trait_PROF_SKATER( "PROF_SKATER" );
-static const trait_id trait_QUILLS( "QUILLS" );
 static const trait_id trait_ROOTS3( "ROOTS3" );
 static const trait_id trait_SAVANT( "SAVANT" );
 static const trait_id trait_SHELL2( "SHELL2" );
@@ -394,10 +388,8 @@ static const trait_id trait_SHELL3( "SHELL3" );
 static const trait_id trait_SHOUT2( "SHOUT2" );
 static const trait_id trait_SHOUT3( "SHOUT3" );
 static const trait_id trait_SLIMY( "SLIMY" );
-static const trait_id trait_SPINES( "SPINES" );
 static const trait_id trait_SUNLIGHT_DEPENDENT( "SUNLIGHT_DEPENDENT" );
 static const trait_id trait_THICK_SCALES( "THICK_SCALES" );
-static const trait_id trait_THORNS( "THORNS" );
 static const trait_id trait_VISCOUS( "VISCOUS" );
 static const trait_id trait_WHISKERS( "WHISKERS" );
 static const trait_id trait_WHISKERS_RAT( "WHISKERS_RAT" );
@@ -476,7 +468,7 @@ void queued_eocs::pop()
 void Character::queue_effects( const std::vector<effect_on_condition_id> &effects )
 {
     for( const effect_on_condition_id &eoc_id : effects ) {
-        effect_on_condition eoc = eoc_id.obj();
+        const effect_on_condition &eoc = eoc_id.obj();
         if( is_avatar() || eoc.run_for_npcs ) {
             queued_eoc new_eoc = queued_eoc{ eoc.id, calendar::turn_zero, {} };
             queued_effect_on_conditions.push( new_eoc );
@@ -1357,6 +1349,14 @@ int Character::clairvoyance() const
     return 0;
 }
 
+// UIINV-J04: glasses, contacts, and any trait, bionic or effect with the FIX_FARSIGHT flag
+bool Character::has_uncorrected_farsight() const
+{
+    return has_flag( json_flag_HYPEROPIC ) && !worn_with_flag( flag_FIX_FARSIGHT ) &&
+           !has_flag( json_flag_FIX_FARSIGHT ) && !has_effect( effect_contacts ) &&
+           !has_effect( effect_transition_contacts );
+}
+
 bool Character::sight_impaired() const
 {
     const bool in_light = get_map().ambient_light_at( pos_bub() ) > LIGHT_AMBIENT_LIT;
@@ -1603,6 +1603,11 @@ void Character::mount_creature( monster &z )
     }
 
     mod_moves( -100 );
+
+    // MONDT-J14: the steed is beta
+    const cata::event mounted = cata::event::make<event_type::character_mounts_monster>( getID(),
+                                z.type->id );
+    get_event_bus().send_with_talker( this, &z, mounted );
 }
 
 bool Character::check_mount_will_move( const tripoint_bub_ms &dest_loc )
@@ -1909,6 +1914,9 @@ void Character::on_dodge( Creature *source, float difficulty, float training_lev
     ma_event_context dodge_ctx;
     dodge_ctx.opponent = source;
     martial_arts_data->ma_ondodge_effects( *this, dodge_ctx );
+    // CMBT-J04: for any EOC, not only the selected style's
+    get_event_bus().send_with_talker( this, source,
+                                      cata::event::make<event_type::character_dodges>( getID() ) );
 
     magic->break_channeling( *this );
 
@@ -2252,7 +2260,11 @@ bool Character::can_switch_to( const move_mode_id &mode ) const
         ( mode->type() == move_mode_type::PRONE || mode->type() == move_mode_type::CROUCHING ) ) {
         return false;
     }
-    // Only running modes are restricted at the moment and only when its your legs doing the running
+    // CHAR-J07: the mode's own JSON condition, e.g. wings for a flying mode
+    if( !mode->condition_allows( *this ) ) {
+        return false;
+    }
+    // Running modes are restricted only when its your legs doing the running
     return get_steed_type() != steed_type::NONE || mode->type() != move_mode_type::RUNNING || can_run();
 }
 
@@ -2261,8 +2273,11 @@ int Character::move_mode_switch_cost( const move_mode_id &old_mode,
 {
     const int standing_crouch_base_cost = 50;
     const int crouch_prone_base_cost = 100;
-    float weight_ratio = static_cast<float>( weight_carried().value() ) /
-                         static_cast<float>( weight_capacity().value() );
+    // A capacity of 0 counts as fully loaded, as in weight_carried_percent()
+    const units::mass capacity = weight_capacity();
+    const float weight_ratio = capacity > 0_gram ?
+                               static_cast<float>( weight_carried().value() ) /
+                               static_cast<float>( capacity.value() ) : 1.0f;
     int move_cost = 0;
     if( ( old_mode->type() == move_mode_type::PRONE && new_mode->type() == move_mode_type::WALKING ) ||
         ( old_mode->type() == move_mode_type::PRONE && new_mode->type() == move_mode_type::RUNNING ) ||
@@ -2285,6 +2300,10 @@ int Character::move_mode_switch_cost( const move_mode_id &old_mode,
         // One step of change walking to crouch or crouch to walking
         move_cost = standing_crouch_base_cost;
     }
+    // CHAR-J07: the new mode's own JSON switch_cost
+    if( old_mode != new_mode ) {
+        move_cost += new_mode->switch_cost();
+    }
 
     // If we're carrying more than we should, make it cost more
     if( weight_ratio > 1 ) {
@@ -2299,6 +2318,12 @@ int Character::move_mode_switch_cost( const move_mode_id &old_mode,
     // 50% more cost with clumsy
     if( has_trait( trait_CLUMSY ) ) {
         move_cost *= 1.5;
+    }
+
+    // CHAR-J07: enchantments can change it too
+    if( move_cost > 0 ) {
+        move_cost = std::max( 0, static_cast<int>( enchantment_cache->modify_value(
+                                  enchant_vals::mod::MOVE_MODE_SWITCH_COST, move_cost ) ) );
     }
 
     return move_cost;
@@ -2547,18 +2572,17 @@ void Character::recalc_sight_limits()
     if( has_nv_goggles() ) {
         vision_mode_cache.set( NV_GOGGLES );
     }
-    if( has_active_mutation( trait_NIGHTVISION3 ) ||
-        ( is_mounted() && mounted_creature->has_flag( mon_flag_MECH_RECON_VISION ) ) ) {
-        vision_mode_cache.set( NIGHTVISION_3 );
-    }
-    if( has_active_mutation( trait_NIGHTVISION2 ) ) {
-        vision_mode_cache.set( NIGHTVISION_2 );
-    }
-    if( has_active_mutation( trait_NIGHTVISION ) ) {
-        vision_mode_cache.set( NIGHTVISION_1 );
-    }
-    if( has_trait( trait_BIRD_EYE ) ) {
-        vision_mode_cache.set( BIRD_EYE );
+    // Night vision of a mech's recon vision or of traits' night_vision_range, the best of them
+    // counting, as the hardcoded Night Vision traits did (CHAR-J03)
+    night_vision_range_cache = ( is_mounted() &&
+                                 mounted_creature->has_flag( mon_flag_MECH_RECON_VISION ) ) ? 10.0f : 0.0f;
+    for( const std::pair<const trait_id, trait_data> &mut : cached_mutations ) {
+        const mutation_branch &branch = mut.first.obj();
+        // An activatable trait sees in the dark while it is on
+        const bool on = branch.activated ? mut.second.powered : mut.second.corrupted == 0;
+        if( on && branch.night_vision_range > night_vision_range_cache ) {
+            night_vision_range_cache = branch.night_vision_range;
+        }
     }
 
     if( has_flag( json_flag_SUPER_CLAIRVOYANCE ) ) {
@@ -2589,24 +2613,15 @@ float Character::get_vision_threshold( float light_level ) const
                                      ( LIGHT_AMBIENT_LIT - LIGHT_AMBIENT_MINIMAL ) );
 
     float range = get_per() / 3.0f;
-    if( vision_mode_cache[NIGHTVISION_3] ) {
-        range += 10;
-    } else if( vision_mode_cache[NIGHTVISION_2] ) {
-        range += 4.5;
-    } else if( vision_mode_cache[NIGHTVISION_1] ) {
-        range += 2;
-    }
-
-    if( vision_mode_cache[BIRD_EYE] ) {
-        range++;
-    }
+    // Night Vision traits or a mech's recon vision (CHAR-J03)
+    range += night_vision_range_cache;
 
     // bionic night vision and other old night vision flagged items
     if( worn_with_flag( flag_GNV_EFFECT ) || has_flag( json_flag_NIGHT_VISION ) ) {
         range += 10;
-    } else {
-        range = enchantment_cache->modify_value( enchant_vals::mod::NIGHT_VIS, range );
     }
+    // Applies with goggles too, or every NIGHT_VIS bonus and penalty was lost while they were on
+    range = enchantment_cache->modify_value( enchant_vals::mod::NIGHT_VIS, range );
 
     // Clamp range to 1+, so that we can always see where we are
     range = std::max( 1.0f, range * get_limb_score( limb_score_night_vis ) );
@@ -2621,9 +2636,8 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
     SkillLevel &level = get_skill_level_object( id );
     const Skill &skill = id.obj();
     if( !level.can_train() || in_sleep_state() ||
-        ( static_cast<int>( get_skill_level( id ) ) >= MAX_SKILL ) ) {
-        // Do not practice if: cannot train, asleep, or at effective skill cap
-        // Leaving as a skill method rather than global for possible future skill cap setting
+        ( static_cast<int>( get_skill_level( id ) ) >= skill.max_level() ) ) {
+        // Do not practice if: cannot train, asleep, or at the skill's cap (max_level)
         return false;
     }
 
@@ -2651,6 +2665,10 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
     const skill_id savantSkill = isSavant ? highest_skill() : skill_id::NULL_ID();
 
     amount = adjust_for_focus( std::min( 1000, amount ) ) * 100.0f;
+    // The skill's own pace (PROG-J08)
+    if( skill.training_multiplier() != 1.0f ) {
+        amount = static_cast<int>( std::lround( amount * skill.training_multiplier() ) );
+    }
 
     if( has_trait( trait_PACIFIST ) && skill.is_combat_skill() ) {
         amount /= 3.0f;
@@ -2658,6 +2676,7 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
 
     catchup_modifier = enchantment_cache->modify_value( enchant_vals::mod::COMBAT_CATCHUP,
                        catchup_modifier );
+    catchup_modifier *= skill.catchup_multiplier();
 
     if( isSavant && id != savantSkill ) {
         amount *= 0.5f;
@@ -2681,7 +2700,13 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
         int new_theoretical_level = get_knowledge_level( id );
         std::string skill_name = skill.name();
         if( new_practical_level > old_practical_level ) {
-            get_event_bus().send<event_type::gains_skill_level>( getID(), id, new_practical_level );
+            get_event_bus().send<event_type::gains_skill_level>( getID(), id, new_practical_level,
+                    "practical" );
+        }
+        // Theory that rose by itself, not just with the practical level (PROG-J06)
+        if( new_theoretical_level > std::max( old_theoretical_level, new_practical_level ) ) {
+            get_event_bus().send<event_type::gains_skill_level>( getID(), id, new_theoretical_level,
+                    "theoretical" );
         }
         if( is_avatar() && new_practical_level > old_practical_level ) {
             add_msg( m_good, _( "Your practical skill in %s has increased to %d!" ), skill_name,
@@ -2958,6 +2983,16 @@ units::mass Character::max_pickup_capacity() const
     return weight_capacity() * 4;
 }
 
+int Character::weight_carried_percent() const
+{
+    // Stacked negative CARRY_WEIGHT enchantments can bring the capacity down to 0
+    const units::mass capacity = weight_capacity();
+    if( capacity <= 0_gram ) {
+        return 100;
+    }
+    return static_cast<int>( ( 100 * weight_carried() ) / capacity );
+}
+
 bool Character::can_use( const item &it, const item &context ) const
 {
     if( has_effect( effect_incorporeal ) ) {
@@ -3074,7 +3109,7 @@ std::string Character::enumerate_unmet_requirements( const item &it, const item 
         }
     };
 
-    check_req( _( "strength" ),     get_str(), it.get_min_str() );
+    check_req( _( "strength" ),     get_str(), it.get_min_str( *this ) );
     check_req( _( "dexterity" ),    get_dex(), it.type->min_dex );
     check_req( _( "intelligence" ), get_int(), it.type->min_int );
     check_req( _( "perception" ),   get_per(), it.type->min_per );
@@ -3090,7 +3125,7 @@ std::string Character::enumerate_unmet_requirements( const item &it, const item 
 
 bool Character::meets_stat_requirements( const item &it ) const
 {
-    return get_str() >= it.get_min_str() &&
+    return get_str() >= it.get_min_str( *this ) &&
            get_dex() >= it.type->min_dex &&
            get_int() >= it.type->min_int &&
            get_per() >= it.type->min_per;
@@ -4444,6 +4479,13 @@ void Character::mend_item( item_location &&obj, bool interactive )
     for( const fault_id &f : obj->faults ) {
         for( const fault_fix_id &fix_id : f->get_fixes() ) {
             const fault_fix &fix = *fix_id;
+            if( fix.condition ) {
+                // a fix with a condition is only offered while it holds
+                const const_dialogue d( get_const_talker_for( *this ), get_const_talker_for( obj ) );
+                if( !fix.condition( d ) ) {
+                    continue;
+                }
+            }
             mending_option opt{ f, fix, true };
             for( const auto &[skill_id, level] : fix.skills ) {
                 if( get_greater_skill_or_knowledge_level( skill_id ) < level ) {
@@ -4715,6 +4757,31 @@ bool Character::invoke_item( item *used, const std::string &method )
     return invoke_item( used, method, pos_bub() );
 }
 
+// Removes an item that was used up from wherever it was used: carried, or where it lies
+// (ALLOWS_REMOTE_USE) on the ground or in a vehicle at pt. Returns whether it was found.
+static bool remove_used_item( Character &you, item &used, const tripoint_bub_ms &pt )
+{
+    if( you.has_item( used ) ) {
+        you.i_rem( &used );
+        return true;
+    }
+    map &here = get_map();
+    map_cursor ground( &here, pt );
+    if( ground.has_item( used ) ) {
+        ground.remove_item( used );
+        return true;
+    }
+    if( const optional_vpart_position vp = here.veh_at( pt ) ) {
+        vehicle_cursor cargo( vp->vehicle(), vp->part_index() );
+        if( cargo.has_item( used ) ) {
+            cargo.remove_item( used );
+            return true;
+        }
+    }
+    debugmsg( "Couldn't find the used %s to remove it", used.tname() );
+    return false;
+}
+
 bool Character::invoke_item( item *used, const std::string &method, const tripoint_bub_ms &pt,
                              int pre_obtain_moves )
 {
@@ -4771,27 +4838,51 @@ bool Character::invoke_item( item *used, const std::string &method, const tripoi
         return false;
     }
 
+    // The use can transform the item or use it up: the event names what was activated (USE-J07)
+    const itype_id activated_type = actually_used->typeId();
+    const std::string &activated_method = method;
     std::optional<int> charges_used = actually_used->type->invoke( this, *actually_used,
                                       pt, method );
     if( !charges_used.has_value() ) {
         set_moves( pre_obtain_moves );
         return false;
     }
+    // Sent once the use is over and the item is spent, so its EOCs can't pull the item out from
+    // under the rest of this function
+    const auto activated = [&]( const bool removed ) {
+        get_event_bus().send<event_type::character_activates_item>( getID(), activated_type,
+                activated_method, charges_used.value() );
+        return removed;
+    };
 
     if( charges_used.value() == 0 ) {
         // Not really used.
         // The item may also have been deleted
-        return false;
+        return activated( false );
     }
 
     actually_used->activation_consume( charges_used.value(), pt, this );
 
     if( actually_used->has_flag( flag_SINGLE_USE ) || actually_used->is_bionic() ) {
         i_rem( actually_used );
-        return true;
+        return activated( true );
     }
 
-    return false;
+    // An item with no charges to spend has itself as its one use, for the use actions that say
+    // so: one of a stack counted by charges, else the item (USE-B08).
+    const use_function *use_fn = actually_used->type->get_use( method );
+    const bool no_charges = !actually_used->uses_firing_requirements() &&
+                            actually_used->ammo_required() == 0;
+    if( no_charges && use_fn != nullptr && use_fn->get_actor_ptr() != nullptr &&
+        use_fn->get_actor_ptr()->uses_up_item_without_charges() ) {
+        if( actually_used->count_by_charges() && actually_used->charges > 1 ) {
+            actually_used->mod_charges( -1 );
+            return activated( false );
+        }
+        return activated( remove_used_item( *this, *actually_used, pt ) );
+    }
+
+    return activated( false );
 }
 
 bool Character::consume_charges( item &used, int qty )
@@ -5094,13 +5185,144 @@ void Character::drench_mut_calc()
     }
 }
 
-void Character::recalculate_bodyparts()
+body_part_set Character::target_bodyparts() const
 {
     body_part_set body_set;
     for( const bodypart_id &bp : creature_anatomy->get_bodyparts() ) {
         body_set.set( bp.id() );
     }
     body_set = enchantment_cache->modify_bodyparts( body_set );
+    // u_lose_body_part wins over u_add_body_part and enchantments alike; each one resets the
+    // other's record of the part
+    body_set.unify_set( eoc_added_bodyparts );
+    body_set.substract_set( eoc_removed_bodyparts );
+    return body_set;
+}
+
+// Removes the effects on a body part the body is losing
+static void remove_effects_on( Character &who, const bodypart_str_id &bp )
+{
+    std::vector<efftype_id> on_part;
+    for( const effect &eff : who.get_effects_from_bp( bp.id() ) ) {
+        on_part.push_back( eff.get_id() );
+    }
+    for( const efftype_id &id : on_part ) {
+        who.remove_effect( id, bp.id() );
+    }
+}
+
+// Brings the body, hp and what depends on it up to date after an EOC changed its parts
+static void rebuild_body_after_eoc( Character &who )
+{
+    who.recalculate_bodyparts();
+    who.recalc_hp();
+    who.recalc_sight_limits();
+    who.invalidate_crafting_inventory();
+    // worn items left covering none of the remaining parts fall off
+    const std::map<bodypart_str_id, bodypart> &body = who.get_body();
+    std::list<item> fallen = who.remove_worn_items_with( [&body]( const item & armor ) {
+        if( armor.has_flag( flag_INTEGRATED ) || !armor.is_armor() ) {
+            return false;
+        }
+        for( const std::pair<const bodypart_str_id, bodypart> &part : body ) {
+            if( armor.covers( part.first.id() ) ) {
+                return false;
+            }
+        }
+        return true;
+    } );
+    map &here = get_map();
+    for( item &armor : fallen ) {
+        who.add_msg_player_or_npc( m_bad, _( "Your %s falls off!" ), _( "<npcname>'s %s falls off!" ),
+                                   armor.tname() );
+        here.add_item_or_charges( who.pos_bub(), armor );
+    }
+}
+
+std::optional<std::string> Character::add_body_part_by_eoc( const bodypart_str_id &bp )
+{
+    if( !bp.is_valid() ) {
+        return string_format( "unknown body part \"%s\"", bp.str() );
+    }
+    const bodypart_str_id &parent = bp->connected_to;
+    if( parent != bp && !target_bodyparts().test( parent ) ) {
+        return string_format( "%s connects to %s, which the body doesn't have", bp.str(),
+                              parent.str() );
+    }
+    const bool had_it = target_bodyparts().test( bp );
+    eoc_removed_bodyparts.reset( bp );
+    eoc_added_bodyparts.set( bp );
+    if( had_it ) {
+        // kept now, even after the enchantment that gave it ends
+        return "the body already has " + bp.str();
+    }
+    rebuild_body_after_eoc( *this );
+    return std::nullopt;
+}
+
+std::optional<std::string> Character::lose_body_part_by_eoc( const bodypart_str_id &bp,
+        bool force )
+{
+    if( !bp.is_valid() ) {
+        return string_format( "unknown body part \"%s\"", bp.str() );
+    }
+    const body_part_set target = target_bodyparts();
+    if( !target.test( bp ) ) {
+        return "the body has no " + bp.str();
+    }
+    // the part and every part connected to the body through it
+    body_part_set lost;
+    lost.set( bp );
+    bool grew = true;
+    while( grew ) {
+        grew = false;
+        for( const bodypart_str_id &part : target ) {
+            if( !lost.test( part ) && part->connected_to != part && lost.test( part->connected_to ) ) {
+                lost.set( part );
+                grew = true;
+            }
+        }
+    }
+    // the root first, then the part itself, then the others: the set's order isn't fixed
+    for( const bodypart_str_id &part : lost ) {
+        if( part->connected_to == part ) {
+            return part.str() + " is the root of the body";
+        }
+    }
+    if( bp->is_vital ) {
+        return bp.str() + " is vital";
+    }
+    for( const bodypart_str_id &part : lost ) {
+        if( part->is_vital ) {
+            return part.str() + " is vital";
+        }
+    }
+    if( !force ) {
+        for( const bionic_id &bid : get_bionics() ) {
+            for( const std::pair<const bodypart_str_id, size_t> &slot : bid->occupied_bodyparts ) {
+                if( lost.test( slot.first ) ) {
+                    return string_format( "%s holds the bionic %s", slot.first.str(), bid.str() );
+                }
+            }
+            for( const std::pair<const bodypart_str_id, int> &enc : bid->encumbrance ) {
+                if( lost.test( enc.first ) ) {
+                    return string_format( "%s holds the bionic %s", enc.first.str(), bid.str() );
+                }
+            }
+        }
+    }
+    for( const bodypart_str_id &part : lost ) {
+        eoc_added_bodyparts.reset( part );
+        eoc_removed_bodyparts.set( part );
+        remove_effects_on( *this, part );
+    }
+    rebuild_body_after_eoc( *this );
+    return std::nullopt;
+}
+
+void Character::recalculate_bodyparts()
+{
+    body_part_set body_set = target_bodyparts();
     // first come up with the bodyparts that need to be removed from body
     for( auto bp_iter = body.begin(); bp_iter != body.end(); ) {
         if( !body_set.test( bp_iter->first ) ) {
@@ -5127,17 +5349,17 @@ void Character::recalculate_bodyparts()
                    get_cached_organic_size() );
 }
 
-// True when the body holds exactly the anatomy's parts, so no enchantment that added or
-// removed a part is still reflected in it.
-static bool body_matches_anatomy( const Creature &who )
+// True when the body holds exactly the parts it should (Character::target_bodyparts), so no
+// enchantment or EOC that added or removed a part has been left out of it.
+static bool body_matches_target( const Character &who )
 {
     const std::map<bodypart_str_id, bodypart> &body = who.get_body();
-    const std::vector<bodypart_id> parts = who.get_anatomy()->get_bodyparts();
-    if( parts.size() != body.size() ) {
+    const body_part_set parts = who.target_bodyparts();
+    if( parts.count() != body.size() ) {
         return false;
     }
-    return std::all_of( parts.begin(), parts.end(), [&body]( const bodypart_id & bp ) {
-        return body.count( bp.id() ) > 0;
+    return std::all_of( parts.begin(), parts.end(), [&body]( const bodypart_str_id & bp ) {
+        return body.count( bp ) > 0;
     } );
 }
 
@@ -5151,9 +5373,12 @@ void Character::recalculate_enchantment_cache()
                 enchantment_cache->force_add( ench );
             }
         }
+        // MAGIC-J08: the item's enchantments read it as their beta talker (n_ variables)
+        enchantment_source source;
+        source.item = &it;
         for( const enchantment &ench : it->get_defined_enchantments() ) {
-            if( ench.is_active( *this, *it ) ) {
-                enchantment_cache->force_add( ench, *this );
+            if( ench.is_active( *this, it ) ) {
+                enchantment_cache->force_add( ench, *this, source );
             }
         }
     } );
@@ -5161,21 +5386,46 @@ void Character::recalculate_enchantment_cache()
 
     for( const bionic &bio : *my_bionics ) {
         const bionic_id &bid = bio.id;
+        if( bid->enchantments.empty() ) {
+            continue;
+        }
+        enchantment_source source;
+        source.bionic = bid.str();
 
         for( const enchantment_id &ench_id : bid->enchantments ) {
             const enchantment &ench = ench_id.obj();
             if( ench.is_active( *this, bio.powered &&
-                                bid->has_flag( json_flag_BIONIC_TOGGLED ) ) ) {
-                enchantment_cache->force_add( ench, *this );
+                                bid->has_flag( json_flag_BIONIC_TOGGLED ), source ) ) {
+                enchantment_cache->force_add( ench, *this, source );
             }
         }
     }
 
     for( const auto &elem : *effects ) {
+        if( elem.first->enchantments.empty() ) {
+            continue;
+        }
+        enchantment_source source;
+        source.effect = elem.first.str();
+        for( const auto &part_effect : elem.second ) {
+            source.intensity = std::max( source.intensity, part_effect.second.get_intensity() );
+        }
         for( const enchantment_id &ench_id : elem.first->enchantments ) {
             const enchantment &ench = ench_id.obj();
-            if( ench.is_active( *this, true ) ) {
-                enchantment_cache->force_add( ench, *this );
+            if( ench.is_active( *this, true, source ) ) {
+                enchantment_cache->force_add( ench, *this, source );
+            }
+        }
+    }
+
+    // Proficiencies apply theirs while known (PROG-J09)
+    if( proficiency::any_enchantments() ) {
+        for( const proficiency_id &prof : _proficiencies->known_profs() ) {
+            for( const enchantment_id &ench_id : prof->enchantments() ) {
+                const enchantment &ench = ench_id.obj();
+                if( ench.is_active( *this, true ) ) {
+                    enchantment_cache->force_add( ench, *this );
+                }
             }
         }
     }
@@ -5183,13 +5433,18 @@ void Character::recalculate_enchantment_cache()
     for( const std::pair<const trait_id, trait_data> &mut_map : my_mutations ) {
         if( mut_map.second.corrupted == 0 ) {
             const mutation_branch &mut = mut_map.first.obj();
+            if( mut.enchantments.empty() ) {
+                continue;
+            }
             // cached_mutations holds the live powered state: (de)activation updates it first.
             const auto cached = cached_mutations.find( mut_map.first );
             const bool powered = cached != cached_mutations.end() ? cached->second.powered :
                                  mut_map.second.powered;
+            enchantment_source source;
+            source.trait = mut_map.first.str();
             for( const enchantment_id &ench_id : mut.enchantments ) {
                 const enchantment &ench = ench_id.obj();
-                if( ench.is_active( *this, mut.activated && powered ) ) {
+                if( ench.is_active( *this, mut.activated && powered, source ) ) {
                     enchantment_cache->force_add_mutation( ench );
                 }
             }
@@ -5200,10 +5455,15 @@ void Character::recalculate_enchantment_cache()
     for( const std::pair<const trait_id, trait_data> &mut_map : cached_mutations ) {
         if( mut_map.second.corrupted == 0 ) {
             const mutation_branch &mut = mut_map.first.obj();
+            if( mut.enchantments.empty() ) {
+                continue;
+            }
+            enchantment_source source;
+            source.trait = mut_map.first.str();
             for( const enchantment_id &ench_id : mut.enchantments ) {
                 const enchantment &ench = ench_id.obj();
-                if( ench.is_active( *this, mut.activated && mut_map.second.powered ) ) {
-                    enchantment_cache->force_add( ench, *this );
+                if( ench.is_active( *this, mut.activated && mut_map.second.powered, source ) ) {
+                    enchantment_cache->force_add( ench, *this, source );
                 }
             }
         }
@@ -5211,7 +5471,7 @@ void Character::recalculate_enchantment_cache()
 
     // Also rebuild once the last body-part enchantment is gone (an effect expired, an item
     // was taken off), or the parts it added or removed would stay forever.
-    if( enchantment_cache->modifies_bodyparts() || !body_matches_anatomy( *this ) ) {
+    if( enchantment_cache->modifies_bodyparts() || !body_matches_target( *this ) ) {
         recalculate_bodyparts();
     }
 
@@ -5349,14 +5609,25 @@ void Character::passive_absorb_hit( const bodypart_id &bp, damage_unit &du ) con
 
 void Character::did_hit( Creature &target )
 {
-    enchantment_cache->cast_hit_you( *this, target );
+    did_hit( target, hit_type::melee );
+}
+
+void Character::did_hit( Creature &target, const hit_type hit )
+{
+    enchantment_cache->cast_hit_you( *this, target, hit );
 }
 
 void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
                         float /*difficulty*/, dealt_projectile_attack const *const proj )
 {
     check_dead_state( here );
-    if( source == nullptr || proj != nullptr ) {
+    if( source == nullptr ) {
+        return;
+    }
+    if( proj != nullptr ) {
+        // CHAR-J08: a ranged hit casts the hit_me_effect spells whose hit_types name it; the
+        // retaliation below is for melee only
+        enchantment_cache->cast_hit_me( *this, source, hit_type::ranged, bp_hit );
         return;
     }
 
@@ -5388,55 +5659,34 @@ void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
         // Should hit body part used for attack
         source->deal_damage( this, body_part_torso, ods_shock_damage );
     }
-    if( !wearing_something_on( bp_hit ) &&
-        ( has_trait( trait_SPINES ) || has_trait( trait_QUILLS ) ) ) {
-        int spine = rng( 1, has_trait( trait_QUILLS ) ? 20 : 8 );
-        if( !is_avatar() ) {
-            if( u_see ) {
-                add_msg( _( "%1$s's %2$s puncture %3$s in mid-attack!" ), get_name(),
-                         ( has_trait( trait_QUILLS ) ? _( "quills" ) : _( "spines" ) ),
-                         source->disp_name() );
+    // CHAR-J08: a mutation's "retaliation" (SPINES, QUILLS, THORNS, CF_HAIR)
+    const auto retaliates = []( const mutation_branch & mut ) {
+        return !mut.retaliation.empty();
+    };
+    for( const trait_id &mut : get_functioning_mutations( true, false, retaliates ) ) {
+        for( const mutation_retaliation &ret : mut->retaliation ) {
+            if( ( ret.requires_uncovered && wearing_something_on( bp_hit ) ) ||
+                ( ret.unarmed_attacker_only && source->has_weapon() ) ) {
+                continue;
             }
-        } else {
-            add_msg( m_good, _( "Your %1$s puncture %2$s in mid-attack!" ),
-                     ( has_trait( trait_QUILLS ) ? _( "quills" ) : _( "spines" ) ),
-                     source->disp_name() );
-        }
-        damage_instance spine_damage;
-        // FIXME: Hardcoded damage type
-        spine_damage.add_damage( damage_stab, spine );
-        source->deal_damage( this, body_part_torso, spine_damage );
-    }
-    if( ( !wearing_something_on( bp_hit ) ) && has_trait( trait_THORNS ) &&
-        ( !source->has_weapon() ) ) {
-        if( !is_avatar() ) {
-            if( u_see ) {
-                add_msg( _( "%1$s's %2$s scrape %3$s in mid-attack!" ), get_name(),
-                         _( "thorns" ), source->disp_name() );
+            if( is_avatar() ) {
+                if( !ret.message.empty() ) {
+                    add_msg( m_good, ret.message.translated(), source->disp_name() );
+                }
+            } else if( u_see && !ret.npc_message.empty() ) {
+                add_msg( ret.npc_message.translated(), get_name(), source->disp_name() );
             }
-        } else {
-            add_msg( m_good, _( "Your thorns scrape %s in mid-attack!" ), source->disp_name() );
-        }
-        int thorn = rng( 1, 4 );
-        damage_instance thorn_damage;
-        // FIXME: Hardcoded damage type
-        thorn_damage.add_damage( damage_cut, thorn );
-        // In general, critters don't have separate limbs
-        // so safer to target the torso
-        source->deal_damage( this, body_part_torso, thorn_damage );
-    }
-    if( ( !wearing_something_on( bp_hit ) ) && has_trait( trait_CF_HAIR ) ) {
-        if( !is_avatar() ) {
-            if( u_see ) {
-                add_msg( _( "%1$s gets a load of %2$s's %3$s stuck in!" ), source->disp_name(),
-                         get_name(), _( "hair" ) );
+            if( ret.max_damage > 0 ) {
+                damage_instance retaliation_damage;
+                retaliation_damage.add_damage( ret.damage_type, rng( ret.min_damage, ret.max_damage ) );
+                // In general, critters don't have separate limbs, so the torso is safer
+                source->deal_damage( this, body_part_torso, retaliation_damage );
             }
-        } else {
-            add_msg( m_good, _( "Your hairs detach into %s!" ), source->disp_name() );
-        }
-        source->add_effect( effect_stunned, 2_turns );
-        if( one_in( 3 ) ) { // In the eyes!
-            source->add_effect( effect_blind, 2_turns );
+            for( const mutation_retaliation::effect_data &eff : ret.effects ) {
+                if( one_in( eff.one_in ) ) {
+                    source->add_effect( eff.effect, eff.duration );
+                }
+            }
         }
     }
 
@@ -5474,7 +5724,7 @@ void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
         }
     }
 
-    enchantment_cache->cast_hit_me( *this, source );
+    enchantment_cache->cast_hit_me( *this, source, hit_type::melee, bp_hit );
 }
 
 bool Character::crossed_threshold() const
@@ -5594,6 +5844,12 @@ void Character::assign_activity( const player_activity &act )
 
         activity = act;
     }
+    // u_assign_activity's context, for this activity's EOCs
+    if( std::optional<global_variables::impl_t> context = activity_eoc_context_scope::take() ) {
+        for( std::pair<const std::string, diag_value> &value : *context ) {
+            activity.eoc_context[value.first] = std::move( value.second );
+        }
+    }
 
     activity.start_or_resume( *this, resuming );
 
@@ -5642,7 +5898,9 @@ void Character::cancel_activity()
         backlog.front().auto_resume ) {
         backlog.front().auto_resume = false;
     }
-    if( activity && activity.can_resume() ) {
+    // left in the backlog to resume, so its end is an interruption
+    const bool resumable = activity && activity.can_resume();
+    if( resumable ) {
         activity.allow_distractions();
         // Don't auto-resume after explicit cancellation.  The stamina
         // "continue after a break" path uses assign_activity() (not
@@ -5662,7 +5920,7 @@ void Character::cancel_activity()
         // nothing reads stale task mission or attitude
         guy->end_cancelled_task();
     }
-    ended.run( *this, true );
+    ended.run( *this, true, resumable );
 }
 
 void Character::resume_backlog_activity()
@@ -6583,11 +6841,17 @@ std::vector<run_cost_effect> Character::run_cost_effects( float &movecost ) cons
 
     // Snow depth movement penalty (outdoor, unroofed tiles only)
     if( here.is_outside( pos_bub() ) && !here.is_roofed( pos_bub() ) ) {
-        const double snow_mm = get_weather().get_snow_depth_mm( pos_abs_omt() );
-        if( snow_mm >= 100 && !has_flag( json_flag_LEVITATION )
+        const weather_manager &weather = get_weather();
+        const double snow_mm = weather.get_snow_depth_mm( pos_abs_omt() );
+        if( snow_mm > 0.0 && !has_flag( json_flag_LEVITATION )
             && !has_flag( json_flag_SNOWWALKING ) ) {
-            const int penalty = snow_mm >= 500 ? 100 : ( snow_mm >= 250 ? 50 : 20 );
-            run_cost_effect_add( penalty, _( "Snow" ) );
+            // The region's snow move_cost table (by default +20 from 100 mm, +50 from 250 mm
+            // and +100 from 500 mm)
+            const snow_settings &snow = weather.get_cur_weather_gen().snow;
+            const snow_move_cost *step = snow.move_cost_at( snow_mm );
+            if( step != nullptr && step->character > 0 ) {
+                run_cost_effect_add( step->character, _( "Snow" ) );
+            }
         }
     }
 
@@ -6980,6 +7244,14 @@ void Character::process_one_effect( effect &it, bool is_new )
         add_miss_reason( i.first.translated(), static_cast<unsigned>( i.second ) );
     }
 
+    // HLTH-J13: flavour messages from the effect's JSON (tapeworms, tetanus...)
+    for( const effect_periodic_message &msg : it.get_periodic_msgs() ) {
+        if( it.get_intensity() >= msg.min_intensity && it.get_intensity() <= msg.max_intensity &&
+            one_in( msg.chance ) ) {
+            add_msg_if_player( msg.type, msg.text );
+        }
+    }
+
     // Handle vitamins
     for( const vitamin_applied_effect &vit : it.vit_effects( reduced ) ) {
         if( vit.tick && vit.rate && calendar::once_every( *vit.tick ) ) {
@@ -7152,7 +7424,7 @@ void Character::process_one_effect( effect &it, bool is_new )
     // Handle painkillers
     val = get_effect( "PKILL", reduced );
     if( val != 0 ) {
-        mod = it.get_addict_mod( "PKILL", addiction_level( addiction_opiate ) );
+        mod = it.get_addict_mod( "PKILL", addiction_level( it.get_pkill_addiction() ) );
         if( is_new || it.activated( calendar::turn, "PKILL", val, reduced, mod ) ) {
             mod_painkiller( bound_mod_to_vals( get_painkiller(), val, it.get_max_val( "PKILL", reduced ), 0 ) );
         }
@@ -7272,12 +7544,14 @@ void Character::process_effects()
     dex_bonus_hardcoded = 0;
     int_bonus_hardcoded = 0;
     per_bonus_hardcoded = 0;
-    //Human only effects
+    //Human only effects.  Effect EOCs wait until the loop is done.
+    hold_effect_eocs();
     for( std::pair<const efftype_id, std::map<bodypart_id, effect>> &elem : *effects ) {
         for( std::pair<const bodypart_id, effect> &_effect_it : elem.second ) {
             process_one_effect( _effect_it.second, false );
         }
     }
+    release_effect_eocs();
 
     // Apply new effects from effect->effect chains
     while( !scheduled_effects.empty() ) {
@@ -7830,7 +8104,8 @@ bool Character::has_flag( const json_character_flag &flag ) const
            has_bionic_with_flag( flag ) ||
            has_effect_with_flag( flag ) ||
            has_bodypart_with_flag( flag ) ||
-           has_mabuff_flag( flag );
+           has_mabuff_flag( flag ) ||
+           _proficiencies->count_flag( flag ) > 0;
 }
 
 int Character::count_flag( const json_character_flag &flag ) const
@@ -7840,7 +8115,8 @@ int Character::count_flag( const json_character_flag &flag ) const
            count_bionic_with_flag( flag ) +
            has_effect_with_flag( flag ) +
            count_bodypart_with_flag( flag ) +
-           count_mabuff_flag( flag );
+           count_mabuff_flag( flag ) +
+           _proficiencies->count_flag( flag );
 }
 
 bool Character::empathizes_with_species( const species_id &species ) const
@@ -8684,7 +8960,8 @@ void Character::pause()
                 if( exp_temp - experience > 0 && x_in_y( exp_temp - experience, 1.0 ) ) {
                     experience++;
                 }
-                practice( skill_driving, experience );
+                // VEH-J08: the skill the vehicle's control_requirements name, else driving
+                practice( veh->handling_skill(), experience );
                 break;
             }
         }

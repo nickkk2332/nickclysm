@@ -54,7 +54,7 @@
     "volume": "12 L",
     "price": "100 USD",
     "price_postapoc": "10 USD",
-    "faults": [ { "fault": "fault_engine_starter" } ]
+    "extend": { "faults": [ { "fault": "fault_engine_starter" } ] }
   },
   {
     "id": "1cyl_combustion_large",
@@ -68,7 +68,7 @@
     "volume": "42 L",
     "price": "100 USD",
     "price_postapoc": "12 USD 50 cent",
-    "faults": [ { "fault": "fault_engine_starter" } ]
+    "extend": { "faults": [ { "fault": "fault_engine_starter" } ] }
   },
   {
     "id": "1cyl_combustion_med",
@@ -95,7 +95,7 @@
     "volume": "42 L",
     "price": "100 USD",
     "price_postapoc": "12 USD 50 cent",
-    "faults": [ { "fault": "fault_engine_starter" } ]
+    "extend": { "faults": [ { "fault": "fault_engine_starter" } ] }
   },
   {
     "id": "1cyl_combustion_small",

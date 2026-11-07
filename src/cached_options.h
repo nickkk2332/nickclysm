@@ -20,6 +20,9 @@ extern bool prevent_occlusion_transp;
 extern float prevent_occlusion_min_dist;
 extern float prevent_occlusion_max_dist;
 extern bool show_creature_overlay_icons;
+// TILE_LOOKUP_CACHE: the tiles renderer remembers its sprite lookups (experimental, off by
+// default)
+extern bool tile_lookup_cache;
 extern bool use_tiles;
 extern bool use_far_tiles;
 extern bool use_pinyin_search;
@@ -30,6 +33,8 @@ extern int pixel_minimap_g;
 extern int pixel_minimap_b;
 extern int pixel_minimap_a;
 extern float combat_speed_modifier;
+// SOUND_ATTENUATION_PERCENT: the percentage of the summed sound_attenuation a sound loses
+extern int sound_attenuation_percent;
 
 namespace cata::options
 {

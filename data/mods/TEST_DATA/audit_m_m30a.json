@@ -1,0 +1,69 @@
+[
+  {
+    "type": "mutation",
+    "id": "AUDIT_M30A_NO_CARRY",
+    "name": { "str": "Test no carrying capacity" },
+    "points": 0,
+    "valid": false,
+    "description": "UIHUD-B04: brings the carrying capacity down to 0, as stacked CARRY_WEIGHT penalties can.",
+    "enchantments": [ { "values": [ { "value": "CARRY_WEIGHT", "multiply": -2 } ] } ]
+  },
+  {
+    "//": "UIHUD-J01: a clause template, which can't be drawn",
+    "id": "audit_m30a_clause_template",
+    "type": "widget",
+    "style": "clause",
+    "clauses": [ { "id": "always", "text": "always" } ]
+  },
+  {
+    "//": "UIHUD-J03: sections of a sidebar that only the test builds",
+    "id": "audit_m30a_row_a",
+    "type": "widget",
+    "style": "text",
+    "string": "row a"
+  },
+  {
+    "id": "audit_m30a_row_b",
+    "type": "widget",
+    "style": "text",
+    "string": "row b"
+  },
+  {
+    "id": "audit_m30a_section_1",
+    "type": "widget",
+    "style": "text",
+    "string": "section 1",
+    "sidebar_section": { "sidebars": [ "audit_m30a_sidebar" ], "after": "audit_m30a_row_a" }
+  },
+  {
+    "id": "audit_m30a_section_2",
+    "type": "widget",
+    "style": "text",
+    "string": "section 2",
+    "sidebar_section": { "sidebars": [ "audit_m30a_sidebar" ], "after": "audit_m30a_row_a" }
+  },
+  {
+    "id": "audit_m30a_section_end",
+    "type": "widget",
+    "style": "text",
+    "string": "section at the end",
+    "sidebar_section": { "sidebars": [ "audit_m30a_sidebar", "audit_m30a_other_sidebar" ] }
+  },
+  {
+    "//": "UIHUD-J05: clauses a copy edits by id, and breaks a copy changes alone",
+    "id": "audit_m30a_clause_base",
+    "type": "widget",
+    "style": "text",
+    "clauses": [ { "id": "a", "text": "A" }, { "id": "b", "text": "B" }, { "id": "c", "text": "C" } ],
+    "colors": [ "c_red", "c_green" ],
+    "breaks": [ 50 ]
+  },
+  {
+    "id": "audit_m30a_clause_copy",
+    "type": "widget",
+    "copy-from": "audit_m30a_clause_base",
+    "delete": { "clauses": [ "a" ] },
+    "extend": { "clauses": [ { "id": "b", "text": "B2" }, { "id": "d", "text": "D" } ] },
+    "breaks": [ 75 ]
+  }
+]

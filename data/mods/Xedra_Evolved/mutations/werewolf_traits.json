@@ -366,7 +366,7 @@
     "purifiable": false,
     "valid": false,
     "player_display": false,
-    "enchantments": [ { "hit_you_effect": [ { "id": "xe_werewolf_argent_claws_damage" } ] } ]
+    "enchantments": [ { "hit_you_effect": [ { "id": "xe_werewolf_argent_claws_damage", "hit_types": [ "melee" ] } ] } ]
   },
   {
     "type": "mutation",

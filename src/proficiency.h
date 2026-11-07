@@ -83,15 +83,29 @@ class proficiency
         float _default_weakpoint_penalty = 0.0f;
 
         time_duration _time_to_learn = 9999_hours;
+        // Whether the JSON (or the one it copies from) gives time_to_learn (PROG-J02)
+        bool _has_time_to_learn = false;
         std::set<proficiency_id> _required;
 
         std::map<std::string, std::vector<proficiency_bonus>> _bonuses;
+
+        // Applied while the proficiency is known (PROG-J09)
+        std::vector<enchantment_id> _enchantments;
+        std::set<json_character_flag> _flags;
 
     public:
         static void load_proficiencies( const JsonObject &jo, const std::string &src );
         static void finalize_all();
         static void reset();
         void load( const JsonObject &jo, std::string_view src );
+        // Load checks (PROG-J02): every proficiency's check(), and no circle of prerequisites
+        static void check_all();
+        // Reports an unknown category or prerequisite, and a learnable proficiency without
+        // time_to_learn
+        void check() const;
+        // Every circle of prerequisites among the loaded proficiencies, each listed round from
+        // one of them back to it; none of a circle's proficiencies can be practiced
+        static std::vector<std::vector<proficiency_id>> prerequisite_cycles();
 
         static const std::vector<proficiency> &get_all();
 
@@ -114,6 +128,12 @@ class proficiency
 
         std::vector<proficiency_bonus> get_bonuses( const std::string &category ) const;
         std::optional<float> bonus_for( const std::string &category, proficiency_bonus_type type ) const;
+
+        const std::vector<enchantment_id> &enchantments() const;
+        const std::set<json_character_flag> &flags() const;
+        /** Whether any loaded proficiency has enchantments (or flags): the checks skip otherwise */
+        static bool any_enchantments();
+        static bool any_flags();
 };
 
 // The proficiencies you know, and the ones you're learning.
@@ -154,6 +174,8 @@ class proficiency_set
         std::vector<proficiency_id> learning_profs() const;
         float get_proficiency_bonus( const std::string &category,
                                      proficiency_bonus_type prof_bonus ) const;
+        // How many known proficiencies have this flag
+        int count_flag( const json_character_flag &flag ) const;
 
         void migrate_proficiencies();
 

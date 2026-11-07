@@ -10,8 +10,11 @@
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <set>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
@@ -50,6 +53,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "game_inventory.h"
+#include "generic_factory.h"
 #include "grapple.h"
 #include "gates.h"
 #include "item.h"
@@ -118,12 +122,6 @@ static const efftype_id effect_lying_down( "lying_down" );
 static const efftype_id effect_mending( "mending" );
 static const efftype_id effect_npc_flee_player( "npc_flee_player" );
 static const efftype_id effect_npc_suspend( "npc_suspend" );
-static const efftype_id effect_pkill1_acetaminophen( "pkill1_acetaminophen" );
-static const efftype_id effect_pkill1_generic( "pkill1_generic" );
-static const efftype_id effect_pkill1_nsaid( "pkill1_nsaid" );
-static const efftype_id effect_pkill2( "pkill2" );
-static const efftype_id effect_pkill3( "pkill3" );
-static const efftype_id effect_pkill_l( "pkill_l" );
 static const efftype_id effect_ridden( "ridden" );
 static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_sleep( "sleep" );
@@ -131,6 +129,8 @@ static const efftype_id effect_sleep( "sleep" );
 static const faction_id faction_amf( "amf" );
 static const faction_id faction_no_faction( "no_faction" );
 static const faction_id faction_your_followers( "your_followers" );
+
+static const flag_id json_flag_PAINKILLER( "PAINKILLER" );
 
 static const item_group_id Item_spawn_data_guns_pistol_common( "guns_pistol_common" );
 static const item_group_id Item_spawn_data_guns_rifle_common( "guns_rifle_common" );
@@ -141,16 +141,11 @@ static const item_group_id Item_spawn_data_survivor_bashing( "survivor_bashing" 
 static const item_group_id Item_spawn_data_survivor_cutting( "survivor_cutting" );
 static const item_group_id Item_spawn_data_survivor_stabbing( "survivor_stabbing" );
 
-static const itype_id itype_acetaminophen( "acetaminophen" );
-static const itype_id itype_aspirin( "aspirin" );
-static const itype_id itype_codeine( "codeine" );
-static const itype_id itype_heroin( "heroin" );
-static const itype_id itype_ibuprofen( "ibuprofen" );
 static const itype_id itype_molotov( "molotov" );
-static const itype_id itype_oxycodone( "oxycodone" );
-static const itype_id itype_tramadol( "tramadol" );
 
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
+static const json_character_flag
+json_flag_NO_BOOK_COMPLEXITY_PENALTY( "NO_BOOK_COMPLEXITY_PENALTY" );
 static const json_character_flag json_flag_READ_IN_DARKNESS( "READ_IN_DARKNESS" );
 static const json_character_flag json_flag_SAPIOVORE( "SAPIOVORE" );
 
@@ -193,7 +188,6 @@ static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
 static const trait_id trait_HALLUCINATION( "HALLUCINATION" );
 static const trait_id trait_INTERCOM_OPERATOR( "INTERCOM_OPERATOR" );
 static const trait_id trait_NO_BASH( "NO_BASH" );
-static const trait_id trait_PROF_DICEMASTER( "PROF_DICEMASTER" );
 static const trait_id trait_TERRIFYING( "TERRIFYING" );
 static const trait_id trait_TRADE_BACKEND( "TRADE_BACKEND" );
 
@@ -357,80 +351,67 @@ standard_npc::standard_npc( const std::string &name, const tripoint_bub_ms &pos,
 npc::npc( npc && ) noexcept( map_is_noexcept ) = default;
 npc &npc::operator=( npc && ) noexcept( list_is_noexcept ) = default;
 
-static std::map<string_id<npc_template>, npc_template> npc_templates;
-
-std::map<npc_template_id, npc_template> &npc_template::get_npc_templates()
+namespace
 {
-    return npc_templates;
-}
+generic_factory<npc_template> npc_template_factory( "npc template" );
 
-// An npc_template holds an npc, which can't be copied, so "copy-from" copies what load() reads
-// (NPC-J02).  Keep it in step with load().
-static void copy_npc_template( const npc_template &from, npc_template &to )
+// "death_eocs": effect_on_condition ids or inline EOCs.  "delete" takes ids.
+class death_eoc_reader : public generic_typed_reader<death_eoc_reader>
 {
-    const npc &from_guy = from.guy;
-    npc &to_guy = to.guy;
-    to_guy.set_fac_id( from_guy.get_fac_id().str() );
-    to_guy.myclass = from_guy.myclass;
-    to_guy.set_attitude( from_guy.get_attitude() );
-    to_guy.mission = from_guy.mission;
-    to_guy.chatbin = from_guy.chatbin;
-    to_guy.miss_ids = from_guy.miss_ids;
-    to_guy.death_eocs = from_guy.death_eocs;
-    to.unique_portrait_filename = from.unique_portrait_filename;
-    to.snippets = from.snippets;
-    to.name_unique = from.name_unique;
-    to.name_suffix = from.name_suffix;
-    to.temp_suffix = from.temp_suffix;
-    to.gender_override = from.gender_override;
-    to.age = from.age;
-    to.height = from.height;
-    to.str = from.str;
-    to.dex = from.dex;
-    to.intl = from.intl;
-    to.per = from.per;
-    to.personality = from.personality;
-}
-
-void npc_template::load( const JsonObject &jsobj, std::string_view src )
-{
-    npc_template tem;
-    npc &guy = tem.guy;
-    // With "copy-from", start from that template (defined earlier) and change what is given.
-    const bool was_loaded = jsobj.has_string( "copy-from" );
-    if( was_loaded ) {
-        const npc_template_id parent( jsobj.get_string( "copy-from" ) );
-        const auto found = npc_templates.find( parent );
-        if( found == npc_templates.end() ) {
-            jsobj.throw_error_at( "copy-from", string_format(
-                                      "no npc %s is defined before this one", parent.str() ) );
+    public:
+        explicit death_eoc_reader( const std::string_view source ) : src( source ) {}
+        effect_on_condition_id get_next( const JsonValue &jv ) const {
+            return effect_on_conditions::load_inline_eoc( jv, src );
         }
-        copy_npc_template( found->second, tem );
-    }
-    jsobj.get_member( "id" ).read( guy.idz );
-    guy.name.clear();
-    jsobj.read( "name_unique", tem.name_unique );
-    jsobj.read( "name_suffix", tem.name_suffix );
+        template<typename C>
+        void erase_next( const JsonValue &jv, C &container ) const {
+            const effect_on_condition_id eoc( jv.get_string() );
+            const auto found = std::find( container.begin(), container.end(), eoc );
+            if( found == container.end() ) {
+                jv.throw_error( string_format( "no death_eoc %s to delete", eoc.str() ) );
+            }
+            container.erase( found );
+        }
+    private:
+        std::string src;
+};
+} // namespace
+
+void npc_template::load_npc_template( const JsonObject &jsobj, const std::string &src )
+{
+    npc_template_factory.load( jsobj, src );
+}
+
+const std::vector<npc_template> &npc_template::get_all()
+{
+    return npc_template_factory.get_all();
+}
+
+void npc_template::load( const JsonObject &jsobj, const std::string_view src )
+{
+    // With "copy-from" (was_loaded), what isn't given keeps the parent's value.
+    optional( jsobj, was_loaded, "name_unique", name_unique );
+    optional( jsobj, was_loaded, "name_suffix", name_suffix );
     if( jsobj.has_string( "gender" ) ) {
         if( jsobj.get_string( "gender" ) == "male" ) {
-            tem.gender_override = gender::male;
+            gender_override = gender::male;
         } else {
-            tem.gender_override = gender::female;
+            gender_override = gender::female;
         }
     }
     if( jsobj.has_string( "portrait_filename" ) ) {
-        tem.unique_portrait_filename = character_portrait_id( jsobj.get_string( "portrait_filename" ) );
+        unique_portrait_filename = character_portrait_id( jsobj.get_string( "portrait_filename" ) );
     }
     if( jsobj.has_string( "faction" ) ) {
-        guy.set_fac_id( jsobj.get_string( "faction" ) );
+        fac_id = faction_id( jsobj.get_string( "faction" ) );
     }
     if( jsobj.has_string( "class" ) ) {
-        guy.myclass = npc_class_id( jsobj.get_string( "class" ) );
+        myclass = npc_class_id( jsobj.get_string( "class" ) );
     }
     if( jsobj.has_string( "temp_suffix" ) ) {
-        jsobj.read( "temp_suffix", tem.temp_suffix );
+        jsobj.read( "temp_suffix", temp_suffix );
     }
-    std::set allowed_attitudes = {
+    static const std::set<npc_attitude> allowed_attitudes = {
         NPCATT_NULL,
         NPCATT_TALK,
         NPCATT_FOLLOW,
@@ -445,183 +426,167 @@ void npc_template::load( const JsonObject &jsobj, std::string_view src )
     if( !was_loaded || jsobj.has_member( "attitude" ) ) {
         const npc_attitude to_set = static_cast<npc_attitude>( jsobj.get_int( "attitude" ) );
         if( allowed_attitudes.count( to_set ) > 0 ) {
-            guy.set_attitude( to_set );
+            attitude = to_set;
         } else {
-            debugmsg( "NPC class %s has invalid attitude enum %d", guy.idz.c_str(),
+            debugmsg( "NPC class %s has invalid attitude enum %d", id.c_str(),
                       static_cast<int>( to_set ) );
-            guy.set_attitude( NPCATT_NULL );
+            attitude = NPCATT_NULL;
         }
     }
     if( jsobj.has_string( "mission" ) ) {
-        guy.mission = io::string_to_enum<npc_mission>( jsobj.get_string( "mission" ) );
+        mission = io::string_to_enum<npc_mission>( jsobj.get_string( "mission" ) );
     }
     if( !was_loaded || jsobj.has_member( "chat" ) ) {
-        guy.chatbin.first_topic = jsobj.get_string( "chat" );
+        chatbin.first_topic = jsobj.get_string( "chat" );
     }
-    // a copy's mission_offered and death_eocs replace the parent's
-    if( jsobj.has_member( "mission_offered" ) ) {
-        guy.miss_ids.clear();
-    }
-    if( jsobj.has_string( "mission_offered" ) ) {
-        guy.miss_ids.emplace_back( jsobj.get_string( "mission_offered" ) );
-    } else if( jsobj.has_array( "mission_offered" ) ) {
-        for( const std::string line : jsobj.get_array( "mission_offered" ) ) {
-            guy.miss_ids.emplace_back( line );
+    // A string or an array; a copy takes "extend" and "delete"
+    optional( jsobj, was_loaded, "mission_offered", miss_ids, string_id_reader<mission_type> {} );
+    const auto read_topic = [&jsobj]( const std::string_view member, std::string & topic ) {
+        if( jsobj.has_string( member ) ) {
+            topic = jsobj.get_string( member );
         }
-    }
-    if( jsobj.has_string( "talk_radio" ) ) {
-        guy.chatbin.talk_radio = jsobj.get_string( "talk_radio" );
-    }
-    if( jsobj.has_string( "talk_leader" ) ) {
-        guy.chatbin.talk_leader = jsobj.get_string( "talk_leader" );
-    }
-    if( jsobj.has_string( "talk_friend" ) ) {
-        guy.chatbin.talk_friend = jsobj.get_string( "talk_friend" );
-    }
-    if( jsobj.has_string( "talk_stole_item" ) ) {
-        guy.chatbin.talk_stole_item = jsobj.get_string( "talk_stole_item" );
-    }
-    if( jsobj.has_string( "talk_wake_up" ) ) {
-        guy.chatbin.talk_wake_up = jsobj.get_string( "talk_wake_up" );
-    }
-    if( jsobj.has_string( "talk_mug" ) ) {
-        guy.chatbin.talk_mug = jsobj.get_string( "talk_mug" );
-    }
-    if( jsobj.has_string( "talk_stranger_aggressive" ) ) {
-        guy.chatbin.talk_stranger_aggressive = jsobj.get_string( "talk_stranger_aggressive" );
-    }
-    if( jsobj.has_string( "talk_stranger_scared" ) ) {
-        guy.chatbin.talk_stranger_scared = jsobj.get_string( "talk_stranger_scared" );
-    }
-    if( jsobj.has_string( "talk_stranger_wary" ) ) {
-        guy.chatbin.talk_stranger_wary = jsobj.get_string( "talk_stranger_wary" );
-    }
-    if( jsobj.has_string( "talk_stranger_friendly" ) ) {
-        guy.chatbin.talk_stranger_friendly = jsobj.get_string( "talk_stranger_friendly" );
-    }
-    if( jsobj.has_string( "talk_stranger_neutral" ) ) {
-        guy.chatbin.talk_stranger_neutral = jsobj.get_string( "talk_stranger_neutral" );
-    }
-    if( jsobj.has_string( "talk_friend_guard" ) ) {
-        guy.chatbin.talk_friend_guard = jsobj.get_string( "talk_friend_guard" );
-    }
-    if( jsobj.has_string( "talk_mission_inquire" ) ) {
-        guy.chatbin.talk_mission_inquire = jsobj.get_string( "talk_mission_inquire" );
-    }
-    if( jsobj.has_string( "talk_mission_describe_urgent" ) ) {
-        guy.chatbin.talk_mission_describe_urgent = jsobj.get_string( "talk_mission_describe_urgent" );
-    }
-    jsobj.read( "<acknowledged>", tem.snippets.snip_acknowledged );
-    jsobj.read( "<camp_food_thanks>", tem.snippets.snip_camp_food_thanks );
-    jsobj.read( "<camp_larder_empty>", tem.snippets.snip_camp_larder_empty );
-    jsobj.read( "<camp_water_thanks>", tem.snippets.snip_camp_water_thanks );
-    jsobj.read( "<cant_flee>", tem.snippets.snip_cant_flee );
-    jsobj.read( "<close_distance>", tem.snippets.snip_close_distance );
-    jsobj.read( "<combat_noise_warning>", tem.snippets.snip_combat_noise_warning );
-    jsobj.read( "<danger_close_distance>", tem.snippets.snip_danger_close_distance );
-    jsobj.read( "<done_mugging>", tem.snippets.snip_done_mugging );
-    jsobj.read( "<far_distance>", tem.snippets.snip_far_distance );
-    jsobj.read( "<fire_bad>", tem.snippets.snip_fire_bad );
-    jsobj.read( "<fire_in_the_hole_h>", tem.snippets.snip_fire_in_the_hole_h );
-    jsobj.read( "<fire_in_the_hole>", tem.snippets.snip_fire_in_the_hole );
-    jsobj.read( "<general_danger_h>", tem.snippets.snip_general_danger_h );
-    jsobj.read( "<general_danger>", tem.snippets.snip_general_danger );
-    jsobj.read( "<heal_self>", tem.snippets.snip_heal_self );
-    jsobj.read( "<hungry>", tem.snippets.snip_hungry );
-    jsobj.read( "<im_leaving_you>", tem.snippets.snip_im_leaving_you );
-    jsobj.read( "<its_safe_h>", tem.snippets.snip_its_safe_h );
-    jsobj.read( "<its_safe>", tem.snippets.snip_its_safe );
-    jsobj.read( "<keep_up>", tem.snippets.snip_keep_up );
-    jsobj.read( "<kill_npc_h>", tem.snippets.snip_kill_npc_h );
-    jsobj.read( "<kill_npc>", tem.snippets.snip_kill_npc );
-    jsobj.read( "<kill_player_h>", tem.snippets.snip_kill_player_h );
-    jsobj.read( "<let_me_pass>", tem.snippets.snip_let_me_pass );
-    jsobj.read( "<lets_talk>", tem.snippets.snip_lets_talk );
-    jsobj.read( "<medium_distance>", tem.snippets.snip_medium_distance );
-    jsobj.read( "<monster_warning_h>", tem.snippets.snip_monster_warning_h );
-    jsobj.read( "<monster_warning>", tem.snippets.snip_monster_warning );
-    jsobj.read( "<movement_noise_warning>", tem.snippets.snip_movement_noise_warning );
-    jsobj.read( "<need_batteries>", tem.snippets.snip_need_batteries );
-    jsobj.read( "<need_booze>", tem.snippets.snip_need_booze );
-    jsobj.read( "<need_fuel>", tem.snippets.snip_need_fuel );
-    jsobj.read( "<no_to_thorazine>", tem.snippets.snip_no_to_thorazine );
-    jsobj.read( "<run_away>", tem.snippets.snip_run_away );
-    jsobj.read( "<speech_warning>", tem.snippets.snip_speech_warning );
-    jsobj.read( "<thirsty>", tem.snippets.snip_thirsty );
-    jsobj.read( "<wait>", tem.snippets.snip_wait );
-    jsobj.read( "<warn_sleep>", tem.snippets.snip_warn_sleep );
-    jsobj.read( "<yawn>", tem.snippets.snip_yawn );
-    jsobj.read( "<yes_to_lsd>", tem.snippets.snip_yes_to_lsd );
-    jsobj.read( "snip_pulp_zombie", tem.snippets.snip_pulp_zombie );
-    jsobj.read( "snip_heal_player", tem.snippets.snip_heal_player );
-    jsobj.read( "snip_mug_dontmove", tem.snippets.snip_mug_dontmove );
-    jsobj.read( "snip_wound_infected", tem.snippets.snip_wound_infected );
-    jsobj.read( "snip_wound_bite", tem.snippets.snip_wound_bite );
-    jsobj.read( "snip_radiation_sickness", tem.snippets.snip_radiation_sickness );
-    jsobj.read( "snip_bleeding", tem.snippets.snip_bleeding );
-    jsobj.read( "snip_bleeding_badly", tem.snippets.snip_bleeding_badly );
-    jsobj.read( "snip_lost_blood", tem.snippets.snip_lost_blood );
-    jsobj.read( "snip_bye", tem.snippets.snip_bye );
-    jsobj.read( "snip_consume_cant_accept", tem.snippets.snip_consume_cant_accept );
-    jsobj.read( "snip_consume_cant_consume", tem.snippets.snip_consume_cant_consume );
-    jsobj.read( "snip_consume_rotten", tem.snippets.snip_consume_rotten );
-    jsobj.read( "snip_consume_eat", tem.snippets.snip_consume_eat );
-    jsobj.read( "snip_consume_need_item", tem.snippets.snip_consume_need_item );
-    jsobj.read( "snip_consume_med", tem.snippets.snip_consume_med );
-    jsobj.read( "snip_consume_nocharge", tem.snippets.snip_consume_nocharge );
-    jsobj.read( "snip_consume_use_med", tem.snippets.snip_consume_use_med );
-    jsobj.read( "snip_give_nope", tem.snippets.snip_give_nope );
-    jsobj.read( "snip_give_to_hallucination", tem.snippets.snip_give_to_hallucination );
-    jsobj.read( "snip_give_cancel", tem.snippets.snip_give_cancel );
-    jsobj.read( "snip_give_dangerous", tem.snippets.snip_give_dangerous );
-    jsobj.read( "snip_give_wield", tem.snippets.snip_give_wield );
-    jsobj.read( "snip_give_weapon_weak", tem.snippets.snip_give_weapon_weak );
-    jsobj.read( "snip_give_carry", tem.snippets.snip_give_carry );
-    jsobj.read( "snip_give_carry_cant", tem.snippets.snip_give_carry_cant );
-    jsobj.read( "snip_give_carry_cant_few_space", tem.snippets.snip_give_carry_cant_few_space );
-    jsobj.read( "snip_give_carry_cant_no_space", tem.snippets.snip_give_carry_cant_no_space );
-    jsobj.read( "snip_give_carry_too_heavy", tem.snippets.snip_give_carry_too_heavy );
-    jsobj.read( "snip_wear", tem.snippets.snip_wear );
-    jsobj.read( "age", tem.age );
-    jsobj.read( "height", tem.height );
-    jsobj.read( "str", tem.str );
-    jsobj.read( "dex", tem.dex );
-    jsobj.read( "int", tem.intl );
-    jsobj.read( "per", tem.per );
+    };
+    read_topic( "talk_radio", chatbin.talk_radio );
+    read_topic( "talk_leader", chatbin.talk_leader );
+    read_topic( "talk_friend", chatbin.talk_friend );
+    read_topic( "talk_stole_item", chatbin.talk_stole_item );
+    read_topic( "talk_wake_up", chatbin.talk_wake_up );
+    read_topic( "talk_mug", chatbin.talk_mug );
+    read_topic( "talk_stranger_aggressive", chatbin.talk_stranger_aggressive );
+    read_topic( "talk_stranger_scared", chatbin.talk_stranger_scared );
+    read_topic( "talk_stranger_wary", chatbin.talk_stranger_wary );
+    read_topic( "talk_stranger_friendly", chatbin.talk_stranger_friendly );
+    read_topic( "talk_stranger_neutral", chatbin.talk_stranger_neutral );
+    read_topic( "talk_friend_guard", chatbin.talk_friend_guard );
+    read_topic( "talk_mission_inquire", chatbin.talk_mission_inquire );
+    read_topic( "talk_mission_describe_urgent", chatbin.talk_mission_describe_urgent );
+    jsobj.read( "<acknowledged>", snippets.snip_acknowledged );
+    jsobj.read( "<camp_food_thanks>", snippets.snip_camp_food_thanks );
+    jsobj.read( "<camp_larder_empty>", snippets.snip_camp_larder_empty );
+    jsobj.read( "<camp_water_thanks>", snippets.snip_camp_water_thanks );
+    jsobj.read( "<cant_flee>", snippets.snip_cant_flee );
+    jsobj.read( "<close_distance>", snippets.snip_close_distance );
+    jsobj.read( "<combat_noise_warning>", snippets.snip_combat_noise_warning );
+    jsobj.read( "<danger_close_distance>", snippets.snip_danger_close_distance );
+    jsobj.read( "<done_mugging>", snippets.snip_done_mugging );
+    jsobj.read( "<far_distance>", snippets.snip_far_distance );
+    jsobj.read( "<fire_bad>", snippets.snip_fire_bad );
+    jsobj.read( "<fire_in_the_hole_h>", snippets.snip_fire_in_the_hole_h );
+    jsobj.read( "<fire_in_the_hole>", snippets.snip_fire_in_the_hole );
+    jsobj.read( "<general_danger_h>", snippets.snip_general_danger_h );
+    jsobj.read( "<general_danger>", snippets.snip_general_danger );
+    jsobj.read( "<heal_self>", snippets.snip_heal_self );
+    jsobj.read( "<hungry>", snippets.snip_hungry );
+    jsobj.read( "<im_leaving_you>", snippets.snip_im_leaving_you );
+    jsobj.read( "<its_safe_h>", snippets.snip_its_safe_h );
+    jsobj.read( "<its_safe>", snippets.snip_its_safe );
+    jsobj.read( "<keep_up>", snippets.snip_keep_up );
+    jsobj.read( "<kill_npc_h>", snippets.snip_kill_npc_h );
+    jsobj.read( "<kill_npc>", snippets.snip_kill_npc );
+    jsobj.read( "<kill_player_h>", snippets.snip_kill_player_h );
+    jsobj.read( "<let_me_pass>", snippets.snip_let_me_pass );
+    jsobj.read( "<lets_talk>", snippets.snip_lets_talk );
+    jsobj.read( "<medium_distance>", snippets.snip_medium_distance );
+    jsobj.read( "<monster_warning_h>", snippets.snip_monster_warning_h );
+    jsobj.read( "<monster_warning>", snippets.snip_monster_warning );
+    jsobj.read( "<movement_noise_warning>", snippets.snip_movement_noise_warning );
+    jsobj.read( "<need_batteries>", snippets.snip_need_batteries );
+    jsobj.read( "<need_booze>", snippets.snip_need_booze );
+    jsobj.read( "<need_fuel>", snippets.snip_need_fuel );
+    jsobj.read( "<no_to_thorazine>", snippets.snip_no_to_thorazine );
+    jsobj.read( "<run_away>", snippets.snip_run_away );
+    jsobj.read( "<speech_warning>", snippets.snip_speech_warning );
+    jsobj.read( "<thirsty>", snippets.snip_thirsty );
+    jsobj.read( "<wait>", snippets.snip_wait );
+    jsobj.read( "<warn_sleep>", snippets.snip_warn_sleep );
+    jsobj.read( "<yawn>", snippets.snip_yawn );
+    jsobj.read( "<yes_to_lsd>", snippets.snip_yes_to_lsd );
+    jsobj.read( "snip_pulp_zombie", snippets.snip_pulp_zombie );
+    jsobj.read( "snip_heal_player", snippets.snip_heal_player );
+    jsobj.read( "snip_mug_dontmove", snippets.snip_mug_dontmove );
+    jsobj.read( "snip_wound_infected", snippets.snip_wound_infected );
+    jsobj.read( "snip_wound_bite", snippets.snip_wound_bite );
+    jsobj.read( "snip_radiation_sickness", snippets.snip_radiation_sickness );
+    jsobj.read( "snip_bleeding", snippets.snip_bleeding );
+    jsobj.read( "snip_bleeding_badly", snippets.snip_bleeding_badly );
+    jsobj.read( "snip_lost_blood", snippets.snip_lost_blood );
+    jsobj.read( "snip_bye", snippets.snip_bye );
+    jsobj.read( "snip_consume_cant_accept", snippets.snip_consume_cant_accept );
+    jsobj.read( "snip_consume_cant_consume", snippets.snip_consume_cant_consume );
+    jsobj.read( "snip_consume_rotten", snippets.snip_consume_rotten );
+    jsobj.read( "snip_consume_eat", snippets.snip_consume_eat );
+    jsobj.read( "snip_consume_need_item", snippets.snip_consume_need_item );
+    jsobj.read( "snip_consume_med", snippets.snip_consume_med );
+    jsobj.read( "snip_consume_nocharge", snippets.snip_consume_nocharge );
+    jsobj.read( "snip_consume_use_med", snippets.snip_consume_use_med );
+    jsobj.read( "snip_give_nope", snippets.snip_give_nope );
+    jsobj.read( "snip_give_to_hallucination", snippets.snip_give_to_hallucination );
+    jsobj.read( "snip_give_cancel", snippets.snip_give_cancel );
+    jsobj.read( "snip_give_dangerous", snippets.snip_give_dangerous );
+    jsobj.read( "snip_give_wield", snippets.snip_give_wield );
+    jsobj.read( "snip_give_weapon_weak", snippets.snip_give_weapon_weak );
+    jsobj.read( "snip_give_carry", snippets.snip_give_carry );
+    jsobj.read( "snip_give_carry_cant", snippets.snip_give_carry_cant );
+    jsobj.read( "snip_give_carry_cant_few_space", snippets.snip_give_carry_cant_few_space );
+    jsobj.read( "snip_give_carry_cant_no_space", snippets.snip_give_carry_cant_no_space );
+    jsobj.read( "snip_give_carry_too_heavy", snippets.snip_give_carry_too_heavy );
+    jsobj.read( "snip_wear", snippets.snip_wear );
+    jsobj.read( "age", age );
+    jsobj.read( "height", height );
+    jsobj.read( "str", str );
+    jsobj.read( "dex", dex );
+    jsobj.read( "int", intl );
+    jsobj.read( "per", per );
     if( jsobj.has_object( "personality" ) ) {
-        const JsonObject personality = jsobj.get_object( "personality" );
-        tem.personality = npc_personality();
-        tem.personality->aggression = personality.get_int( "aggression" );
-        tem.personality->bravery = personality.get_int( "bravery" );
-        tem.personality->collector = personality.get_int( "collector" );
-        tem.personality->altruism = personality.get_int( "altruism" );
+        const JsonObject jpersonality = jsobj.get_object( "personality" );
+        personality = npc_personality();
+        personality->aggression = jpersonality.get_int( "aggression" );
+        personality->bravery = jpersonality.get_int( "bravery" );
+        personality->collector = jpersonality.get_int( "collector" );
+        personality->altruism = jpersonality.get_int( "altruism" );
     }
-    if( jsobj.has_member( "death_eocs" ) ) {
-        guy.death_eocs.clear();
-    }
-    for( JsonValue jv : jsobj.get_array( "death_eocs" ) ) {
-        guy.death_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    // A later definition (another mod's) replaces the earlier one (NPC-J02); emplace used to
-    // keep the first and silently drop the rest.
-    npc_templates.erase( guy.idz );
-    npc_templates.emplace( guy.idz, std::move( tem ) );
+    // A copy takes "extend" and "delete"
+    optional( jsobj, was_loaded, "death_eocs", death_eocs, death_eoc_reader( src ) );
 }
 
 void npc_template::reset()
 {
-    npc_templates.clear();
+    npc_template_factory.reset();
+}
+
+void npc_template::finalize_all()
+{
+    npc_template_factory.finalize();
 }
 
 void npc_template::check_consistency()
 {
-    for( const auto &e : npc_templates ) {
-        const npc &guy = e.second.guy;
-        if( !guy.myclass.is_valid() ) {
-            debugmsg( "Invalid NPC class %s", guy.myclass.c_str() );
+    for( const npc_template &tem : npc_template_factory.get_all() ) {
+        if( !tem.myclass.is_valid() ) {
+            debugmsg( "Invalid NPC class %s", tem.myclass.c_str() );
         }
-        std::string first_topic = guy.chatbin.first_topic;
+        // EOC-J03: the topics the NPC starts talking with exist
+        const dialogue_chatbin &cb = tem.chatbin;
+        const std::vector<std::pair<const char *, const std::string *>> chatbin_topics = {
+            { "chat", &cb.first_topic }, { "talk_radio", &cb.talk_radio },
+            { "talk_leader", &cb.talk_leader }, { "talk_friend", &cb.talk_friend },
+            { "talk_stole_item", &cb.talk_stole_item }, { "talk_wake_up", &cb.talk_wake_up },
+            { "talk_mug", &cb.talk_mug }, { "talk_stranger_aggressive", &cb.talk_stranger_aggressive },
+            { "talk_stranger_scared", &cb.talk_stranger_scared },
+            { "talk_stranger_wary", &cb.talk_stranger_wary },
+            { "talk_stranger_friendly", &cb.talk_stranger_friendly },
+            { "talk_stranger_neutral", &cb.talk_stranger_neutral },
+            { "talk_friend_guard", &cb.talk_friend_guard },
+            { "talk_mission_inquire", &cb.talk_mission_inquire },
+            { "talk_mission_describe_urgent", &cb.talk_mission_describe_urgent }
+        };
+        for( const std::pair<const char *, const std::string *> &field : chatbin_topics ) {
+            if( !talk_topic_exists( *field.second ) ) {
+                debugmsg( R"(NPC template "%s": the "%s" talk topic "%s" does not exist)", tem.id.str(),
+                          field.first, *field.second );
+            }
+        }
+        const std::string &first_topic = tem.chatbin.first_topic;
         if( const json_talk_topic *topic = get_talk_topic( first_topic ) ) {
             cata::flat_set<std::string> reachable_topics =
                 topic->get_directly_reachable_topics( true );
@@ -630,7 +595,7 @@ void npc_template::check_consistency()
                     "NPC template \"%s\" has dialogue \"%s\" which leads unconditionally to "
                     "\"TALK_MISSION_OFFER\", which doesn't check for an available mission.  "
                     "You should probably prefer \"TALK_MISSION_LIST\"",
-                    e.first.str(), first_topic );
+                    tem.id.str(), first_topic );
             }
         }
     }
@@ -639,33 +604,25 @@ void npc_template::check_consistency()
 template<>
 bool string_id<npc_template>::is_valid() const
 {
-    return npc_templates.count( *this ) > 0;
+    return npc_template_factory.is_valid( *this );
 }
 
 template<>
 const npc_template &string_id<npc_template>::obj() const
 {
-    const auto found = npc_templates.find( *this );
-    if( found == npc_templates.end() ) {
-        debugmsg( "Tried to get invalid npc: %s", c_str() );
-        static const npc_template dummy{};
-        return dummy;
-    }
-    return found->second;
+    return npc_template_factory.obj( *this );
 }
 
 void npc::load_npc_template( const string_id<npc_template> &ident )
 {
-    auto found = npc_templates.find( ident );
-    if( found == npc_templates.end() ) {
+    if( !ident.is_valid() ) {
         debugmsg( "Tried to get invalid npc: %s", ident.c_str() );
         return;
     }
-    const npc_template &tem = found->second;
-    const npc &tguy = tem.guy;
+    const npc_template &tem = ident.obj();
 
     idz = ident;
-    myclass = npc_class_id( tguy.myclass );
+    myclass = npc_class_id( tem.myclass );
     randomize( myclass, ident );
     if( tem.gender_override != npc_template::gender::random ) {
         male = tem.gender_override == npc_template::gender::male;
@@ -680,30 +637,30 @@ void npc::load_npc_template( const string_id<npc_template> &ident )
     if( !tem.temp_suffix.empty() ) {
         custom_profession = tem.temp_suffix.translated();
     }
-    fac_id = tguy.fac_id;
+    fac_id = tem.fac_id;
     set_fac( fac_id );
-    attitude = tguy.attitude;
-    mission = tguy.mission;
-    chatbin.first_topic = tguy.chatbin.first_topic;
-    chatbin.talk_radio = tguy.chatbin.talk_radio;
-    chatbin.talk_leader = tguy.chatbin.talk_leader;
-    chatbin.talk_friend = tguy.chatbin.talk_friend;
-    chatbin.talk_stole_item = tguy.chatbin.talk_stole_item;
-    chatbin.talk_wake_up = tguy.chatbin.talk_wake_up;
-    chatbin.talk_mug = tguy.chatbin.talk_mug;
-    chatbin.talk_stranger_aggressive = tguy.chatbin.talk_stranger_aggressive;
-    chatbin.talk_stranger_scared = tguy.chatbin.talk_stranger_scared;
-    chatbin.talk_stranger_wary = tguy.chatbin.talk_stranger_wary;
-    chatbin.talk_stranger_friendly = tguy.chatbin.talk_stranger_friendly;
-    chatbin.talk_stranger_neutral = tguy.chatbin.talk_stranger_neutral;
-    chatbin.talk_friend_guard = tguy.chatbin.talk_friend_guard;
-    chatbin.talk_mission_inquire = tguy.chatbin.talk_mission_inquire;
-    chatbin.talk_mission_describe_urgent = tguy.chatbin.talk_mission_describe_urgent;
+    attitude = tem.attitude;
+    mission = tem.mission;
+    chatbin.first_topic = tem.chatbin.first_topic;
+    chatbin.talk_radio = tem.chatbin.talk_radio;
+    chatbin.talk_leader = tem.chatbin.talk_leader;
+    chatbin.talk_friend = tem.chatbin.talk_friend;
+    chatbin.talk_stole_item = tem.chatbin.talk_stole_item;
+    chatbin.talk_wake_up = tem.chatbin.talk_wake_up;
+    chatbin.talk_mug = tem.chatbin.talk_mug;
+    chatbin.talk_stranger_aggressive = tem.chatbin.talk_stranger_aggressive;
+    chatbin.talk_stranger_scared = tem.chatbin.talk_stranger_scared;
+    chatbin.talk_stranger_wary = tem.chatbin.talk_stranger_wary;
+    chatbin.talk_stranger_friendly = tem.chatbin.talk_stranger_friendly;
+    chatbin.talk_stranger_neutral = tem.chatbin.talk_stranger_neutral;
+    chatbin.talk_friend_guard = tem.chatbin.talk_friend_guard;
+    chatbin.talk_mission_inquire = tem.chatbin.talk_mission_inquire;
+    chatbin.talk_mission_describe_urgent = tem.chatbin.talk_mission_describe_urgent;
 
-    for( const mission_type_id &miss_id : tguy.miss_ids ) {
+    for( const mission_type_id &miss_id : tem.miss_ids ) {
         add_new_mission( mission::reserve_new( miss_id, getID() ) );
     }
-    death_eocs = tguy.death_eocs;
+    death_eocs = tem.death_eocs;
 }
 
 npc::~npc() = default;
@@ -716,6 +673,8 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
     if( type.is_null() || type == NC_NONE ) {
         Character::randomize( false );
         starting_inv_passtime();
+        // As a class NPC does, below (PROG-J04)
+        effect_on_conditions::load_new_character( *this );
         return;
     }
 
@@ -822,6 +781,10 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
 
     // Run mutation rounds
     for( const auto &mr : myclass->mutation_rounds ) {
+        if( !mr.first.is_valid() ) {
+            // reported by npc_class::check_consistency()
+            continue;
+        }
         int rounds = mr.second.roll();
         for( int i = 0; i < rounds; ++i ) {
             mutate_category( mr.first );
@@ -1494,8 +1457,8 @@ void npc::starting_weapon( const npc_class_id &type )
             }
             //You should be able to wield your starting weapon
             if( !meets_stat_requirements( *weapon ) ) {
-                if( weapon->get_min_str() > get_str() ) {
-                    set_str_base( weapon->get_min_str() );
+                if( weapon->get_min_str( *this ) > get_str() ) {
+                    set_str_base( weapon->get_min_str( *this ) );
                 }
                 if( weapon->type->min_dex > get_dex() ) {
                     set_dex_base( weapon->type->min_dex );
@@ -1564,7 +1527,8 @@ time_duration npc::time_to_read( const item &book, const Character &reader ) con
     time_duration retval = type->time * reading_speed / 100;
     retval *= std::min( fine_detail_vision_mod(), reader.fine_detail_vision_mod() );
 
-    if( type->intel > reader.get_int() && !reader.has_trait( trait_PROF_DICEMASTER ) ) {
+    if( type->intel > reader.get_int() &&
+        !reader.has_flag( json_flag_NO_BOOK_COMPLEXITY_PENALTY ) ) {
         retval += type->time * ( time_duration::from_seconds( type->intel - reader.get_int() ) /
                                  1_minutes );
     }
@@ -2668,6 +2632,7 @@ void healing_options::clear_all()
     bleed = false;
     bite = false;
     infect = false;
+    cure.clear();
 }
 
 bool healing_options::all_false() const
@@ -2676,6 +2641,11 @@ bool healing_options::all_false() const
 }
 
 bool healing_options::any_true() const
+{
+    return any_wound() || !cure.empty();
+}
+
+bool healing_options::any_wound() const
 {
     return bandage || bleed || bite || infect || disinfect;
 }
@@ -2687,9 +2657,10 @@ void healing_options::set_all()
     bite = true;
     infect = true;
     disinfect = true;
+    cure = heal_actor::curable_effects();
 }
 
-bool npc::has_healing_item( healing_options try_to_fix )
+bool npc::has_healing_item( const healing_options &try_to_fix )
 {
     return !get_healing_item( try_to_fix, true ).is_null();
 }
@@ -2701,13 +2672,13 @@ healing_options npc::has_healing_options()
     return has_healing_options( try_to_fix );
 }
 
-healing_options npc::has_healing_options( healing_options try_to_fix )
+healing_options npc::has_healing_options( const healing_options &try_to_fix )
 {
     healing_options can_fix;
     can_fix.clear_all();
     healing_options *fix_p = &can_fix;
 
-    visit_items( [&fix_p, try_to_fix]( item_location node ) {
+    visit_items( [&fix_p, &try_to_fix]( item_location node ) {
         const use_function *use = node->type->get_use( "heal" );
         if( use == nullptr ) {
             return VisitResponse::NEXT;
@@ -2729,12 +2700,19 @@ healing_options npc::has_healing_options( healing_options try_to_fix )
         if( try_to_fix.infect && !fix_p->infect && actor.infect > 0 ) {
             fix_p->infect = true;
         }
+        // NPC-J08: the effects its "cures" removes
+        for( const heal_actor::cure_data &cure : actor.cures ) {
+            if( try_to_fix.cure.count( cure.effect ) ) {
+                fix_p->cure.insert( cure.effect );
+            }
+        }
         // if we've found items for everything we're looking for, we're done
         if( ( !try_to_fix.bandage || fix_p->bandage ) &&
             ( !try_to_fix.disinfect || fix_p->disinfect ) &&
             ( !try_to_fix.bleed || fix_p->bleed ) &&
             ( !try_to_fix.bite || fix_p->bite ) &&
-            ( !try_to_fix.infect || fix_p->infect ) ) {
+            ( !try_to_fix.infect || fix_p->infect ) &&
+            fix_p->cure.size() == try_to_fix.cure.size() ) {
             return VisitResponse::ABORT;
         }
 
@@ -2753,11 +2731,15 @@ item &npc::get_healing_item( healing_options try_to_fix, bool first_best )
         }
 
         const heal_actor &actor = dynamic_cast<const heal_actor &>( *use->get_actor_ptr() );
+        const bool cures = std::any_of( actor.cures.begin(), actor.cures.end(),
+        [&try_to_fix]( const heal_actor::cure_data & cure ) {
+            return try_to_fix.cure.count( cure.effect ) > 0;
+        } );
         if( ( try_to_fix.bandage && actor.bandages_power > 0.0f ) ||
             ( try_to_fix.disinfect && actor.disinfectant_power > 0.0f ) ||
             ( try_to_fix.bleed && actor.bleed > 0 ) ||
             ( try_to_fix.bite && actor.bite > 0 ) ||
-            ( try_to_fix.infect && actor.infect > 0 ) ) {
+            ( try_to_fix.infect && actor.infect > 0 ) || cures ) {
             best = node.get_item();
             if( first_best ) {
                 return VisitResponse::ABORT;
@@ -2770,17 +2752,40 @@ item &npc::get_healing_item( healing_options try_to_fix, bool first_best )
     return *best;
 }
 
+// NPC-J07: the "npc_use" of a comestible, nullptr for one without
+static const comestible_npc_use *npc_use_of( const item &it )
+{
+    if( !it.is_comestible() ) {
+        return nullptr;
+    }
+    const cata::value_ptr<islot_comestible> &comest = it.get_comestible();
+    return comest && comest->npc_use ? &*comest->npc_use : nullptr;
+}
+
+// whether the NPC may take the medicine now: its condition holds (the NPC is u_, the item npc_)
+// and it can take it (a needle for heroin...)
+static bool may_take_medicine( const npc &guy, const item &it, const comestible_npc_use &use )
+{
+    if( use.has_condition ) {
+        item_location loc( const_cast<npc &>( guy ), const_cast<item *>( &it ) );
+        const_dialogue d( get_const_talker_for( guy ), get_const_talker_for( loc ) );
+        if( !use.condition( d ) ) {
+            return false;
+        }
+    }
+    return guy.can_eat( it ).success();
+}
+
 bool npc::has_painkiller() const
 {
     const int pain = get_pain();
     bool has_enough = false;
     visit_items(
-    [&pain, &has_enough]( item_location node ) {
-        const itype_id id = node->typeId();
-        if( ( pain <= 35 && ( id == itype_aspirin || id == itype_acetaminophen ||
-                              id == itype_ibuprofen ) ) ||
-            ( pain >= 50 && id == itype_oxycodone ) ||
-            id == itype_tramadol || id == itype_codeine ) {
+    [this, &pain, &has_enough]( item_location node ) {
+        // the painkillers are in JSON (comestible "npc_use"), no longer a list of ids
+        const comestible_npc_use *use = npc_use_of( *node );
+        if( use != nullptr && use->pain && pain >= use->min_pain && pain <= use->max_pain &&
+            may_take_medicine( *this, *node, *use ) ) {
             has_enough = true;
             return VisitResponse::ABORT;
         }
@@ -2797,21 +2802,12 @@ item *npc::most_appropriate_painkiller()
     int difference = INT_MAX;
     item *ret = &null_item_reference();
     visit_items(
-    [&pain, &difference, &ret]( item_location node ) {
-        int diff = INT_MAX;
-        itype_id type = node->typeId();
-        if( type == itype_aspirin || type == itype_acetaminophen || type == itype_ibuprofen ) {
-            diff = std::abs( pain - 15 );
-        } else if( type == itype_codeine ) {
-            diff = std::abs( pain - 30 );
-        } else if( type == itype_oxycodone ) {
-            diff = std::abs( pain - 60 );
-        } else if( type == itype_heroin ) {
-            diff = std::abs( pain - 100 );
-        } else if( type == itype_tramadol ) {
-            diff = std::abs( pain - 40 ) / 2; // Bonus since it's long-acting
+    [this, &pain, &difference, &ret]( item_location node ) {
+        const comestible_npc_use *use = npc_use_of( *node );
+        if( use == nullptr || !use->pain || !may_take_medicine( *this, *node, *use ) ) {
+            return VisitResponse::NEXT;
         }
-
+        const int diff = std::abs( pain - *use->pain ) / use->preference;
         if( diff < difference ) {
             difference = diff;
             ret = node.get_item();
@@ -2822,11 +2818,24 @@ item *npc::most_appropriate_painkiller()
     return ret;
 }
 
+item *npc::medicine_to_take()
+{
+    item *ret = nullptr;
+    visit_items( [this, &ret]( item_location node ) {
+        const comestible_npc_use *use = npc_use_of( *node );
+        if( use != nullptr && !use->pain && may_take_medicine( *this, *node, *use ) ) {
+            ret = node.get_item();
+            return VisitResponse::ABORT;
+        }
+        return VisitResponse::NEXT;
+    } );
+    return ret;
+}
+
 bool npc::took_painkiller() const
 {
-    return has_effect( effect_pkill1_generic )  || has_effect( effect_pkill1_acetaminophen ) ||
-           has_effect( effect_pkill1_nsaid ) || has_effect( effect_pkill2 ) ||
-           has_effect( effect_pkill3 ) || has_effect( effect_pkill_l );
+    // NPC-J07: an effect flag, not a list of effect ids
+    return has_effect_with_flag( json_flag_PAINKILLER );
 }
 
 int npc::get_faction_ver() const
@@ -3410,11 +3419,21 @@ void npc::die( map *here, Creature *nkiller )
             debugmsg( "Tried to use non NPC_DEATH eoc_type %s for an NPC death.", eoc.c_str() );
         }
     }
-    get_event_bus().send<event_type::character_dies>( getID() );
+    // a body the player left by the death switch sent it already, when the player died in it
+    if( !death_event_sent ) {
+        // the killer, if any, is the beta talker
+        const std::pair<character_id, mtype_id> killed_by = event_killer_fields( nkiller );
+        const cata::event died = cata::event::make<event_type::character_dies>( getID(),
+                                 killed_by.first, killed_by.second );
+        get_event_bus().send_with_talker( this, nkiller, died );
+        death_event_sent = true;
+    }
     // Check if npc doesn't die due to EoC as a result
     if( prevent_death_reminder ) {
         prevent_death_reminder = false;
         if( !is_dead() ) {
+            // revived, so its next death is reported again
+            death_event_sent = false;
             return;
         }
     }

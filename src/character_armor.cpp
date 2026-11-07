@@ -13,8 +13,11 @@
 #include "coordinates.h"
 #include "damage.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "flag.h"
 #include "item.h"
+#include "item_location.h"
 #include "item_pocket.h"
 #include "itype.h"
 #include "line.h"
@@ -353,11 +356,20 @@ bool Character::ablative_armor_absorb( damage_unit &du, item &armor, const sub_b
                     }
 
                     // delete the now destroyed item
+                    const itype_id old_type = ablative_armor.typeId();
                     itype_id replacement = ablative_armor.find_armor_data()->non_functional;
                     remove_item( ablative_armor );
 
                     // replace it with its destroyed version
-                    pocket->add( item( replacement ) );
+                    item *new_plate = nullptr;
+                    pocket->add( item( replacement ), &new_plate );
+
+                    if( new_plate != nullptr ) {
+                        item_location plate_loc( item_location( *this, &armor ), new_plate );
+                        cata::event e = cata::event::make<event_type::character_armor_transformed>( getID(),
+                                        old_type, replacement );
+                        get_event_bus().send_with_talker( this, &plate_loc, e );
+                    }
 
                     return true;
                 }
@@ -378,7 +390,15 @@ bool Character::ablative_armor_absorb( damage_unit &du, item &armor, const sub_b
                     }
                     destroyed_armor_msg( *this, ablative_armor.tname() );
 
-                    remove_item( ablative_armor );
+                    // As for worn armor: the plate still exists while the EOCs run
+                    item_location plate_loc( item_location( *this, &armor ), &ablative_armor );
+                    cata::event e = cata::event::make<event_type::character_armor_destroyed>( getID(),
+                                    ablative_armor.typeId() );
+                    get_event_bus().send_with_talker( this, &plate_loc, e );
+
+                    if( plate_loc ) {
+                        remove_item( *plate_loc );
+                    }
 
                     return true;
                 }

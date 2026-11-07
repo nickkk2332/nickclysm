@@ -2,8 +2,10 @@
 #ifndef CATA_SRC_MTYPE_H
 #define CATA_SRC_MTYPE_H
 
+#include <array>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,7 +17,9 @@
 #include "calendar.h"
 #include "color.h"
 #include "damage.h"
+#include "dialogue_helpers.h"
 #include "enum_bitset.h"
+#include "lightmap.h"
 #include "magic.h"
 #include "mattack_common.h"
 #include "pathfinding.h"
@@ -33,6 +37,7 @@ enum class phase_id : int;
 
 struct const_dialogue;
 struct dealt_projectile_attack;
+struct talk_effect_t;
 template <typename E> struct enum_traits;
 
 using mon_action_death  = void ( * )( monster & );
@@ -40,6 +45,28 @@ using mon_action_attack = bool ( * )( monster * );
 using mon_action_defend = void ( * )( monster &, Creature *, dealt_projectile_attack const * );
 using bodytype_id = std::string;
 class JsonObject;
+
+// Who can ride a PET_MOUNTABLE monster (mount_rules): a rider with `skill` at `saddled_level`
+// on the saddled monster, or at `unsaddled_level` without a saddle, who is at least
+// `size_difference` sizes smaller than it. Saddling it needs `skill` at `tack_level`.
+struct mon_mount_rules {
+    skill_id skill;
+    int saddled_level = 1;
+    int unsaddled_level = 4;
+    int tack_level = 1;
+    int size_difference = 1;
+};
+
+// One special "defensive" move (an entry of special_when_hit): a built-in one or an
+// effect_on_condition. It is tried when a roll from 0 to 100 is at most `chance`, for a hit by
+// a projectile with `ranged`, and for other hits (melee, being grabbed or held) with `melee`.
+struct mon_special_defense {
+    mon_action_defend defense = nullptr;
+    std::optional<effect_on_condition_id> eoc;
+    int chance = 0;
+    bool melee = true;
+    bool ranged = true;
+};
 
 // These are triggers which may affect the monster's anger or morale.
 // They are handled in monster::check_triggers(), in monster.cpp
@@ -56,6 +83,7 @@ enum class mon_trigger : int {
     PLAYER_NEAR_BABY,   // Player/npc is near a baby monster of this type
     MATING_SEASON,      // It's the monster's mating season (defined by baby_flags)
     BRIGHT_LIGHT,       // Illumination in the monster's tile is 75% of full daylight or higher
+    CONDITION,          // MONAI-J08: a dialogue condition from JSON, checked as the monster plans
 
     LAST               // This item must always remain last.
 };
@@ -63,6 +91,25 @@ enum class mon_trigger : int {
 template<>
 struct enum_traits<mon_trigger> {
     static constexpr mon_trigger last = mon_trigger::LAST;
+};
+
+// MONAI-J08: which list a trigger is in: anger_triggers, fear_triggers or placate_triggers
+enum class mon_trigger_kind : int { anger = 0, fear, placate };
+
+// MONAI-J08: the object form of a trigger, { "id": "PLAYER_CLOSE", "amount": 8, "range": 7,
+// "cap": 50 }: unset members keep the built-in numbers (doc/JSON/MONSTERS.md)
+struct mon_trigger_tuning {
+    std::optional<int> amount;
+    std::optional<int> range;
+    std::optional<int> cap;
+};
+
+// MONAI-J08: a { "id": "CONDITION", "condition": ..., "amount": ... } trigger
+struct mon_condition_trigger {
+    std::function<bool( const_dialogue const & )> condition;
+    dbl_or_var amount;
+    // anger triggers: the monster also gets angry at characters
+    bool aggro_character = false;
 };
 
 struct mon_flag {
@@ -252,10 +299,18 @@ struct pet_food_data {
     std::set<std::string> food;
     std::string pet;
     std::string feed;
+    // MONDT-J14: percent chance that a feeding tames it; otherwise it eats the food for nothing
+    int chance = 100;
+    // alpha the feeder, beta the monster: false and it won't take the food (none: always true)
+    std::function<bool( const_dialogue const & )> condition;
+    // alpha the feeder, beta the monster
+    std::vector<effect_on_condition_id> on_tame_eocs;
+    std::vector<effect_on_condition_id> on_fail_eocs;
+    // it bites the hand that feeds it instead, and is never tamed by food
+    bool bite_on_feed = false;
 
     bool was_loaded = false;
-    void load( const JsonObject &jo );
-    void deserialize( const JsonObject &data );
+    void load( const JsonObject &jo, std::string_view src );
 };
 
 struct monster_block_data {
@@ -291,6 +346,20 @@ enum class mdeath_type {
 template<>
 struct enum_traits<mdeath_type> {
     static constexpr mdeath_type last = mdeath_type::LAST;
+};
+
+// Whether seeing a monster stops safe mode ("safemode" in JSON), decided before the player's
+// safe mode rules
+enum class monster_safemode : int {
+    rules,  // the player's rules decide (hostile monsters stop safe mode when there are none)
+    always, // stops safe mode whatever its attitude or the rules, unless it is your pet
+    ignore, // never stops safe mode
+    last
+};
+
+template<>
+struct enum_traits<monster_safemode> {
+    static constexpr monster_safemode last = monster_safemode::last;
 };
 
 struct monster_death_effect {
@@ -341,6 +410,21 @@ struct revive_type {
     void deserialize( const JsonObject &jo );
 };
 
+// MONDT-J14: an entry from JSON in the pet menu of a monster ("pet_interactions" of its type or
+// of its species); the player is alpha, the pet beta
+struct pet_interaction {
+    std::string id;
+    // "%s" is the pet's name
+    translation name;
+    // the menu key, -1 for one the menu picks
+    int key = -1;
+    // offered only while this is true (none: always)
+    std::function<bool( const_dialogue const & )> condition;
+    std::shared_ptr<const talk_effect_t> effect;
+
+    void load( const JsonObject &jo, std::string_view src );
+};
+
 struct mtype {
     private:
         friend class MonsterGenerator;
@@ -348,11 +432,17 @@ struct mtype {
         enum_bitset<mon_trigger> anger;
         enum_bitset<mon_trigger> fear;
         enum_bitset<mon_trigger> placate;
+        // MONAI-J08: from the object form of triggers, by mon_trigger_kind
+        std::array<std::map<mon_trigger, mon_trigger_tuning>, 3> trigger_tunings;
+        std::array<std::vector<mon_condition_trigger>, 3> condition_triggers;
+        void load_trigger_tunings( const JsonObject &jo, const std::string &member,
+                                   mon_trigger_kind kind );
     public:
         units::mass weight;
-        // This monster's special "defensive" move that may trigger when the monster is attacked.
-        // Note that this can be anything, and is not necessarily beneficial to the monster
-        mon_action_defend sp_defense;
+        // This monster's special "defensive" moves that may trigger when the monster is attacked.
+        // Note that these can be anything, and are not necessarily beneficial to the monster
+        std::vector<mon_special_defense> special_defenses;
+        bool has_special_defense( mon_action_defend defense ) const;
     private:
         ascii_art_id picture_id;
         mon_flag_id_set flags;
@@ -371,6 +461,14 @@ struct mtype {
 
         std::vector<revive_type> revive_types;
 
+        /** its corpse's shelf life: how long until the corpse is rotten */
+        time_duration corpse_shelf_life = 24_hours;
+        /** how much rot its corpse takes to rot away, unless it can revive */
+        time_duration corpse_rot_away = 10_days;
+        /** a reviving corpse doesn't get up until this old, and surely does once revive_guaranteed old */
+        time_duration revive_min_age = 6_hours;
+        time_duration revive_guaranteed = 48_hours;
+
         mtype_id zombify_into; // mtype_id this monster zombifies into
         mtype_id fungalize_into; // mtype_id this monster fungalize into
 
@@ -384,6 +482,11 @@ struct mtype {
          * of this type (if it's friendly).
          */
         itype_id revert_to_itype;
+        /**
+         * One in this many EMP blasts switch an ELECTRONIC monster off, turning it into its
+         * revert_to_itype (CMBT-J11); 0 never. -1 (the default): 6 if tiny, 3 if small, else never.
+         */
+        int emp_deactivate_one_in = -1;
 
         /**
          * If this is not empty, the monster will become this item when mdeath::BROKEN
@@ -394,6 +497,11 @@ struct mtype {
          * If this monster is a rideable mech with built-in weapons, this is the weapons id
          */
         itype_id mech_weapon;
+        /**
+         * If this monster is a rideable mech, the item used up to activate it
+         */
+        itype_id mech_activation_item;
+        mon_mount_rules mount_rules;
         /**
          * If this monster is a rideable mech it needs a power source battery type
          */
@@ -445,6 +553,9 @@ struct mtype {
     public:
         // special attack frequencies and function pointers
         std::map<std::string, mtype_special_attack> special_attacks;
+        // MONAI-J09: "behavior", behavior nodes the monster's goals start with (before those
+        // named like its special attacks)
+        std::vector<string_id<behavior::node_t>> behaviors;
         /** Emission sources that cycle each turn the monster remains alive */
         std::map<emit_id, time_duration> emit_fields;
         std::optional<resistances> armor_proportional; /**load-time only*/
@@ -460,6 +571,7 @@ struct mtype {
 
         // Pet food category this monster is in
         pet_food_data petfood;
+        std::vector<pet_interaction> pet_interactions;
     private:
 
         behavior::node_t goals;
@@ -518,6 +630,21 @@ struct mtype {
         // Bleed rate in percent, 0 makes the monster immune to bleeding
         int bleed_rate = 100;
 
+        // MONAI-J07: "effect_immunities" in the monster's JSON: effect -> chance in percent of
+        // resisting it (0: never immune, also where its species or a built-in rule would be)
+        std::map<efftype_id, int> effect_immunities;
+        // ... merged with those of its species (finalize): the monster's own entries win, and
+        // of its species the highest chance. monster::is_immune_effect reads this.
+        std::map<efftype_id, int> effect_immunity_chances;
+        // MONAI-J07: "bleed_effect" in the monster's JSON (null: from its species)
+        efftype_id bleed_effect_json = efftype_id::NULL_ID();
+        // ... or else that of its species (finalize); null: it bleeds ("bleed")
+        efftype_id bleed_effect = efftype_id::NULL_ID();
+        // MONDT-J11: the field its blood and its gibs leave ("fd_null" for none); unset works it
+        // out from its flags, materials and species (bloodType(), gibType())
+        std::optional<field_type_str_id> blood_field;
+        std::optional<field_type_str_id> gib_field;
+
         // The amount of volume in milliliters that this monster needs to absorb to gain 1 HP (default 250)
         int absorb_ml_per_hp = 250;
 
@@ -533,11 +660,18 @@ struct mtype {
         int absorb_move_cost_max = -1;
 
         float luminance = 0;       // 0 is default, >0 gives luminance to lightmap
+        // The colour of that light ("light_color"); none is white
+        light_color_rgb light_color{};
         // Vision range is linearly scaled depending on lighting conditions
         int vision_day = 40;    /** vision range in bright light */
         int vision_night = 1;   /** vision range in total darkness */
+        // MONAI-J04: hearing, smell and footsteps as numbers.  Unset, the flags decide (see the
+        // getters): GOODHEARING, KEENNOSE, and the size and LOUDMOVES/QUIETMOVES/SILENTMOVES.
+        std::optional<float> hearing_mult;
+        std::optional<int> scent_min;
+        std::optional<int> scent_max;
+        std::optional<int> footstep_volume;
 
-        unsigned int def_chance; // How likely a special "defensive" move is to trigger (0-100%, default 0)
         // Monster's ability to destroy terrain and vehicles
         std::map<damage_type_id, int> bash_skill;
 
@@ -567,6 +701,9 @@ struct mtype {
         std::optional<time_duration> biosig_timer;
 
         pathfinding_settings path_settings;
+        // path_settings "climb_cost" and "size" as written in JSON; unset, finalize works them out
+        std::optional<int> path_climb_cost;
+        std::optional<creature_size> path_size;
 
         // All the bools together for space efficiency
         //
@@ -584,6 +721,9 @@ struct mtype {
 
         // Do we indiscriminately attack characters, or should we wait until one annoys us?
         bool aggro_character = true;
+
+        // Whether seeing it stops safe mode, before the player's rules (UIHUD-J07)
+        monster_safemode safemode = monster_safemode::rules;
 
         mtype();
         /**
@@ -605,6 +745,12 @@ struct mtype {
         bool has_anger_trigger( mon_trigger trigger ) const;
         bool has_fear_trigger( mon_trigger trigger ) const;
         bool has_placate_trigger( mon_trigger trigger ) const;
+        // MONAI-J08: a trigger's "amount", "range" or "cap" in this list, or else `def`, the
+        // built-in number
+        int trigger_amount( mon_trigger_kind kind, mon_trigger trigger, int def ) const;
+        int trigger_range( mon_trigger_kind kind, mon_trigger trigger, int def ) const;
+        int trigger_cap( mon_trigger_kind kind, mon_trigger trigger, int def ) const;
+        const std::vector<mon_condition_trigger> &get_condition_triggers( mon_trigger_kind kind ) const;
         bool in_category( const std::string &category ) const;
         bool in_species( const species_id &spec ) const;
         std::vector<std::string> species_descriptions() const;
@@ -612,13 +758,15 @@ struct mtype {
         //Used for corpses.
         field_type_id bloodType() const;
         field_type_id gibType() const;
-        // The item id of the meat items that are produced by this monster (or "null")
-        // if there is no matching item type. e.g. "veggy" for plant monsters.
-        itype_id get_meat_itype() const;
-        int get_meat_chunks_count() const;
         std::string get_description() const;
         ascii_art_id get_picture_id() const;
         std::string get_footsteps() const;
+        // Sounds are heard this many times as loud: hearing_mult, else 2 with GOODHEARING
+        float get_hearing_mult() const;
+        // Scent weaker than this isn't followed: scent_sensitivity min, else 1 with KEENNOSE, 10
+        int get_scent_min() const;
+        // Scent stronger than this is too strong to follow: max, else 400 with KEENNOSE, 200
+        int get_scent_max() const;
         void set_strategy();
         void add_goal( const std::string &goal_id );
         const behavior::node_t *get_goals() const;
@@ -627,6 +775,26 @@ struct mtype {
 
         // Historically located in monstergenerator.cpp
         void load( const JsonObject &jo, std::string_view src );
+};
+
+/** monster_migration: what saved monsters of a renamed or removed type become */
+class monster_migrations
+{
+    public:
+        /** Handler for loading "monster_migration" type of json object */
+        static void load( const JsonObject &jo );
+        /** Clears migration list */
+        static void reset();
+        /** Checks migrations */
+        static void check();
+        /** The type a saved monster of type @p id loads as: @p id itself without a migration
+         *  that renames it */
+        static mtype_id migrate( const mtype_id &id );
+        /** Whether saved monsters of type @p id are removed when a save loads */
+        static bool removes( const mtype_id &id );
+        /** removes() for the type of a saved monster; when it is removed, the monster's JSON is
+         *  marked as read */
+        static bool removes( const JsonObject &saved_monster );
 };
 
 #endif // CATA_SRC_MTYPE_H

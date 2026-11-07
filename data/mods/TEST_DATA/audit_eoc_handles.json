@@ -1,0 +1,20 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_HANDLE_STORE",
+    "//": "EOC-J01: stores a handle to the alpha talker in a global.",
+    "effect": [ { "u_set_talker": { "global_val": "test_handle" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_HANDLE_USE",
+    "//": "EOC-J01: marks the talker the stored handle names, or counts a miss.",
+    "effect": [
+      {
+        "run_eocs": [ { "id": "EOC_TEST_HANDLE_MARK", "effect": [ { "math": [ "u_handle_marks += 1" ] } ] } ],
+        "alpha_talker": { "global_val": "test_handle" },
+        "false_eocs": [ { "id": "EOC_TEST_HANDLE_MISSED", "effect": [ { "math": [ "test_handle_misses += 1" ] } ] } ]
+      }
+    ]
+  }
+]

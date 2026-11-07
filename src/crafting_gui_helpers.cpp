@@ -1,7 +1,11 @@
 #include "crafting_gui_helpers.h"
 
 #include <algorithm>
+#include <array>
 #include <bitset>
+#include <climits>
+#include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -12,12 +16,15 @@
 #include <utility>
 #include <vector>
 
+#include "bonuses.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "catacharset.h"
-#include "character_id.h"
 #include "character.h"
+#include "character_id.h"
+#include "coordinates.h"
 #include "crafting.h"
+#include "crafting_enums.h"
 #include "display.h"
 #include "flag.h"
 #include "flat_set.h"
@@ -27,16 +34,21 @@
 #include "iteminfo_query.h"
 #include "itype.h"
 #include "localized_comparator.h"
+#include "magic_type.h"
+#include "mutation.h"
 #include "output.h"
+#include "proficiency.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
 #include "requirements.h"
 #include "skill.h"
 #include "string_formatter.h"
 #include "temp_crafting_inventory.h"
+#include "translation_cache.h"
 #include "translations.h"
 #include "type_id.h"
 #include "uistate.h"
+#include "vitamin.h"
 
 bool cannot_gain_skill_or_prof( const Character &crafter, const recipe &recp )
 {
@@ -121,9 +133,10 @@ static recipe_gate gate_recipe( const Character &crafter, const recipe &recp,
         const float difficulty = recp.get_difficulty( crafter );
         g.has_all_skills = crafter.get_skill_level( recp.skill_used ) >= difficulty;
         g.crafter_has_primary_skill = crafter.get_knowledge_level( recp.skill_used ) >=
-                                      static_cast<int>( difficulty * 0.8f );
+                                      recp.required_knowledge_level( crafter );
     }
     g.has_proficiencies = recp.character_has_required_proficiencies( crafter );
+    // character_meets_requirements() includes the recipe's JSON condition (CRAFT-J06)
     g.base_requirements = ( !recp.is_practice() || g.has_all_skills ) && g.has_proficiencies &&
                           recp.character_meets_requirements( crafter );
     std::string npc_reason;
@@ -481,6 +494,9 @@ std::vector<std::string> recipe_info(
 
     if( !can_craft_this && npc_cant ) {
         oss << colorize( reason, c_red ) << "\n";
+    }
+    if( !can_craft_this && !recp.meets_condition( avail.crafter ) ) {
+        oss << colorize( recp.condition_fail_text(), c_red ) << "\n";
     }
 
     const bool disp_prof_msg = avail.has_proficiencies && !recp.is_nested();
@@ -1093,6 +1109,12 @@ recipe_list_data build_recipe_list(
 {
     recipe_list_data result;
 
+    // UIINV-J03: recipes hidden by their JSON condition aren't listed, not even as hidden ones
+    picking.erase( std::remove_if( picking.begin(), picking.end(),
+    [&crafter]( const recipe * r ) {
+        return r->hide_if_condition_fails() && !r->meets_condition( crafter );
+    } ), picking.end() );
+
     if( skip_hidden_filter ) {
         result.entries = std::move( picking );
     } else {
@@ -1257,4 +1279,636 @@ const std::string &find_tool_group_name( const std::vector<tool_comp> &alts )
     std::sort( ids.begin(), ids.end() );
     auto it = cache.find( ids );
     return it != cache.end() ? it->second : empty;
+}
+
+// --- Recipe info panel ---
+
+bool recipe_panel_text::operator==( const recipe_panel_text &rhs ) const
+{
+    return text == rhs.text && color == rhs.color;
+}
+
+bool recipe_panel_group::operator==( const recipe_panel_group &rhs ) const
+{
+    return index == rhs.index && label == rhs.label && options == rhs.options;
+}
+
+bool recipe_panel_requirement::operator==( const recipe_panel_requirement &rhs ) const
+{
+    return shown == rhs.shown && qualities == rhs.qualities && groups == rhs.groups;
+}
+
+bool recipe_panel_step::operator==( const recipe_panel_step &rhs ) const
+{
+    return name == rhs.name && time == rhs.time && batch_note == rhs.batch_note &&
+           activity == rhs.activity && activity_color == rhs.activity_color &&
+           unattended == rhs.unattended && proficiencies == rhs.proficiencies && tools == rhs.tools;
+}
+
+bool recipe_panel_skill::operator==( const recipe_panel_skill &rhs ) const
+{
+    return name == rhs.name && level == rhs.level && required == rhs.required &&
+           suffix == rhs.suffix && color == rhs.color;
+}
+
+bool recipe_panel_proficiency::operator==( const recipe_panel_proficiency &rhs ) const
+{
+    return name == rhs.name && required == rhs.required && known == rhs.known &&
+           time_multiplier == rhs.time_multiplier && skill_penalty == rhs.skill_penalty;
+}
+
+bool recipe_panel::operator==( const recipe_panel &rhs ) const
+{
+    return result_name == rhs.result_name && source_text == rhs.source_text &&
+           description == rhs.description && stats_plain == rhs.stats_plain &&
+           stats_colored == rhs.stats_colored && too_dark == rhs.too_dark &&
+           required_proficiencies == rhs.required_proficiencies && too_complex == rhs.too_complex &&
+           npc_cannot_craft == rhs.npc_cannot_craft && npc_reason == rhs.npc_reason &&
+           batch_savings == rhs.batch_savings && base_time == rhs.base_time &&
+           skills == rhs.skills && proficiencies == rhs.proficiencies &&
+           morale_mult == rhs.morale_mult && light_mult == rhs.light_mult &&
+           pain_mult == rhs.pain_mult && limb_mult == rhs.limb_mult && mut_mult == rhs.mut_mult &&
+           mut_skill_bonus == rhs.mut_skill_bonus && intelligence == rhs.intelligence &&
+           crafting_stat_name == rhs.crafting_stat_name &&
+           int_delta == rhs.int_delta && has_farsight == rhs.has_farsight &&
+           vision_penalty == rhs.vision_penalty && total_time == rhs.total_time &&
+           success == rhs.success && destruction == rhs.destruction && darkness == rhs.darkness &&
+           nearby == rhs.nearby && practice_requirement == rhs.practice_requirement &&
+           practice_gains == rhs.practice_gains &&
+           practice_gains_color == rhs.practice_gains_color &&
+           practice_trains == rhs.practice_trains && single_step_name == rhs.single_step_name &&
+           character_requirements == rhs.character_requirements &&
+           components == rhs.components && tools == rhs.tools && steps == rhs.steps &&
+           resources_shown == rhs.resources_shown && resources == rhs.resources &&
+           known_by == rhs.known_by && nested == rhs.nested;
+}
+
+namespace
+{
+constexpr std::array<scaling_stat, 4> character_requirement_display_order = {
+    STAT_STR, STAT_DEX, STAT_INT, STAT_PER
+};
+
+std::string character_stat_name( const scaling_stat stat )
+{
+    switch( stat ) {
+        case STAT_STR:
+            return _( "strength" );
+        case STAT_DEX:
+            return _( "dexterity" );
+        case STAT_INT:
+            return _( "intelligence" );
+        case STAT_PER:
+            return _( "perception" );
+        default:
+            return "<-error->";
+    }
+}
+
+std::string character_requirement_text( const scaling_stat stat, const int requirement,
+                                        const int current )
+{
+    const std::string name = character_stat_name( stat );
+    std::string text = string_format( "%s %d", name, requirement );
+    if( current < requirement ) {
+        //~ Shown after an unmet crafting stat requirement. %1$s: stat name, %2$d: current stat value
+        text += string_format( _( " (current %1$s %2$d)" ), name, current );
+    }
+    return text;
+}
+
+// The "Components:" block.  The colours read the availability can_make_with_inventory()
+// leaves on each component, so it runs first.  As the menu always has, the components are
+// checked for the player character.
+recipe_panel_requirement panel_components( const requirement_data &req,
+        const temp_crafting_inventory &crafting_inv,
+        const std::function<bool( const item & )> &filter, int batch_size, bool need_full_magazine )
+{
+    recipe_panel_requirement block;
+    const requirement_data::alter_item_comp_vector &comp_groups = req.get_components();
+    if( comp_groups.empty() ) {
+        return block;
+    }
+    block.shown = true;
+
+    req.can_make_with_inventory( &get_player_character(), crafting_inv, filter );
+
+    // how many of a given component the player has on hand
+    const auto avail_count = [&crafting_inv, &filter]( const item_comp & ic ) -> int {
+        if( item::count_by_charges( ic.type ) )
+        {
+            return crafting_inv.charges_of( ic.type, INT_MAX, filter );
+        }
+        return crafting_inv.amount_of( ic.type, false, INT_MAX, filter );
+    };
+    const auto component_text = [batch_size, need_full_magazine]
+    ( const item_comp & comp, const int available ) {
+        std::string text = comp.to_string( batch_size, available );
+        if( need_full_magazine && item( comp.type ).is_magazine() ) {
+            //~ Appended to the name of a battery or ammunition magazine in the crafting menu.  It means the component must be completely charged or loaded.
+            text += _( " (full)" );
+        }
+        return text;
+    };
+
+    for( int gi = 0; gi < static_cast<int>( comp_groups.size() ); ++gi ) {
+        const std::vector<item_comp> &comp_alts = comp_groups[gi];
+        if( comp_alts.empty() ) {
+            continue;
+        }
+        // Available components first, so they aren't hidden behind "or N more".
+        // Order: has enough > has some > has none
+        std::vector<std::pair<const item_comp *, int>> ranked;
+        ranked.reserve( comp_alts.size() );
+        bool any_available = false;
+        for( const item_comp &ic : comp_alts ) {
+            const bool has = ic.has( &get_player_character(), crafting_inv, filter, batch_size );
+            any_available = any_available || has;
+            ranked.emplace_back( &ic, has ? 0 : avail_count( ic ) > 0 ? 1 : 2 );
+        }
+        std::stable_sort( ranked.begin(), ranked.end(),
+                          []( const std::pair<const item_comp *, int> &a,
+        const std::pair<const item_comp *, int> &b ) {
+            return a.second < b.second;
+        } );
+
+        recipe_panel_group &group = block.groups.emplace_back();
+        group.index = gi;
+        for( const std::pair<const item_comp *, int> &alt : ranked ) {
+            const item_comp &ic = *alt.first;
+            group.options.push_back( {
+                component_text( ic, avail_count( ic ) ),
+                ic.get_color( &get_player_character(), any_available, crafting_inv, filter, batch_size )
+            } );
+        }
+    }
+    return block;
+}
+
+// The "Tools:" block of `req`.  `group_offset` is added to the tool groups' indices.
+recipe_panel_requirement panel_tools( const requirement_data &req,
+                                      const temp_crafting_inventory &crafting_inv, int batch_size, int group_offset )
+{
+    recipe_panel_requirement block;
+    const requirement_data::alter_tool_comp_vector &tool_groups = req.get_tools();
+    const requirement_data::alter_quali_req_vector &qual_groups = req.get_qualities();
+    if( tool_groups.empty() && qual_groups.empty() ) {
+        return block;
+    }
+    block.shown = true;
+
+    // one line per quality group, coloured by availability
+    for( const std::vector<quality_requirement> &qual_alts : qual_groups ) {
+        std::vector<bool> has;
+        has.reserve( qual_alts.size() );
+        for( const quality_requirement &qr : qual_alts ) {
+            has.push_back( qr.has( &get_player_character(), crafting_inv, return_true<item>, 1 ) );
+        }
+        const bool any_has = std::find( has.begin(), has.end(), true ) != has.end();
+        std::vector<std::string> alternatives;
+        alternatives.reserve( qual_alts.size() );
+        for( size_t i = 0; i < qual_alts.size(); ++i ) {
+            const nc_color col = has[i] ? c_green : any_has ? c_dark_gray : c_red;
+            alternatives.emplace_back( colorize( qual_alts[i].to_string( 1 ), col ) );
+        }
+        block.qualities.push_back( string_join( alternatives, _( " OR " ) ) );
+    }
+
+    // tool groups, with the names of named requirements, available tools first
+    for( size_t gi = 0; gi < tool_groups.size(); ++gi ) {
+        const std::vector<tool_comp> &alts = tool_groups[gi];
+        if( alts.empty() ) {
+            continue;
+        }
+        const std::string &group_name = find_tool_group_name( alts );
+
+        // one alternative per tool type
+        bool any_available = false;
+        std::set<itype_id> seen;
+        std::vector<std::pair<const tool_comp *, bool>> unique_alts;
+        for( const tool_comp &tc : alts ) {
+            if( seen.insert( tc.type ).second ) {
+                const bool has = tc.has( &get_player_character(), crafting_inv, return_true<item>,
+                                         batch_size );
+                unique_alts.emplace_back( &tc, has );
+                any_available = any_available || has;
+            }
+        }
+        std::stable_partition( unique_alts.begin(), unique_alts.end(),
+        []( const std::pair<const tool_comp *, bool> &tc ) {
+            return tc.second;
+        } );
+
+        recipe_panel_group &group = block.groups.emplace_back();
+        group.index = group_offset + static_cast<int>( gi );
+        group.label = string_format( _( "• %s: " ), !group_name.empty() ? group_name :
+                                     _( "One of" ) );
+        for( const std::pair<const tool_comp *, bool> &tc : unique_alts ) {
+            group.options.push_back( {
+                tc.first->to_string( batch_size ),
+                tc.second ? c_green : any_available ? c_dark_gray : c_red
+            } );
+        }
+    }
+    return block;
+}
+} // namespace
+
+recipe_panel build_recipe_panel( const recipe &recp, const availability &avail, int batch_size,
+                                 const recipe_panel_context &ctx )
+{
+    Character &crafter = ctx.crafter;
+    recipe_panel panel;
+    const bool nested = recp.is_nested();
+    const bool knows = crafter.knows_recipe( &recp );
+    const temp_crafting_inventory &crafting_inv = avail.inv_override ? *avail.inv_override :
+            crafter.crafting_inventory();
+
+    panel.result_name = recp.result_name( true );
+
+    // Each computed once: the summary line and the details table both show them.
+    std::optional<crafting_cost_context> cost_ctx;
+    float success_chance = 1.0f;
+    int expected_turns = 0;
+    if( !nested ) {
+        cost_ctx = crafting_cost_context::for_recipe( crafter, recp );
+        success_chance = crafter.recipe_success_chance( recp );
+        expected_turns = static_cast<int>( crafter.expected_time_to_craft( recp, batch_size,
+                                           *cost_ctx ) / to_moves<int>( 1_turns ) );
+    }
+
+    // source attribution
+    if( !knows ) {
+        const std::set<itype_id> books = crafter.get_books_for_recipe( crafting_inv, &recp );
+        if( !books.empty() ) {
+            panel.source_text = string_format( _( "as written in %s" ), item::nname( *books.begin() ) );
+            const int extra = static_cast<int>( books.size() ) - 1;
+            if( extra > 0 ) {
+                panel.source_text += string_format( _( ", and %d more" ), extra );
+            }
+        }
+    }
+    if( panel.source_text.empty() && !nested ) {
+        // Confident phrases for >=60% success, uncertain for <60%
+        const size_t idx = std::hash<std::string> {}( recp.ident().str() );
+        if( success_chance >= 0.6f ) {
+            static const std::array<std::string, 2> confident = {{
+                    translate_marker( "(…as you remember it)" ),
+                    translate_marker( "(…as you recall it)" ),
+                }
+            };
+            panel.source_text = _( confident[idx % confident.size()] );
+        } else {
+            static const std::array<std::string, 2> uncertain = {{
+                    translate_marker( "(…as you imagine it)" ),
+                    translate_marker( "(…as you see it)" ),
+                }
+            };
+            panel.source_text = _( uncertain[idx % uncertain.size()] );
+        }
+    }
+
+    // item flavor text
+    if( nested || recp.is_practice() ) {
+        panel.description = recp.get_description( crafter );
+    } else if( recp.result() ) {
+        if( !recp.variant().empty() ) {
+            item temp_result( recp.result() );
+            temp_result.set_itype_variant( recp.variant() );
+            panel.description = temp_result.variant_description();
+        }
+        if( panel.description.empty() ) {
+            panel.description = item::find_type( recp.result() )->description.translated();
+        }
+        if( panel.description == "generic item template" ) {
+            panel.description.clear();
+        }
+    }
+
+    // natural-language stats
+    if( !nested ) {
+        const float success = 100.f * success_chance;
+        const nc_color success_col = success < 25.f ? c_red :
+                                     success < 50.f ? c_yellow :
+                                     success < 75.f ? c_light_gray : c_green;
+        const nc_color activity_col = activity_level_color( recp.exertion_level() );
+        const std::string activity_lc = lowercase_first_letter( display::activity_level_str(
+                                            recp.exertion_level() ) );
+        const std::string chance_str = string_format( "~%.0f%%", success );
+        const std::string time_str = approx_craft_time( expected_turns );
+        const std::string activity_str = string_format( _( "%s activity" ), activity_lc );
+        const int total_yield = recp.makes_amount() * batch_size;
+        // Single format string so translators can reorder parts.
+        if( total_yield > 1 ) {
+            //~ %1$s: success chance, %2$s: yield count, %3$s: time, %4$s: activity level
+            const std::string fmt = _( "%1$s chance to yield %2$s in %3$s of %4$s" );
+            const std::string yield_as_string = recp.result()->item_measure_prefix( total_yield );
+            panel.stats_plain = string_format( fmt, chance_str, yield_as_string, time_str,
+                                               activity_str );
+            panel.stats_colored = string_format( fmt,
+                                                 colorize( chance_str, success_col ),
+                                                 colorize( yield_as_string, c_light_blue ),
+                                                 colorize( time_str, c_cyan ),
+                                                 colorize( activity_str, activity_col ) );
+        } else {
+            //~ %1$s: success chance, %2$s: time, %3$s: activity level
+            const std::string fmt = _( "%1$s chance you can make it in %2$s of %3$s" );
+            panel.stats_plain = string_format( fmt, chance_str, time_str, activity_str );
+            panel.stats_colored = string_format( fmt,
+                                                 colorize( chance_str, success_col ),
+                                                 colorize( time_str, c_cyan ),
+                                                 colorize( activity_str, activity_col ) );
+        }
+    }
+
+    // warnings
+    for( const proficiency_id &prof : recp.required_proficiencies() ) {
+        panel.required_proficiencies.push_back( prof->name() );
+    }
+    if( !nested ) {
+        panel.too_complex = recp.deduped_requirements().is_too_complex();
+        panel.npc_cannot_craft = avail.crafter.is_npc()
+                                 && !recp.npc_can_craft( panel.npc_reason )
+                                 && !avail.inv_override;
+    }
+    if( batch_size > 1 ) {
+        panel.batch_savings = recp.batch_savings_string();
+    }
+
+    // details table
+    if( !nested ) {
+        const int64_t base_moves = recp.time_to_craft_moves(
+                                       crafter, {}, recipe_time_flag::ignore_proficiencies );
+        panel.base_time = to_string( time_duration::from_moves( base_moves ) );
+
+        const auto skill_row = [&]( const skill_id & sk, int required_level,
+        const std::string & suffix ) {
+            const int level = crafter.get_skill_level( sk );
+            const int delta = level - required_level;
+            const nc_color col = delta >= 2 ? c_green : delta >= 0 ? c_light_gray :
+                                 delta >= -2 ? c_yellow : c_red;
+            panel.skills.push_back( { sk->name(), level, required_level, suffix, col } );
+        };
+        if( recp.skill_used ) {
+            std::string range;
+            if( recp.is_practice() && recp.practice_data &&
+                recp.practice_data->min_difficulty != recp.practice_data->max_difficulty ) {
+                range = string_format( "(%d-%d)",
+                                       recp.practice_data->min_difficulty,
+                                       recp.practice_data->max_difficulty );
+            }
+            skill_row( recp.skill_used, recp.get_difficulty( crafter ), range );
+        }
+        for( const auto &secondary : recp.required_skills ) {
+            skill_row( secondary.first, secondary.second, {} );
+        }
+
+        // the crafter's group is looked up once, and only if a proficiency needs it
+        std::optional<std::vector<Character *>> helpers;
+        const auto crafter_or_helper_has_proficiency = [&]( const proficiency_id & prof ) {
+            if( avail.crafter.has_proficiency( prof ) ) {
+                return true;
+            }
+            if( !helpers ) {
+                helpers = avail.crafter.get_crafting_group();
+            }
+            return std::any_of( helpers->begin(), helpers->end(), [&prof]( const Character * helper ) {
+                return helper->has_proficiency( prof );
+            } );
+        };
+        for( const recipe_proficiency &prof : recp.get_proficiencies() ) {
+            panel.proficiencies.push_back( {
+                prof.id->name(), prof.required, crafter_or_helper_has_proficiency( prof.id ),
+                prof.time_multiplier, prof.skill_penalty
+            } );
+        }
+
+        panel.morale_mult = crafter.morale_crafting_speed_multiplier( recp );
+        panel.light_mult = crafter.lighting_craft_speed_multiplier( recp );
+        panel.pain_mult = crafter.pain_crafting_speed_multiplier( recp );
+        panel.limb_mult = crafter.limb_score_crafting_speed_multiplier( recp );
+        panel.mut_mult = crafter.mut_crafting_speed_multiplier( recp );
+        for( const trait_id &mut : crafter.get_functioning_mutations() ) {
+            for( const std::pair<const skill_id, int> &bonus : mut->craft_skill_bonus ) {
+                if( recp.skill_used == bonus.first ) {
+                    panel.mut_skill_bonus += bonus.second;
+                }
+            }
+        }
+        // UIINV-J04: what the roll adds, against an average stat of 8
+        const Skill &crafting_skill = recp.skill_used.obj();
+        panel.crafting_stat_name = character_stat_name( crafting_skill.crafting_stat() );
+        panel.intelligence = crafter.get_primary_stat_value( crafting_skill.crafting_stat() );
+        panel.int_delta = crafter.crafting_stat_bonus( recp ) -
+                          8.0f / crafting_skill.crafting_stat_divisor();
+        panel.vision_penalty = crafter.crafting_vision_penalty( recp );
+        panel.has_farsight = panel.vision_penalty > 0.0f;
+        panel.too_dark = panel.light_mult <= 0.0f;
+
+        panel.total_time = to_string( time_duration::from_turns( expected_turns ) );
+        panel.success = 100.f * success_chance;
+        panel.destruction = 100.f * crafter.item_destruction_chance( recp );
+        panel.darkness = recp.has_flag( "BLIND_EASY" ) ? _( "easy" ) :
+                         recp.has_flag( "BLIND_HARD" ) ? _( "hard" ) :
+                         _( "impossible" );
+        if( recp.result() ) {
+            panel.nearby = crafter.crafting_inventory().count_item( recp.result() );
+        }
+
+        if( recp.is_practice() && recp.practice_data && recp.skill_used ) {
+            const int skill_lvl = crafter.get_skill_level( recp.skill_used );
+            if( skill_lvl < recp.practice_data->min_difficulty ) {
+                panel.practice_requirement = string_format(
+                                                 _( "Requires minimum %s skill of %d (you have %d)" ),
+                                                 recp.skill_used->name(),
+                                                 recp.practice_data->min_difficulty,
+                                                 skill_lvl );
+            }
+            panel.practice_gains = string_format( _( "This practice will train %s" ),
+                                                  recp.skill_used->name() );
+            if( recp.practice_data->skill_limit < MAX_SKILL ) {
+                panel.practice_gains += string_format( _( " up to level %d" ),
+                                                       recp.practice_data->skill_limit );
+            }
+            panel.practice_gains_color = skill_lvl >= recp.practice_data->skill_limit ?
+                                         c_brown : c_green;
+            for( const recipe_proficiency &prof : recp.get_proficiencies() ) {
+                if( !prof.required && !crafter.has_proficiency( prof.id ) ) {
+                    panel.practice_trains.push_back( string_format( _( "Will train: %s" ),
+                                                     prof.id->name() ) );
+                }
+            }
+        }
+    }
+
+    // recipe
+    if( recp.has_steps() && recp.steps().size() <= 1 ) {
+        panel.single_step_name = recp.steps().front().name.translated();
+    }
+    if( recp.has_character_requirements() ) {
+        const std::map<scaling_stat, int> &requirements = recp.get_character_requirements();
+        for( const scaling_stat stat : character_requirement_display_order ) {
+            const auto found = requirements.find( stat );
+            if( found == requirements.end() ) {
+                continue;
+            }
+            const int requirement = found->second;
+            const int value = crafter.get_primary_stat_value( stat );
+            panel.character_requirements.push_back( {
+                character_requirement_text( stat, requirement, value ),
+                value >= requirement ? c_green : c_red
+            } );
+        }
+        // CRAFT-J06: the recipe's condition, and why it fails
+        if( recp.has_condition() ) {
+            if( recp.meets_condition( crafter ) ) {
+                panel.character_requirements.push_back( {
+                    _( "The conditions for this recipe are met." ), c_green
+                } );
+            } else {
+                panel.character_requirements.push_back( { recp.condition_fail_text(), c_red } );
+            }
+        }
+    }
+    panel.components = panel_components( recp.simple_requirements(), crafting_inv,
+                                         recp.get_component_filter(), batch_size,
+                                         recp.has_flag( "NEED_FULL_MAGAZINE" ) );
+    panel.tools = panel_tools( recp.simple_requirements(), crafting_inv, batch_size, 0 );
+    if( cost_ctx && recp.has_steps() && recp.steps().size() > 1 ) {
+        int tool_group_offset = 0;
+        for( size_t si = 0; si < recp.steps().size(); ++si ) {
+            const recipe_step &step = recp.steps()[si];
+            recipe_panel_step &shown = panel.steps.emplace_back();
+            const double step_moves = recp.step_budget_moves( crafter, si, batch_size, *cost_ctx );
+            shown.name = step.name.translated();
+            shown.time = to_string( time_duration::from_moves( static_cast<int64_t>( step_moves ) ) );
+            shown.activity = display::activity_level_str( step.exertion );
+            shown.activity_color = activity_level_color( step.exertion );
+            shown.unattended = step.attention == step_attention::unattended;
+            // per-step batch savings annotation
+            if( batch_size > 1 ) {
+                const double single_moves = recp.step_budget_moves( crafter, si, 1, *cost_ctx );
+                if( step_moves < single_moves * batch_size * 0.99 ) {
+                    shown.batch_note = string_format( _( " (x%d, saves %s)" ), batch_size,
+                                                      to_string( time_duration::from_moves(
+                                                              static_cast<int64_t>( single_moves * batch_size - step_moves ) ) ) );
+                }
+            }
+            for( const recipe_proficiency &prof : step.proficiencies ) {
+                const bool known = crafter.has_proficiency( prof.id );
+                const nc_color pcol = prof.required ? ( known ? c_green : c_red ) :
+                                      ( known ? c_dark_gray : c_yellow );
+                std::string text = prof.id->name();
+                if( prof.required && !known ) {
+                    text += _( " (required)" );
+                }
+                shown.proficiencies.push_back( { text, pcol } );
+            }
+            shown.tools = panel_tools( step.requirements, crafting_inv, batch_size,
+                                       tool_group_offset );
+            tool_group_offset += step.requirements.get_tools().size();
+        }
+    }
+
+    const character_resource_costs &resources = recp.get_character_resources();
+    if( !resources.empty() ) {
+        panel.resources_shown = true;
+        const auto add_resource = [&]( const int amount, const int available,
+        const std::string & name ) {
+            if( amount == 0 ) {
+                return;
+            }
+            const int total = amount * batch_size;
+            panel.resources.push_back( {
+                string_format( "  • %d %s", total, name ),
+                available >= total ? c_white : c_yellow
+            } );
+        };
+        add_resource( resources.mana,
+                      crafter.craft_character_resource_available( magic_energy_type::mana ), _( "mana" ) );
+        add_resource( resources.stamina,
+                      crafter.craft_character_resource_available( magic_energy_type::stamina ),
+                      _( "stamina" ) );
+        for( const vitamin_resource_cost &resource : resources.vitamins ) {
+            add_resource( resource.value, crafter.craft_vitamin_available( resource ),
+                          resource.vitamin.obj().name() );
+        }
+    }
+
+    // helpers who know this recipe
+    if( !knows ) {
+        std::vector<const Character *> helpers;
+        for( const Character *h : ctx.crafting_group ) {
+            if( crafter.getID() != h->getID() && h->knows_recipe( &recp ) ) {
+                helpers.push_back( h );
+            }
+        }
+        if( !helpers.empty() ) {
+            const std::string helper_list = enumerate_as_string( helpers,
+            []( const Character * h ) {
+                return colorize( h->is_avatar() ? _( "You" ) : h->get_name(), c_cyan );
+            } );
+            panel.known_by = string_format( _( "Known by: %s" ), helper_list );
+        }
+    }
+
+    // a nested group's children
+    if( nested ) {
+        for( const recipe_id &child_id : recp.nested_category_data ) {
+            const recipe &child = child_id.obj();
+            if( !ctx.available_recipes.contains( &child ) ) {
+                continue;
+            }
+            const availability &child_avail = cached_availability( ctx.availability_cache, crafter,
+                                              child, ctx.camp_crafting, ctx.inventory_override );
+            panel.nested.push_back( { child.result_name( true ), child_avail.color() } );
+        }
+    }
+    return panel;
+}
+
+bool recipe_panel_cache::key_type::operator==( const key_type &rhs ) const
+{
+    return rec == rhs.rec && batch_size == rhs.batch_size && crafter == rhs.crafter &&
+           inventory == rhs.inventory && inventory_generation == rhs.inventory_generation &&
+           inventory_override == rhs.inventory_override &&
+           override_generation == rhs.override_generation && turn == rhs.turn &&
+           moves == rhs.moves && pos == rhs.pos && lang_version == rhs.lang_version;
+}
+
+recipe_panel_cache::key_type recipe_panel_cache::key_for( const recipe &recp,
+        const availability &avail, int batch_size, const recipe_panel_context &ctx )
+{
+    key_type k;
+    k.rec = &recp;
+    k.batch_size = batch_size;
+    k.crafter = &ctx.crafter;
+    // rebuilds the crafter's crafting inventory if it is stale, as the panel would
+    const temp_crafting_inventory &inv = ctx.crafter.crafting_inventory();
+    k.inventory = &inv;
+    k.inventory_generation = inv.generation();
+    k.inventory_override = avail.inv_override;
+    k.override_generation = avail.inv_override ? avail.inv_override->generation() : 0;
+    k.turn = calendar::turn;
+    k.moves = ctx.crafter.get_moves();
+    k.pos = ctx.crafter.pos_abs();
+    k.lang_version = detail::get_current_language_version();
+    return k;
+}
+
+const recipe_panel &recipe_panel_cache::get( const recipe &recp, const availability &avail,
+        int batch_size, const recipe_panel_context &ctx )
+{
+    if( !key || !( *key == key_for( recp, avail, batch_size, ctx ) ) ) {
+        panel = build_recipe_panel( recp, avail, batch_size, ctx );
+        ++build_count;
+        // taken after the build, in case the build refreshed the inventory itself
+        key = key_for( recp, avail, batch_size, ctx );
+    }
+    return panel;
+}
+
+void recipe_panel_cache::invalidate()
+{
+    key.reset();
 }

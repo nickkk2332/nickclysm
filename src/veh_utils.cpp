@@ -18,6 +18,8 @@
 #include "crafting.h"
 #include "debug.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "game.h"
 #include "game_constants.h"
 #include "input_context.h"
@@ -28,6 +30,7 @@
 #include "memory_fast.h"
 #include "point.h"
 #include "requirements.h"
+#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translation.h"
 #include "translations.h"
@@ -43,10 +46,13 @@ static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
 namespace veh_utils
 {
 
-int calc_xp_gain( const vpart_info &vp, const skill_id &sk, const Character &who )
+int calc_xp_gain( const std::map<skill_id, int> &skills, const time_duration &time,
+                  const skill_id &sk, const Character &who )
 {
-    const auto iter = vp.install_skills.find( sk );
-    if( iter == vp.install_skills.end() ) {
+    // VINT-B06: the skills and time of the action done (install, repair or removal); it used
+    // the install skills and install time for all three
+    const auto iter = skills.find( sk );
+    if( iter == skills.end() ) {
         return 0;
     }
 
@@ -61,8 +67,24 @@ int calc_xp_gain( const vpart_info &vp, const skill_id &sk, const Character &who
     //   5:  3 xp /h
     //   6:  2 xp /h
     //  7+:  1 xp /h
-    return std::ceil( to_moves<double>( vp.install_moves ) /
+    return std::ceil( to_moves<double>( time ) /
                       to_moves<int>( 1_minutes * std::pow( lvl, 2 ) ) );
+}
+
+bool modification_forbidden( const vehicle &veh, const vpart_info &vpi )
+{
+    return veh.has_part( "NO_MODIFY_VEHICLE" ) && !vpi.has_flag( "SIMPLE_PART" );
+}
+
+std::string install_forbidden_reason( const vehicle &veh, const vpart_info &vpi )
+{
+    if( modification_forbidden( veh, vpi ) ) {
+        return _( "This vehicle cannot be modified in this way.\n" );
+    }
+    if( vpi.has_flag( "NO_INSTALL_PLAYER" ) ) {
+        return _( "This part cannot be installed.\n" );
+    }
+    return std::string();
 }
 
 vehicle_part *most_repairable_part( vehicle &veh, Character &who )
@@ -83,14 +105,17 @@ vehicle_part *most_repairable_part( vehicle &veh, Character &who )
         }
 
         if( vp.is_broken() ) {
-            if( who.meets_skill_requirements( info.install_skills ) &&
+            // replacing it is installing a new one (VINT-B05)
+            if( install_forbidden_reason( veh, info ).empty() &&
+                who.meets_skill_requirements( info.install_skills ) &&
                 info.install_requirements().can_make_with_inventory( &who, inv, is_crafting_component ) ) {
                 vp_broken = &vp;
             }
             continue;
         }
 
-        if( who.meets_skill_requirements( info.repair_skills ) ) {
+        if( !modification_forbidden( veh, info ) &&
+            who.meets_skill_requirements( info.repair_skills ) ) {
             const requirement_data reqs = info.repair_requirements() * vp.get_base().repairable_levels();
             if( reqs.can_make_with_inventory( &who, inv, is_crafting_component ) ) {
                 const int repairable_damage = vp.get_base().damage();
@@ -104,16 +129,30 @@ vehicle_part *most_repairable_part( vehicle &veh, Character &who )
     return vp_most_damaged != nullptr ? vp_most_damaged : vp_broken;
 }
 
+const temp_crafting_inventory &repair_inventory( const Character &who, const tripoint_bub_ms &pos,
+        const int radius )
+{
+    return who.crafting_inventory( pos, radius, !who.is_npc() );
+}
+
 bool repair_part( map &here, vehicle &veh, vehicle_part &pt, Character &who )
 {
     const vpart_info &vp = pt.info();
+
+    // the gates of a normal install hold for replacing a broken part, and those of the repair
+    // menu for a repair (VINT-B05)
+    if( pt.is_broken() ? !install_forbidden_reason( veh, vp ).empty() :
+        modification_forbidden( veh, vp ) ) {
+        who.add_msg_if_player( m_info, pt.is_broken() ? _( "You can't replace the %s." ) :
+                               _( "You can't repair the %s." ), pt.name() );
+        return false;
+    }
 
     const requirement_data reqs = pt.is_broken()
                                   ? vp.install_requirements()
                                   : vp.repair_requirements() * pt.get_base().repairable_levels();
 
-    const temp_crafting_inventory &inv = who.crafting_inventory( who.pos_bub(), PICKUP_RANGE,
-                                         !who.is_npc() );
+    const temp_crafting_inventory &inv = repair_inventory( who, who.pos_bub(), PICKUP_RANGE );
     temp_crafting_inventory map_inv;
     // allow NPCs to use welding rigs they can't see ( on the other side of a vehicle )
     // as they have the handicap of not being able to use the veh interaction menu
@@ -142,13 +181,22 @@ bool repair_part( map &here, vehicle &veh, vehicle_part &pt, Character &who )
 
     who.invalidate_crafting_inventory();
 
-    for( const auto &sk : pt.is_broken() ? vp.install_skills : vp.repair_skills ) {
-        who.practice( sk.first, calc_xp_gain( vp, sk.first, who ) );
+    // a replacement is an install; a repair takes its time once per level repaired (VINT-B06)
+    if( pt.is_broken() ) {
+        for( const std::pair<const skill_id, int> &sk : vp.install_skills ) {
+            who.practice( sk.first, calc_xp_gain( vp.install_skills, vp.install_moves, sk.first, who ) );
+        }
+    } else {
+        const time_duration repair_time = vp.repair_moves * pt.get_base().repairable_levels();
+        for( const std::pair<const skill_id, int> &sk : vp.repair_skills ) {
+            who.practice( sk.first, calc_xp_gain( vp.repair_skills, repair_time, sk.first, who ) );
+        }
     }
 
     // If part is broken, it will be destroyed and references invalidated
     const std::string partname = pt.name( false );
     const std::string startdurability = pt.get_base().damage_indicator();
+    const bool replaced = pt.is_broken();
     if( pt.is_broken() ) {
         const vpart_id vpid = pt.info().id;
         const point_rel_ms mount = pt.mount;
@@ -170,7 +218,16 @@ bool repair_part( map &here, vehicle &veh, vehicle_part &pt, Character &who )
         who.add_msg_if_player( m_good, _( "You repair the %1$s's %2$s. (was %3$s)" ),
                                veh.name, partname, startdurability );
     }
+    // VINT-J06; vp is the part type, which outlives a replaced part
+    send_vehicle_event( veh, cata::event::make<event_type::vehicle_part_repaired>( who.getID(),
+                        vp.id.str(), veh.name, replaced ) );
     return true;
+}
+
+void send_vehicle_event( vehicle &veh, const cata::event &e )
+{
+    const std::unique_ptr<talker> beta = get_talker_for( veh );
+    get_event_bus().send_with_talkers( nullptr, beta.get(), e );
 }
 
 bool can_install_anywhere( const Character &who, const temp_crafting_inventory &inv,

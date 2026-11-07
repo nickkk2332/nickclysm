@@ -480,6 +480,8 @@
     "difficulty": 20,
     "action": "eocs",
     "eocs": [ "EOC_TELEPAD" ],
+    "//": "a dimensional anchor makes it safe to take down",
+    "easy_take_down_condition": { "u_has_worn_with_flag": "DIMENSIONAL_ANCHOR" },
     "drops": [ "telepad" ]
   },
   {

@@ -4,7 +4,6 @@
     "id": "THRESH_MARLOSS",
     "name": { "str": "Marloss Gateway" },
     "description": "You get the feeling that you're on the cusp of becoming something greater than yourself.",
-    "category": [ "MARLOSS" ],
     "threshold": true,
     "points": 1,
     "purifiable": false,
@@ -16,7 +15,6 @@
     "id": "MARLOSS",
     "name": { "str": "Marloss Carrier" },
     "description": "Ever since you ate that Marloss berry, you can't get its scent out of your nose, and you have a strong desire to try some seeds and… sap?",
-    "category": [ "MARLOSS" ],
     "points": 4,
     "purifiable": false,
     "valid": false,
@@ -27,7 +25,6 @@
     "id": "MARLOSS_BLUE",
     "name": { "str": "Marloss Vessel" },
     "description": "Ever since you ate that Marloss seed, you can't get its taste off of your tongue, and you have a strong desire to try some berries and… sap?",
-    "category": [ "MARLOSS" ],
     "points": 4,
     "purifiable": false,
     "valid": false,
@@ -38,7 +35,6 @@
     "id": "MARLOSS_YELLOW",
     "name": { "str": "Marloss Vector" },
     "description": "Ever since you ate that Marloss jelly, you can't stop thinking of it, and you have a strong desire to eat some seeds and berries.",
-    "category": [ "MARLOSS" ],
     "points": 4,
     "purifiable": false,
     "valid": false,
@@ -51,7 +47,21 @@
     "description": "Ever since you had that life-threatening reaction to that Marloss junk, you can't bear the thought of ever eating it again!",
     "points": 0,
     "purifiable": false,
-    "valid": false
+    "valid": false,
+    "eat_condition": {
+      "condition": {
+        "not": {
+          "and": [
+            { "npc_has_flag": "MARLOSS" },
+            {
+              "or": [ { "npc_has_flag": "USE_EAT_VERB" }, { "npc_comestible_type": "FOOD" }, { "npc_comestible_type": "DRINK" } ]
+            }
+          ]
+        }
+      },
+      "fail_message": "After what happened that last time?  Nuh-uh.  You're not eating that alien poison.",
+      "checked": "first"
+    }
   },
   {
     "type": "mutation",
@@ -63,7 +73,22 @@
     "points": 1,
     "purifiable": false,
     "valid": false,
-    "flags": [ "mycus" ]
+    "flags": [ "mycus" ],
+    "eat_condition": {
+      "condition": {
+        "not": {
+          "and": [
+            { "npc_has_flag": "MARLOSS" },
+            {
+              "or": [ { "npc_has_flag": "USE_EAT_VERB" }, { "npc_comestible_type": "FOOD" }, { "npc_comestible_type": "DRINK" } ]
+            }
+          ]
+        }
+      },
+      "fail_message": "we no longer require this scaffolding.  we reserve it for other uses.",
+      "checked": "first"
+    },
+    "monster_relations": [ { "species": "FUNGUS", "attitude": "FRIEND" } ]
   },
   {
     "type": "mutation",
@@ -85,11 +110,24 @@
     "threshreq": [ "THRESH_MYCUS" ],
     "cancels": [ "GOURMAND", "BEAK", "BEAK_PECK", "BEAK_HUM" ],
     "points": -5,
-    "purifiable": false
+    "purifiable": false,
+    "eat_condition": {
+      "condition": {
+        "or": [
+          { "npc_has_flag": "MYCUS_OK" },
+          {
+            "not": { "or": [ { "npc_has_flag": "USE_EAT_VERB" }, { "npc_comestible_type": "FOOD" }, { "npc_comestible_type": "DRINK" } ] }
+          }
+        ]
+      },
+      "fail_message": "We can't eat that.  It's not right for us.",
+      "checked": "first"
+    }
   },
   {
     "type": "mutation",
     "id": "M_PROVENANCE",
+    "builtin_activation": "spores_and_blossoms",
     "name": { "str": "Mycus Provenance" },
     "description": "Local spore sacs and blossoms have merged into a single, symbiotic form.  Acting as one, they germinate together to cement rapid growth across a large area according to local guidance.  The Mycus must grow.",
     "category": [ "MYCUS" ],
@@ -232,6 +270,7 @@
   {
     "type": "mutation",
     "id": "M_FERTILE",
+    "builtin_activation": "spores",
     "name": { "str": "Mycus Sporogenesis" },
     "description": "Local organisms seem to regard overt spore dispersal as a danger, and attack the Mycus.  Accordingly, our local spore sacs remain quiescent, until local guidance determines that it is safe to germinate.  Rapid development taxes local nutrient reserves but ensures swift and effective growth.",
     "category": [ "MYCUS" ],
@@ -265,6 +304,7 @@
   {
     "type": "mutation",
     "id": "M_BLOOM",
+    "builtin_activation": "blossoms",
     "name": { "str": "Mycus Bloom" },
     "description": "Local organisms seem to regard overt spore dispersal as a danger, and attack the Mycus.  Accordingly, our local blossoms remain quiescent, until local guidance determines that it is safe to germinate.  Rapid development taxes local nutrient reserves but ensures swift and effective growth.",
     "category": [ "MYCUS" ],

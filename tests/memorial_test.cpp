@@ -31,6 +31,8 @@
 
 static const addiction_id addiction_alcohol( "alcohol" );
 
+static const itype_id itype_gasoline( "gasoline" );
+
 static const matype_id style_aikido( "style_aikido" );
 
 static const mutation_category_id mutation_category_URSINE( "URSINE" );
@@ -124,7 +126,7 @@ TEST_CASE( "memorials", "[memorial]" )
     proficiency_id prof( "prof_wound_care" );
 
     check_memorial<event_type::activates_artifact>(
-        m, "Activated the art_name.", ch, "art_name" );
+        m, "Activated the art_name.", ch, "art_name", it );
 
     check_memorial<event_type::activates_mininuke>(
         m, "Activated a mininuke.", ch );
@@ -139,7 +141,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Awoke a group of dark wyrms!" );
 
     check_memorial<event_type::becomes_wanted>(
-        m,  "Became wanted by the police!", ch );
+        m,  "Became wanted by the police!", ch, tripoint::zero );
 
     check_memorial<event_type::broken_bone>(
         m,  "Broke her right arm.", ch, bodypart_id( "arm_r" ) );
@@ -171,7 +173,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Put out the fire.", ch, bodypart_id( "arm_r" ), eff );
 
     check_memorial<event_type::character_triggers_trap>(
-        m,  "Fell in a pit.", ch, tr_pit );
+        m,  "Fell in a pit.", ch, tr_pit, tripoint::zero );
 
     check_memorial<event_type::consumes_marloss_item>(
         m,  "Consumed a Marloss seed.", ch, it );
@@ -237,7 +239,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Succumbed to lack of sleep.", ch );
 
     check_memorial<event_type::fuel_tank_explodes>(
-        m,  "The fuel tank of the vehicle_name exploded!", "vehicle_name" );
+        m,  "The fuel tank of the vehicle_name exploded!", "vehicle_name", itype_gasoline );
 
     check_memorial<event_type::gains_addiction>(
         m,  "Became addicted to alcohol.", ch, addiction_alcohol );
@@ -249,7 +251,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Gained the proficiency 'Wound Care'.", ch, prof );
 
     check_memorial<event_type::gains_skill_level>(
-        m,  "Reached skill level 8 in vehicles.", ch, skill_driving, 8 );
+        m,  "Reached skill level 8 in vehicles.", ch, skill_driving, 8, "practical" );
 
     check_memorial<event_type::game_avatar_death>(
         m,  u_name + " was killed.\nLast words: last_words", ch, u_name, false, "last_words" );

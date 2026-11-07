@@ -24,6 +24,7 @@
   - ["aggro_character"](#aggro_character)
   - ["speed"](#speed)
   - ["mountable_weight_ratio"](#mountable_weight_ratio)
+  - ["mount_rules"](#mount_rules)
   - ["melee_skill"](#melee_skill)
   - ["dodge"](#dodge)
   - ["melee_damage"](#melee_damage)
@@ -35,9 +36,14 @@
   - ["weakpoint_sets"](#weakpoint_sets)
   - ["families"](#families)
   - ["vision_day", "vision_night"](#vision_day-vision_night)
+  - ["hearing_mult", "scent_sensitivity", "footstep_volume"](#hearing_mult-scent_sensitivity-footstep_volume)
   - ["luminance"](#luminance)
+  - ["light_color"](#light_color)
   - ["hp"](#hp)
   - ["bleed_rate"](#bleed_rate)
+  - ["effect_immunities"](#effect_immunities)
+  - ["bleed_effect"](#bleed_effect)
+  - ["blood_field", "gib_field"](#blood_field-gib_field)
   - ["death_drops"](#death_drops)
   - ["death_function"](#death_function)
   - ["emit_fields"](#emit_fields)
@@ -48,6 +54,7 @@
   - ["fear_triggers", "anger_triggers", "placate_triggers"](#fear_triggers-anger_triggers-placate_triggers)
   - ["chat_topics"](#chat_topics)
   - ["revert_to_itype"](#revert_to_itype)
+  - ["emp_deactivate_one_in"](#emp_deactivate_one_in)
   - ["starting_ammo"](#starting_ammo)
   - ["upgrades"](#upgrades)
   - ["reproduction"](#reproduction)
@@ -57,11 +64,13 @@
   - ["shearing"](#shearing)
   - ["speed_description"](#speed_description)
   - ["petfood"](#petfood)
+  - ["pet_interactions"](#pet_interactions)
   - ["special_when_hit"](#special_when_hit)
   - ["attack_effs"](#attack_effs)
   - ["path_settings"](#path_settings)
   - ["move_skills"](#move_skills)
   - ["special_attacks"](#special_attacks)
+  - ["behavior"](#behavior)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -116,7 +125,9 @@ Property                 | Description
 `aggression`             | (integer) Starting aggression, the monster will become hostile when it reaches 10
 `morale`                 | (integer) Starting morale, monster will flee when (current aggression + current morale) < 0
 `aggro_character`        | (bool) If true the monster will always attack characters when angry.
+`safemode`               | (string) Whether seeing the monster stops safe mode, before the player's rules, see [safemode](#safemode)
 `mountable_weight_ratio` | (float) For mounts, max ratio of mount to rider weight, ex. `0.2` for `<=20%`
+`mount_rules`            | (object) For mounts, the skill and size a rider needs, see [mount_rules](#mount_rules)
 `melee_skill`            | (integer) Monster skill in melee combat, from `0-10`, with `4` being an average mob. Also see [monster melee skill scaling in GAME_BALANCE.md](/doc/design-balance-lore/GAME_BALANCE.md#monster-melee-skill-scaling)
 `dodge`                  | (integer) Monster's skill at dodging attacks
 `block`                  | (array of objects) Monster's ability to block attacks.  Currently limited to melee only.
@@ -132,9 +143,15 @@ Property                 | Description
 `families`               | (array of objects or strings) Weakpoint families that the monster belongs to
 `vision_day`             | (integer) Vision range in full daylight, with `50` being the typical maximum
 `vision_night`           | (integer) Vision range in total darkness, ex. coyote `5`, bear `10`, sewer rat `30`, flaming eye `40`
+`hearing_mult`           | (float) How many times as loud the monster hears sounds.  Defaults to 2 with the `GOODHEARING` flag, else 1.  See [hearing, smell and footsteps](#hearing_mult-scent_sensitivity-footstep_volume)
+`scent_sensitivity`      | (object) `min` and `max` scent strength the monster follows.  Defaults to 1 and 400 with the `KEENNOSE` flag, else 10 and 200
+`footstep_volume`        | (integer) Noise the monster makes moving.  Defaults to a value from its size and the `LOUDMOVES`, `QUIETMOVES` and `SILENTMOVES` flags
 `tracking_distance`      | (integer) Amount of tiles the monster will keep between itself and its current tracked enemy or followed leader. Defaults to `3`.
 `trap_avoids`            | (array of strings) trap_id of traps that are not triggered by this monster. Default behaviour is to trigger all traps.
 `luminance`              | (float) Amount of light passively emitted by the monster, must be >0 to have any effect
+`light_color`            | (array of three ints) Colour of that light, red, green and blue from 0 to 255
+`effect_immunities`      | (array of strings or objects) Effects the monster resists, always or with a chance. See [effect_immunities](#effect_immunities)
+`bleed_effect`           | (string) The effect a bleeding monster gets instead of `bleed`. See [bleed_effect](#bleed_effect)
 `death_drops`            | (string or item group) Item group to spawn when the monster dies
 `death_function`         | (object) How the monster behaves on death: its corpse, death message, spell and EOC. See [death_function](#death_function)
 `emit_fields`            | (array of objects) What field the monster emits, and how frequently
@@ -144,15 +161,17 @@ Property                 | Description
 `regen_morale`           | (bool) True if monster will stop fleeing at max HP to regenerate anger and morale
 `special_attacks`        | (array of objects) Special attacks the monster has
 `flags`                  | (array of strings) Any number of attributes like SEES, HEARS, SMELLS, STUMBLES, REVIVES
-`fear_triggers`          | (array of strings) Triggers that lower monster morale (see JSON_FLAGS.md)
-`anger_triggers`         | (array of strings) Triggers that raise monster aggression (same flags as fear)
-`placate_triggers`       | (array of strings) Triggers that lower monster aggression (same flags as fear)
+`fear_triggers`          | (array of strings or objects) Triggers that lower monster morale (see JSON_FLAGS.md, and [here](#fear_triggers-anger_triggers-placate_triggers) for objects)
+`anger_triggers`         | (array of strings or objects) Triggers that raise monster aggression (same flags as fear)
+`placate_triggers`       | (array of strings or objects) Triggers that lower monster aggression (same flags as fear)
 `chat_topics`            | (array of strings) Conversation topics if dialog is opened with the monster
 `revert_to_itype`        | (string) Item monster can be converted to when friendly (ex. to deconstruct turrets)
+`emp_deactivate_one_in`  | (integer) One in this many EMP blasts switch an `ELECTRONIC` monster with a `revert_to_itype` off, dropping it as that item (otherwise the blast fries it); 0 never.  Default: 6 for tiny monsters, 3 for small ones, never for bigger ones
 `broken_itype`           | (string) Item that will spawn when the monster dies with `corpse_type` set to `BROKEN`. Can be left empty to create a `broken_` item based on the monster's `id`.
 `mech_weapon`            | (string) If this monster is a rideable mech with built-in weapons, this is the weapons id
 `mech_str_bonus`         | (integer) If this monster is a rideable mech with enhanced strength, this is the strength it gives to the player when ridden
 `mech_battery`           | (string) If this monster is a rideable mech, this is battery's id. Does not support objects or arrays (i.e. ONE battery id only)
+`mech_activation_item`   | (string) If this monster is a rideable mech, the item used up to activate it. Defaults to `id_military`
 `starting_ammo`          | (object) Ammo that newly spawned monsters start with
 `mount_items`            | (array of objects) Mount-specific items this monster spawns with. Accepts entries for `tied`, `tack`, `armor`, and `storage`.
 `upgrades`               | (boolean or object) False if monster does not upgrade, or an object do define an upgrade
@@ -162,7 +181,7 @@ Property                 | Description
 `attack_effs`            | (array of objects) Effects applied to the attacked creature when the monster successfully attacks
 `path_settings`          | (object) How monster may find a path, open doors, avoid traps, or bash obstacles
 `biosignature`           | (object) Droppings or feces left by the animal or monster
-`harvest`                | (string) ID of a "harvest" type describing what can be harvested from the corpse
+`harvest`                | (string) ID of a "harvest" type describing what can be harvested from the corpse. Without one the corpse is butchered as a human's (`human`)
 `dissect`                | (string) (Optional) ID of a "harvest" type describing what is returned when a corpse of this monster is dissected
 `decay`                  | (string) (Optional) ID of a "harvest" type describing what is left when a corpse of this monster rots away
 `zombify_into`           | (string) mtype_id this monster zombifies into after it's death
@@ -170,7 +189,7 @@ Property                 | Description
 `shearing`               | (array of objects) Items produced when the monster is sheared
 `speed_description`      | (string) ID of a `speed_description` type describing the monster speed string
 `petfood`                | (object) Data regarding feeding this monster to turn it into a pet
-`absorb_ml_per_hp`       | (int) For monsters with the `ABSORB_ITEMS` special attack. Determines the amount in milliliters that must be absorbed to gain 1 HP. Default 250.
+`absorb_ml_per_hp`       | (int) For monsters with the `ABSORB_ITEMS` special attack. Determines the amount in milliliters that must be absorbed to gain 1 HP. Default 250.  Must be above 0.
 `absorb_move_cost_per_ml`| (float) For monsters with the `ABSORB_ITEMS` special attack. Determines the move cost for absorbing items based on the volume in milliliters of the absorbed items. Default 0.025f.
 `absorb_move_cost_min`   | (int) For monsters with the `ABSORB_ITEMS` special attack. Sets a minimum movement cost for absorbing items regardless of the volume of the consumed item. Default 1.
 `absorb_move_cost_max`   | (int) For monsters with the `ABSORB_ITEMS` special attack. Sets a maximum movement cost for absorbing items regardless of the volume of the consumed item. -1 for no limit. Default -1.
@@ -178,6 +197,9 @@ Property                 | Description
 `no_absorb_material`        | (array of string) For monsters with the `ABSORB_ITEMS` special attack. Specifies the types of materials that the monster is unable to absorb. This takes precedence over absorb_material; even if the monster is whitelisted for this material, it cannot do so if any of its materials are found here. If not specified, there are no limits placed on what was whitelisted.
 `split_move_cost`        | (int) For monsters with the `SPLIT` special attack. Determines the move cost when splitting into a copy of itself.
 `revive_forms`           | (array of objects) allows to define conditional monster
+`corpse_shelf_life`      | (duration) How long this monster's corpse keeps before it is rotten. Default `"24 h"`
+`corpse_rot_away`        | (duration) How much rot this monster's corpse takes to rot away, unless it can revive. Default `"10 d"`
+`revive_delay`           | (object) For a reviving corpse: `min`, the age it must be older than before it can get up (default `"6 h"`), and `guaranteed`, the age by which it surely has (default `"48 h"`); the chance rises in between. Hours are counted whole, a damaged corpse ages slower, and a member left out keeps its inherited value
 `move_skills`           | (object with optional members) allows to define how well the monster moves on difficult terrain. Skill can range from 0-10.
 
 Properties in the above tables are explained in more detail in the sections below.
@@ -219,7 +241,9 @@ Monster categories. Can be NULL, CLASSIC (only mobs found in classic zombie movi
 ## "species"
 (array of strings, optional)
 
-A list of species ids. Properties (currently only triggers) from species are added to the properties of each monster that belong to the species.
+A list of species ids. Properties from species (their flags, triggers, `effect_immunities` and `bleed_effect`) are added to the properties of each monster that belong to the species.
+
+A species is a `"type": "SPECIES"` object (vanilla ones are in `data/json/species.json`) with a `description`, and optionally `footsteps`, `flags`, `anger_triggers`, `fear_triggers`, `placate_triggers` (strings only), `bleeds` (the blood field), and [`effect_immunities`](#effect_immunities) and [`bleed_effect`](#bleed_effect) as for a monster.  A mod that redefines a species without `copy-from` replaces it whole, so it must repeat what it keeps: zombies, nether creatures, mi-go and leech plants resist poison (and all but zombies, venom) through their species' `effect_immunities`, plants tpollen, and robots drip `dripping_mechanical_fluid` through `bleed_effect`.
 
 In mainline game it can be HUMAN, ROBOT, ZOMBIE, MAMMAL, BIRD, FISH, REPTILE, WORM, MOLLUSK, AMPHIBIAN, INSECT, SPIDER, FUNGUS, PLANT, NETHER, MUTANT, BLOB, HORROR, ABERRATION, HALLUCINATION and UNKNOWN.
 
@@ -336,6 +360,20 @@ Baseline morale, modified by fear triggers dynamically and tending towards this 
 
 If the monster will differentiate between monsters and characters when deciding on targets - if false the monster will ignore characters regardless of current anger/morale until a character trips and anger trigger. Resets randomly when the monster is at its base anger level.
 
+## "safemode"
+(string, optional, default `"rules"`)
+
+Whether seeing the monster stops safe mode, decided before the player's safe mode rules:
+
+- `"rules"`: the player's rules decide; without rules, monsters hostile to you do.
+- `"always"`: it stops safe mode whatever its attitude and the rules (a stalker that looks
+  harmless), unless it is your pet. The safe mode proximity option still applies when there are no rules.
+- `"ignore"`: it never stops safe mode.
+
+Players' own rules can name monsters by id (`id:mon_zombie*`) or species (`species:ZOMBIE`) as
+well as by name, so they keep working in another language. The `avatar_spots_hostile` event fires
+when safe mode would stop you.
+
 ## "speed"
 (integer, required)
 
@@ -345,6 +383,23 @@ Monster speed. 100 is the normal speed for a human being - higher values are fas
 (float, optional)
 
 Used as the acceptable rider vs. mount weight percentage ratio. Defaults to "0.2", which means the mount is capable of carrying riders weighing `<= 20%` of the mount's weight.
+
+## "mount_rules"
+(object, optional)
+
+What a rider needs to ride this `PET_MOUNTABLE` monster. Every field is optional; these are the defaults:
+
+```jsonc
+"mount_rules": {
+  "skill": "survival",   // the skill the levels below are of
+  "saddled_level": 1,    // level to ride the monster with a saddle on
+  "unsaddled_level": 4,  // level to ride it without one
+  "tack_level": 1,       // level to put a saddle on it
+  "size_difference": 1   // the monster must be at least this many sizes larger than the rider
+}
+```
+
+Fields left out keep the values of the monster it was copied from (`copy-from`), or these defaults.
 
 ## "melee_skill"
 (integer, optional)
@@ -357,9 +412,9 @@ Monster melee skill, ranges from 0 - 10, with 4 being an average mob. See [GAME_
 Monster dodge skill. See [GAME_BALANCE.md](/doc/design-balance-lore/GAME_BALANCE.md) for an explanation of dodge mechanics.
 
 ## "block"
-(array of objects, optional)
+(object, optional)
 
-Monster block skill.
+Monster block skill. With `copy-from`, a member left out keeps the inherited value.
 
 Field               | Description
 ---                 | ---
@@ -521,15 +576,37 @@ Field              | Description
 
 Vision range in full daylight and in total darkness.  Defaults to 40 tiles for day and 1 for night.
 
+## "hearing_mult", "scent_sensitivity", "footstep_volume"
+(optional)
+
+The monster's hearing, smell and footsteps as numbers.  Each one left out comes from the flags, as before:
+
+- `hearing_mult` (float, default 1, or 2 with `GOODHEARING`): a sound of volume `v` from `d` tiles away is heard at `v * hearing_mult - d`.  The `HEARING_MULT` enchantment (from the monster's effects) changes it.  `GOODHEARING` also makes the monster follow a sound six times as long.
+- `scent_sensitivity` (object with `min` and `max`, default 10 and 200, or 1 and 400 with `KEENNOSE`): the monster follows scent of at least `min`; above `max` the scent is too strong to follow and it wanders.  A `copy-from` that sets only one of them keeps the other.
+- `footstep_volume` (integer, at least 0): the noise of its movement, in place of the value worked out from its size (none for tiny monsters, a third for small ones, 1.5 times for large and twice for huge), digging (10), flying or `SILENTMOVES` (none), and `LOUDMOVES` (+6) or `QUIETMOVES` (-3).  The `FOOTSTEP_NOISE` enchantment changes it.  0 is silent.
+
+```jsonc
+"hearing_mult": 1.5,
+"scent_sensitivity": { "min": 5, "max": 300 },
+"footstep_volume": 4
+```
+
 ## "luminance"
 (integer, optional)
 
 Amount of light passively output by monster. Ranges from 0 to 10.
 
+## "light_color"
+(array of three integers, optional)
+
+The colour of the monster's `luminance`, red, green and blue from 0 to 255: `"light_color": [ 80, 255, 120 ]`. Without one the light is white. As for terrain, colour shows in the tiles version.
+
 ## "bash_skill"
 (object `{ damage_type_id: int }`, optional)
 
 Damage done bashing, of each type. If not specified, or specified as empty, it is autocalculated based on melee damage (and is only bash).
+
+A number is bash damage: `"bash_skill": 30` is `"bash_skill": { "bash": 30 }`. A number of 0 or less is autocalculated, as an empty object is.
 
 ## "hp"
 (integer, required)
@@ -540,6 +617,37 @@ Monster hit points.
 (integer, optional)
 
 Percent multiplier on all bleed effects' duration applied to the monster. Values below the default of 100 mean a resistance to bleed, values above 100 make the monster bleed longer and more intensive. 0 translates to bleed immunity.
+
+## "effect_immunities"
+(array of strings or objects, optional; also on species)
+
+Effects the monster resists: an effect id (always resisted), or `{ "id": "downed", "chance": 75 }` (resisted that percentage of the times the effect would be applied).  Supports `copy-from` with `extend` (which replaces the chance of an effect already listed) and `delete`.
+
+```jsonc
+"effect_immunities": [ "poison", { "id": "downed", "chance": 75 } ]
+```
+
+An entry, from the monster or one of its species, replaces the built-in rules for that effect.  Without one, these still apply: a monster not made of flesh resists venom and poison, a fire immunity resists `onfire`, a monster that doesn't bleed resists `bleed`, `STUN_IMMUNE` resists `stunned`, and some body types, flying and immobile monsters resist `downed`.  The monster's own entry wins over its species' (of several species, the highest chance counts), so `{ "id": "poison", "chance": 0 }` makes a zombie poisonable.  The effect's own `immune_flags` (a monster flag, or a flag of one of the monster's effects) are checked first and always protect.  `knocked_out` follows its own rules (see the knockout effect).
+
+## "bleed_effect"
+(string, optional; also on species)
+
+The effect a bleeding monster gets instead of `bleed`, for its duration (scaled by `bleed_rate`), at intensity 1.  It drips the monster's blood field, as bleeding does, but doesn't hurt.  The monster's own wins over its species'; of several species, the one first by id counts.  Vanilla robots use `dripping_mechanical_fluid` (from the `ROBOT` species).
+
+## "blood_field", "gib_field"
+(string, optional)
+
+The field type its blood leaves (when it bleeds, is hit or dies, and on its corpse when butchered) and the one its gibs leave (when it is torn apart or butchered). `"fd_null"` for none. Without them the game works them out:
+
+- blood: `fd_acid` with the `ACID_BLOOD` flag, `fd_bile` with `BILE_BLOOD`, `fd_blood_invertebrate` with `ARTHROPOD_BLOOD`, `fd_blood_veggy` when made of `veggy` or with `PLANT_BLOOD`, `fd_blood_insect` when made of `iflesh`, `fd_blood` when `WARM` and made of `flesh`, else the `"bleeds"` field of its first species (none with a `bleed_rate` of 0).
+- gibs: the `"gibs"` field of its first species that has one (`MOLLUSK`'s are `fd_gibs_invertebrate`), else `fd_gibs_veggy` when made of `veggy`, `fd_gibs_insect` when made of `iflesh`, `fd_gibs_flesh` when made of `flesh`, else none.
+
+A `SPECIES` takes `"bleeds"` and `"gibs"` (field type ids) for its monsters.
+
+```jsonc
+"blood_field": "fd_blood_insect",
+"gib_field": "fd_gibs_insect"
+```
 
 ## "death_drops"
 (string or item group, optional)
@@ -559,10 +667,11 @@ How the monster behaves on death.
 }
 ```
 
-The `eoc` runs after the death spell and before the corpse and the monster's drops are made, so it can still stop the corpse (`npc_die` with `remove_corpse`), but it can't change the corpse itself.  It gets these context variables:
+The `eoc` runs after the death spell and after the corpse is made, so it can change the corpse (find it at `corpse_loc`, for example with `map_run_item_eocs`), but before the monster's drops and inventory are added to the corpse or the ground.  `npc_die` with `remove_corpse` on the monster still removes a `NORMAL` corpse and stops the drops, as it did when the EOC ran first; the monster's "dies" message and blood are already there by then.  It gets these context variables:
 
 - `loc`: the location where the monster died.
 - `overkill`: how far below 0 HP the monster went (0 if it died with HP left, as with `npc_die`), after the killer's `OVERKILL_DAMAGE` enchantments.  The more overkill, the more damaged the corpse is, and a lot of it splatters the monster instead.
+- `corpse_loc`: the location of the corpse item (`NORMAL`, or the gibbed corpse of `SPLATTER`), usually `loc`.  Not set when no corpse item was made: `NO_CORPSE` and `BROKEN` (whose broken item isn't a corpse), a fish dying underwater, or a monster killed by `npc_die` with `remove_corpse`.
 
 ## "emit_fields"
 (array of objects of emit_id and time_duration, optional)
@@ -591,9 +700,33 @@ Will stop fleeing if at max hp, and regen anger and morale.
 Monster flags. See [JSON_FLAGS.md](JSON_FLAGS.md) for a full list. These are IDs that point to a `"monster_flag"` object, which usually can be found in `data/json/monsters/monster_flags.json`.
 
 ## "fear_triggers", "anger_triggers", "placate_triggers"
-(array of strings, optional)
+(array of strings or objects, optional)
 
-What makes the monster afraid / angry / what calms it. See [JSON_FLAGS.md](JSON_FLAGS.md) for a full list
+What makes the monster afraid / angry / what calms it. See [JSON_FLAGS.md](JSON_FLAGS.md#anger-fear-and-placation-triggers) for a full list.  Those of the monster's species are added.
+
+An entry can be an object, to change the trigger's built-in numbers for this monster (and the ones that `copy-from` it):
+
+```jsonc
+"anger_triggers": [ "HURT", { "id": "PLAYER_CLOSE", "amount": 8, "range": 7, "cap": 50 } ],
+"fear_triggers": [ { "id": "FIRE", "amount": 10, "range": 5 } ]
+```
+
+- `amount` (0 to 100): the trigger's strength, or for `HOSTILE_SEEN` the most of its random strength, for `FIRE` the strength per fire intensity.  `STALK`, `BRIGHT_LIGHT`, `FIRE`, `FRIEND_DIED` and `FRIEND_ATTACKED` in any list; `PLAYER_CLOSE` and `HOSTILE_SEEN` as anger or fear; `MATING_SEASON` and `PLAYER_NEAR_BABY` as anger.  0 turns the trigger off (and its character aggro).
+- `range` (0 to 60 tiles): `FIRE`; `PLAYER_CLOSE` as anger or fear (each its own); `PLAYER_NEAR_BABY`.  (`MATING_SEASON` keeps 5.)
+- `cap` (-100 to 100): the anger above which the anger trigger stops adding: `PLAYER_CLOSE`, `HOSTILE_SEEN`, `MATING_SEASON`, `PLAYER_WEAK`.
+
+Any other member is an error.  `HURT`, `SOUND` and the amounts of the others stay as they are.
+
+A `CONDITION` trigger, only as an object, is a dialogue condition checked each time the monster plans (about once a turn), with the monster as `u` and the creature it targets (if it has one) as `npc`.  While it is true, its `amount` (a number or math, evaluated with the same talkers) is added to the anger (anger triggers; with `"aggro_character": true` the monster also gets angry at characters), taken from the morale (fear) or taken from the anger (placate).  A list can have several:
+
+```jsonc
+"anger_triggers": [
+  { "id": "CONDITION", "condition": { "npc_has_effect": "bleed" }, "amount": { "math": [ "rng(1, 5)" ] }, "aggro_character": true }
+],
+"fear_triggers": [ { "id": "CONDITION", "condition": { "u_has_effect": "onfire" }, "amount": 20 } ]
+```
+
+With `copy-from`, `extend` adds entries (an object replaces that trigger's numbers) and `delete` removes triggers by name (`"CONDITION"` removes all of that list's conditions).  Anger and morale are kept between -100 and 100 at the end of each turn.
 
 ## "chat_topics"
 (string, optional)
@@ -608,6 +741,11 @@ Lists possible chat topics that will be used as dialogue display when talking to
 (string, optional)
 
 If not empty and a valid item id, the monster can be converted into this item by the player, when it's friendly. This is usually used for turrets and similar to revert the turret monster back into the turret item, which can be picked up and placed elsewhere.
+
+## "emp_deactivate_one_in"
+(integer, optional)
+
+How an EMP blast can switch off an `ELECTRONIC` monster that has a `revert_to_itype`: one in this many blasts turn it into that item (with its ammo), and the others fry it (10d10 damage and a 1 in 6 chance to make it friendly).  0 means it is never switched off.  Without it, tiny monsters are switched off one time in 6, small ones one time in 3, and bigger ones never.
 
 ## "starting_ammo"
 (object, optional)
@@ -647,7 +785,7 @@ Field               | Description
 `into`              | (string, optional) The upgraded monster's type.
 `age_grow`          | (int, optional) Number of days needed for monster to change into another monster. Does not scale with the evolution factor.
 `multiple_spawns`   | (bool, optional) If using `into_group`, the selected entry spawns a number of monsters based on the entry's `pack_size`.
-`spawn_range`       | (int, optional) Mandatory when `multiple_spawns` is true. Determines how far away from the original monster the upgraded monsters can spawn.
+`spawn_range`       | (int, optional) Mandatory when `multiple_spawns` is true (it can come from `copy-from`). Determines how far away from the original monster the upgraded monsters can spawn. `"multiple_spawns": false` drops an inherited range.
 `despawn_when_null` | (bool, optional) For `into_group`, when `mon_null` is selected as the group entry upgrade, the monster will despawn leaving no trace when this is true. Otherwise the monster "dies" naturally. Defaults to false.
 
 ## "reproduction"
@@ -716,6 +854,19 @@ A set of items that are given to the player when they shear this monster. These 
 
 This means that when this monster is sheared, it will give: 100 units of wool, 10 to 100 pieces of rag, 25% of its body mass as leather and 60% of its volume as wool.
 
+It can also be an object, with the entries above as `entries` and rules for when the monster can be sheared:
+
+```jsonc
+"shearing": {
+  "entries": [ { "result": "wool", "amount": 100 } ],
+  "seasons": [ "SPRING", "SUMMER", "AUTUMN" ], // seasons it can be sheared in (default: all but winter)
+  "regrow": "30 days",                          // time until it can be sheared again (default: one season)
+  "quality_level": 2                            // SHEAR quality level needed (default: 1)
+}
+```
+
+Rules left out keep the values of the monster it was copied from (`copy-from`), or the defaults.
+
 ## "speed_description"
 (string, optional)
 
@@ -732,8 +883,39 @@ Decides whether this monster can be tamed. `%s` is the monster name.
 "petfood": {
     "food": [ "CATFOOD", "YULECATFOOD" ], // food categories this monster accepts
     "feed": "The gigantic %s decides not to maul you today.", // (optional) message when feeding the monster the food
-    "pet": "The %s is enjoying hunting the red laser dot." // (optional) message when playing with pet
+    "pet": "The %s is enjoying hunting the red laser dot.", // (optional) message when playing with pet
+    "chance": 50, // (optional) percent chance that a feeding tames it; otherwise it eats the food for nothing.  Default 100
+    "condition": { "u_has_trait": "ANIMALEMPATH" }, // (optional) it takes food only while this is true (alpha the feeder, beta the monster)
+    "on_tame_eocs": [ "EOC_PET_TAMED" ], // (optional) EOCs (ids or inline) run when it is tamed, after the messages
+    "on_fail_eocs": [ "EOC_PET_REFUSED" ], // (optional) EOCs run when it bites, refuses the food (condition false) or isn't tamed by it (chance)
+    "bite_on_feed": true // (optional) it bites the feeding hand instead (sometimes taking the food) and is never tamed by food.  Default false
 }
+```
+A `petfood` object replaces the one copied from a `copy-from` monster: every field it leaves out gets its default. The EOCs get the feeder as alpha and the monster as beta; a hallucinated monster runs them too (`is_hallucination()` tells). A tame sends the `monster_tamed` event (not for hallucinations).
+
+## "pet_interactions"
+(array of objects, optional)
+
+Extra entries in the menu shown when you examine your pet (a monster with the `pet` effect). The player is alpha and the pet beta in the condition and the effect. A `SPECIES` can have `pet_interactions` too: its monsters offer them after their own, except one whose `id` their type also has. An array replaces the one copied from a `copy-from` monster.
+
+| Field | Optionality | Info |
+| --- | --- | --- |
+| `id` | **mandatory** | string, unique among the monster's (and its species') interactions |
+| `name` | **mandatory** | the menu text; `%s` is the pet's name |
+| `key` | optional | a single character, the menu key; picked by the menu when left out |
+| `condition` | optional | a [dialogue condition](NPCs.md#dialogue-conditions); the entry is offered only while it is true |
+| `effect` | **mandatory** | effects run when the entry is picked, as an EOC's `effect`: an object, an array of them, an EOC id (`{ "run_eocs": "..." }`) or a string effect. For an action that takes time, start an activity with `u_assign_activity` |
+
+```jsonc
+"pet_interactions": [
+  {
+    "id": "brush",
+    "name": "Brush the %s",
+    "key": "B",
+    "condition": { "u_has_item_with_flag": "BRUSH" },
+    "effect": [ { "u_message": "You brush your pet until its coat shines." }, { "npc_add_effect": "brushed", "duration": "1 d" } ]
+  }
+]
 ```
 
 ## "special_when_hit"
@@ -744,6 +926,26 @@ A special defense attack, triggered when the monster is attacked. It should cont
 ```jsonc
 "special_when_hit": [ "ZAPBACK", 100 ]
 ```
+
+It can also be an array of objects, for several defenses, or for effect_on_conditions:
+
+```jsonc
+"special_when_hit": [
+  { "id": "ZAPBACK", "chance": 100 },
+  { "eoc": "EOC_SPORE_BURST", "chance": 50, "ranged": false }
+]
+```
+
+Each object has either:
+- `id` (string): a built-in defense, as in the array form.
+- `eoc` (EOC id or inline EOC): an effect_on_condition run with the monster as `u` and the attacker, if any, as `npc`, and the context values `is_ranged` (1 for a hit by a projectile) and `bodypart` (the body part hit, `bp_null` when the monster is grabbed or held). It can cast a spell with `u_cast_spell`.
+
+and optionally:
+- `chance` (int, default 100): the defense is tried when a roll from 0 to 100 is at most this, as the number in the array form.
+- `melee` (bool, default true): tried on melee hits and when a character grabs or holds the monster.
+- `ranged` (bool, default true): tried on hits by projectiles.
+
+They are tried in order, each with its own roll.  Without `special_when_hit` a monster has no defense (`[ "NONE", 0 ]`).  A monster with a `ZAPBACK` defense is immune to electric damage.
 
 ## "attack_effs"
 (array of objects, optional)
@@ -779,25 +981,38 @@ Field           | Description
 Field                | Description
 ---                  | ---
 `max_dist`           | (int, default 0) Maximum direct distance of path
-`max_length`         | (int, default -1) Maximum total length of path
-`bash_strength`      | (int, default -1) Monster strength when bashing through an obstacle
+`max_length`         | (int, default 5 times `max_dist`) Maximum total length of path. Shorter than `max_dist` is an error at load
+`bash_strength`      | (object `{ damage_type_id: int }`, default the monster's `bash_skill`) Damage the pathfinder expects the monster to do bashing through an obstacle, e.g. `{ "bash": 10 }`
+`climb_cost`         | (int, 0 or more) Path cost of climbing over a `CLIMBABLE` obstacle (2 is a step on flat ground); 0 means the path never climbs. Unset, it comes from `move_skills` `climb`, or is 3 with the `CLIMBS` flag, or 0
+`size`               | (string: `TINY`, `SMALL`, `MEDIUM`, `LARGE` or `HUGE`, default the monster's own size) The size the pathfinder plans for: no path goes through a tile too small for it (`SMALL_PASSAGE`, or terrain or furniture with a `max_creature_size`), as the monster can't move there either
 `allow_open_doors`   | (bool, default false) Monster knows how to open doors
-`allow_unlock_doors` | (bool, default false) Monster knows how to unlock doors
+`allow_unlock_doors` | (bool, default false) Monster knows how to unlock (vehicle) doors; it also needs the `CAN_OPEN_DOORS` flag to do it
 `avoid_traps`        | (bool, default false) Monster avoids stepping into traps
 `allow_climb_stairs` | (bool, default true) Monster may climb stairs
-`avoid_rough_terrain` | (bool, default false) Monster may avoid rough terrain like rubble
+`avoid_rough_terrain` | (bool, default false) The path keeps to plain open ground: no slow or obstructed tile, vehicle, trap, sharp tile or tile some sizes don't fit
 `avoid_sharp`        | (bool, default false) Monster may avoid sharp things like barbed wire
 `avoid_dangerous_fields` | (bool, default false) Monster may avoid dangerous fields like fire or acid
+
+```jsonc
+"path_settings": { "max_dist": 45, "allow_open_doors": true, "allow_unlock_doors": true, "climb_cost": 3, "bash_strength": { "bash": 10 } }
+```
 
 ## "move_skills"
 (object, optional)
 
 Field                | Description
 ---                  | ---
-`swim`               | (int or null, 0-10,optional) swimming monsters ignore SWIMMABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
-`dig`                | (int or null, 0-10, optional) swimming monsters ignore DIGGABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
+`swim`               | (int or null, 0-10, optional) swimming monsters ignore SWIMMABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
+`dig`                | (int or null, 0-10, optional) digging monsters ignore DIGGABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
+
+A value outside 0 to 10 is an error, and is clamped to that range.
 `climb`              | (int or null, 0-10, optional) climbing monsters can climb CLIMBABLE ter/furn and can use DIFFICULT_Z ter/furn (i.e. ladders). The ter/furn cost gets multiplied by the skill modifier
 
+
+## "behavior"
+(string or array of strings, optional)
+
+Behavior nodes (`"type": "behavior"`) the monster's goals start with, before the nodes named like its special attacks.  A goal `"eoc:ID"` runs that EOC with the monster as `u` and its attack target as `npc`; `"special:NAME"` or a bare `"NAME"` uses that special attack.  See [NPC_BEHAVIOR.md](NPC_BEHAVIOR.md#monster-goals).
 
 ## "special_attacks"
 

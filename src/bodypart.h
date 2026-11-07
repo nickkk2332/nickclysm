@@ -508,8 +508,9 @@ class bodypart
         const std::vector<wound> &get_wounds() const;
         std::vector<wound> &get_wounds();
 
-        void add_or_worsen_wound( wound_type_id wd );
-        void add_or_worsen_wound( const wound &wd );
+        // What it did, if anything: a new wound, or one made worse (for the wound events)
+        std::optional<wound_change> add_or_worsen_wound( wound_type_id wd );
+        std::optional<wound_change> add_or_worsen_wound( const wound &wd );
 
         void add_wound( const wound &wd );
         void add_wound( wound_type_id wd );
@@ -517,9 +518,13 @@ class bodypart
         bool has_wound( wound_type_id wd ) const;
         wound *get_wound( wound_type_id wd_id );
         void remove_wound( wound wd );
-        void remove_wound( wound_type_id wd );
-        void remove_all_wounds_of_type( wound_type_id wd );
-        void update_wounds( const Character &who, time_duration time_passed );
+        // Removes the first wound of this type; false when there was none
+        bool remove_wound( wound_type_id wd );
+        // How many were removed
+        int remove_all_wounds_of_type( wound_type_id wd );
+        // Wounds that heal or progress are added to `changes`, when given
+        void update_wounds( const Character &who, time_duration time_passed,
+                            std::vector<wound_change> *changes = nullptr );
 
         // checks if amount of specific wounds on bodypart is not higher than `limit`
         // return false if more than limit

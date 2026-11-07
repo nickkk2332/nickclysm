@@ -109,7 +109,9 @@ condition is true and fails when it is false, so a `fallback` parent moves on to
 - The NPC is `u`. The beta talker is empty: `npc_` conditions are false and `n_` math reads 0.
 - A condition can limit a branch to some NPCs: by class (`u_has_class`), trait
   (`u_has_trait`), faction (`u_is_in_faction`), or a variable that an EOC sets.
-- Monster goal nodes take them too, with the monster as `u`.
+- Monster goal nodes take them too, with the monster as `u` and its attack target (the creature
+  at its destination it can see, if it isn't friendly to it) as `npc`; without one, `npc` is
+  empty as for NPCs.
 
 ```jsonc
 {
@@ -147,7 +149,7 @@ gives 0), with an error; a tree that uses both kinds is reported at load.
 | `npc_should_flee` | it is running away (the `npc_run_away` effect or a temporary flee attitude) | failure
 | `npc_has_target` | it has a target | failure
 | `npc_has_sound_alerts` | it heard a sound worth investigating; never for companions walking with the player, immobile NPCs or `IGNORE_SOUND` | failure
-| `npc_needs_temperature_regulation` | a body part is very cold | success
+| `npc_needs_temperature_regulation` | a body part is at or below its class's `cold_body_temperature` ([Tuning](#tuning)), 31 C by default | success
 | `npc_needs_water_badly` | thirst is above its class's `drink_water` `act` level ([Tuning](#tuning)), 520 by default | success (also for NPCs that don't need food)
 | `npc_needs_food_badly` | it is starving, or short of calories (by default 20% of a healthy store) | success (also for NPCs that don't need food)
 | `npc_needs_sleep_badly` | sleepiness is at least tired (191, by default) | success
@@ -166,6 +168,28 @@ gives 0), with an error; a tree that uses both kinds is reported at load.
 | `npc_has_camp_job` | a camp resident in its camp has a job, last searched for over 10 minutes ago | failure
 | `npc_is_away_from_camp` | a camp resident is outside its camp | failure
 | `npc_is_camp_idle` | a camp resident in its camp is not busy with an activity | failure
+
+### Monster goals
+
+A monster's goals are the nodes its type's `"behavior"` lists (a node id or an array of them, see
+[MONSTERS.md](MONSTERS.md#behavior)), then the nodes whose ids are the names of its special
+attacks (`SPLIT`, `ABSORB_ITEMS`, `EAT_CROP` in vanilla), tried in that order until one is running
+(`sequential_until_done`). The goal a monster's walk ends at, each turn before its special
+attacks, is:
+
+- `"eoc:ID"`: runs that effect_on_condition, with the monster as `u` and its attack target (if
+  any) as `npc`. A load error names an unknown EOC in the tree of a monster with a `behavior`.
+- `"special:NAME"` or `"NAME"`: uses the monster's special attack `NAME`, if it has it. The goal
+  doesn't wait for the attack's cooldown (check it with `monster_special_available`), which then
+  restarts. Any other goal does nothing.
+
+Conditions and math scores read the monster as `u` and its target as `npc`; math scores rank a
+`utility` node's children, as for NPCs. The goal can't yet make a monster flee, wander or follow.
+
+```jsonc
+{ "type": "behavior", "id": "mymod_hive_call", "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_hp('torso') < 20" ] } } ], "goal": "eoc:EOC_MYMOD_CALL_HIVE" }
+// and in the monster: "behavior": "mymod_hive_call"
+```
 
 Monster goal trees use these:
 
@@ -207,7 +231,7 @@ it has children (see [How a node is walked](#how-a-node-is-walked)).
 | `npc_sleepiness_urgency` | sleepiness / 1000 (1 is passing out)
 | `npc_duty_urgency` | 0.45 on shift at the post; 0.45 to 0.5 on shift away from it, growing with distance; 0 off shift or without a post
 | `npc_following_urgency` | 0.3 to 0.6, growing with distance outside the follow radius; 0.6 on another level; 0 within the radius
-| `npc_embark_urgency` | 0.6 while it should board the player's vehicle; 0.15 once on a belted seat or bed
+| `npc_embark_urgency` | 0.6 while it should board the player's vehicle; 0.15 once on a belted seat or bed (its class's `embark` and `embark_seated`)
 | `npc_goto_order_urgency` | 0.65 until it arrives
 | `npc_camp_work_urgency` | 0.4 for a camp resident with a job, in its camp
 | `npc_return_to_camp_urgency` | 0.5 for a camp resident outside its camp
@@ -632,7 +656,7 @@ Besides its goal, EOCs can read and change these of an NPC; each is described wh
 | [`u_at_post`, `npc_at_post`](EFFECT_ON_CONDITION.md#u_at_post-npc_at_post) | condition | it stands on its guard post |
 | [`npc_danger()`](NPCs.md#math) | math | the danger its AI rates around it, as `npc_in_danger` reads it |
 | [`npc_panic()`](NPCs.md#math) | math | how panicked it is in a fight |
-| [`npc_need_urgency('drink_water')`](NPCs.md#math) | math | a need's urgency, as the built-in scores give it |
+| [`npc_need_urgency('drink_water')`](NPCs.md#math) | math | a need's urgency, as the built-in scores give it, or a [custom need](#custom-needs)'s |
 | [`npc_personality('aggression')`](NPCs.md#math) | math, assignable | a personality trait, -10 to 10 |
 | [`u_set_attitude`, `npc_set_attitude`](EFFECT_ON_CONDITION.md#u_set_attitude-npc_set_attitude) | effect | its attitude, through the dialogue effect for it |
 | [`u_set_mission`, `npc_set_mission`](EFFECT_ON_CONDITION.md#u_set_mission-npc_set_mission) | effect | its mission, through the dialogue effect for it |
@@ -643,7 +667,7 @@ A faction's relations to other factions are read with [`faction_has_relation`](E
 
 ## Tuning
 
-An NPC class's `ai_tuning` ([NPCs.md](NPCs.md#ai-tuning)) changes the numbers the built-in needs, the weighing of needs against obligations and sleep run on, for that class's NPCs. A class that gives none, every vanilla one, has the defaults below: the game's behavior without it. With `copy-from` a class keeps what the class it copies gives and changes what it gives itself. To weigh a score for one branch of the tree instead, edit that node's `score` ([Scores](#scores)).
+An NPC class's `ai_tuning` ([NPCs.md](NPCs.md#ai-tuning)) changes the numbers the built-in needs, the weighing of needs against obligations and sleep run on, for that class's NPCs. Needs a mod adds are [custom needs](#custom-needs). A class that gives none, every vanilla one, has the defaults below: the game's behavior without it. With `copy-from` a class keeps what the class it copies gives and changes what it gives itself. To weigh a score for one branch of the tree instead, edit that node's `score` ([Scores](#scores)).
 
 ### Needs
 
@@ -655,10 +679,11 @@ Each built-in need has an urgency from 0 to 1, its built-in score: thirst / 1200
 | `insist` | an option the NPC's obligations discourage, such as a trip out of the follow radius, or sleep while the avatar is on the move | 0.667 (thirst 800) | 0.4 | 0.383 (dead tired) | 0.75 |
 | `emergency` | an option they allow only in an emergency, such as leaving a guard post or a walk it was ordered on | 0.75 | 0.6 | 0.575 (exhausted) | 0.75 |
 
-Each level is 0 to 1, and `act` <= `insist` <= `emergency`. The temperature predicate isn't tuned (it fires on a very cold body part): those levels only decide when the NPC may leave an obligation to get warm.
+Each level is 0 to 1, and `act` <= `insist` <= `emergency`. The temperature predicate doesn't read `regulate_temperature`'s levels: it fires on a body part at or below `cold_body_temperature`, and those levels only decide when the NPC may leave an obligation to get warm.
 
 | Member | Default | What it does |
 | --- | --- | --- |
+| `cold_body_temperature` | 31 C | `npc_needs_temperature_regulation` fires once a body part's temperature is this or lower |
 | `need_critical_urgency` | 0.75 | a need more urgent than this takes over from another need the NPC is on, whether or not it beats it by the margin it otherwise needs (0.15 to 0.45, by what breaking off the first one costs) |
 | `starvation_hunger` | 300 | an NPC burning its stored calories counts as starving, and looks for food even when not short of calories, from this hunger |
 | `camp_meal_kcal` | 500 | the least a camp's larder serves an NPC that is hungry but not short of calories |
@@ -676,6 +701,8 @@ Each level is 0 to 1, and `act` <= `insist` <= `emergency`. The temperature pred
 | `camp_work` | 0.4 | `npc_camp_work_urgency` |
 | `return_to_camp` | 0.5 | `npc_return_to_camp_urgency` |
 | `free_time` | 0.35 | `npc_free_time_urgency` |
+| `embark` | 0.6 | `npc_embark_urgency` while it should board the avatar's parked vehicle |
+| `embark_seated` | 0.15 | `npc_embark_urgency` once it is on a belted seat or bed in it: low enough that a tired passenger sleeps |
 
 ### Sleep
 
@@ -685,12 +712,54 @@ Each level is 0 to 1, and `act` <= `insist` <= `emergency`. The temperature pred
 | `settle_timeout` | 30 minutes | then it gives the spot up and looks for another |
 | `stall_wakes`, `stall_window` | 3, 30 minutes | woken this many times within this long, its sleep stalls |
 | `stall_duration` | 30 minutes | a stalled sleep gives way to any other work this long |
+| `restless_window` | 30 minutes | noise wakes are counted while each comes within this long of the last; from the second, sleep waits a minute, doubling with each further wake up to 16 minutes, while the noise goes on |
 
 A woken NPC lies back down while it is still half as tired as `go_to_sleep`'s `act`.
 
-### What can't be tuned
+### First aid
 
-The set of needs is fixed: `drink_water`, `eat_food`, `go_to_sleep` and `regulate_temperature`. A mod can't add one (blood, mana, a battery to charge) through tuning; a [JSON goal](#json-goals) with a math score covers much of what such a need would do.
+| `first_aid` member | Default | What it does |
+| --- | --- | --- |
+| `limb` | 75 | the NPC bandages and disinfects an arm or leg (its own, the avatar's or an ally's) at or below this percentage of its HP |
+| `torso` | 80 | the same for the torso |
+| `head` | 80 | the same for the head |
+
+The thresholds are the healer's: its class decides when it treats a patient. Bleeding, bites, infections and any effect one of its healing items `cures` ([ITEM.md](ITEM.md#use-actions)) are treated whatever the HP. The code these replace meant 95 for the head and 85 for the torso, but capped both at 80, which the defaults keep.
+
+## Custom needs
+
+A mod adds a need of its own (blood, mana, a battery to charge) with the type `npc_need`. It is weighed with the built-in needs and leaves them as they are: each one becomes a leaf of the decision tree, by default the last child of `npc_needs`, whose score is the need's urgency and whose goal is a [JSON goal](#json-goals) of the `needs` category with the need's hooks.
+
+```jsonc
+{
+  "type": "npc_need",
+  "id": "mymod_blood",                                     // the need's id, and its goal's
+  "urgency": { "math": [ "u_mymod_blood_hunger / 100" ] }, // with the NPC as u
+  "act": 0.4,
+  "condition": { "u_has_trait": "MYMOD_VAMPIRE" },
+  "on_start": [ "EOC_MYMOD_FIND_BLOOD" ],
+  "on_turn": [ "EOC_MYMOD_DRINK_IF_NEAR" ],
+  "timeout": "2 hours",
+  "on_end": [ "EOC_MYMOD_BLOOD_DONE" ]
+}
+```
+
+| Field | Optionality | Value | Info |
+| --- | --- | --- | --- |
+| `"id"` | **mandatory** | string | the need's id, which is also its goal's: it can't be a built-in goal's or another goal's |
+| `"urgency"` | **mandatory** | number, [variable object](NPCs.md#variable-object) or math | how urgent the need is, with the NPC as `u` and an empty `npc`; clamped to 0 to 1. It is the leaf's score, and what [`npc_need_urgency('id')`](NPCs.md#math) gives |
+| `"act"` | optional | number, 0 to 1 | default 0.5: the NPC feels the need, and may act on it, from this urgency |
+| `"condition"` | optional | [condition](EFFECT_ON_CONDITION.md#possible-conditions) | only NPCs it holds for, as `u`, feel the need, by class (`u_has_class`), trait or anything else. Without one, every NPC does |
+| `"category"` | optional | string | default `needs`: the goal's [category](#categories) |
+| `"parent"` | optional | string | default `npc_needs`: the behavior node the leaf is added under, after its own children. It needs children and a strategy |
+| `"on_start"`, `"on_turn"`, `"on_end"`, `"on_interrupt"`, `"on_timeout"`, `"timeout"` | optional | | the goal's hooks and timeout, as a [JSON goal](#json-goals)'s |
+| `"until"` | optional | [condition](EFFECT_ON_CONDITION.md#possible-conditions) | the goal ends as `done` once this holds. Without one, it ends as `done` once the need isn't felt: its urgency is below `act`, or its condition stopped holding |
+
+The leaf is `npc_need_` and the need's id. It runs while the need is felt and succeeds (nothing to do) otherwise, as the built-in needs' predicates do; the debug view shows its condition as `npc_need( id )`. A utility parent weighs it against the built-in needs by score, so the more urgent need wins, and a need already pursued holds against another one of its category by the category's hysteresis ([Interruption](#interruption)). The obligations that hold back a built-in need aren't judged for it: its category is.
+
+`copy-from` works as for other types; what the copy doesn't give it keeps. Load errors: no `urgency`, an `act` outside 0 to 1, a `timeout` of 0. Reported once everything is loaded: an unknown category or EoC, and, with the need left out, a `parent` that isn't a behavior, a goal id that is taken, or a behavior already named `npc_need_` and the id.
+
+The per-class `ai_tuning` doesn't name custom needs; put what differs between NPCs in the need's `urgency` math and `condition`.
 
 ## Debugging
 

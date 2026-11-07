@@ -50,12 +50,15 @@
 #include "ui_manager.h"
 #include "uilist.h"
 #include "vitamin.h"
+#include "widget.h"
 
 template <typename T> struct enum_traits;
 
 static const faction_id faction_your_followers( "your_followers" );
 
 static const flag_id json_flag_TWO_WAY_RADIO( "TWO_WAY_RADIO" );
+
+static const widget_id widget_follower_needs( "follower_needs" );
 
 template<>
 struct enum_traits<tab_mode> {
@@ -210,7 +213,13 @@ bool faction_ui::execute()
                     hide_ui = true;
 
                     if( picked_follower->has_companion_mission() ) {
-                        talk_function::basecamp_mission( *picked_follower );
+                        // only a camp mission opens a camp board, and only the camp it is from;
+                        // the radio flag is this contact's, not the last conversation's (CAMP-B08)
+                        if( !talk_function::camp_board_for_companion( *picked_follower,
+                                !interactable ) ) {
+                            popup( _( "%s is away on a job and can't take orders right now." ),
+                                   picked_follower->get_name() );
+                        }
                         return true;
                     } else {
                         get_avatar().talk_to( get_talker_for( *picked_follower ), true, false, false,
@@ -481,7 +490,7 @@ void faction_ui::your_follower_display()
             mission_string = _( "Current Mission: " ) + dest_string;
         } else {
             npc_companion_mission c_mission = picked_follower->get_companion_mission();
-            mission_string = _( "Current Mission: " ) + action_of( c_mission.miss_id.id );
+            mission_string = _( "Current Mission: " ) + action_of( c_mission.miss_id );
         }
 
         cataimgui::draw_colored_text( mission_string, col_width );
@@ -610,6 +619,14 @@ void faction_ui::your_follower_display()
     cataimgui::draw_colored_text( hunger_text, hunger_color, col_width );
     cataimgui::draw_colored_text( thirst_text, thirst_color, col_width );
     cataimgui::draw_colored_text( sleepiness_text, sleepiness_color, col_width );
+    // A mod's "follower_needs" widget, shown for this follower (doc/WIDGETS.md, UI slots)
+    const size_t char_width = cataimgui::get_string_width( "X" );
+    const unsigned int slot_width = char_width > 0 ? static_cast<unsigned int>( col_width /
+                                    char_width ) : 40;
+    for( const std::string &line : widget::slot_lines( widget_follower_needs, *picked_follower,
+            slot_width ) ) {
+        cataimgui::draw_colored_text( line, col_width );
+    }
 
     // Wield
     const std::string wielding_text = string_format( _( "Wielding: %s" ),

@@ -3,6 +3,7 @@
 #define CATA_SRC_ITEM_GROUP_H
 
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@
 #include "type_id.h"
 #include "value_ptr.h"
 
+struct const_dialogue;
 class Item_spawn_data;
 class JsonObject;
 class JsonValue;
@@ -197,9 +199,13 @@ class Item_spawn_data
         void set_probability( int prob ) {
             probability = prob;
         }
+        /** Whether the probability can drop to 0 at spawn time: a holiday "event" or a "condition" */
         bool is_event_based() const {
-            return event != holiday::none;
+            return event != holiday::none || static_cast<bool>( condition );
         }
+
+        /** If set, the entry spawns only while this dialogue condition is true (the avatar is u) */
+        std::function<bool( const_dialogue const & )> condition;
 
         /**
          * The group spawns contained in this item
@@ -399,6 +405,12 @@ class Item_group : public Item_spawn_data
         void add_item_entry( const itype_id &itemid, int probability,
                              const std::string &variant = "" );
         void add_group_entry( const item_group_id &groupid, int probability );
+        /**
+         * Removes the entries of this group (not of nested ones) that spawn the item or the group
+         * @p id: "delete" of an item group that copies from itself.
+         * @return whether any was removed
+         */
+        bool remove_entries( const std::string &id, Single_item_creator::Type entry_type );
         /**
          * Once the relevant data has been read from JSON, this function is always called (either from
          * @ref Item_factory::add_entry, @ref add_item_entry or @ref add_group_entry). Its purpose is to add

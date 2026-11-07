@@ -4,12 +4,15 @@
 #include <utility>
 #include <vector>
 
+#include "condition.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"
 #include "requirements.h"
 #include "rng.h"
+#include "sounds.h"
 
 namespace io
 {
@@ -113,6 +116,8 @@ void faults::check_consistency()
 {
     fault_factory.check();
     fault_fixes_factory.check();
+    // also the groups no item uses
+    fault_group_factory.check();
 }
 
 /** @relates string_id */
@@ -238,6 +243,61 @@ int fault::vehicle_move_penalty_mod() const
     return vehicle_move_penalty_mod_;
 }
 
+double fault::engine_power_mult() const
+{
+    if( engine_power_mult_ ) {
+        return *engine_power_mult_;
+    }
+    return has_flag( "REDUCE_ENG_POWER" ) ? 0.6 : 1.0;
+}
+
+double fault::fuel_consumption_mult() const
+{
+    if( fuel_consumption_mult_ ) {
+        return *fuel_consumption_mult_;
+    }
+    return has_flag( "DOUBLE_FUEL_CONSUMPTION" ) ? 2.0 : 1.0;
+}
+
+double fault::exhaust_mult() const
+{
+    return exhaust_mult_;
+}
+
+float fault::steering_mult() const
+{
+    return steering_mult_;
+}
+
+const fault_runover *fault::runover() const
+{
+    return runover_ ? &*runover_ : nullptr;
+}
+
+const fault_while_moving *fault::while_moving() const
+{
+    return while_moving_ ? &*while_moving_ : nullptr;
+}
+
+void fault_runover::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "weight", weight, 0 );
+    optional( jo, false, "message", message );
+    for( const JsonObject jog : jo.get_array( "escalates_to" ) ) {
+        escalates_to.add( fault_id( jog.get_string( "fault" ) ), jog.get_int( "weight", 100 ) );
+    }
+}
+
+void fault_while_moving::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "sound", sound );
+    optional( jo, false, "sound_volume", sound_volume, 0 );
+    sound_type = jo.get_enum_value<sounds::sound_t>( "sound_type", sounds::sound_t::sensory );
+    optional( jo, false, "escalates_to", escalates_to, fault_id::NULL_ID() );
+    optional( jo, false, "damages_part", damages_part, false );
+    optional( jo, false, "message", message );
+}
+
 double fault::encumb_mod_mult() const
 {
     return encumbrance_mod_mult_;
@@ -290,6 +350,12 @@ void fault::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "contact_area_mod", contact_area_mod_, 1.f );
     optional( jo, was_loaded, "rolling_resistance_mod", rolling_resistance_mod_, 1.f );
     optional( jo, was_loaded, "vehicle_move_penalty_mod", vehicle_move_penalty_mod_, 0 );
+    optional( jo, was_loaded, "engine_power_mult", engine_power_mult_ );
+    optional( jo, was_loaded, "fuel_consumption_mult", fuel_consumption_mult_ );
+    optional( jo, was_loaded, "exhaust_mult", exhaust_mult_, 1.0 );
+    optional( jo, was_loaded, "steering_mult", steering_mult_, 1.f );
+    optional( jo, was_loaded, "runover", runover_ );
+    optional( jo, was_loaded, "while_moving", while_moving_ );
 
     if( jo.has_array( "melee_damage_mod" ) ) {
         for( JsonObject jo_f : jo.get_array( "melee_damage_mod" ) ) {
@@ -318,6 +384,29 @@ void fault::check() const
     if( description_.empty() ) {
         debugmsg( "fault '%s' has empty description", id.str() );
     }
+    if( engine_power_mult() < 0.0 || fuel_consumption_mult() < 0.0 || exhaust_mult_ < 0.0 ||
+        steering_mult_ < 0.f ) {
+        debugmsg( "fault '%s' has a negative vehicle multiplier", id.str() );
+    }
+    if( runover_ ) {
+        if( runover_->weight < 0 ) {
+            debugmsg( "fault '%s' has a negative runover weight", id.str() );
+        }
+        for( const std::pair<fault_id, int> &next : runover_->escalates_to ) {
+            if( !next.first.is_valid() ) {
+                debugmsg( "fault '%s' runover escalates to unknown fault '%s'", id.str(), next.first.str() );
+            }
+        }
+    }
+    if( while_moving_ ) {
+        if( !while_moving_->escalates_to.is_null() && !while_moving_->escalates_to.is_valid() ) {
+            debugmsg( "fault '%s' while_moving escalates to unknown fault '%s'", id.str(),
+                      while_moving_->escalates_to.str() );
+        }
+        if( !while_moving_->escalates_to.is_null() && while_moving_->damages_part ) {
+            debugmsg( "fault '%s' while_moving has both escalates_to and damages_part", id.str() );
+        }
+    }
 }
 
 const requirement_data &fault_fix::get_requirements() const
@@ -325,7 +414,7 @@ const requirement_data &fault_fix::get_requirements() const
     return *requirements;
 }
 
-void fault_fix::load( const JsonObject &jo, std::string_view )
+void fault_fix::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "name", name );
     optional( jo, was_loaded, "success_msg", success_msg );
@@ -339,6 +428,15 @@ void fault_fix::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "mod_degradation", mod_degradation );
     optional( jo, was_loaded, "time_save_profs", time_save_profs );
     optional( jo, was_loaded, "time_save_flags", time_save_flags );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+    }
+    if( jo.has_array( "effect_on_conditions" ) ) {
+        effect_on_conditions.clear();
+        for( const JsonValue jv : jo.get_array( "effect_on_conditions" ) ) {
+            effect_on_conditions.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
 
     if( jo.has_array( "requirements" ) ) {
         pending_requirements.clear();
@@ -407,6 +505,11 @@ void fault_fix::check() const
                       id.str(), fault_id.str() );
         }
     }
+    for( const effect_on_condition_id &eoc : effect_on_conditions ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "fault_fix '%s' has invalid effect_on_condition '%s'", id.str(), eoc.str() );
+        }
+    }
     for( const auto &[proficiency_id, mult] : time_save_profs ) {
         if( !proficiency_id.is_valid() ) {
             debugmsg( "fault_fix %s has unknown proficiency_id '%s'",
@@ -432,6 +535,15 @@ void fault_fix::check() const
 weighted_int_list<fault_id> fault_group::get_weighted_list() const
 {
     return fault_weighted_list;
+}
+
+void fault_group::check() const
+{
+    for( const std::pair<fault_id, int> &entry : fault_weighted_list ) {
+        if( !entry.first.is_valid() ) {
+            debugmsg( "fault_group '%s' has invalid fault '%s'", id.str(), entry.first.str() );
+        }
+    }
 }
 
 void fault_group::load( const JsonObject &jo, std::string_view )

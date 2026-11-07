@@ -125,16 +125,17 @@ TEST_CASE( "stats_tracker_total_events", "[stats]" )
 
     CHECK( s.get_events( ctd ).total( "damage", damage_to_u ) == 0 );
     CHECK( s.get_events( ctd ).total( "damage", damage_to_any ) == 0 );
-    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0 );
+    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
     CHECK( s.get_events( ctd ).total( "damage", damage_to_u ) == 10 );
     CHECK( s.get_events( ctd ).total( "damage", damage_to_any ) == 10 );
-    b.send<ctd>( other_id, 10, bodypart_str_id::NULL_ID(), 0 );
+    b.send<ctd>( other_id, 10, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
     CHECK( s.get_events( ctd ).total( "damage", damage_to_u ) == 10 );
     CHECK( s.get_events( ctd ).total( "damage", damage_to_any ) == 20 );
-    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0 );
+    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
     CHECK( s.get_events( ctd ).total( "damage", damage_to_u ) == 20 );
     CHECK( s.get_events( event_type::character_takes_damage ).total( "damage", damage_to_any ) == 30 );
-    b.send<event_type::character_takes_damage>( u_id, 5, bodypart_str_id::NULL_ID(), 0 );
+    b.send<event_type::character_takes_damage>( u_id, 5, bodypart_str_id::NULL_ID(), 0,
+            damage_type_id() );
     CHECK( s.get_events( event_type::character_takes_damage ).total( "damage", damage_to_u ) == 25 );
     CHECK( s.get_events( event_type::character_takes_damage ).total( "damage", damage_to_any ) == 35 );
 }
@@ -204,11 +205,11 @@ TEST_CASE( "stats_tracker_event_time_bounds", "[stats]" )
 
     CHECK( !s.get_events( ctd ).first() );
     CHECK( !s.get_events( ctd ).last() );
-    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0 );
+    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
     CHECK( s.get_events( ctd ).first()->second.first == start );
     CHECK( s.get_events( ctd ).last()->second.last == calendar::turn );
     calendar::turn += 1_minutes;
-    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0 );
+    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
     CHECK( s.get_events( ctd ).first()->second.first == start );
     CHECK( s.get_events( ctd ).last()->second.last == calendar::turn );
 }
@@ -348,7 +349,8 @@ TEST_CASE( "stats_tracker_with_event_statistics", "[stats]" )
 
     SECTION( "damage" ) {
         const cata::event avatar_2_damage =
-            cata::event::make<event_type::character_takes_damage>( u_id, 2, bodypart_str_id::NULL_ID(), 0 );
+            cata::event::make<event_type::character_takes_damage>( u_id, 2,
+                    bodypart_str_id::NULL_ID(), 0, damage_type_id() );
 
         send_game_start( b, u_id );
         CHECK( score_score_damage_taken->value( s ).get<int>() == 0 );
@@ -578,7 +580,8 @@ TEST_CASE( "stats_tracker_watchers", "[stats]" )
 
     SECTION( "damage" ) {
         const cata::event avatar_2_damage =
-            cata::event::make<event_type::character_takes_damage>( u_id, 2, bodypart_str_id::NULL_ID(), 0 );
+            cata::event::make<event_type::character_takes_damage>( u_id, 2,
+                    bodypart_str_id::NULL_ID(), 0, damage_type_id() );
         watch_stat damage_watcher;
         s.add_watcher( event_statistic_avatar_damage_taken, &damage_watcher );
 
@@ -616,7 +619,7 @@ TEST_CASE( "achievements_tracker", "[stats]" )
         calendar::turn = calendar::start_of_game;
 
         const cata::event avatar_wakes_up =
-            cata::event::make<event_type::character_wakes_up>( u_id );
+            cata::event::make<event_type::character_wakes_up>( u_id, std::string( "other" ) );
 
         achievement_id a_survive_one_day( "achievement_survive_one_day" );
 

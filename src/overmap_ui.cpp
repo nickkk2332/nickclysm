@@ -2166,10 +2166,9 @@ static tripoint_abs_omt display()
     ictxt.register_action( "TOGGLE_FAST_SCROLL" );
     ictxt.register_action( "TOGGLE_OVERMAP_WEATHER" );
     ictxt.register_action( "TOGGLE_FOREST_TRAILS" );
-    ictxt.register_action( "TOGGLE_FAST_TRAVEL" );
+    ictxt.register_action( "TOGGLE_OVERMAP_ONLY_TRAVEL" );
     ictxt.register_action( "COLLAPSE_OVERMAP_SIDEBAR_HEADERS" );
     ictxt.register_action( "EXPAND_OVERMAP_SIDEBAR_HEADERS" );
-    ictxt.register_action( "TOGGLE_FAST_TRAVEL" );
     ictxt.register_action( "MISSIONS" );
 
     if( data.debug_editor ) {
@@ -2383,7 +2382,7 @@ static tripoint_abs_omt display()
             uistate.overmap_fast_scroll = !uistate.overmap_fast_scroll;
         } else if( action == "TOGGLE_FOREST_TRAILS" ) {
             uistate.overmap_show_forest_trails = !uistate.overmap_show_forest_trails;
-        } else if( action == "TOGGLE_FAST_TRAVEL" ) {
+        } else if( action == "TOGGLE_OVERMAP_ONLY_TRAVEL" ) {
             uistate.overmap_only_auto_travel = !uistate.overmap_only_auto_travel;
         } else if( action == "SEARCH" ) {
             if( !search( *ui, curs, orig ) ) {
@@ -2422,6 +2421,8 @@ static tripoint_abs_omt display()
                                        map_view_state{ curs, uistate.overmap_show_overlays },
                                        overmap_tiles_animated() );
     } while( action != "QUIT" && action != "CONFIRM" );
+    // Notes and danger marks may have changed: redraw the sidebar's overmap
+    display::invalidate_overmap_cache();
     if( !keep_overmap_ui ) {
         ui::omap::force_quit();
     } else {

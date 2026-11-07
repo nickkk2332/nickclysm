@@ -6,8 +6,35 @@
 #include "game_constants.h"
 #include "point.h"
 
+class JsonObject;
+
 namespace om_noise
 {
+
+/**
+ * OMAP-J10: the shape of one noise layer: octave noise in [0, 1] with these octaves, persistence
+ * and scale (smaller scale, bigger features), raised to the power exponent. Regions can set it.
+ */
+struct om_noise_params {
+    int octaves = 4;
+    float persistence = 0.5f;
+    float scale = 0.03f;
+    float exponent = 2.0f;
+
+    float at( const point_abs_omt &p, float seed ) const;
+    void deserialize( const JsonObject &jo );
+
+    // The vanilla layers.
+    static om_noise_params forest() {
+        return { 4, 0.5f, 0.03f, 2.0f };
+    }
+    static om_noise_params forest_detail() {
+        return { 6, 0.5f, 0.07f, 3.0f };
+    }
+    static om_noise_params floodplain() {
+        return { 4, 0.5f, 0.05f, 2.0f };
+    }
+};
 
 /**
  * Abstract base class for generating noise for usage in overmap generation.
@@ -51,21 +78,30 @@ class om_noise_layer
 class om_noise_layer_forest : public om_noise_layer
 {
     public:
-        om_noise_layer_forest( const point_abs_omt &global_base_point, unsigned seed )
-            : om_noise_layer( global_base_point, seed ) {
+        om_noise_layer_forest( const point_abs_omt &global_base_point, unsigned seed,
+                               const om_noise_params &main = om_noise_params::forest(),
+                               const om_noise_params &detail = om_noise_params::forest_detail() )
+            : om_noise_layer( global_base_point, seed ), main( main ), detail( detail ) {
         }
 
         float noise_at( const point_om_omt &local_omt_pos ) const override;
+    private:
+        om_noise_params main;
+        // Subtracted (at half strength) from main.
+        om_noise_params detail;
 };
 
 class om_noise_layer_floodplain : public om_noise_layer
 {
     public:
-        om_noise_layer_floodplain( const point_abs_omt &global_base_point, unsigned seed )
-            : om_noise_layer( global_base_point, seed ) {
+        om_noise_layer_floodplain( const point_abs_omt &global_base_point, unsigned seed,
+                                   const om_noise_params &params = om_noise_params::floodplain() )
+            : om_noise_layer( global_base_point, seed ), params( params ) {
         }
 
         float noise_at( const point_om_omt &local_omt_pos ) const override;
+    private:
+        om_noise_params params;
 };
 
 class om_noise_layer_lake : public om_noise_layer

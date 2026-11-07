@@ -71,10 +71,18 @@ struct itype;
 struct vehicle_part;
 template <typename E> struct enum_traits;
 
+namespace cata
+{
+class event;
+} // namespace cata
+// An event or EOC run about a vehicle waiting for vehicle::process_queued_events() (vehicle.cpp)
+struct queued_vehicle_event;
+
 void handbrake( map &here );
 
 void practice_athletic_proficiency( Character &p );
-void practice_pilot_proficiencies( Character &p, bool &boating );
+// VEH-J08: trains what the vehicle's control_requirements say for the current mode
+void practice_pilot_proficiencies( Character &p, const vehicle &veh );
 
 namespace catacurses
 {
@@ -380,6 +388,11 @@ struct vehicle_part {
 
         /** Does this vehicle part have a fault with this flag */
         bool has_fault_flag( const std::string &searched_flag ) const;
+
+        /** Products of the numeric vehicle fields of this part's faults (1 without faults) */
+        double fault_engine_power_mult() const;
+        double fault_fuel_consumption_mult() const;
+        double fault_exhaust_mult() const;
 
         bool has_fault( const fault_id &fault ) const;
 
@@ -860,12 +873,35 @@ class vpart_display
  *   If you can't understand why installation fails, try to assemble your
  *   vehicle in game first.
  */
+// A vehicle's identity, for the handles EOCs keep in variables (see u_set_talker). It is kept
+// when the vehicle moves, and saved and loaded with it; a copy of a vehicle is a new vehicle and
+// gets a new one. It is given out on first use, so a vehicle nothing asked about saves none.
+class vehicle_uid
+{
+    public:
+        vehicle_uid() = default;
+        vehicle_uid( const vehicle_uid & );
+        vehicle_uid &operator=( const vehicle_uid & );
+        vehicle_uid( vehicle_uid && ) noexcept;
+        vehicle_uid &operator=( vehicle_uid && ) noexcept;
+        // Gives the vehicle its uid if it has none yet
+        int64_t get() const;
+        // 0 if the vehicle has none yet
+        int64_t peek() const {
+            return value;
+        }
+        void load( int64_t saved );
+    private:
+        mutable int64_t value = 0;
+};
+
 class vehicle
 {
     private:
         // TODO: Get rid of untyped overload.
         // Miscellaneous key/value pairs.
         global_variables::impl_t values;
+        vehicle_uid persistent_uid;
         bool has_structural_part( const point &dp ) const;
         bool has_structural_part( const point_rel_ms &dp ) const;
         bool is_structural_part_removed() const;
@@ -879,6 +915,10 @@ class vehicle
         // @returns damage still left to apply
         int damage_direct( map &here, vehicle_part &vp, int dmg,
                            const damage_type_id &type = damage_type_id( "pure" ) );
+        // Gives back up to hp of the part's durability, as far as its wear (degradation)
+        // allows, without the repair menu's requirements. A broken part works again, in place.
+        // @returns whether the part's damage went down
+        bool restore_part_hp( map &here, vehicle_part &vp, int hp );
     private:
         // Removes the part, breaks it into pieces and possibly removes parts attached to it
         int break_off( map &here, vehicle_part &vp, int dmg );
@@ -989,6 +1029,14 @@ class vehicle
         // and prototype's fuel/ammo will be spawned in init_state / place_spawn_items
         explicit vehicle( const vproto_id &proto_id );
         vehicle( const vehicle & ) = delete;
+        /** This vehicle's identity, given out the first time it is asked for */
+        int64_t persistent_id() const {
+            return persistent_uid.get();
+        }
+        /** This vehicle's identity, or 0 if nothing has asked for it yet */
+        int64_t assigned_persistent_id() const {
+            return persistent_uid.peek();
+        }
         ~vehicle();
         vehicle &operator=( vehicle && ) = default;
 
@@ -1719,6 +1767,9 @@ class vehicle
         // their safe power.
         units::power total_power( map &here, bool fueled = true, bool safe = false ) const;
 
+        // Acceleration in vmiph per second of @p watts_per_kg of engine power at @p cmps
+        // (cm/s); only the result is truncated
+        static int accel_from_power_ratio( double watts_per_kg, int cmps );
         // Get ground acceleration gained by combined power of all engines. If fueled == true,
         // then only engines which the vehicle has fuel for are included
         int ground_acceleration( map &here, bool fueled = true, int at_vel_in_vmi = -1 ) const;
@@ -1770,6 +1821,19 @@ class vehicle
 
         // Loop through engines and generate noise and smoke for each one
         void noise_and_smoke( map &here, int load, time_duration time = 1_turns );
+
+        /** Sends @p e now with this vehicle as alpha talker and no beta */
+        void send_event( const cata::event &e );
+        /**
+         * Holds @p e, with this vehicle as alpha and @p beta (if any) as beta talker, until
+         * process_queued_events(): for the events raised in damage and collision code, whose
+         * EOCs could otherwise install or remove parts while that code goes through them
+         */
+        void queue_event( const cata::event &e, std::unique_ptr<talker> beta = nullptr );
+        /** As queue_event, for anything else that runs EOCs on this vehicle (a trap's) */
+        void queue_action( const std::function<void( vehicle & )> &action );
+        /** Sends the events queued so far; idle() does, once the vehicles have moved */
+        void process_queued_events();
 
         // Actively moving vehicle with impaired wheels
         void check_flats_do_rim_damage_or_sounds( map &here );
@@ -1857,6 +1921,19 @@ class vehicle
         // Can control this vehicle?
         bool can_control_in_air( const Character &pc ) const;
         bool can_control_on_land( const Character &pc ) const;
+        // VEH-J08: the "water" control requirements, which apply in deep water
+        bool can_control_in_water( const Character &pc ) const;
+        // VEH-J08: what steering uses and driving trains in the current mode (air while flying,
+        // water in deep water, else land), from the first part whose control_requirements set
+        // it, else driving and prof_driver (prof_boat_pilot in deep water)
+        skill_id handling_skill() const;
+        proficiency_id handling_proficiency() const;
+        std::vector<proficiency_id> trained_pilot_proficiencies() const;
+        // VEH-J08: the proficiencies that keep a flyable aircraft airworthy while its parts are
+        // installed, repaired or removed: the parts' "maintenance_proficiency", else
+        // prof_aircraft_mechanic
+        std::vector<proficiency_id> aircraft_maintenance_proficiencies() const;
+        bool has_aircraft_maintenance_proficiency( const Character &pc ) const;
         /**
          * Traction coefficient of the vehicle.
          * 1.0 on road. Outside roads, depends on mass divided by wheel area
@@ -1952,6 +2029,9 @@ class vehicle
         // Calculates damage on the wheel from running over item and adds damage levels and messages to the vector if needed.
         void damage_wheel_on_item( vehicle_part *vp_wheel, const item &it,
                                    std::vector<std::string> *messages ) const;
+        // Applies the next fault of the wheel's "runover" fault chain (see doc/JSON/JSON_INFO.md
+        // on faults); its message goes to @p messages. False if nothing changed.
+        static bool apply_runover_faults( vehicle_part &wheel, std::vector<std::string> *messages );
 
         // Process the trap beneath
         void handle_trap( map *here, const tripoint_bub_ms &p, vehicle_part &vp_wheel );
@@ -2242,7 +2322,10 @@ class vehicle
         void operate_planter( map &here );
         void autopilot_patrol_check( map &here );
         void toggle_autopilot( map &here );
+        // Autopilot patrol / follow: a stopped vehicle's engines are started as the player
+        // starts them, through the start activity and its checks (VINT-B03)
         void enable_patrol( map &here );
+        void enable_follow( map &here );
         void toggle_tracking();
         void display_effects();
         //scoop operation,pickups, battery drain, etc.
@@ -2274,6 +2357,8 @@ class vehicle
         //true if an engine exists without the specified type
         //If enabled true, this engine must be enabled to return true
         bool has_engine_type_not( const itype_id &ft, bool enabled ) const;
+        // VEH-J11: an enabled engine has "full_reverse" (battery engines by default)
+        bool has_full_reverse_engine() const;
         // @returns engine conflict string if another engine has same exclusion list or std::nullopt
         std::optional<std::string> has_engine_conflict( const vpart_info &possible_conflict ) const;
         //returns true if the engine doesn't consume fuel
@@ -2620,6 +2705,8 @@ class vehicle
 
         // current noise of vehicle (engine working, etc.)
         unsigned char vehicle_noise = 0;
+        // VEH-J03: see queue_event(); not saved, as they are sent within the turn
+        std::vector<std::shared_ptr<const queued_vehicle_event>> queued_events; // NOLINT(cata-serialize)
 
         // return vehicle part index and muffle value
         std::pair<int, double> get_exhaust_part() const;
@@ -2720,4 +2807,17 @@ class MapgenRemovePartHandler : public RemovePartHandler
 std::unique_ptr<talker> get_talker_for( vehicle &me );
 std::unique_ptr<const_talker> get_talker_for( const vehicle &me );
 std::unique_ptr<talker> get_talker_for( vehicle *me );
+
+// MAP-J03: the timed cycles of parts with a processing_cycle (see vpslot_processing_cycle)
+namespace processing_cycles
+{
+// whether the part's cycle is running
+bool running( const vehicle_part &vp );
+// whether every item the part holds meets its cycle's item_condition (true without one)
+bool items_meet_condition( vehicle &veh, int part );
+// the avatar turns the part on (running its start EOC, which may refuse) or, if it runs, off
+void toggle( vehicle &veh, int part );
+// what the part holds is processed once its cycle's time is up; called as its items are
+void process( vehicle &veh, int part );
+} // namespace processing_cycles
 #endif // CATA_SRC_VEHICLE_H

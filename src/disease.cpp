@@ -63,6 +63,20 @@ void disease_type::check_disease_consistency()
         if( !symp.is_valid() ) {
             debugmsg( "disease_type %s has invalid efftype_id %s in symptoms", dis.id.c_str(),  symp.c_str() );
         }
+        // HLTH-J09
+        for( const bodypart_str_id &bp : dis.affected_bodyparts ) {
+            if( !bp.is_valid() ) {
+                debugmsg( "disease_type %s has unknown body part %s in affected_bodyparts", dis.id.c_str(),
+                          bp.c_str() );
+            }
+        }
+        if( dis.min_duration > dis.max_duration ) {
+            debugmsg( "disease_type %s has a min_duration above its max_duration", dis.id.c_str() );
+        }
+        if( dis.min_intensity > dis.max_intensity ) {
+            debugmsg( "disease_type %s has a min_intensity (%d) above its max_intensity (%d)",
+                      dis.id.c_str(), dis.min_intensity, dis.max_intensity );
+        }
     }
 }
 

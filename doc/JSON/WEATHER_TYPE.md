@@ -19,6 +19,11 @@ Each weather type is a type of weather that occurs, and what causes it. The only
 | `dangerous`          | If true, our activity gets interrupted.                                                          |
 | `precip`             | Amount of associated precipitation. Valid values are: none, very_light, light and heavy          |
 | `rains`              | Whether said precipitation falls as rain.                                                        |
+| `snow_rate`          | Optional, mm of snow per hour this weather adds to the ground (see [Snow on the ground](#snow-on-the-ground)). Default: for precipitation that isn't rain (`rains` false, `precip_rate` above 0) the `precip_rate` (by default from `precip`: 0.5, 1.5 or 3 mm/h) times the region's snow `water_ratio` (12 by default, so heavy snow adds 36 mm/h); otherwise 0. Setting it makes any weather add snow, rain included. |
+| `precip_rate`        | Optional, precipitation as the rainfall it equals, in mm per hour. Funnels and rain collectors, snow accumulation (when `rains` is false) and `weather('precipitation')` use it. Defaults from `precip`: very_light 0.5, light 1.5, heavy 3, none 0. Rain (getting wet, field and scent decay) happens only when `rains` is true and this is above 0. |
+| `wetness`            | Optional, how hard the rain soaks every character out in it (above water and not under a roof), every 6 seconds; 0 keeps them dry. Defaults from `precip`: very_light 5, light 30, heavy 60. |
+| `field_decay`        | Optional, how much the rain ages outdoor fields and scent each turn, e.g. `"15 s"`. Defaults from `precip`: very_light 5 s, light 15 s, heavy 45 s. |
+| `glare`              | Optional, the glare this weather can cause in the eyes of characters (the avatar and NPCs) out in the sun, not asleep, blind, sheltered, wearing `SUN_GLASSES` or with `GLARE_RESIST`. An array of objects; the first whose `min_irradiance` the sun is above (W/m², after `sun_multiplier`) and whose optional `condition` holds (the character is alpha) is applied to every eye: `effect` (effect id), `min_irradiance`, `duration` (default `"20 s"`, when the character doesn't have the effect yet) and `repeat_duration` (default `"10 s"`). `HIGH_GLARE` doubles the duration. An empty array means no glare. Without it: `snow_glare` in winter above 573 W/m², else `glare` above 707 W/m². |
 | `light_multiplier`   | Optional, multiplication to ambient light. Multiplication occurs before `light_modifier`.        |
 | `tiles_animation`    | Optional, name of the tiles animation to use                                                     |
 | `debug_cause_eoc`    | Optional, id of effect_on_condition to be run when the debug menu selects this weather.          |
@@ -82,3 +87,11 @@ Each weather type is a type of weather that occurs, and what causes it. The only
     "tint_strength": 1.0
   }
 ]
+
+## Snow on the ground
+
+Snow depth is kept per overmap tile, at ground level, so every level above the ground has the ground's snow. Once a minute, every overmap tile the player has been to gains the current weather's `snow_rate` and, above 0 °C, loses the region's `melt_rate` for each degree; depth stays between 0 and the region's `max_depth`. A tile is caught up for at most 1 hour at a time. A tile the player hasn't been to has the depth of the nearest one they have.
+
+Outdoors and under open sky, deep snow slows characters and monsters by the region's `move_cost` table. By default, characters pay +20 move cost from 100 mm, +50 from 250 mm and +100 from 500 mm; monsters pay 1, 2 and 4 extra terrain cost (25 move points each). Characters with the `LEVITATION` or `SNOWWALKING` flag, and monsters that fly or have `SNOWWALKING`, are not slowed.
+
+The ratio, melt rate, maximum and move-cost table are the region's, in its weather generator's `snow` object (see [REGION_SETTINGS.md](REGION_SETTINGS.md#weather)). EOCs read and set the depth with `weather('snow_depth')` and read the current snowfall with `weather('snow_rate')` (see the `weather` function in [NPCs.md](NPCs.md)).

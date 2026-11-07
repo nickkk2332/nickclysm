@@ -1,14 +1,19 @@
 #include "trap.h"
 
 #include <cmath>
-#include <typeinfo>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "bodypart.h"
 #include "character.h"
+#include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect_on_condition.h"
 #include "event.h"
 #include "event_bus.h"
@@ -21,10 +26,12 @@
 #include "point.h"
 #include "rng.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "translations.h"
 
 static const flag_id json_flag_ECHOLOCATION_DETECTABLE( "ECHOLOCATION_DETECTABLE" );
 static const flag_id json_flag_SONAR_DETECTABLE( "SONAR_DETECTABLE" );
+static const flag_id json_flag_UNCONSUMED( "UNCONSUMED" );
 
 static const proficiency_id proficiency_prof_spotting( "prof_spotting" );
 static const proficiency_id proficiency_prof_traps( "prof_traps" );
@@ -113,7 +120,7 @@ void trap::load_trap( const JsonObject &jo, const std::string &src )
     trap_factory.load( jo, src );
 }
 
-void trap::load( const JsonObject &jo, std::string_view )
+void trap::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "id", id );
     mandatory( jo, was_loaded, "name", name_ );
@@ -141,7 +148,13 @@ void trap::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "trap_radius", trap_radius, 0 );
     // TODO: Is there a generic_factory version of this?
     if( jo.has_string( "action" ) ) {
-        act = trap_function_from_string( jo.get_string( "action" ) );
+        action_name = jo.get_string( "action" );
+        act = trap_function_from_string( action_name );
+        // Only "eocs" runs eocs: a copy-from child with another action doesn't keep its parent's
+        if( action_name != "eocs" ) {
+            eocs.clear();
+            item_eocs.clear();
+        }
     } else if( !was_loaded ) {
         jo.throw_error( "Missing mandatory member \"action\"" );
     }
@@ -153,23 +166,52 @@ void trap::load( const JsonObject &jo, std::string_view )
     int legacy_floor_bedding_warmth = units::to_legacy_bodypart_temp_delta( floor_bedding_warmth );
     optional( jo, was_loaded, "floor_bedding_warmth", legacy_floor_bedding_warmth, 0 );
     floor_bedding_warmth = units::from_legacy_bodypart_temp_delta( legacy_floor_bedding_warmth );
+    // The action is the one read above or the copy-from parent's. (Every action is a function
+    // pointer of the same type, so comparing the std::function target types never told them
+    // apart.)
     if( jo.has_member( "spell_data" ) ) {
-        //This is kinda ugly but idk how to do it better bc std::function doesn't support normal equality
-        if( act.target_type() != trap_function_from_string( "spell" ).target_type() ) {
+        if( action_name != "spell" ) {
             jo.throw_error_at( "spell_data",
                                R"(Can't use "spell_data" without specifying "action": "spell")" );
         }
         optional( jo, was_loaded, "spell_data", spell_data );
     }
-    // FIXME: load eoc with generic factory
-    if( jo.has_member( "eocs" ) ) {
-        if( act.target_type() != trap_function_from_string( "eocs" ).target_type() ) {
-            jo.throw_error_at( "eocs", R"(Can't use "eocs" without specifying "action": "eocs")" );
-        }
-        for( JsonValue jv : jo.get_array( "eocs" ) ) {
-            eocs.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
+    for( const char *member : {
+             "eocs", "item_eocs"
+         } ) {
+        if( jo.has_member( member ) && action_name != "eocs" ) {
+            jo.throw_error_at( member, string_format(
+                                   R"(Can't use "%s" without specifying "action": "eocs")", member ) );
         }
     }
+    // A list given here replaces the copy-from parent's instead of adding to it.
+    const auto load_eocs = [&jo, src]( const std::string & member,
+    std::vector<effect_on_condition_id> &list ) {
+        if( !jo.has_member( member ) ) {
+            return;
+        }
+        list.clear();
+        for( JsonValue jv : jo.get_array( member ) ) {
+            list.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    };
+    load_eocs( "eocs", eocs );
+    load_eocs( "item_eocs", item_eocs );
+    load_eocs( "disarm_eocs", disarm_eocs );
+    load_eocs( "disarm_fail_eocs", disarm_fail_eocs );
+    if( jo.has_member( "disarm_condition" ) ) {
+        read_condition( jo, "disarm_condition", disarm_condition, true );
+    }
+    optional( jo, was_loaded, "disarm_condition_msg", disarm_condition_msg,
+              to_translation( "That %s looks too dangerous to mess with.  Best leave it alone." ) );
+    if( jo.has_member( "easy_take_down_condition" ) ) {
+        read_condition( jo, "easy_take_down_condition", easy_take_down_condition, false );
+    }
+    optional( jo, was_loaded, "trigger_damage", tuning.damage );
+    optional( jo, was_loaded, "tetanus_chance", tuning.tetanus_chance );
+    optional( jo, was_loaded, "tetanus_chance_resistant", tuning.tetanus_chance_resistant );
+    optional( jo, was_loaded, "break_weight", tuning.break_weight );
+    optional( jo, was_loaded, "self_disarm_chance", tuning.self_disarm_chance );
     optional( jo, was_loaded, "trigger_weight", trigger_weight );
     optional( jo, was_loaded, "sound_threshold", sound_threshold );
     optional( jo, was_loaded, "drops", components );
@@ -189,10 +231,27 @@ void vehicle_handle_trap_data::deserialize( const JsonObject &jo )
     optional( jo, false, "sound_variant", sound_variant, "" );
     optional( jo, false, "spawn_items", spawn_items, named_pair_reader<itype_id, double> { "id", "chance", 1.0 } );
     optional( jo, false, "set_trap", set_trap, trap_str_id::NULL_ID() );
+    optional( jo, false, "runover_faults", runover_faults, false );
+    optional( jo, false, "wheel_faults", wheel_faults );
+    for( JsonValue jv : jo.get_array( "eocs" ) ) {
+        eocs.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
+    }
     if( set_trap != trap_str_id::NULL_ID() ) {
         remove_trap = false;
     } else {
         optional( jo, false, "remove_trap", remove_trap, false );
+    }
+}
+
+void trap_damage_roll::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "damage_type", type );
+    if( jo.has_member( "amount" ) ) {
+        mandatory( jo, false, "amount", min );
+        max = min;
+    } else {
+        mandatory( jo, false, "min", min );
+        mandatory( jo, false, "max", max );
     }
 }
 
@@ -319,7 +378,80 @@ void trap::trigger( const tripoint_bub_ms &pos ) const
     if( is_null() ) {
         return;
     }
+    // Set off by a sound
+    if( trigger_item_eocs( pos, nullptr ) ) {
+        return;
+    }
     act( pos, nullptr, nullptr );
+}
+
+bool trap::trigger_item_eocs( const tripoint_bub_ms &pos, const item *it ) const
+{
+    if( item_eocs.empty() ) {
+        return false;
+    }
+    map &here = get_map();
+    const tripoint_abs_ms loc = here.get_abs( pos );
+    // As a spell trap: removed first, so an EOC can set a new trap there and a teleport
+    // doesn't leave the bubble coordinates stale
+    if( !has_flag( json_flag_UNCONSUMED ) ) {
+        here.remove_trap( pos );
+    }
+    for( const effect_on_condition_id &eoc : item_eocs ) {
+        dialogue d( nullptr, nullptr );
+        d.set_value( "trap", id.str() );
+        d.set_value( "trap_location", loc );
+        d.set_value( "trigger_item", it == nullptr ? std::string() : it->typeId().str() );
+        eoc->activate( d );
+    }
+    return true;
+}
+
+void trap::run_eocs( const std::vector<effect_on_condition_id> &list, Creature *who,
+                     const tripoint_abs_ms &pos ) const
+{
+    for( const effect_on_condition_id &eoc : list ) {
+        std::unique_ptr<talker> alpha;
+        if( who != nullptr ) {
+            alpha = get_talker_for( who );
+        }
+        dialogue d( std::move( alpha ), nullptr );
+        d.set_value( "trap", id.str() );
+        d.set_value( "trap_location", pos );
+        eoc->activate( d );
+    }
+}
+
+bool trap::can_try_disarm( Character &who, const tripoint_bub_ms &pos ) const
+{
+    if( !disarm_condition ) {
+        return true;
+    }
+    dialogue d( get_talker_for( who ), nullptr );
+    d.set_value( "trap", id.str() );
+    d.set_value( "trap_location", get_map().get_abs( pos ) );
+    return disarm_condition( d );
+}
+
+bool trap::easy_take_down( Character &who, const tripoint_bub_ms &pos ) const
+{
+    if( easy_take_down() ) {
+        return true;
+    }
+    if( !easy_take_down_condition ) {
+        return false;
+    }
+    dialogue d( get_talker_for( who ), nullptr );
+    d.set_value( "trap", id.str() );
+    d.set_value( "trap_location", get_map().get_abs( pos ) );
+    return easy_take_down_condition( d );
+}
+
+void trap::spawn_drops( map &m, const tripoint_bub_ms &p ) const
+{
+    for( const trap::comp &i : components ) {
+        m.spawn_item( p, i.item_type, i.quantity, i.charges );
+    }
 }
 
 void trap::trigger( const tripoint_bub_ms &pos, Creature &creature ) const
@@ -338,11 +470,22 @@ void trap::trigger( const tripoint_bub_ms &pos, Creature *creature, item *item )
         return;
     }
     const bool is_real_creature = creature != nullptr && !creature->is_hallucination();
+    if( !is_real_creature && item != nullptr && trigger_item_eocs( pos, item ) ) {
+        return;
+    }
     if( is_real_creature || item != nullptr ) {
         bool triggered = act( pos, creature, item );
         if( triggered && is_real_creature ) {
             if( Character *ch = creature->as_character() ) {
-                get_event_bus().send<event_type::character_triggers_trap>( ch->getID(), id );
+                get_event_bus().send<event_type::character_triggers_trap>( ch->getID(), id,
+                        get_map().get_abs( pos ).raw() );
+            } else if( creature->is_monster() ) {
+                // the monster is the alpha talker
+                const cata::event triggered_by_monster =
+                    cata::event::make<event_type::monster_triggers_trap>( id,
+                            get_map().get_abs( pos ).raw() );
+                get_event_bus().send_with_talker( creature, static_cast<Creature *>( nullptr ),
+                                                  triggered_by_monster );
             }
         }
     }
@@ -415,6 +558,40 @@ void trap::check_consistency()
         }
         if( ( t.sound_threshold.first > 0 ) != ( t.sound_threshold.second > 0 ) ) {
             debugmsg( "trap %s has bad sound threshold of 0 and will trigger on anything", t.id.str() );
+        }
+        for( const fault_id &f : t.vehicle_data.wheel_faults ) {
+            if( !f.is_valid() ) {
+                debugmsg( "trap %s vehicle_data has unknown wheel fault %s", t.id.str(), f.str() );
+            }
+        }
+        for( const trap_damage_roll &roll : t.tuning.damage ) {
+            if( !roll.type.is_valid() ) {
+                debugmsg( "trap %s has unknown damage type %s in trigger_damage", t.id.str(),
+                          roll.type.str() );
+            }
+            if( roll.min < 0 || roll.min > roll.max ) {
+                debugmsg( "trap %s has a trigger_damage of %s from %d to %d", t.id.str(),
+                          roll.type.str(), roll.min, roll.max );
+            }
+        }
+        const trap_trigger_tuning &tuning = t.tuning;
+        const bool tuned = !tuning.damage.empty() || tuning.tetanus_chance ||
+                           tuning.tetanus_chance_resistant || tuning.break_weight ||
+                           tuning.self_disarm_chance;
+        static const std::set<std::string> tuned_actions = {
+            "beartrap", "board", "caltrops", "caltrops_glass"
+        };
+        if( tuned && tuned_actions.count( t.action_name ) == 0 ) {
+            debugmsg( "trap %s sets trigger_damage, tetanus_chance, break_weight or "
+                      "self_disarm_chance, which its action \"%s\" doesn't use", t.id.str(),
+                      t.action_name );
+        }
+        if( tuning.tetanus_chance.value_or( 0 ) < 0 ||
+            tuning.tetanus_chance_resistant.value_or( 0 ) < 0 ||
+            tuning.self_disarm_chance.value_or( 0 ) < 0 ||
+            tuning.break_weight.value_or( 1_gram ) <= 0_gram ) {
+            debugmsg( "trap %s has a negative tetanus_chance or self_disarm_chance, or a "
+                      "break_weight of 0 or less", t.id.str() );
         }
     }
 }

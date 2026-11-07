@@ -186,6 +186,11 @@
     "info": "This gear is <info>strapped</info> onto you."
   },
   {
+    "id": "BINDS_HANDS",
+    "type": "json_flag",
+    "//": "While wielded, handling any item (picking it up, taking it out of a container, storing it) takes four times as long."
+  },
+  {
     "id": "BIONIC_INSTALLATION_DATA",
     "type": "json_flag",
     "info": "This item <info>provides</info> instructions and other required data for several bionics, allowing installation of them with <good>minimal failure chance</good>."
@@ -285,7 +290,9 @@
   },
   {
     "id": "FIELD_DRESS",
-    "type": "json_flag"
+    "type": "json_flag",
+    "//": "a field dressed corpse rots slower",
+    "rot_multiplier": 0.75
   },
   {
     "id": "FIELD_DRESS_FAILED",
@@ -654,6 +661,11 @@
     "inherit": false
   },
   {
+    "id": "NO_ACTIVE_SUFFIX",
+    "type": "json_flag",
+    "//": "The item's name doesn't get \" (active)\" while it is active, as if its id ended in _on."
+  },
+  {
     "id": "NO_CLEAN",
     "type": "json_flag",
     "//": "items that are impossible to clean no matter how hard you try",
@@ -845,12 +857,14 @@
   },
   {
     "id": "MUSHY",
-    "type": "json_flag"
+    "type": "json_flag",
+    "rot_multiplier": 3
   },
   {
     "id": "IRRADIATED",
     "type": "json_flag",
-    "info": "This food item has been irradiated, and will spoil 4 times slower."
+    "info": "This food item has been irradiated, and will spoil 4 times slower.",
+    "rot_multiplier": 0.25
   },
   {
     "id": "FREEZERBURN",
@@ -1316,7 +1330,31 @@
   {
     "id": "TEMPORARY_SHAPESHIFT_NO_HANDS",
     "type": "json_flag",
-    "//": "Due to shapeshifting, the character lacks humanoid hands."
+    "//": "Due to shapeshifting, the character lacks humanoid hands.",
+    "blocked_actions": [
+      {
+        "actions": [
+          "open",
+          "close",
+          "advinv",
+          "pickup",
+          "pickup_all",
+          "grab",
+          "haul",
+          "haul_toggle",
+          "butcher",
+          "drop",
+          "drop_adj",
+          "craft",
+          "recraft",
+          "long_craft",
+          "disassemble",
+          "construct",
+          "control_vehicle"
+        ],
+        "message": "You can't do that while shapeshifted."
+      }
+    ]
   },
   {
     "id": "SHAPESHIFTED_ARMOR",
@@ -1333,6 +1371,16 @@
     "id": "HANDS_CANNOT_USE_FIREARMS",
     "type": "json_flag",
     "//": "Due to mutation, your hands (or paws etc) are not suitable to use firearms."
+  },
+  {
+    "id": "CANNOT_USE_FIREARMS",
+    "type": "json_flag",
+    "//": "The character refuses to fire firearms, held or mounted (the GUNSHY trait); bows, slings and other primitive weapons are still fine.  NPCs too."
+  },
+  {
+    "id": "CANNOT_USE_RANGED",
+    "type": "json_flag",
+    "//": "The character refuses to fire any gun, held, mounted or natural (the BRAWLER trait); throwing is still fine.  NPCs too."
   },
   {
     "id": "NON_THRESH",
@@ -1587,6 +1635,11 @@
     "type": "json_flag"
   },
   {
+    "id": "PAINKILLER",
+    "type": "json_flag",
+    "//": "On an effect: an NPC under it has taken a painkiller and doesn't take another (NPC-J07)."
+  },
+  {
     "id": "NO_GRAB",
     "type": "json_flag",
     "//": "A creature with this flag (on an effect, or for characters any character flag) can't start a grab."
@@ -1686,6 +1739,11 @@
   {
     "id": "INITIAL_PART",
     "type": "json_flag"
+  },
+  {
+    "id": "ENJOYED_BY_CANNIBALS",
+    "type": "json_flag",
+    "//": "Book flag: characters with the CANNIBAL, PSYCHOPATH or SAPIOVORE flag enjoy reading it, however boring it is to others."
   },
   {
     "id": "INSPIRATIONAL",
@@ -1846,12 +1904,22 @@
     "type": "json_flag"
   },
   {
+    "id": "NO_CAMP_FARMING",
+    "type": "json_flag",
+    "//": "Seeds that camp companions won't plant or harvest."
+  },
+  {
     "id": "NO_DROP",
     "type": "json_flag"
   },
   {
     "id": "NO_INGEST",
     "type": "json_flag"
+  },
+  {
+    "id": "NO_MACHINE_HARVEST",
+    "type": "json_flag",
+    "//": "VINT-J05: a vehicle reaper leaves plants grown from this seed alone."
   },
   {
     "id": "NO_PACKED",
@@ -1883,6 +1951,11 @@
     "//": "This flag should only be applied to GUN definitions, it will prevent generation of a turret vehicle part for the gun.  This blocks fake guns, or player unobtainable ones from appearing in turret list."
   },
   {
+    "id": "NO_UNCRAFT",
+    "type": "json_flag",
+    "inherit": false
+  },
+  {
     "id": "NO_UNLOAD",
     "type": "json_flag",
     "inherit": false
@@ -1898,6 +1971,11 @@
   {
     "id": "NPC_ALT_ATTACK",
     "type": "json_flag"
+  },
+  {
+    "id": "NPC_DRINKABLE",
+    "type": "json_flag",
+    "//": "NPCs drink this liquid straight from a terrain liquid_source (NPC-J09)."
   },
   {
     "id": "NPC_SAFE",
@@ -2086,6 +2164,10 @@
   },
   {
     "id": "STR_RELOAD",
+    "type": "json_flag"
+  },
+  {
+    "id": "SURGICAL_TRAINING",
     "type": "json_flag"
   },
   {
@@ -2989,6 +3071,26 @@
   {
     "id": "PSYCHOPATH",
     "type": "json_flag"
+  },
+  {
+    "id": "ILLITERATE",
+    "type": "json_flag",
+    "//": "A character with this flag can't read: books, signs, computer screens..."
+  },
+  {
+    "id": "LOVES_BOOKS",
+    "type": "json_flag",
+    "//": "Books are one point more fun for a character with this flag."
+  },
+  {
+    "id": "HATES_BOOKS",
+    "type": "json_flag",
+    "//": "A character with this flag gets no fun from books, and boring ones are one point more boring."
+  },
+  {
+    "id": "NO_BOOK_COMPLEXITY_PENALTY",
+    "type": "json_flag",
+    "//": "A character with this flag reads books above their intelligence without taking longer."
   },
   {
     "id": "BANK_NETWORKED",

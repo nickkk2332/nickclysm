@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <map>
 #include <memory>
-#include <ostream>
 
 #include "achievement.h"
 #include "addiction.h"
@@ -30,6 +30,7 @@
 #include "output.h"
 #include "past_achievements_info.h"
 #include "pimpl.h"
+#include "string_formatter.h"
 #include "trait_group.h"
 #include "translations.h"
 #include "type_id.h"
@@ -38,7 +39,6 @@
 
 struct bionic_data;
 
-static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
 static const json_character_flag json_flag_NO_CBM_INSTALLATION( "NO_CBM_INSTALLATION" );
 static const trait_group::Trait_group_tag
 Trait_group_BG_survival_story_UNIVERSAL( "BG_survival_story_UNIVERSAL" );
@@ -108,29 +108,34 @@ void profession_blacklist::load_profession_blacklist( const JsonObject &jo,
 
 void profession_blacklist::load( const JsonObject &jo, std::string_view )
 {
-    if( !professions.empty() ) {
-        DebugLog( D_INFO, DC_ALL ) << "Loading profession black with one already loaded, resetting";
-        profession_blacklist::reset();
-    }
-
     const std::string type = jo.get_string( "subtype" );
+    std::set<string_id<profession>> listed;
+    mandatory( jo, false, "professions", listed );
 
     if( type == "whitelist" ) {
+        // A later whitelist replaces an earlier one
         whitelist = true;
+        professions = std::move( listed );
     } else if( type == "blacklist" ) {
-        whitelist = false;
+        // Blacklists add up
+        blacklisted.insert( listed.begin(), listed.end() );
+        if( !whitelist ) {
+            professions = blacklisted;
+        }
     } else {
         jo.throw_error( "Invalid subtype %s for profession blacklist" );
     }
-
-    mandatory( jo, false, "professions", professions );
 }
 
 void profession_blacklist::check_consistency() const
 {
-    for( const string_id<profession> &p : professions ) {
-        if( !p.is_valid() ) {
-            debugmsg( "Invalid profession %s in blacklist", p.str() );
+    for( const std::set<string_id<profession>> *listed : {
+             &professions, &blacklisted
+         } ) {
+        for( const string_id<profession> &p : *listed ) {
+            if( !p.is_valid() ) {
+                debugmsg( "Invalid profession %s in blacklist", p.str() );
+            }
         }
     }
 }
@@ -138,15 +143,21 @@ void profession_blacklist::check_consistency() const
 void profession_blacklist::reset()
 {
     prof_blacklist.professions.clear();
+    prof_blacklist.blacklisted.clear();
     prof_blacklist.whitelist = false;
+}
+
+bool profession_blacklist::hides( const string_id<profession> &prof ) const
+{
+    if( whitelist ) {
+        return professions.count( prof ) == 0;
+    }
+    return professions.count( prof ) != 0;
 }
 
 bool profession::is_blacklisted() const
 {
-    if( prof_blacklist.whitelist ) {
-        return prof_blacklist.professions.count( id ) == 0;
-    }
-    return prof_blacklist.professions.count( id ) != 0;
+    return prof_blacklist.hides( id );
 }
 
 profession::profession()
@@ -228,6 +239,47 @@ class item_reader : public generic_typed_reader<item_reader>
 };
 } // namespace
 
+// A list member that a copy replaces when it names it, and changes with "extend" (add) and
+// "delete" (remove) (PROG-J07)
+static void read_copied_list( const JsonObject &jo, bool was_loaded, const std::string_view name,
+                              const std::function<void()> &clear,
+                              const std::function<void( const JsonArray & )> &add,
+                              const std::function<void( const JsonValue & )> &remove )
+{
+    if( jo.has_member( name ) ) {
+        clear();
+        add( jo.get_array( name ) );
+    }
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", name, "no copy-from" );
+        warn_disabled_feature( jo, "delete", name, "no copy-from" );
+        return;
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( JsonValue jv : del.get_array( name ) ) {
+            remove( jv );
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        add( ext.get_array( name ) );
+    }
+}
+
+// The id a "delete" entry names: the id itself, or an object with it under `key`
+static std::string deleted_id( const JsonValue &jv, const std::string_view key )
+{
+    if( jv.test_string() ) {
+        return jv.get_string();
+    }
+    JsonObject jo = jv.get_object();
+    jo.allow_omitted_members();
+    return jo.get_string( key );
+}
+
 void profession::load( const JsonObject &jo, std::string_view )
 {
     //If the "name" is an object then we have to deal with gender-specific titles,
@@ -286,29 +338,58 @@ void profession::load( const JsonObject &jo, std::string_view )
     if( jo.has_string( "vehicle" ) ) {
         _starting_vehicle = vproto_id( jo.get_string( "vehicle" ) );
     }
-    if( jo.has_array( "pets" ) ) {
-        for( JsonObject subobj : jo.get_array( "pets" ) ) {
+    read_copied_list( jo, was_loaded, "pets", [this]() {
+        _starting_pets.clear();
+    }, [this]( const JsonArray & pets ) {
+        for( JsonObject subobj : pets ) {
             int count = subobj.get_int( "amount" );
             mtype_id mon = mtype_id( subobj.get_string( "name" ) );
             for( int start = 0; start < count; ++start ) {
                 _starting_pets.push_back( mon );
             }
         }
-    }
+    }, [this]( const JsonValue & jv ) {
+        // every one of that monster
+        const mtype_id mon( deleted_id( jv, "name" ) );
+        const auto removed = std::remove( _starting_pets.begin(), _starting_pets.end(), mon );
+        if( removed == _starting_pets.end() ) {
+            jv.throw_error( string_format( "no pet %s to delete", mon.str() ) );
+        }
+        _starting_pets.erase( removed, _starting_pets.end() );
+    } );
 
-    if( jo.has_array( "spells" ) ) {
-        for( JsonObject subobj : jo.get_array( "spells" ) ) {
+    // "extend" of a spell already there changes its level
+    read_copied_list( jo, was_loaded, "spells", [this]() {
+        _starting_spells.clear();
+    }, [this]( const JsonArray & spells ) {
+        for( JsonObject subobj : spells ) {
             int level = subobj.get_int( "level" );
             spell_id sp = spell_id( subobj.get_string( "id" ) );
-            _starting_spells.emplace( sp, level );
+            _starting_spells.insert_or_assign( sp, level );
         }
-    }
+    }, [this]( const JsonValue & jv ) {
+        const spell_id sp( deleted_id( jv, "id" ) );
+        if( _starting_spells.erase( sp ) == 0 ) {
+            jv.throw_error( string_format( "no spell %s to delete", sp.str() ) );
+        }
+    } );
 
-    if( jo.has_member( "effect_on_conditions" ) ) {
-        for( JsonValue jv : jo.get_array( "effect_on_conditions" ) ) {
+    read_copied_list( jo, was_loaded, "effect_on_conditions", [this]() {
+        effect_on_conditions.clear();
+    }, [this]( const JsonArray & eocs ) {
+        for( JsonValue jv : eocs ) {
             effect_on_conditions.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
         }
-    }
+    }, [this]( const JsonValue & jv ) {
+        const effect_on_condition_id eoc( deleted_id( jv, "id" ) );
+        const auto removed = std::remove( effect_on_conditions.begin(), effect_on_conditions.end(),
+                                          eoc );
+        if( removed == effect_on_conditions.end() ) {
+            jv.throw_error( string_format( "no effect_on_condition %s to delete", eoc.str() ) );
+        }
+        effect_on_conditions.erase( removed, effect_on_conditions.end() );
+    } );
+    optional( jo, was_loaded, "run_eocs_for_npcs", _run_eocs_for_npcs, false );
 
     mandatory( jo, was_loaded, "points", _point_cost );
 
@@ -369,6 +450,7 @@ void profession::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "forbidden_traits", _forbidden_traits,
               string_id_reader<::mutation_branch> {} );
     optional( jo, was_loaded, "flags", flags, auto_flags_reader<> {} );
+    optional( jo, was_loaded, "default_backgrounds", _default_backgrounds );
 
     optional( jo, was_loaded, "hobbies", _hobby_exclusion );
     optional( jo, was_loaded, "whitelist_hobbies", hobbies_whitelist, true );
@@ -380,6 +462,19 @@ void profession::load( const JsonObject &jo, std::string_view )
     // Flag which denotes if a profession is a hobby
     optional( jo, was_loaded, "subtype", _subtype, "" );
     optional( jo, was_loaded, "missions", _missions, string_id_reader<::mission_type> {} );
+
+    // A hobby doesn't hand out these (one vehicle per start; items through its EOCs): they
+    // were read and silently ignored (PROG-J04)
+    if( is_hobby() ) {
+        for( const char *member : {
+                 "items", "vehicle", "no_bonus"
+             } ) {
+            if( jo.has_member( member ) ) {
+                jo.throw_error_at( member, string_format( "a hobby (%s) can't have \"%s\"; give it "
+                                   "with the hobby's effect_on_conditions instead", id.str(), member ) );
+            }
+        }
+    }
 }
 
 const profession *profession::generic()
@@ -526,6 +621,11 @@ void profession::check_definition() const
         debugmsg( "npc_background %s for profession %s is not a trait group",
                   _starting_npc_background.str(), id.str() );
     }
+    if( _default_backgrounds && !_default_backgrounds->is_empty() &&
+        !_default_backgrounds->is_valid() ) {
+        debugmsg( "default_backgrounds %s for profession %s is not a profession group",
+                  _default_backgrounds->str(), id.str() );
+    }
     for( const string_id<profession> &hobby : _hobby_exclusion ) {
         if( !hobby.is_valid() ) {
             debugmsg( "hobby %s for profession %s does not exist", hobby.str(), id.str() );
@@ -607,7 +707,8 @@ static void clear_faults( item &it )
     it.faults.clear();
 }
 
-std::list<item> profession::items( bool male, const std::vector<trait_id> &traits ) const
+std::list<item> profession::items( bool male, const std::vector<trait_id> &traits,
+                                   bool bonus_items ) const
 {
     std::list<item> result;
     auto add_legacy_items = [&result]( const itypedecvec & vec ) {
@@ -633,7 +734,7 @@ std::list<item> profession::items( bool male, const std::vector<trait_id> &trait
     result.insert( result.begin(), std::make_move_iterator( group_gender.begin() ),
                    std::make_move_iterator( group_gender.end() ) );
 
-    if( !has_flag( "NO_BONUS_ITEMS" ) ) {
+    if( bonus_items && !has_flag( "NO_BONUS_ITEMS" ) ) {
         const std::vector<item> &items = item_substitutions.get_bonus_items( traits );
         for( const item &it : items ) {
             if( it.typeId() != no_bonus ) {
@@ -767,6 +868,11 @@ bool profession::has_flag( const std::string &flag ) const
     return flags.count( flag ) != 0;
 }
 
+const std::optional<profession_group_id> &profession::default_backgrounds() const
+{
+    return _default_backgrounds;
+}
+
 ret_val<void> profession::can_afford( const Character &you, const int points ) const
 {
     if( point_cost() - you.prof->point_cost() <= points ) {
@@ -780,7 +886,7 @@ ret_val<void> profession::can_pick() const
 {
     const bool meta_progression = get_option<bool>( "META_PROGRESS" );
     // if meta progression is disabled then skip this
-    if( get_past_achievements().is_completed( achievement_achievement_arcade_mode ) ||
+    if( get_past_achievements().unlocks_all_content() ||
         ( !meta_progression && !has_hard_requirement() ) ) {
         return ret_val<void>::make_success();
     }
@@ -847,6 +953,11 @@ void profession::learn_spells( Character &you ) const
 std::vector<effect_on_condition_id> profession::get_eocs() const
 {
     return effect_on_conditions;
+}
+
+bool profession::eocs_run_for_npcs() const
+{
+    return _run_eocs_for_npcs;
 }
 
 bool profession_sorter::operator()( const string_id<profession> &a,

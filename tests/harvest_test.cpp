@@ -144,7 +144,9 @@ static void do_butchery_timing( int expected_turns, butcher_type butchery_type,
 
 TEST_CASE( "butchery_speed", "[harvest]" )
 {
-    do_butchery_timing( 8 * 60 * 60, butcher_type::FULL, 5, mon_deer );
+    // MONDT-B10: skinning without the proficiency takes half as long again, so a full butchery
+    // takes 2 times its base time, not 1.8 (the skinning penalty was rounded down to 0)
+    do_butchery_timing( 9 * 60 * 60 + 43 * 60, butcher_type::FULL, 5, mon_deer );
 }
 
 // Regression test for #85877 / #85136: butchering birds with sub-gram harvest

@@ -113,6 +113,8 @@ Note the ID is now `nested_mapgen_id` and the object uses a new entry `mapgensiz
 
 * `mapgensize`:  Nested mapgen can be any size from 1x1 to 24x24 but it must be square.  You don't have to use every row or column of the `rows` entry.  Any unused portions will fall back to the main mapgen.
 
+* `rotation`:  Turns the nest by 90° steps, but only if the nest also has `"allow_rotation": true`.  Without it the nest is placed as drawn (the example above, drawn for an east-facing door, is).  Only allow rotation for a nest that fits any way round; see [doc/JSON/MAPGEN.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/doc/JSON/MAPGEN.md#rotate-the-map-with-rotation).
+
 * `flags`:  More information about mapgen flags can be found in [doc/JSON/MAPGEN.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/doc/JSON/MAPGEN.md#clearing-flags-for-layered-mapgens)
 
 * `terrain` & `furniture`: If you don't want to overwrite existing terrain and furniture from the main mapgen you can use a combination of `t_null` and `f_null`. ` ` is `t_null` and `f_null` by default. For example in the above example, there's a green carpet in 1/2 the map and the rest picks up the floor of the mapgen (indoor concrete). `f_clear` can also be used to remove existing furniture without replacing it.

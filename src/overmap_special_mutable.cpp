@@ -12,7 +12,6 @@
 #include "cata_assert.h"
 #include "cata_utility.h"
 #include "cata_views.h"
-#include "city.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "distribution.h"
@@ -802,6 +801,7 @@ special_placement_result mutable_overmap_special_data::place(
     struct placed_connection {
         overmap_connection_id connection;
         pos_dir<tripoint_om_omt> where;
+        special_connection_route route;
     };
 
     std::vector<placed_connection> connections_placed;
@@ -842,7 +842,7 @@ special_placement_result mutable_overmap_special_data::place(
             cube_direction dir = base_dir + rot;
             tripoint_om_omt conn_pos = pos + displace( dir );
             if( overmap::inbounds( conn_pos ) ) {
-                connections_placed.push_back( { conn.connection, { conn_pos, dir } } );
+                connections_placed.push_back( { conn.connection, { conn_pos, dir }, conn.route } );
             }
         }
     };
@@ -909,19 +909,9 @@ special_placement_result mutable_overmap_special_data::place(
     }
 
     // Deal with connections
-    // TODO: JSONification of logic + don't treat non roads like roads + deduplicate with fixed data
     for( const placed_connection &elem : connections_placed ) {
-        const tripoint_om_omt &pos = elem.where.p;
-        cube_direction connection_dir = elem.where.dir;
-
-        point_om_omt target;
-        if( cit ) {
-            target = cit.pos;
-        } else {
-            target = om.get_fallback_road_connection_point();
-        }
-        om.build_connection( target, pos.xy(), pos.z(), *elem.connection, must_be_unexplored,
-                             connection_dir );
+        om.build_special_connection( *elem.connection, elem.route, elem.where.p, elem.where.dir, cit,
+                                     result, must_be_unexplored );
     }
 
     return { result, unresolved.all_used() };

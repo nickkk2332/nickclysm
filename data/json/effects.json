@@ -775,7 +775,8 @@
     "id": "heating_bionic",
     "name": [ "Heated" ],
     "max_intensity": 1000,
-    "desc": [ "At least one of your bionics is producing heat and warming you." ]
+    "desc": [ "At least one of your bionics is producing heat and warming you." ],
+    "warmth_per_intensity": 1
   },
   {
     "type": "effect_type",
@@ -2414,7 +2415,8 @@
     "max_duration": "3 m",
     "max_intensity": 4,
     "int_decay_tick": 40,
-    "resist_effects": [ "steroid_eye", "PAINRESIST" ],
+    "resist_effects": [ "steroid_eye" ],
+    "resist_traits": [ "PAINRESIST" ],
     "base_mods": { "per_mod": [ -1, 0 ], "pain_amount": [ 2, 0 ] },
     "scaling_mods": { "per_mod": [ -1 ], "pain_amount": [ 2, 1 ] },
     "limb_score_mods": [
@@ -2698,6 +2700,7 @@
     "id": "pkill1_generic",
     "max_duration": "4 m",
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 1 ], "pkill_max_val": [ 15 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Minor Painkiller"
   },
@@ -2706,6 +2709,7 @@
     "id": "pkill1_nsaid",
     "max_duration": "4 m",
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 1 ], "pkill_max_val": [ 15 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Minor Painkiller (NSAID-based)"
   },
@@ -2714,6 +2718,7 @@
     "id": "pkill1_acetaminophen",
     "max_duration": "4 m",
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 1 ], "pkill_max_val": [ 15 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Minor Painkiller (Acetaminophen)"
   },
@@ -2722,6 +2727,7 @@
     "id": "pkill2",
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 2 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Moderate Painkiller"
   },
@@ -2730,6 +2736,7 @@
     "id": "pkill3",
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_tick": [ 12 ], "pkill_min": [ 1 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Heavy Painkiller"
   },
@@ -2738,6 +2745,7 @@
     "id": "pkill_l",
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_max_val": [ 40 ], "pkill_tick": [ 120 ], "pkill_min": [ 1 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Slow-Release Painkiller"
   },
@@ -3597,6 +3605,7 @@
         ]
       }
     ],
+    "body_temperature": [ { "add": -1.5 } ],
     "blood_analysis_description": "Viral Infection"
   },
   {
@@ -3634,6 +3643,7 @@
         ]
       }
     ],
+    "body_temperature": [ { "body_part": "head", "add": 3 } ],
     "blood_analysis_description": "Viral Infection"
   },
   {
@@ -3715,7 +3725,6 @@
       "poison",
       "venom_dmg",
       "venom_weaken",
-      "stung",
       "badpoison",
       "foodpoison",
       "paralyzepoison",
@@ -4102,7 +4111,8 @@
     "rating": "bad",
     "resist_traits": [ "VOMITSTOMACH" ],
     "base_mods": { "hunger_chance": [ 50 ], "hunger_min": [ 1 ] },
-    "blood_analysis_description": "Intestinal Parasite"
+    "blood_analysis_description": "Intestinal Parasite",
+    "periodic_messages": [ { "text": "Your bowels ache.", "chance": 3072, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4117,7 +4127,8 @@
       "h_mod_min": [ -10 ],
       "cough_chance": [ 300, 0 ]
     },
-    "blood_analysis_description": "Hemolytic Parasites"
+    "blood_analysis_description": "Hemolytic Parasites",
+    "periodic_messages": [ { "text": "Your veins itch.", "chance": 3072, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4127,6 +4138,7 @@
     "rating": "bad",
     "base_mods": { "pain_chance": [ 512 ], "pain_min": [ 2 ], "pain_max": [ 8 ], "h_mod_chance": [ 512 ], "h_mod_min": [ -10 ] },
     "blood_analysis_description": "Intracranial Parasites",
+    "periodic_messages": [ { "text": "Your head aches faintly.", "chance": 1536, "rating": "bad" } ],
     "flags": [ "NO_PSIONICS" ]
   },
   {
@@ -4136,7 +4148,8 @@
     "desc": [ "You aren't sure what's wrong with you but you don't feel well." ],
     "rating": "bad",
     "base_mods": { "pain_chance": [ 256 ], "pain_min": [ 1 ], "pain_max": [ 4 ], "sleepiness_chance": [ 256 ], "sleepiness_min": [ 1 ] },
-    "blood_analysis_description": "Intramuscular Parasites"
+    "blood_analysis_description": "Intramuscular Parasites",
+    "periodic_messages": [ { "text": "Your muscles feel like they're knotted and tired.", "chance": 3072, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4147,7 +4160,8 @@
     "rating": "bad",
     "resist_effects": [ "valium" ],
     "base_mods": { "dex_mod": [ -4, 0 ] },
-    "blood_analysis_description": "Clostridium tetani Infection"
+    "blood_analysis_description": "Clostridium tetani Infection",
+    "periodic_messages": [ { "text": "Your muscles are tight and sore.", "chance": 1536, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4157,7 +4171,7 @@
     "remove_message": "The fever breaks.",
     "rating": "bad",
     "immune_bp_flags": [ "BIONIC_LIMB", "NON_FLESH_LIMB" ],
-    "resist_effects": [ "aspirin" ],
+    "resist_effects": [ "pkill1_nsaid" ],
     "base_mods": {
       "stamina_min": [ -50 ],
       "stamina_max": [ -100 ],
@@ -5391,7 +5405,7 @@
     "name": [ "Exsanguination" ],
     "desc": [ "The monster is drinking your blood, you vile feral!" ],
     "rating": "bad",
-    "resist_traits": [ "BLEED_IMMUNE" ],
+    "immune_flags": [ "BLEED_IMMUNE" ],
     "max_intensity": 1,
     "show_in_info": true,
     "chance_kill": [ [ 1, 20 ] ]
@@ -5712,32 +5726,13 @@
         "condition": { "u_is_in_field": "fd_tindalos_gas" },
         "values": [
           {
+            "//": "250 per intensity on each stained part; a part without the ichor reads -1, so it is counted as 0",
             "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'torso') * 250" ] }
-          },
-          {
-            "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'head') * 250" ] }
-          },
-          {
-            "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'tail') * 250" ] }
-          },
-          {
-            "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'arm_l') * 250" ] }
-          },
-          {
-            "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'arm_r') * 250" ] }
-          },
-          {
-            "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'leg_l') * 250" ] }
-          },
-          {
-            "value": "ARTIFACT_RESONANCE",
-            "add": { "math": [ "u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'leg_r') * 250" ] }
+            "add": {
+              "math": [
+                "( max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'torso'), 0 ) + max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'head'), 0 ) + max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'tail'), 0 ) + max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'arm_l'), 0 ) + max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'arm_r'), 0 ) + max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'leg_l'), 0 ) + max( u_effect_intensity('effect_hound_of_tindalos_slobber', 'bodypart': 'leg_r'), 0 ) ) * 250"
+              ]
+            }
           }
         ]
       }

@@ -1,5 +1,6 @@
 #include "vehicle_group.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -10,6 +11,7 @@
 #include "debug.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
+#include "generic_factory.h"
 #include "map.h"
 #include "memory_fast.h"
 #include "point.h"
@@ -20,7 +22,10 @@ using vplacement_id = string_id<VehiclePlacement>;
 
 static const vgroup_id VehicleGroup_parkinglot( "parkinglot" );
 
-std::unordered_map<vgroup_id, VehicleGroup> vgroups;
+namespace
+{
+generic_factory<VehicleGroup> vgroup_factory( "vehicle group" );
+} // namespace
 static std::unordered_map<vplacement_id, VehiclePlacement> vplacements;
 static std::unordered_map<vspawn_id, VehicleSpawn> vspawns;
 
@@ -28,13 +33,7 @@ static std::unordered_map<vspawn_id, VehicleSpawn> vspawns;
 template<>
 const VehicleGroup &string_id<VehicleGroup>::obj() const
 {
-    const auto iter = vgroups.find( *this );
-    if( iter == vgroups.end() ) {
-        debugmsg( "invalid vehicle group id %s", c_str() );
-        static const VehicleGroup dummy{};
-        return dummy;
-    }
-    return iter->second;
+    return vgroup_factory.obj( *this );
 }
 
 point_bub_ms VehicleLocation::pick_point() const
@@ -46,7 +45,7 @@ point_bub_ms VehicleLocation::pick_point() const
 template<>
 bool string_id<VehicleGroup>::is_valid() const
 {
-    return vgroups.count( *this ) > 0;
+    return vgroup_factory.is_valid( *this );
 }
 
 template<>
@@ -77,18 +76,84 @@ std::vector<vproto_id> VehicleGroup::all_possible_results() const
     return result;
 }
 
-void VehicleGroup::load( const JsonObject &jo )
+void VehicleGroup::load_all( const JsonObject &jo, const std::string &src )
 {
-    VehicleGroup &group = vgroups[vgroup_id( jo.get_string( "id" ) )];
+    vgroup_factory.load( jo, src );
+}
 
-    for( JsonArray pair : jo.get_array( "vehicles" ) ) {
-        group.add_vehicle( vproto_id( pair.get_string( 0 ) ), pair.get_int( 1 ) );
+// "vehicles": [ [ prototype, weight ], ... ]
+static void add_vehicles( const JsonArray &ja, weighted_int_list<vproto_id> &vehicles )
+{
+    for( JsonArray pair : ja ) {
+        vehicles.add( vproto_id( pair.get_string( 0 ) ), pair.get_int( 1 ) );
+    }
+}
+
+void VehicleGroup::load( const JsonObject &jo, std::string_view )
+{
+    // A definition of a group that exists, without "copy-from", adds its vehicles to the
+    // group, as it always has (like monstergroup); "override": true makes it replace the
+    // group instead (DATA-J02).
+    const bool override_group = jo.get_bool( "override", false );
+    const bool adds = !was_loaded && !override_group && vgroup_factory.is_valid( id );
+    if( adds ) {
+        vehicles = vgroup_factory.obj( id ).vehicles;
+    }
+    if( !was_loaded && !adds ) {
+        warn_disabled_feature( jo, "extend", "vehicles", "no copy-from" );
+        warn_disabled_feature( jo, "delete", "vehicles", "no copy-from" );
+    } else if( jo.has_object( "delete" ) ) {
+        // "delete": { "vehicles": [ prototype ids ] } removes every entry of each prototype
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const JsonValue jv : del.get_array( "vehicles" ) ) {
+            const vproto_id doomed( jv.get_string() );
+            if( std::none_of( vehicles.begin(), vehicles.end(),
+            [&doomed]( const std::pair<vproto_id, int> &entry ) {
+            return entry.first == doomed;
+        } ) ) {
+                jv.throw_error( "the vehicle group has no such vehicle to delete" );
+            }
+            vehicles.remove( doomed );
+        }
+    }
+    if( was_loaded && jo.has_member( "vehicles" ) ) {
+        // a copy's "vehicles" replaces the ones it copied
+        vehicles.clear();
+    }
+    add_vehicles( jo.get_array( "vehicles" ), vehicles );
+    if( ( was_loaded || adds ) && jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        add_vehicles( ext.get_array( "vehicles" ), vehicles );
+    }
+}
+
+void VehicleGroup::add_to_group( const vgroup_id &group, const vproto_id &type,
+                                 const int probability )
+{
+    VehicleGroup changed = group.is_valid() ? group.obj() : VehicleGroup();
+    changed.id = group;
+    changed.add_vehicle( type, probability );
+    vgroup_factory.insert( changed );
+}
+
+void VehicleGroup::finalize_all()
+{
+    vgroup_factory.finalize();
+    // pick() on a group with nothing to pick spawns nothing (VINT-B09): say so at load, as
+    // after a "delete" that took its last vehicle
+    for( const VehicleGroup &group : vgroup_factory.get_all() ) {
+        if( group.vehicles.get_weight() <= 0 ) {
+            debugmsg( "vehicle group %s has no vehicles to pick (none, or none of any weight)",
+                      group.id.str() );
+        }
     }
 }
 
 void VehicleGroup::reset()
 {
-    vgroups.clear();
+    vgroup_factory.reset();
 }
 
 VehicleFacings::VehicleFacings( const JsonObject &jo, std::string_view key )
@@ -129,9 +194,15 @@ const VehicleLocation *VehiclePlacement::pick() const
 VehicleFunction_json::VehicleFunction_json( const JsonObject &jo )
     : vehicle( jo.get_string( "vehicle" ) ),
       number( jo, "number" ),
-      fuel( jo.get_int( "fuel" ) ),
-      status( jo.get_int( "status" ) )
+      // optional, with the defaults JSON_INFO.md documents (VINT-B09)
+      fuel( jo.get_int( "fuel", -1 ) ),
+      status( jo.get_int( "status", static_cast<int>( veh_spawn_status::DEFAULT_LIGHT_DMG ) ) )
 {
+    if( status < static_cast<int>( veh_spawn_status::DEFAULT_LIGHT_DMG ) ||
+        status >= static_cast<int>( veh_spawn_status::LAST ) ) {
+        jo.throw_error_at( "status", "status must be -1 (light damage), 0 (undamaged), "
+                           "1 (disabled) or 2 (pristine)" );
+    }
     if( jo.has_string( "placement" ) ) {
         placement = jo.get_string( "placement" );
     } else {
@@ -155,12 +226,18 @@ void VehicleFunction_json::apply( map &m, const std::string &terrain_name ) cons
                 return;
             }
             const tripoint_bub_ms pos{ loc->pick_point(), m.get_abs_sub().z() };
-            m.add_vehicle( vehicle->pick(), pos, loc->pick_facing(), fuel,
-                           static_cast<veh_spawn_status>( status ) );
+            const vproto_id picked = vehicle->pick();
+            if( !picked.is_null() ) {
+                m.add_vehicle( picked, pos, loc->pick_facing(), fuel,
+                               static_cast<veh_spawn_status>( status ) );
+            }
         } else {
             const tripoint_bub_ms pos{ location->pick_point(), m.get_abs_sub().z()};
-            m.add_vehicle( vehicle->pick(), pos, location->pick_facing(), fuel,
-                           static_cast<veh_spawn_status>( status ) );
+            const vproto_id picked = vehicle->pick();
+            if( !picked.is_null() ) {
+                m.add_vehicle( picked, pos, location->pick_facing(), fuel,
+                               static_cast<veh_spawn_status>( status ) );
+            }
         }
     }
 }
@@ -253,8 +330,10 @@ static void builtin_parkinglot( map &m, std::string_view )
             } else {
                 facing = one_in( 2 ) ? 0_degrees : 180_degrees;
             }
-            m.add_vehicle( VehicleGroup_parkinglot->pick(), pos_p, facing, -1,
-                           veh_spawn_status::DEFAULT_LIGHT_DMG );
+            const vproto_id picked = VehicleGroup_parkinglot->pick();
+            if( !picked.is_null() ) {
+                m.add_vehicle( picked, pos_p, facing, -1, veh_spawn_status::DEFAULT_LIGHT_DMG );
+            }
         }
     }
 }

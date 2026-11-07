@@ -6,6 +6,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,18 +34,18 @@ struct enum_traits<vitamin_type> {
 class vitamin
 {
     public:
-        vitamin() : id_( vitamin_id( "null" ) ), rate_( 1_hours ) {}
+        vitamin() : id( vitamin_id( "null" ) ), rate_( 1_hours ) {}
 
-        const vitamin_id &id() const {
-            return id_;
-        }
+        vitamin_id id;
+        bool was_loaded = false;
+        std::vector<std::pair<vitamin_id, mod_id>> src;
 
         const vitamin_type &type() const {
             return type_;
         }
 
         bool is_null() const {
-            return id_ == vitamin_id( "null" );
+            return id == vitamin_id( "null" );
         }
 
         std::string name() const {
@@ -91,14 +92,21 @@ class vitamin
         /** Get intensity of deficiency or zero if not deficient for specified qty */
         int severity( int qty ) const;
 
-        /** Load vitamin from JSON definition */
-        static void load_vitamin( const JsonObject &jo );
+        /** Load vitamin from JSON definition (through the vitamin factory) */
+        static void load_vitamin( const JsonObject &jo, const std::string &src_name );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jo, std::string_view src );
+        /** Loads the vitamins whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
 
-        /** Get all currently loaded vitamins */
+        /** Get all currently loaded vitamins, by id */
         static const std::map<vitamin_id, vitamin> &all();
 
         /** Check consistency of all loaded vitamins */
         static void check_consistency();
+        /** What check_consistency checks of one vitamin: the ids it refers to, its ranges */
+        void check() const;
 
         /** Clear all loaded vitamins (invalidating any pointers) */
         static void reset();
@@ -117,7 +125,6 @@ class vitamin
         std::pair<std::string, std::string> mass_str_from_units( int units ) const;
 
     private:
-        vitamin_id id_;
         vitamin_type type_ = vitamin_type::num_vitamin_types;
         translation name_;
         std::optional<vitamin_units::mass> weight_per_unit;

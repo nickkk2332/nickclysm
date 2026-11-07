@@ -79,6 +79,9 @@ void clear_creatures()
 {
     // Remove any interfering monsters.
     g->clear_zombies();
+    // and the ones mapgen queued on the submaps: the test harness never places them, and the
+    // turn now does (map::spawn_queued_monsters)
+    get_map().clear_spawns();
 }
 
 void clear_npcs()

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -37,12 +38,10 @@
 #include "string_formatter.h"
 #include "string_id.h"
 #include "units.h"
+#include "weighted_list.h"
 
 class quantity;
-
 template <typename E> class enum_bitset;
-template<typename T> struct weighted_int_list;
-template <typename T, typename W> struct weighted_list;
 
 /**
 A generic class to store objects identified by a `string_id`.
@@ -285,13 +284,16 @@ class generic_factory
             return true;
         }
 
-        template<typename LT, typename = std::void_t<>>
+        // True when `LT::load( jo, src )`, as called below, returns bool: such a type can ask
+        // for its loading to be deferred by returning false.
+        template<typename LT, typename = void>
         struct load_is_bool : std::false_type { };
 
         template<typename LT>
         // astyle??
-    struct load_is_bool<LT, std::void_t<std::is_same<decltype( std::declval<LT &>().load() ), bool>>> :
-        std:: true_type {};
+        struct load_is_bool<LT, std::enable_if_t<std::is_same_v<decltype( std::declval<LT &>().load(
+                std::declval<const JsonObject &>(), std::declval<const std::string &>() ) ), bool>>> :
+        std::true_type {};
 
         /**
          * Load an object of type T with the data from the given JSON object.
@@ -341,6 +343,8 @@ class generic_factory
                         def.was_loaded = false;
                         deferred.emplace_back( jo, src );
                         jo.allow_omitted_members();
+                        // The whole object, every id in it, loads again later
+                        break;
                     }
                 }
 
@@ -350,7 +354,7 @@ class generic_factory
             }
         }
         // astyle???
-        template < typename U = T, std::enable_if_t < !load_is_bool<T>::value > * = nullptr >
+        template < typename U = T, std::enable_if_t < !load_is_bool<U>::value > * = nullptr >
         void load( const JsonObject &jo, const std::string &src ) {
             static const std::string abstract_member_name( "abstract" );
 
@@ -662,22 +666,30 @@ void warn_disabled_feature( const JsonObject &jo, std::string_view feature,
 /** @name Implementation of `mandatory` and `optional`. */
 /**@{*/
 template<typename MemberType>
+inline void optional( const JsonObject &jo, bool was_loaded, std::string_view name,
+                      MemberType &member );
+
+template<typename MemberType>
 inline void mandatory( const JsonObject &jo, const bool was_loaded, const std::string_view name,
                        MemberType &member )
 {
+    if( was_loaded ) {
+        // The value was inherited (copy-from), so the member is no longer required, and it can
+        // be adjusted with relative, proportional, extend and delete, as an optional member can.
+        optional( jo, was_loaded, name, member );
+        return;
+    }
     warn_disabled_feature( jo, "extend", name, "disabled for mandatory" );
     warn_disabled_feature( jo, "delete", name, "disabled for mandatory" );
     warn_disabled_feature( jo, "relative", name, "disabled for mandatory" );
     warn_disabled_feature( jo, "proportional", name, "disabled for mandatory" );
     if( !jo.read( name, member ) ) {
-        if( !was_loaded ) {
-            if( jo.has_member( name ) ) {
-                jo.throw_error( str_cat( "object beginning at next line failed to read mandatory member \"", name,
-                                         "\"" ) );
-            } else {
-                jo.throw_error( str_cat( "object beginning at next line missing mandatory member \"", name,
-                                         "\"" ) );
-            }
+        if( jo.has_member( name ) ) {
+            jo.throw_error( str_cat( "object beginning at next line failed to read mandatory member \"", name,
+                                     "\"" ) );
+        } else {
+            jo.throw_error( str_cat( "object beginning at next line missing mandatory member \"", name,
+                                     "\"" ) );
         }
     }
 }
@@ -960,8 +972,9 @@ inline void optional( const JsonObject &jo, const bool was_loaded, const std::st
             member = MemberType();
         }
     }
-    handle_extend( jo, name, member );
+    // delete first, so that a delete and an extend of the same entry replace it
     handle_delete( jo, name, member );
+    handle_extend( jo, name, member );
 }
 /*
 Template trickery, not for the faint of heart. It is required because there are two functions
@@ -990,8 +1003,9 @@ template<typename MemberType, typename DefaultType = MemberType,
             member = default_value;
         }
     }
-    handle_extend( jo, name, member );
+    // delete first, so that a delete and an extend of the same entry replace it
     handle_delete( jo, name, member );
+    handle_extend( jo, name, member );
 }
 template < typename MemberType, typename ReaderType, typename DefaultType = MemberType,
            typename = std::enable_if_t <
@@ -1108,6 +1122,72 @@ static std::string data_string( const T & )
     return string_format( "type '%s'", demangle( typeid( T ).name() ) );
 }
 
+
+// Whether a container key can be named in JSON: { "key": factor } in "proportional"
+template<typename Key>
+constexpr bool key_is_nameable()
+{
+    return std::is_same_v<Key, std::string> || stringify<Key>::value;
+}
+
+template<typename Key>
+bool key_matches( [[maybe_unused]] const Key &key, [[maybe_unused]] std::string_view name )
+{
+    // GCC 9 counts a parameter used only in some if-constexpr branches as unused
+    if constexpr( std::is_same_v<Key, std::string> ) {
+        return key == name;
+    } else if constexpr( stringify<Key>::value ) {
+        return stringify<Key>::string( key ) == name;
+    } else {
+        return false;
+    }
+}
+
+inline double read_proportional_factor( const JsonValue &jv )
+{
+    const double factor = jv.get_float();
+    if( !( factor > 0 ) ) {
+        jv.throw_error( "a proportional factor must be more than 0" );
+    }
+    return factor;
+}
+
+// "proportional" on a container: a number scales the values of every entry, an object
+// { "key": factor, ... } the named entries.  @p scale( key, factor ) scales the entries with
+// that key and returns how many it found.
+template<typename Key, typename Fn>
+void apply_proportional( const JsonValue &jv, const Fn &scale )
+{
+    if( jv.test_number() ) {
+        scale( nullptr, read_proportional_factor( jv ) );
+        return;
+    }
+    if constexpr( key_is_nameable<Key>() ) {
+        if( jv.test_object() ) {
+            for( const JsonMember member : jv.get_object() ) {
+                const std::string key = member.name();
+                if( scale( &key, read_proportional_factor( member ) ) == 0 ) {
+                    member.throw_error( string_format( "no entry %s to scale", key ) );
+                }
+            }
+            return;
+        }
+    }
+    jv.throw_error( key_is_nameable<Key>() ?
+                    "proportional takes a number, or an object of keys and numbers" :
+                    "proportional takes a number for this member" );
+}
+
+// A weight scaled by a proportional factor: an int weight is rounded, and stays at least 1
+template<typename W>
+W scaled_weight( const W &weight, const double factor )
+{
+    if constexpr( std::is_integral_v<W> ) {
+        return std::max<W>( 1, static_cast<W>( std::lround( weight * factor ) ) );
+    } else {
+        return static_cast<W>( weight * factor );
+    }
+}
 
 template<typename T>
 struct handler {
@@ -1268,8 +1348,29 @@ struct handler<weighted_int_list<T>> {
     bool insert( weighted_int_list<T> &container, const std::pair<T, int> &data ) const {
         return !!container.add_or_replace( data.first, data.second );
     }
-    bool relative( weighted_int_list<T> &, const std::pair<T, int> & ) const {
-        return false;
+    // Adds to the weight of an entry; a weight that drops to 0 or less removes it
+    bool relative( weighted_int_list<T> &container, const std::pair<T, int> &data ) const {
+        const int weight = container.get_specific_weight( data.first );
+        if( weight == 0 ) {
+            debugmsg( "No %s to perform relative of %d on", data_string( data.first ), data.second );
+            return false;
+        }
+        container.add_or_replace( data.first, std::max( 0, weight + data.second ) );
+        return true;
+    }
+    void proportional( weighted_int_list<T> &container, const JsonValue &jv ) const {
+        apply_proportional<T>( jv, [&container]( const std::string * key, const double factor ) {
+            std::vector<std::pair<T, int>> scaled;
+            for( const std::pair<T, int> &entry : container ) {
+                if( key == nullptr || key_matches( entry.first, *key ) ) {
+                    scaled.emplace_back( entry.first, scaled_weight( entry.second, factor ) );
+                }
+            }
+            for( const std::pair<T, int> &entry : scaled ) {
+                container.add_or_replace( entry.first, entry.second );
+            }
+            return scaled.size();
+        } );
     }
     template<typename E>
     bool erase( weighted_int_list<T> &container, const E &data ) const {
@@ -1370,6 +1471,29 @@ struct handler<std::map<Key, Val>> {
         }
         return true;
     }
+    // "extend" of a key that is already there replaces its value
+    static constexpr bool extend_replaces = true;
+    void assign( std::map<Key, Val> &container, const std::pair<Key, Val> &data ) const {
+        container.insert_or_assign( data.first, data.second );
+    }
+    static constexpr bool supports_proportional_values = supports_proportional<Val>::value;
+    void proportional( std::map<Key, Val> &container, const JsonValue &jv ) const {
+        if constexpr( supports_proportional_values ) {
+            apply_proportional<Key>( jv, [&container]( const std::string * key, const double factor ) {
+                size_t found = 0;
+                for( std::pair<const Key, Val> &entry : container ) {
+                    if( key == nullptr || key_matches( entry.first, *key ) ) {
+                        entry.second *= static_cast<float>( factor );
+                        ++found;
+                    }
+                }
+                return found;
+            } );
+        } else {
+            jv.throw_error( string_format( "proportional is not supported for values of type %s",
+                                           demangle( typeid( Val ).name() ) ) );
+        }
+    }
     static constexpr bool is_container = true;
 };
 
@@ -1413,8 +1537,53 @@ struct handler<std::unordered_map<Key, Val>> {
         }
         return true;
     }
+    // "extend" of a key that is already there replaces its value
+    static constexpr bool extend_replaces = true;
+    void assign( std::unordered_map<Key, Val> &container, const std::pair<Key, Val> &data ) const {
+        container.insert_or_assign( data.first, data.second );
+    }
+    static constexpr bool supports_proportional_values = supports_proportional<Val>::value;
+    void proportional( std::unordered_map<Key, Val> &container, const JsonValue &jv ) const {
+        if constexpr( supports_proportional_values ) {
+            apply_proportional<Key>( jv, [&container]( const std::string * key, const double factor ) {
+                size_t found = 0;
+                for( std::pair<const Key, Val> &entry : container ) {
+                    if( key == nullptr || key_matches( entry.first, *key ) ) {
+                        entry.second *= static_cast<float>( factor );
+                        ++found;
+                    }
+                }
+                return found;
+            } );
+        } else {
+            jv.throw_error( string_format( "proportional is not supported for values of type %s",
+                                           demangle( typeid( Val ).name() ) ) );
+        }
+    }
     static constexpr bool is_container = true;
 };
+
+// Whether "extend" replaces an entry already in the container (maps) instead of adding one:
+// the handler has extend_replaces and assign()
+template<typename C>
+using extend_replaces_t = decltype( handler<C>::extend_replaces );
+
+template<typename C, typename = void>
+struct extend_replaces : std::false_type {};
+
+template<typename C>
+struct extend_replaces<C, std::void_t<extend_replaces_t<C>>> : std::true_type {};
+
+// Whether the container takes "proportional": the handler has proportional()
+template<typename C>
+using proportional_call_t = decltype( std::declval<const handler<C> &>().proportional(
+        std::declval<C &>(), std::declval<const JsonValue &>() ) );
+
+template<typename C, typename = void>
+struct supports_container_proportional : std::false_type {};
+
+template<typename C>
+struct supports_container_proportional<C, std::void_t<proportional_call_t<C>>> : std::true_type {};
 } // namespace reader_detail
 
 template<typename T, typename = void>
@@ -1519,6 +1688,24 @@ public:
         }
     }
 
+    // "extend": like insert, but in a map it replaces the value of a key already there
+    template<typename C>
+    void extend_values_from( const JsonObject &jo, const std::string_view member_name,
+                             C &container ) const {
+        const Derived &derived = static_cast<const Derived &>( *this );
+        if( !jo.has_member( member_name ) ) {
+            return;
+        }
+        JsonValue jv = jo.get_member( member_name );
+        apply_all_values( jv, container, [&derived]( JsonValue & val, C & container ) {
+            if constexpr( reader_detail::extend_replaces<C>::value ) {
+                reader_detail::handler<C>().assign( container, derived.get_next( val ) );
+            } else {
+                derived.insert_next( val, container );
+            }
+        } );
+    }
+
     template<typename C>
     void erase_values_from( const JsonObject &jo, const std::string_view member_name,
                             C &container ) const {
@@ -1583,21 +1770,33 @@ public:
             warn_disabled_feature( jo, "delete", member_name, "no copy-from" );
             return false;
         } else {
-            warn_disabled_feature( jo, "proportional", member_name, "not implemented" );
+            // relative, proportional, then delete before extend, so that deleting and extending
+            // the same entry replaces it
             if( jo.has_object( "relative" ) ) {
                 JsonObject tmp = jo.get_object( "relative" );
                 tmp.allow_omitted_members();
                 derived.relative_values_from( tmp, member_name, container );
             }
-            if( jo.has_object( "extend" ) ) {
-                JsonObject tmp = jo.get_object( "extend" );
-                tmp.allow_omitted_members();
-                derived.insert_values_from( tmp, member_name, container );
+            if constexpr( reader_detail::supports_container_proportional<C>::value ) {
+                if( jo.has_object( "proportional" ) ) {
+                    JsonObject tmp = jo.get_object( "proportional" );
+                    tmp.allow_omitted_members();
+                    if( tmp.has_member( member_name ) ) {
+                        reader_detail::handler<C>().proportional( container, tmp.get_member( member_name ) );
+                    }
+                }
+            } else {
+                warn_disabled_feature( jo, "proportional", member_name, "not implemented" );
             }
             if( jo.has_object( "delete" ) ) {
                 JsonObject tmp = jo.get_object( "delete" );
                 tmp.allow_omitted_members();
                 derived.erase_values_from( tmp, member_name, container );
+            }
+            if( jo.has_object( "extend" ) ) {
+                JsonObject tmp = jo.get_object( "extend" );
+                tmp.allow_omitted_members();
+                derived.extend_values_from( tmp, member_name, container );
             }
             return true;
         }
@@ -1707,15 +1906,16 @@ public:
             warn_disabled_feature( jo, "relative", member_name, "no copy-from" );
             warn_disabled_feature( jo, "proportional", member_name, "no copy-from" );
         }
-        if( jo.has_object( "extend" ) ) {
-            JsonObject tmp = jo.get_object( "extend" );
-            tmp.allow_omitted_members();
-            do_extend( tmp, member_name, member );
-        }
+        // delete first, so that a delete and an extend of the same entry replace it
         if( jo.has_object( "delete" ) ) {
             JsonObject tmp = jo.get_object( "delete" );
             tmp.allow_omitted_members();
             do_delete( tmp, member_name, member );
+        }
+        if( jo.has_object( "extend" ) ) {
+            JsonObject tmp = jo.get_object( "extend" );
+            tmp.allow_omitted_members();
+            do_extend( tmp, member_name, member );
         }
         return derived.read_normal( jo, member_name, member ) ||
                // not every reader handles proportional
@@ -2089,6 +2289,7 @@ public:
 };
 
 class nc_color;
+
 class nc_color_reader : public generic_typed_reader<nc_color_reader>
 {
     public:

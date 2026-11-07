@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_assert.h"
@@ -331,7 +332,9 @@ std::vector<const score *> stats_tracker::valid_scores() const
 {
     std::vector<const score *> result;
     for( const score &scr : score::get_all() ) {
-        if( initial_scores.count( scr.id ) ) {
+        // EVT-J05: or one that allows it, added to a game that started without it
+        if( initial_scores.count( scr.id ) ||
+            ( scr.allows_late_tracking() && !initial_scores.empty() ) ) {
             result.push_back( &scr );
         }
     }
@@ -363,18 +366,112 @@ void stats_tracker::unwatch_all()
 
 bool stats_tracker::records( const event_type type )
 {
-    // one summary per NPC and pair of goals or attitudes (and cause), or per mod setting and
-    // pair of values, kept for good, would grow every save
-    return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed &&
-           type != event_type::mod_setting_changed;
+    // these would keep a summary per NPC and pair of goals, attitudes or movement modes, per mod
+    // setting and pair of values, per tile destroyed or overmap tile generated, per teleport, sound
+    // heard or step, per reload or unload, per armor hit or wound on each part, per bionic or trait
+    // switched on or off, per monster special attack used, or per item type and
+    // count moved, or per trade: kept for good, they would grow every save
+    switch( type ) {
+        case event_type::npc_goal_changed:
+        case event_type::npc_attitude_changed:
+        case event_type::mod_setting_changed:
+        case event_type::tile_destroyed:
+        case event_type::creature_teleported:
+        case event_type::character_hears_sound:
+        case event_type::omt_generated:
+        case event_type::map_extra_spawned:
+        case event_type::character_reloads_item:
+        case event_type::character_unloads_item:
+        case event_type::character_armor_damaged:
+        case event_type::character_picks_up_item:
+        case event_type::character_drops_item:
+        case event_type::character_stores_item:
+        case event_type::character_changes_move_mode:
+        case event_type::character_moves:
+        case event_type::character_gains_wound:
+        case event_type::character_wound_progresses:
+        case event_type::character_loses_wound:
+        case event_type::activates_bionic:
+        case event_type::deactivates_bionic:
+        case event_type::activates_mutation:
+        case event_type::deactivates_mutation:
+        case event_type::monster_uses_special:
+        case event_type::avatar_trades:
+        // every monster's every cast (MAGIC-J10)
+        case event_type::monster_casts_spell:
+            return false;
+        default:
+            return true;
+    }
 }
 
-void stats_tracker::notify( const cata::event &e )
+const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_type type )
 {
-    const event_type type = e.type();
+    static const std::vector<std::string> none;
+    static const std::vector<std::string> pos = { "pos" };
+    // where and at what level (MAGIC-J10) a spell was cast
+    static const std::vector<std::string> target = { "target", "level" };
+    // every monster type times every damage amount and type: thousands of summaries in a
+    // long game, where there were a few hundred
+    static const std::vector<std::string> monster_hurt = {
+        "victim_type", "bodypart", "damage_type"
+    };
+    // CMBT-J04: one summary per amount of damage, for every hit and block, would grow every save
+    static const std::vector<std::string> hit_damage = { "damage" };
+    static const std::vector<std::string> damage_blocked = { "damage_blocked" };
+    // every name, speed and damage of a collision: kept by type and part only
+    static const std::vector<std::string> vehicle_hit = {
+        "target_name", "velocity_delta", "damage"
+    };
+    // a summary per vehicle name (which players choose) would grow without end
+    static const std::vector<std::string> vehicle_name = { "vehicle_name" };
+    switch( type ) {
+        case event_type::character_melee_hits:
+        case event_type::monster_melee_attacks_character:
+        case event_type::monster_melee_attacks_monster:
+            return hit_damage;
+        case event_type::character_blocks:
+            return damage_blocked;
+        case event_type::becomes_wanted:
+        case event_type::character_smashes_tile:
+        case event_type::character_triggers_trap:
+        case event_type::cuts_tree:
+        case event_type::monster_triggers_trap:
+            return pos;
+        case event_type::character_casts_spell:
+        case event_type::spellcasting_finish:
+            return target;
+        case event_type::monster_takes_damage:
+            return monster_hurt;
+        case event_type::vehicle_collides:
+            return vehicle_hit;
+        case event_type::vehicle_part_installed:
+        case event_type::vehicle_part_removed:
+        case event_type::vehicle_part_repaired:
+        case event_type::vehicle_engine_started:
+        case event_type::vehicle_part_toggled:
+            return vehicle_name;
+        default:
+            return none;
+    }
+}
+
+void stats_tracker::notify( const cata::event &sent )
+{
+    const event_type type = sent.type();
     if( !records( type ) ) {
         return;
     }
+    const std::vector<std::string> &unrecorded = unrecorded_fields( type );
+    std::optional<cata::event> trimmed;
+    if( !unrecorded.empty() ) {
+        cata::event::data_type kept = sent.data();
+        for( const std::string &field : unrecorded ) {
+            kept.erase( field );
+        }
+        trimmed.emplace( type, sent.time(), std::move( kept ) );
+    }
+    const cata::event &e = trimmed ? *trimmed : sent;
     get_events( type ).add( e );
 
     auto it = event_type_watchers.find( type );

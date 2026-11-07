@@ -5,8 +5,8 @@
 #include <string>
 #include <utility>
 
+#include "damage.h"
 #include "debug.h"
-#include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"
@@ -34,32 +34,6 @@ const clothing_mod &string_id<clothing_mod>::obj() const
     return all_clothing_mods.obj( *this );
 }
 
-namespace io
-{
-
-template<>
-std::string enum_to_string<clothing_mod_type>( clothing_mod_type data )
-{
-    switch( data ) {
-        // *INDENT-OFF*
-        case clothing_mod_type_acid: return "acid";
-        case clothing_mod_type_fire: return "fire";
-        case clothing_mod_type_bash: return "bash";
-        case clothing_mod_type_cut: return "cut";
-        case clothing_mod_type_bullet: return "bullet";
-        case clothing_mod_type_encumbrance: return "encumbrance";
-        case clothing_mod_type_warmth: return "warmth";
-        case clothing_mod_type_invalid: return "invalid";
-        // *INDENT-ON*
-        case num_clothing_mod_types:
-            break;
-    }
-    debugmsg( "Invalid mod type value '%d'.", data );
-    return "invalid";
-}
-
-} // namespace io
-
 void clothing_mod::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "flag", flag );
@@ -72,7 +46,15 @@ void clothing_mod::load( const JsonObject &jo, std::string_view )
         mod_value mv;
         std::string temp_str;
         mandatory( mv_jo, was_loaded, "type", temp_str );
-        mv.type = io::string_to_enum<clothing_mod_type>( temp_str );
+        // "encumbrance", "warmth" or a damage type.  "fire" is the old name of heat.
+        if( temp_str == "encumbrance" ) {
+            mv.type = clothing_mod_type_encumbrance;
+        } else if( temp_str == "warmth" ) {
+            mv.type = clothing_mod_type_warmth;
+        } else {
+            mv.type = clothing_mod_type_damage;
+            mv.damage_type = damage_type_id( temp_str == "fire" ? "heat" : temp_str );
+        }
         mandatory( mv_jo, was_loaded, "value", mv.value );
         optional( mv_jo, was_loaded, "round_up", mv.round_up );
         for( const JsonValue entry : mv_jo.get_array( "proportion" ) ) {
@@ -89,24 +71,55 @@ void clothing_mod::load( const JsonObject &jo, std::string_view )
     }
 }
 
+// The value of one mod_value on an item, scaled by its thickness and coverage if asked.
+static float scaled_mod_value( const mod_value &mv, const item &it )
+{
+    float tmp = mv.value;
+    if( mv.thickness_proportion ) {
+        const int thickness = it.get_thickness();
+        tmp *= thickness;
+    }
+    if( mv.coverage_proportion ) {
+        tmp *= it.get_avg_coverage() / 100.0f;
+    }
+    if( mv.round_up ) {
+        tmp = std::ceil( tmp );
+    }
+    return tmp;
+}
+
 float clothing_mod::get_mod_val( const clothing_mod_type &type, const item &it ) const
 {
-    const int thickness = it.get_thickness();
-    const int coverage = it.get_avg_coverage();
     float result = 0.0f;
     for( const mod_value &mv : mod_values ) {
         if( mv.type == type ) {
-            float tmp = mv.value;
-            if( mv.thickness_proportion ) {
-                tmp *= thickness;
-            }
-            if( mv.coverage_proportion ) {
-                tmp *= coverage / 100.0f;
-            }
-            if( mv.round_up ) {
-                tmp = std::ceil( tmp );
-            }
-            result += tmp;
+            result += scaled_mod_value( mv, it );
+        }
+    }
+    return result;
+}
+
+float clothing_mod::get_damage_mod_val( const damage_type_id &dt, const item &it ) const
+{
+    float result = 0.0f;
+    bool dedicated = false;
+    for( const mod_value &mv : mod_values ) {
+        if( mv.type == clothing_mod_type_damage && mv.damage_type == dt ) {
+            result += scaled_mod_value( mv, it );
+            dedicated = true;
+        }
+    }
+    if( dedicated || dt.is_null() || !dt.is_valid() ) {
+        return result;
+    }
+    // No value of its own: fall back on the type it's derived from, as materials do
+    const std::pair<damage_type_id, float> &derived = dt->derived_from;
+    if( derived.first.is_null() ) {
+        return result;
+    }
+    for( const mod_value &mv : mod_values ) {
+        if( mv.type == clothing_mod_type_damage && mv.damage_type == derived.first ) {
+            result += scaled_mod_value( mv, it ) * derived.second;
         }
     }
     return result;
@@ -135,6 +148,18 @@ void clothing_mods::load( const JsonObject &jo, const std::string &src )
 void clothing_mod::finalize_all()
 {
     all_clothing_mods.finalize();
+    // Items read their mod values on demand: anything worked out before every mod was loaded
+    // is dropped
+    clothing_mods_by_type.clear();
+    for( const clothing_mod &cm : all_clothing_mods.get_all() ) {
+        for( const mod_value &mv : cm.mod_values ) {
+            if( mv.type == clothing_mod_type_damage && !mv.damage_type.is_valid() ) {
+                debugmsg( "clothing_mod %s has a mod_value of unknown type \"%s\": valid are "
+                          "\"encumbrance\", \"warmth\" and damage types", cm.id.str(),
+                          mv.damage_type.str() );
+            }
+        }
+    }
 }
 
 void clothing_mods::reset()
@@ -164,9 +189,4 @@ const std::vector<clothing_mod> &clothing_mods::get_all_with( clothing_mod_type 
         clothing_mods_by_type.emplace( type, std::move( list ) );
         return clothing_mods_by_type[type];
     }
-}
-
-std::string clothing_mods::string_from_clothing_mod_type( clothing_mod_type type )
-{
-    return io::enum_to_string<clothing_mod_type>( type );
 }

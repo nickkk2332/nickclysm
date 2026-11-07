@@ -1,8 +1,16 @@
 #include "magic_enchantment.h"
 
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_utility.h"
@@ -13,16 +21,22 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
+#include "enum_bitset.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "item.h"
+#include "item_location.h"
 #include "json.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "mod_tracker.h"
 #include "monster.h"
 #include "rng.h"
+#include "spell_cast_context.h"
+#include "string_formatter.h"
 #include "talker.h"
 #include "units.h"
 #include "vehicle.h"
@@ -132,6 +146,7 @@ namespace io
             case enchant_vals::mod::VITAMIN_ABSORB_MOD: return "VITAMIN_ABSORB_MOD";
             case enchant_vals::mod::MELEE_STAMINA_CONSUMPTION: return "MELEE_STAMINA_CONSUMPTION";
             case enchant_vals::mod::OBTAIN_COST_MULTIPLIER: return "OBTAIN_COST_MULTIPLIER";
+            case enchant_vals::mod::STORE_COST_MULTIPLIER: return "STORE_COST_MULTIPLIER";
             case enchant_vals::mod::CASTING_TIME_MULTIPLIER: return "CASTING_TIME_MULTIPLIER";
             case enchant_vals::mod::CRAFTING_SPEED_MULTIPLIER: return "CRAFTING_SPEED_MULTIPLIER";
             case enchant_vals::mod::BIONIC_MANA_PENALTY: return "BIONIC_MANA_PENALTY";
@@ -152,6 +167,8 @@ namespace io
             case enchant_vals::mod::KNOCKBACK_RESIST: return "KNOCKBACK_RESIST";
             case enchant_vals::mod::KNOCKDOWN_RESIST: return "KNOCKDOWN_RESIST";
             case enchant_vals::mod::FALL_DAMAGE: return "FALL_DAMAGE";
+            case enchant_vals::mod::CLIMB_SLIP_CHANCE: return "CLIMB_SLIP_CHANCE";
+            case enchant_vals::mod::MOVE_MODE_SWITCH_COST: return "MOVE_MODE_SWITCH_COST";
             case enchant_vals::mod::FORCEFIELD: return "FORCEFIELD";
             case enchant_vals::mod::EVASION: return "EVASION";
             case enchant_vals::mod::OVERKILL_DAMAGE: return "OVERKILL_DAMAGE";
@@ -184,6 +201,29 @@ namespace io
             case enchant_vals::mod::FUEL_USAGE: return "FUEL_USAGE";
             case enchant_vals::mod::TURNING_DIFFICULTY: return "TURNING_DIFFICULTY";
             case enchant_vals::mod::CROWD_CRUSH_RESIST: return "CROWD_CRUSH_RESIST";
+            case enchant_vals::mod::DRUG_DURATION: return "DRUG_DURATION";
+            case enchant_vals::mod::ADDICTION_STRENGTH: return "ADDICTION_STRENGTH";
+            case enchant_vals::mod::ADDICTION_SATIATION: return "ADDICTION_SATIATION";
+            case enchant_vals::mod::ADDICTION_RECOVERY: return "ADDICTION_RECOVERY";
+            case enchant_vals::mod::SLEEP_LIGHT_TOLERANCE: return "SLEEP_LIGHT_TOLERANCE";
+            case enchant_vals::mod::WAKE_RESISTANCE: return "WAKE_RESISTANCE";
+            case enchant_vals::mod::WAKE_PAIN_THRESHOLD: return "WAKE_PAIN_THRESHOLD";
+            case enchant_vals::mod::BOOK_FUN: return "BOOK_FUN";
+            case enchant_vals::mod::BIONIC_SURGERY_SKILL: return "BIONIC_SURGERY_SKILL";
+            case enchant_vals::mod::MUT_OUT_OF_TREE_INSTABILITY_MULT: return "MUT_OUT_OF_TREE_INSTABILITY_MULT";
+            case enchant_vals::mod::BLOCK_EFFECTIVENESS: return "BLOCK_EFFECTIVENESS";
+            case enchant_vals::mod::BLOCK_STAMINA_COST: return "BLOCK_STAMINA_COST";
+            case enchant_vals::mod::VEH_ENGINE_POWER: return "VEH_ENGINE_POWER";
+            case enchant_vals::mod::VEH_MAX_VELOCITY: return "VEH_MAX_VELOCITY";
+            case enchant_vals::mod::VEH_ACCELERATION: return "VEH_ACCELERATION";
+            case enchant_vals::mod::VEH_AIR_DRAG: return "VEH_AIR_DRAG";
+            case enchant_vals::mod::VEH_ROLLING_RESISTANCE: return "VEH_ROLLING_RESISTANCE";
+            case enchant_vals::mod::VEH_WATER_DRAG: return "VEH_WATER_DRAG";
+            case enchant_vals::mod::VEH_TRACTION: return "VEH_TRACTION";
+            case enchant_vals::mod::VEH_PART_DAMAGE_TAKEN: return "VEH_PART_DAMAGE_TAKEN";
+            case enchant_vals::mod::VEH_COLLISION_DAMAGE: return "VEH_COLLISION_DAMAGE";
+            case enchant_vals::mod::VEH_RENEWABLE_OUTPUT: return "VEH_RENEWABLE_OUTPUT";
+            case enchant_vals::mod::VEH_EPOWER_DRAIN: return "VEH_EPOWER_DRAIN";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );
@@ -199,6 +239,10 @@ namespace io
             case enchant_vals::spell_mod::DURATION: return "DURATION";
             case enchant_vals::spell_mod::COST: return "COST";
             case enchant_vals::spell_mod::CAST_TIME: return "CAST_TIME";
+            case enchant_vals::spell_mod::FAIL: return "FAIL";
+            case enchant_vals::spell_mod::DIFFICULTY: return "DIFFICULTY";
+            case enchant_vals::spell_mod::EXP: return "EXP";
+            case enchant_vals::spell_mod::SOUND: return "SOUND";
             case enchant_vals::spell_mod::NUM_SPELL_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::spell_mod" );
@@ -223,26 +267,42 @@ bool string_id<enchantment>::is_valid() const
     return spell_factory.is_valid( *this );
 }
 
+// MAGIC-B16: a value listed twice with "add" (or "multiply") in one object counted only the
+// first time; now that is a load error
+[[noreturn]] static void throw_repeated_enchantment_value( const JsonObject &value_obj,
+        const std::string_view array_key, const std::string &type_key, const std::string_view op )
+{
+    value_obj.throw_error_at( op, string_format(
+                                  R"(%s lists "%s" with "%s" more than once; list it once, with the values combined)",
+                                  array_key, value_obj.get_string( type_key, "" ), op ) );
+}
+
 template<typename TKey>
 static void load_add_and_multiply_dbl_or_var( const JsonObject &jo, std::string_view array_key,
         const std::string &type_key, std::map<TKey, dbl_or_var> &add_map,
         std::map<TKey, dbl_or_var> &mult_map )
 {
     if( jo.has_array( array_key ) ) {
+        // the values this object lists; each replaces the one a copy-from parent gave
+        std::set<TKey> added;
+        std::set<TKey> multiplied;
         for( const JsonObject value_obj : jo.get_array( array_key ) ) {
 
             TKey value;
             mandatory( value_obj, false, type_key, value );
 
             if( value_obj.has_member( "add" ) ) {
-                dbl_or_var add = get_dbl_or_var( value_obj, "add" );
-                add_map.emplace( value, add );
+                if( !added.insert( value ).second ) {
+                    throw_repeated_enchantment_value( value_obj, array_key, type_key, "add" );
+                }
+                add_map.insert_or_assign( value, get_dbl_or_var( value_obj, "add" ) );
             }
 
             if( value_obj.has_member( "multiply" ) ) {
-                dbl_or_var mult = get_dbl_or_var( value_obj, "multiply" );
-
-                mult_map.emplace( value, mult );
+                if( !multiplied.insert( value ).second ) {
+                    throw_repeated_enchantment_value( value_obj, array_key, type_key, "multiply" );
+                }
+                mult_map.insert_or_assign( value, get_dbl_or_var( value_obj, "multiply" ) );
             }
 
         }
@@ -274,12 +334,13 @@ static void load_add_and_multiply( const JsonObject &jo, std::string_view array_
             const double add = value_obj.get_float( "add", 0.0 );
             const double mult = value_obj.get_float( "multiply", 0.0 );
 
-            if( add != 0.0 ) {
-                add_map.emplace( value, add );
+            // a relic's enchantment is built fresh, so a key already there was listed before
+            if( add != 0.0 && !add_map.emplace( value, add ).second ) {
+                throw_repeated_enchantment_value( value_obj, array_key, type_key, "add" );
             }
 
-            if( mult != 0.0 ) {
-                mult_map.emplace( value, mult );
+            if( mult != 0.0 && !mult_map.emplace( value, mult ).second ) {
+                throw_repeated_enchantment_value( value_obj, array_key, type_key, "multiply" );
             }
 
         }
@@ -386,6 +447,90 @@ void enchantment::check_spell_values() const
     }
 }
 
+void enchantment::check_consistency()
+{
+    spell_factory.check();
+}
+
+template<typename K, typename V>
+static void check_enchantment_keys( const enchantment_id &ench, const std::string_view what,
+                                    const std::map<K, V> &values,
+                                    const std::function<bool( const K & )> &is_valid )
+{
+    for( const std::pair<const K, V> &entry : values ) {
+        if( !is_valid( entry.first ) ) {
+            debugmsg( R"(enchantment %s has unknown %s "%s")", ench.str(), what, entry.first.str() );
+        }
+    }
+}
+
+void enchantment::check() const
+{
+    for( const trait_id &mut : mutations ) {
+        if( !mut.is_valid() ) {
+            debugmsg( R"(enchantment %s gives unknown mutation "%s")", id.str(), mut.str() );
+        }
+    }
+    if( emitter && !emitter->is_valid() ) {
+        debugmsg( R"(enchantment %s has unknown emitter "%s")", id.str(), emitter->str() );
+    }
+    check_enchantment_keys<efftype_id, int>( id, "ench_effects effect", ench_effects,
+    []( const efftype_id & eff ) {
+        return eff.is_valid();
+    } );
+    const std::function<bool( const skill_id & )> skill_valid = []( const skill_id & sk ) {
+        return sk.is_valid();
+    };
+    check_enchantment_keys( id, "skill", skill_values_add, skill_valid );
+    check_enchantment_keys( id, "skill", skill_values_multiply, skill_valid );
+    check_enchantment_keys( id, "skill_floor skill", skill_floor, skill_valid );
+    // "all" stands for every body part
+    const std::function<bool( const bodypart_str_id & )> part_valid = [](
+    const bodypart_str_id & bp ) {
+        return bp == body_part_all || bp.is_valid();
+    };
+    check_enchantment_keys( id, "encumbrance_modifier part", encumbrance_values_add, part_valid );
+    check_enchantment_keys( id, "encumbrance_modifier part", encumbrance_values_multiply,
+                            part_valid );
+    const std::function<bool( const damage_type_id & )> damage_valid = [](
+    const damage_type_id & dt ) {
+        return dt.is_valid();
+    };
+    check_enchantment_keys( id, "melee_damage_bonus type", damage_values_add, damage_valid );
+    check_enchantment_keys( id, "melee_damage_bonus type", damage_values_multiply, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod type", armor_values_add, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod type", armor_values_multiply, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod_post_absorbed type", extra_damage_add,
+                            damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod_post_absorbed type", extra_damage_multiply,
+                            damage_valid );
+    for( const bodypart_changes &change : modified_bodyparts ) {
+        for( const bodypart_str_id &bp : {
+                 change.gain, change.lose
+             } ) {
+            if( !bp.is_empty() && !bp.is_valid() ) {
+                debugmsg( R"(enchantment %s has unknown modified_bodyparts body part "%s")", id.str(),
+                          bp.str() );
+            }
+        }
+    }
+    const auto check_spells = [this]( const std::string_view what,
+    const std::vector<fake_spell> &spells ) {
+        for( const fake_spell &sp : spells ) {
+            if( !sp.id.is_valid() ) {
+                debugmsg( R"(enchantment %s has unknown %s spell "%s")", id.str(), what,
+                          sp.id.str() );
+            }
+        }
+    };
+    check_spells( "hit_me_effect", hit_me_effect );
+    check_spells( "hit_you_effect", hit_you_effect );
+    for( const std::pair<const time_duration, std::vector<fake_spell>> &activation :
+         intermittent_activation ) {
+        check_spells( "intermittent_activation", activation.second );
+    }
+}
+
 void enchantment::reset()
 {
     spell_factory.reset();
@@ -412,28 +557,115 @@ enchantment_id enchantment::load_inline_enchantment( const JsonValue &jv,
     }
 }
 
-bool enchantment::is_active( const Character &guy, const item &parent ) const
+void enchantment::load_enchantment_list( const JsonObject &jo, const bool was_loaded,
+        const std::string_view member, const std::string &owner, int &inline_count,
+        const std::string_view src, std::vector<enchantment_id> &list )
+{
+    const auto load_all = [&]( const JsonArray & ja ) {
+        for( const JsonValue jv : ja ) {
+            // only an inline enchantment takes a number: a named one keeps its id
+            std::string inline_id = jv.test_object() ? "INLINE_ENCH_" + owner + "_" +
+                                    std::to_string( inline_count++ ) : std::string();
+            list.push_back( load_inline_enchantment( jv, src, inline_id ) );
+        }
+    };
+    warn_disabled_feature( jo, "relative", member, "not supported for enchantments" );
+    warn_disabled_feature( jo, "proportional", member, "not supported for enchantments" );
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", member, "no copy-from" );
+        warn_disabled_feature( jo, "delete", member, "no copy-from" );
+    }
+    if( jo.has_member( member ) ) {
+        list.clear();
+        load_all( jo.get_array( member ) );
+        return;
+    }
+    if( !was_loaded ) {
+        return;
+    }
+    // delete first, so that deleting and extending the same id replaces it
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const JsonValue jv : del.get_array( member ) ) {
+            const enchantment_id doomed( jv.get_string() );
+            const auto iter = std::find( list.begin(), list.end(), doomed );
+            if( iter == list.end() ) {
+                jv.throw_error( string_format( "%s has no enchantment %s to delete", owner,
+                                               doomed.str() ) );
+            }
+            list.erase( iter );
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        load_all( extend.get_array( member ) );
+    }
+}
+
+// MAGIC-J08: the dialogue an enchantment's condition and values are evaluated in: the character,
+// the item it is on as beta, and context vals naming the effect, bionic or trait it comes from
+static const_dialogue enchantment_dialogue( const Character &guy,
+        const enchantment_source &source )
+{
+    const_dialogue d( get_const_talker_for( guy ),
+                      source.item != nullptr ? get_const_talker_for( *source.item ) : nullptr );
+    if( !source.effect.empty() ) {
+        d.set_value( "source_effect", source.effect );
+        d.set_value( "source_intensity", static_cast<double>( source.intensity ) );
+    }
+    if( !source.bionic.empty() ) {
+        d.set_value( "source_bionic", source.bionic );
+    }
+    if( !source.trait.empty() ) {
+        d.set_value( "source_trait", source.trait );
+    }
+    return d;
+}
+
+// Whether the character has the item where the enchantment needs it, and its condition holds
+static bool enchantment_active_on_item( const enchantment &ench, const Character &guy,
+                                        const item &parent, const enchantment_source &source )
 {
     if( !guy.has_item( parent ) ) {
         return false;
     }
 
-    if( active_conditions.first == has::HELD &&
-        active_conditions.second == condition::ALWAYS ) {
+    if( ench.active_conditions.first == enchantment::has::HELD &&
+        ench.active_conditions.second == enchantment::condition::ALWAYS ) {
         return true;
     }
 
-    if( !( active_conditions.first == has::HELD ||
-           ( active_conditions.first == has::WIELD && guy.is_wielding( parent ) ) ||
-           ( active_conditions.first == has::WORN &&
+    if( !( ench.active_conditions.first == enchantment::has::HELD ||
+           ( ench.active_conditions.first == enchantment::has::WIELD && guy.is_wielding( parent ) ) ||
+           ( ench.active_conditions.first == enchantment::has::WORN &&
              ( guy.is_worn( parent ) || guy.is_worn_module( parent ) ) ) ) ) {
         return false;
     }
 
-    return is_active( guy, parent.active );
+    return ench.is_active( guy, parent.active, source );
+}
+
+bool enchantment::is_active( const Character &guy, const item &parent ) const
+{
+    return enchantment_active_on_item( *this, guy, parent, enchantment_source() );
+}
+
+bool enchantment::is_active( const Character &guy, const item_location &parent ) const
+{
+    enchantment_source source;
+    source.item = &parent;
+    return enchantment_active_on_item( *this, guy, *parent, source );
 }
 
 bool enchantment::is_active( const Character &guy, const bool active ) const
+{
+    return is_active( guy, active, enchantment_source() );
+}
+
+bool enchantment::is_active( const Character &guy, const bool active,
+                             const enchantment_source &source ) const
 {
     if( active_conditions.second == condition::ACTIVE ) {
         return active;
@@ -448,7 +680,7 @@ bool enchantment::is_active( const Character &guy, const bool active ) const
     }
 
     if( active_conditions.second == condition::DIALOG_CONDITION ) {
-        const_dialogue d( get_const_talker_for( guy ), nullptr );
+        const const_dialogue d = enchantment_dialogue( guy, source );
         return dialog_condition( d );
     }
     return false;
@@ -502,7 +734,10 @@ bool enchantment::is_monster_relevant() const
             pair_values.first == enchant_vals::mod::RANGE_DODGE ||
             pair_values.first == enchant_vals::mod::SPEED ||
             pair_values.first == enchant_vals::mod::LUMINATION ||
-            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ) {
+            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
+            // MONAI-J04
+            pair_values.first == enchant_vals::mod::HEARING_MULT ||
+            pair_values.first == enchant_vals::mod::FOOTSTEP_NOISE ) {
             return true;
         }
     }
@@ -516,7 +751,10 @@ bool enchantment::is_monster_relevant() const
             pair_values.first == enchant_vals::mod::RANGE_DODGE ||
             pair_values.first == enchant_vals::mod::SPEED ||
             pair_values.first == enchant_vals::mod::LUMINATION ||
-            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ) {
+            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
+            // MONAI-J04
+            pair_values.first == enchant_vals::mod::HEARING_MULT ||
+            pair_values.first == enchant_vals::mod::FOOTSTEP_NOISE ) {
             return true;
         }
     }
@@ -542,12 +780,32 @@ bool enchantment::is_monster_relevant() const
 // Returns true if this enchantment is relevant to vehicles. Enchantments that are not relevant to vehicles are not processed by vehicles.
 bool enchantment::is_vehicle_relevant() const
 {
+    const auto vehicle_value = []( const enchant_vals::mod value ) {
+        switch( value ) {
+            case enchant_vals::mod::TOTAL_WEIGHT:
+            case enchant_vals::mod::FUEL_USAGE:
+            case enchant_vals::mod::TURNING_DIFFICULTY:
+            // VEH-J09
+            case enchant_vals::mod::VEH_ENGINE_POWER:
+            case enchant_vals::mod::VEH_MAX_VELOCITY:
+            case enchant_vals::mod::VEH_ACCELERATION:
+            case enchant_vals::mod::VEH_AIR_DRAG:
+            case enchant_vals::mod::VEH_ROLLING_RESISTANCE:
+            case enchant_vals::mod::VEH_WATER_DRAG:
+            case enchant_vals::mod::VEH_TRACTION:
+            case enchant_vals::mod::VEH_PART_DAMAGE_TAKEN:
+            case enchant_vals::mod::VEH_COLLISION_DAMAGE:
+            case enchant_vals::mod::VEH_RENEWABLE_OUTPUT:
+            case enchant_vals::mod::VEH_EPOWER_DRAIN:
+                return true;
+            default:
+                return false;
+        }
+    };
     // Check add values.
     for( const std::pair<const enchant_vals::mod, dbl_or_var> &pair_values :
          values_add ) {
-        if( pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
-            pair_values.first == enchant_vals::mod::FUEL_USAGE ||
-            pair_values.first == enchant_vals::mod::TURNING_DIFFICULTY ) {
+        if( vehicle_value( pair_values.first ) ) {
             return true;
         }
     }
@@ -555,9 +813,7 @@ bool enchantment::is_vehicle_relevant() const
     // Check mult values.
     for( const std::pair<const enchant_vals::mod, dbl_or_var> &pair_values :
          values_multiply ) {
-        if( pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
-            pair_values.first == enchant_vals::mod::FUEL_USAGE ||
-            pair_values.first == enchant_vals::mod::TURNING_DIFFICULTY ) {
+        if( vehicle_value( pair_values.first ) ) {
             return true;
         }
     }
@@ -594,6 +850,39 @@ void enchantment::bodypart_changes::serialize( JsonOut &jsout ) const
     jsout.end_object();
 }
 
+// MAGIC-B16: in a copy-from child, "extend" adds spells to the parent's hit_you_effect or
+// hit_me_effect and "delete" removes the parent's ones with the given spell ids
+static void extend_and_delete_fake_spells( const JsonObject &jo, const std::string &name,
+        const bool was_loaded, std::vector<fake_spell> &spells )
+{
+    if( !was_loaded || jo.has_member( name ) ) {
+        return;
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject deleted = jo.get_object( "delete" );
+        deleted.allow_omitted_members();
+        if( deleted.has_member( name ) ) {
+            for( const std::string &spell_name : deleted.get_as_string_array( name ) ) {
+                spells.erase( std::remove_if( spells.begin(), spells.end(),
+                [&spell_name]( const fake_spell & sp ) {
+                    return sp.id.str() == spell_name;
+                } ), spells.end() );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject extended = jo.get_object( "extend" );
+        extended.allow_omitted_members();
+        if( extended.has_array( name ) ) {
+            for( const JsonObject spell_obj : extended.get_array( name ) ) {
+                fake_spell sp;
+                sp.load( spell_obj );
+                spells.push_back( sp );
+            }
+        }
+    }
+}
+
 void enchantment::load( const JsonObject &jo, std::string_view,
                         const std::optional<std::string> &inline_id, bool is_child )
 {
@@ -601,6 +890,8 @@ void enchantment::load( const JsonObject &jo, std::string_view,
 
     jo.read( "hit_you_effect", hit_you_effect );
     jo.read( "hit_me_effect", hit_me_effect );
+    extend_and_delete_fake_spells( jo, "hit_you_effect", was_loaded, hit_you_effect );
+    extend_and_delete_fake_spells( jo, "hit_me_effect", was_loaded, hit_me_effect );
     jo.read( "emitter", emitter );
 
     if( jo.has_object( "intermittent_activation" ) ) {
@@ -623,7 +914,10 @@ void enchantment::load( const JsonObject &jo, std::string_view,
         }
     }
 
-    active_conditions.first = io::string_to_enum<has>( jo.get_string( "has", "HELD" ) );
+    // MAGIC-B16: a copy-from child keeps its parent's "has" and "condition" unless it gives its own
+    if( jo.has_member( "has" ) || !was_loaded ) {
+        active_conditions.first = io::string_to_enum<has>( jo.get_string( "has", "HELD" ) );
+    }
     if( jo.has_string( "condition" ) ) {
         std::string condit;
         optional( jo, was_loaded, "condition", condit );
@@ -635,15 +929,22 @@ void enchantment::load( const JsonObject &jo, std::string_view,
         }
     } else if( jo.has_member( "condition" ) ) {
         active_conditions.second = condition::DIALOG_CONDITION;
-    } else {
+    } else if( !was_loaded ) {
         active_conditions.second = condition::ALWAYS;
     }
-    if( active_conditions.second == condition::DIALOG_CONDITION ) {
+    if( active_conditions.second == condition::DIALOG_CONDITION && jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", dialog_condition, false );
     }
 
+    // each effect once; an entry replaces the intensity a copy-from parent gave
+    std::set<efftype_id> listed_effects;
     for( JsonObject jsobj : jo.get_array( "ench_effects" ) ) {
-        ench_effects.emplace( efftype_id( jsobj.get_string( "effect" ) ), jsobj.get_int( "intensity" ) );
+        const efftype_id effect( jsobj.get_string( "effect" ) );
+        if( !listed_effects.insert( effect ).second ) {
+            jsobj.throw_error_at( "effect", string_format(
+                                      R"(ench_effects lists "%s" more than once)", effect.str() ) );
+        }
+        ench_effects.insert_or_assign( effect, jsobj.get_int( "intensity" ) );
     }
 
     optional( jo, was_loaded, "modified_bodyparts", modified_bodyparts );
@@ -661,6 +962,14 @@ void enchantment::load( const JsonObject &jo, std::string_view,
 
     load_add_and_multiply_dbl_or_var<skill_id>( jo, "skills", "value", skill_values_add,
             skill_values_multiply );
+
+    // CMBT-J08: "skill_floor": { "melee": 5 } makes the skill count as at least 5
+    if( jo.has_object( "skill_floor" ) ) {
+        const JsonObject floors = jo.get_object( "skill_floor" );
+        for( const JsonMember member : floors ) {
+            skill_floor.emplace( skill_id( member.name() ), get_dbl_or_var( floors, member.name() ) );
+        }
+    }
 
     load_add_and_multiply_dbl_or_var<bodypart_str_id>( jo, "encumbrance_modifier", "part",
             encumbrance_values_add, encumbrance_values_multiply );
@@ -725,16 +1034,18 @@ void enchant_cache::load( const JsonObject &jo, std::string_view,
         static const std::set<std::string> legacy_values = { };
 
         for( const JsonObject value_obj : jo.get_array( "values" ) ) {
+            // MAGIC-B16: listed before with the same operation (thrown outside the catch below)
+            std::optional<std::string> repeated;
             try {
                 const enchant_vals::mod value = io::string_to_enum<enchant_vals::mod>
                                                 ( value_obj.get_string( "value" ) );
                 const double add = value_obj.get_float( "add", 0 );
-                if( add != 0 ) {
-                    values_add.emplace( value, add );
+                if( add != 0 && !values_add.emplace( value, add ).second ) {
+                    repeated = "add";
                 }
                 const double multiply = value_obj.get_float( "multiply", 0.0 );
-                if( !float_equals( multiply, 0.0 ) ) {
-                    values_multiply.emplace( value, multiply );
+                if( !float_equals( multiply, 0.0 ) && !values_multiply.emplace( value, multiply ).second ) {
+                    repeated = "multiply";
                 }
             } catch( ... ) {
                 value_obj.allow_omitted_members();
@@ -743,11 +1054,19 @@ void enchant_cache::load( const JsonObject &jo, std::string_view,
                               "" ) );
                 }
             }
+            if( repeated ) {
+                throw_repeated_enchantment_value( value_obj, "values", "value", *repeated );
+            }
         }
     }
 
     load_add_and_multiply<skill_id>( jo, "skills", "value",
                                      skill_values_add, skill_values_multiply );
+    if( jo.has_object( "skill_floor" ) ) {
+        for( const JsonMember member : jo.get_object( "skill_floor" ) ) {
+            skill_floor.emplace( skill_id( member.name() ), member.get_float() );
+        }
+    }
 
     load_add_and_multiply<bodypart_str_id>( jo, "encumbrance_modifier", "part",
                                             encumbrance_values_add, encumbrance_values_multiply );
@@ -869,6 +1188,14 @@ void enchant_cache::serialize( JsonOut &jsout ) const
 
     save_add_and_multiply<skill_id>( jsout, "skills", "value", skill_values_add,
                                      skill_values_multiply );
+    if( !skill_floor.empty() ) {
+        jsout.member( "skill_floor" );
+        jsout.start_object();
+        for( const std::pair<const skill_id, double> &lowest : skill_floor ) {
+            jsout.member( lowest.first.str(), lowest.second );
+        }
+        jsout.end_object();
+    }
 
     save_add_and_multiply<bodypart_str_id>( jsout, "encumbrance_modifier", "part",
                                             encumbrance_values_add, encumbrance_values_multiply );
@@ -955,6 +1282,13 @@ void enchant_cache::force_add( const enchant_cache &rhs )
         // so +10% and -10% will add to 0%
         skill_values_multiply[pair_values.first] += pair_values.second;
     }
+    // floors don't add up: the highest counts
+    for( const std::pair<const skill_id, double> &pair_values : rhs.skill_floor ) {
+        const auto ins = skill_floor.emplace( pair_values.first, pair_values.second );
+        if( !ins.second ) {
+            ins.first->second = std::max( ins.first->second, pair_values.second );
+        }
+    }
 
     for( const std::pair<const damage_type_id, double> &pair_values : rhs.damage_values_add ) {
         damage_values_add[pair_values.first] += pair_values.second;
@@ -1036,6 +1370,12 @@ void enchant_cache::force_add( const enchantment &rhs, const Character &guy )
     force_add_with_dialogue( rhs, d );
 }
 
+void enchant_cache::force_add( const enchantment &rhs, const Character &guy,
+                               const enchantment_source &source )
+{
+    force_add_with_dialogue( rhs, enchantment_dialogue( guy, source ) );
+}
+
 void enchant_cache::force_add( const enchantment &rhs, const monster &mon )
 {
     const_dialogue d( get_const_talker_for( mon ), nullptr );
@@ -1076,6 +1416,14 @@ void enchant_cache::force_add_with_dialogue( const enchantment &rhs, const const
         // values do not multiply against each other, they add.
         // so +10% and -10% will add to 0%
         skill_values_multiply[pair_values.first] += pair_values.second.evaluate( d );
+    }
+    // floors don't add up: the highest counts
+    for( const std::pair<const skill_id, dbl_or_var> &pair_values : rhs.skill_floor ) {
+        const double floor_value = pair_values.second.evaluate( d );
+        const auto ins = skill_floor.emplace( pair_values.first, floor_value );
+        if( !ins.second ) {
+            ins.first->second = std::max( ins.first->second, floor_value );
+        }
     }
 
     for( const std::pair<const bodypart_str_id, dbl_or_var> &pair_values :
@@ -1291,6 +1639,11 @@ double enchant_cache::get_skill_value_multiply( const skill_id &value ) const
     return get_value<skill_id>( value, skill_values_multiply );
 }
 
+double enchant_cache::get_skill_floor( const skill_id &value ) const
+{
+    return get_value<skill_id>( value, skill_floor );
+}
+
 double enchant_cache::get_encumbrance_multiply( const bodypart_str_id &value ) const
 {
     return get_value<bodypart_str_id>( value,
@@ -1384,6 +1737,11 @@ double enchant_cache::modify_value( const skill_id &mod_val, double value ) cons
 {
     value += get_skill_value_add( mod_val );
     value *= 1.0 + get_skill_value_multiply( mod_val );
+    // CMBT-J08: a floor only ever raises the skill (an unset one leaves negative skills alone)
+    const auto lowest = skill_floor.find( mod_val );
+    if( lowest != skill_floor.end() ) {
+        value = std::max( value, lowest->second );
+    }
     return value;
 }
 
@@ -1538,48 +1896,71 @@ void enchant_cache::activate_passive( Character &guy ) const
 void enchant_cache::cast_hit_you( Creature &caster, const Creature &target ) const
 {
     for( const fake_spell &sp : hit_you_effect ) {
-        cast_enchantment_spell( caster, &target, sp );
+        if( sp.hit_types[hit_type::melee] ) {
+            cast_enchantment_spell( caster, &target, sp, hit_type::melee );
+        }
     }
 }
 
-void enchant_cache::cast_hit_me( Creature &caster, const Creature *target ) const
+void enchant_cache::cast_hit_me( Creature &caster, const Creature *target, const hit_type hit,
+                                 const std::optional<bodypart_id> &hit_bp ) const
 {
     for( const fake_spell &sp : hit_me_effect ) {
-        cast_enchantment_spell( caster, target, sp );
+        if( sp.hit_types[hit] ) {
+            cast_enchantment_spell( caster, target, sp, hit, hit_bp );
+        }
     }
 }
 
-void enchant_cache::cast_hit_you( Character &caster, const Creature &target ) const
+void enchant_cache::cast_hit_you( Character &caster, const Creature &target,
+                                  const hit_type hit ) const
 {
     for( const fake_spell &sp : hit_you_effect ) {
-        cast_enchantment_spell( caster, &target, sp );
+        if( sp.hit_types[hit] ) {
+            cast_enchantment_spell( caster, &target, sp, hit );
+        }
     }
 }
 
-void enchant_cache::cast_hit_me( Character &caster, const Creature *target ) const
+void enchant_cache::cast_hit_me( Character &caster, const Creature *target, const hit_type hit,
+                                 const std::optional<bodypart_id> &hit_bp ) const
 {
     for( const fake_spell &sp : hit_me_effect ) {
-        cast_enchantment_spell( caster, target, sp );
+        // CHAR-J08: characters cast them on melee hits only, unless hit_types says otherwise
+        const bool casts = sp.hit_types_given ? sp.hit_types[hit] : hit == hit_type::melee;
+        if( casts ) {
+            cast_enchantment_spell( caster, target, sp, hit, hit_bp );
+        }
     }
 }
 
 void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *target,
-        const fake_spell &sp ) const
+        const fake_spell &sp, const std::optional<hit_type> hit,
+        const std::optional<bodypart_id> &hit_bp ) const
 {
     // check the chances
     if( !one_in( sp.trigger_once_in ) ) {
         return;
     }
 
+    global_variables::impl_t context;
+    if( hit ) {
+        context.emplace( "hit_type", diag_value( io::enum_to_string( *hit ) ) );
+    }
+    if( hit_bp ) {
+        context.emplace( "hit_bodypart", diag_value( hit_bp->id().str() ) );
+    }
     if( sp.self ) {
         caster.add_msg_player_or_npc( m_good,
                                       sp.trigger_message,
                                       sp.npc_trigger_message,
                                       caster.get_name() );
-        sp.get_spell( caster, sp.level ).cast_all_effects( caster, caster.pos_bub() );
+        const spell spell_lvl = sp.get_spell( caster, sp.level );
+        const spell_cast_context scope( spell_lvl, context );
+        spell_lvl.cast_all_effects( caster, caster.pos_bub() );
     } else if( target != nullptr ) {
         const Creature &trg_crtr = *target;
-        const spell &spell_lvl = sp.get_spell( caster, sp.level );
+        const spell spell_lvl = sp.get_spell( caster, sp.level );
         if( !spell_lvl.is_valid_target( caster, trg_crtr.pos_bub() ) ||
             !spell_lvl.is_target_in_range( caster, trg_crtr.pos_bub() ) ) {
             return;
@@ -1590,6 +1971,7 @@ void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *ta
                                       sp.npc_trigger_message,
                                       caster.get_name(), trg_crtr.disp_name() );
 
+        const spell_cast_context scope( spell_lvl, context );
         spell_lvl.cast_all_effects( caster, trg_crtr.pos_bub() );
     }
 }
@@ -1602,6 +1984,7 @@ void enchant_cache::clear()
     values_multiply.clear();
     skill_values_add.clear();
     skill_values_multiply.clear();
+    skill_floor.clear();
     damage_values_add.clear();
     damage_values_multiply.clear();
     armor_values_add.clear();

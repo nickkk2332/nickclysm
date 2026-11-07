@@ -60,6 +60,9 @@ class overmap_connection
         string_id<overmap_connection> id;
         std::vector<std::pair<string_id<overmap_connection>, mod_id>> src;
         bool was_loaded = false;
+        // OMAP-J11: where overmap specials build this connection from, unless their
+        // connection says otherwise.
+        special_connection_target special_target = special_connection_target::city;
 
     private:
         struct cache {
@@ -72,6 +75,8 @@ class overmap_connection
 
         std::list<subtype> subtypes;
         mutable std::vector<cache> cached_subtypes;
+
+        void load_subtypes( const JsonObject &jo );
 };
 
 namespace overmap_connections

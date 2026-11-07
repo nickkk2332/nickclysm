@@ -66,7 +66,11 @@ float melee_hit_range( float accuracy );
 float hit_roll_against( const Creature &target, const std::function<float()> &roll );
 melee_statistic_data get_stats();
 void clear_stats();
+// Block strength of an item: its "block" "bonus", else 10, 6 or 4 for the WBLOCK_3/2/1
+// techniques, else 2 for BLOCK_WHILE_WORN (which needs it worn), else 0
 int blocking_ability( const item &shield );
+// The same, as a wielded shield: 0 for an item that only blocks while worn
+int wielded_blocking_ability( const item &shield );
 extern melee_statistic_data melee_stats;
 
 /** Where a line of the manual technique menu comes from; the menu's groups, in order */

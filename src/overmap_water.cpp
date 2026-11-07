@@ -428,10 +428,11 @@ void overmap::place_oceans( const std::vector<const overmap *> &neighbor_overmap
         return f.noise_at( p ) + ocean_adjust > settings_ocean.noise_threshold_ocean;
     };
 
-    const oter_id ocean_surface( "ocean_surface" );
-    const oter_id ocean_shore( "ocean_shore" );
-    const oter_id ocean_water_cube( "ocean_water_cube" );
-    const oter_id ocean_bed( "ocean_bed" );
+    // OMAP-J10: the region's ocean terrain.
+    const oter_id ocean_surface = settings_ocean.surface.id();
+    const oter_id ocean_shore = settings_ocean.shore.id();
+    const oter_id ocean_water_cube = settings_ocean.interior.id();
+    const oter_id ocean_bed = settings_ocean.bed.id();
 
     // This code is repeated from is_lake(), see comments there for explanation.
     std::unordered_set<point_om_omt> visited;

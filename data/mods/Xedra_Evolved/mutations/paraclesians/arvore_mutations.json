@@ -433,6 +433,7 @@
   {
     "type": "mutation",
     "id": "ARVORE_FOREST_MAPPING",
+    "builtin_activation": "tree_communion",
     "name": { "str": "Commune with the Ancient Oaks" },
     "points": 3,
     "visibility": 0,

@@ -204,6 +204,48 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_STIM_HIGH",
+    "//": "A character whose stimulant level is above this dies of a heart attack.",
+    "stype": "int",
+    "value": 250
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_STIM_LOW",
+    "//": "A character whose stimulant level is below this (a depressant overdose) stops breathing and dies.",
+    "stype": "int",
+    "value": -200
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_PAINKILLER",
+    "//": "A character whose painkiller level is above this stops breathing and dies.",
+    "stype": "int",
+    "value": 240
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_JETINJECTOR_MINUTES",
+    "//": "A character whose jet injector effect lasts more than this many minutes dies of heart failure.  0 turns the death off.",
+    "stype": "int",
+    "value": 40
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_ADRENALINE_MINUTES",
+    "//": "A character whose adrenaline effect lasts more than this many minutes dies of heart failure.  0 turns the death off.",
+    "stype": "int",
+    "value": 50
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_DRUNK_INTENSITY",
+    "//": "A character whose drunk effect reaches this intensity dies of alcohol poisoning (drunk's max_intensity is 5).  0 turns the death off.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "SPAWN_CITY_HORDE_THRESHOLD",
     "//": "Minimum city size to guarantee extra zombies are spawned in cities.  0 means all cities spawn extra zombies.  Negative values disable extra city zombies.",
     "stype": "int",
@@ -229,6 +271,34 @@
     "//": "A scaling factor that determines how many zombies are spawned in cites, multiplied by city size, when city hordes are indicated.",
     "stype": "float",
     "value": 80.0
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "SOUND_Z_LEVEL_MULT",
+    "//": "How many tiles of distance one z-level between a sound and its hearer counts as, after the underground multipliers.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "SOUND_UNDERGROUND_MULT",
+    "//": "When the lower of a sound and its hearer is underground, how many z-levels the first level between them counts as.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "SOUND_DEEP_UNDERGROUND_MULT",
+    "//": "When the lower of a sound and its hearer is underground, how many z-levels each further underground level between them counts as.",
+    "stype": "int",
+    "value": 21
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "SOUND_ATTENUATION_PERCENT",
+    "//": "Percentage of the sound_attenuation of the terrain, furniture, fields and vehicle parts between a sound and its hearer that the sound loses: 100 as set in their JSON, 50 half, 0 turns muffling off.",
+    "stype": "int",
+    "value": 100
   },
   {
     "type": "EXTERNAL_OPTION",
@@ -618,5 +688,96 @@
     "//": "Crowd crush: added to the resist chance while you're prone (and not downed, since the downed effect carries its own CROWD_CRUSH_RESIST penalty).",
     "stype": "float",
     "value": -4
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_MIN_STAMINA",
+    "//": "Blocking: with less stamina than this you can't block a melee hit.",
+    "stype": "int",
+    "value": 2000
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_SIZE_MARGIN",
+    "//": "Blocking: you can't block an attacker more than this many size classes bigger than you, unless you have the BLOCK_HUGE_ATTACKS flag.",
+    "stype": "int",
+    "value": 1
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_REACTION_PER_SKILL",
+    "//": "Blocking: percent chance per level of melee skill (times the reaction limb score) to react in time to block.",
+    "stype": "float",
+    "value": 20
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_STAMINA_COST_MULT",
+    "//": "Blocking: stamina a block costs, in multiples of PLAYER_BASE_STAMINA_BURN_RATE, at melee skill 0 (each level takes 5% off).  The BLOCK_STAMINA_COST enchantment value modifies it.",
+    "stype": "float",
+    "value": 6
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_COUNTER_MAX_GLASS_PERCENT",
+    "//": "Blocking: no block counter with a wielded weapon that is more than this percent glass.",
+    "stype": "int",
+    "value": 20
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_EMPATHY_MORALE",
+    "//": "Morale for butchering (any way but dismembering) a corpse of a creature you empathize with, such as a human.  Lasts 2 days, decaying after 3 hours.",
+    "stype": "int",
+    "value": -50
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_EMPATHY_TRAUMA",
+    "//": "Trauma for butchering (any way but dismembering) a corpse of a creature you empathize with.",
+    "stype": "int",
+    "value": 10
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "DISSECT_EMPATHY_MORALE",
+    "//": "Morale for dissecting a corpse of a creature you empathize with, without the prof_dissect_humans proficiency.  Lasts 1 day, decaying after 2 hours.",
+    "stype": "int",
+    "value": -40
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "DISSECT_EMPATHY_TRAUMA",
+    "//": "Trauma for dissecting a corpse of a creature you empathize with, without the prof_dissect_humans proficiency.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_EMPATHY_NPC_OPINION",
+    "//": "How much an NPC who sees you butcher or dissect a creature it empathizes with loses trust and value for you, and gains anger.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_YIELD_SKILL_WEIGHT",
+    "//": "Butchery: weight of the butcher's skill (survival, or the drop type's harvest skills; for dissection, plus the tool quality), as a share of level 10 in how much of a harvest entry's mass_ratio maximum is harvested.  The three weights add up to the share at best (1 by default).",
+    "stype": "float",
+    "value": 0.5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_YIELD_TOOL_WEIGHT",
+    "//": "Butchery: weight of the butcher's tool quality (BUTCHER or CUT_FINE), as a share of quality 50 in how much of a harvest entry's mass_ratio maximum is harvested.  The three weights add up to the share at best (1 by default).",
+    "stype": "float",
+    "value": 0.3
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_YIELD_DEX_WEIGHT",
+    "//": "Butchery: weight of the butcher's dexterity, as a share of 20 in how much of a harvest entry's mass_ratio maximum is harvested.  The three weights add up to the share at best (1 by default).",
+    "stype": "float",
+    "value": 0.2
   }
 ]

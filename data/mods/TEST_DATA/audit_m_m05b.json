@@ -1,0 +1,175 @@
+[
+  {
+    "type": "effect_type",
+    "id": "test_m05b_glare_avatar",
+    "name": [ "Test Glare (avatar)" ],
+    "desc": [ "LOOP-J05: given by test_m05b_glare_weather to the avatar." ],
+    "max_duration": "1 h"
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m05b_glare_other",
+    "name": [ "Test Glare (others)" ],
+    "desc": [ "LOOP-J05: given by test_m05b_glare_weather to everyone else." ],
+    "max_duration": "1 h"
+  },
+  {
+    "id": "test_m05b_soaking_rain",
+    "type": "weather_type",
+    "name": "test soaking rain",
+    "//": "LOOP-J05: a rain that sets its own rate, wetness and field decay, and has no glare.  Never generated.",
+    "color": "light_blue",
+    "map_color": "light_blue",
+    "sym": "~",
+    "ranged_penalty": 0,
+    "sight_penalty": 1.0,
+    "light_modifier": 0,
+    "sound_attn": 0,
+    "dangerous": false,
+    "precip": "light",
+    "rains": true,
+    "precip_rate": 7.5,
+    "wetness": 100,
+    "field_decay": "2 s",
+    "glare": [  ],
+    "priority": 0,
+    "condition": { "math": [ "false" ] }
+  },
+  {
+    "id": "test_m05b_glare_weather",
+    "type": "weather_type",
+    "name": "test glaring weather",
+    "//": "LOOP-J05: glare at any sun, one kind for the avatar and another for everyone else.  Never generated.",
+    "color": "yellow",
+    "map_color": "yellow",
+    "sym": "~",
+    "ranged_penalty": 0,
+    "sight_penalty": 1.0,
+    "light_modifier": 0,
+    "sound_attn": 0,
+    "dangerous": false,
+    "precip": "none",
+    "rains": false,
+    "glare": [
+      {
+        "effect": "test_m05b_glare_avatar",
+        "min_irradiance": -1,
+        "duration": "30 s",
+        "repeat_duration": "4 s",
+        "condition": "u_is_avatar"
+      },
+      { "effect": "test_m05b_glare_other", "min_irradiance": -1 }
+    ],
+    "priority": 0,
+    "condition": { "math": [ "false" ] }
+  },
+  {
+    "type": "weather_generator",
+    "id": "test_m05b_plain_gen",
+    "//": "LOOP-J06: only the base values, so the climate shape takes its defaults.",
+    "base_temperature": 11.1,
+    "base_humidity": 70.0,
+    "base_pressure": 1015.0,
+    "base_wind": 3.4
+  },
+  {
+    "type": "weather_generator",
+    "id": "test_m05b_explicit_gen",
+    "//": "LOOP-J06: the base values of test_m05b_plain_gen, with the documented defaults written out.",
+    "base_temperature": 11.1,
+    "base_humidity": 70.0,
+    "base_pressure": 1015.0,
+    "base_wind": 3.4,
+    "seasonal_amplitude": "12 C",
+    "daily_amplitude": "5 C",
+    "daily_seasonal_range": "2 C",
+    "coldest_hour": 5,
+    "temperature_noise": "6 C",
+    "seasonal_noise": 0.5
+  },
+  {
+    "type": "weather_generator",
+    "id": "test_m05b_custom_gen",
+    "//": "LOOP-J06: a climate that isn't New England's.",
+    "base_temperature": "26 C",
+    "base_humidity": 80.0,
+    "base_pressure": 1012.0,
+    "base_wind": 4.0,
+    "seasonal_amplitude": "0 C",
+    "daily_amplitude": "4 C",
+    "daily_seasonal_range": "0 C",
+    "coldest_hour": 3,
+    "temperature_noise": "0 C",
+    "underground_temperature": "15 C",
+    "water_temperature": { "mean": "27 C", "seasonal_amplitude": "0 C", "daily_amplitude": "0 C" },
+    "wind_direction_weights": { "spring": [ 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] },
+    "weather_black_list": [ "test_m05b_soaking_rain" ]
+  },
+  {
+    "type": "json_flag",
+    "id": "TEST_M05B_VOW",
+    "//": "LOOP-J07: a flag that blocks firing and throwing.",
+    "blocked_actions": [ { "actions": [ "fire", "throw" ], "message": "You have sworn not to fight." } ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M05B_VOW_TRAIT",
+    "name": { "str": "Test vow of peace" },
+    "points": 0,
+    "valid": false,
+    "description": "LOOP-J07: has the TEST_M05B_VOW flag.",
+    "flags": [ "TEST_M05B_VOW" ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M05B_NO_HANDS",
+    "name": { "str": "Test handless shape" },
+    "points": 0,
+    "valid": false,
+    "description": "LOOP-J07: has the TEMPORARY_SHAPESHIFT_NO_HANDS flag.",
+    "flags": [ "TEMPORARY_SHAPESHIFT_NO_HANDS" ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M05B_SURE_FOOTED",
+    "name": { "str": "Test sure footing" },
+    "points": 0,
+    "valid": false,
+    "description": "LOOP-J08: halves the chance of slipping while climbing.",
+    "enchantments": [ { "values": [ { "value": "CLIMB_SLIP_CHANCE", "multiply": -0.5 } ] } ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M05B_RAPPELLER",
+    "name": { "str": "Test rappeller" },
+    "points": 0,
+    "valid": false,
+    "description": "LOOP-J08: can lower themselves down sheer drops (test_m05b_sheer_drop_aid)."
+  },
+  {
+    "type": "climbing_aid",
+    "id": "test_m05b_sheer_drop_aid",
+    "//": "LOOP-J08: offered on stairs that end in a sheer drop.",
+    "slip_chance_mod": -50,
+    "down": {
+      "sheer_drop": true,
+      "menu_text": "Lower yourself down.",
+      "confirm_text": "Lower yourself down?",
+      "msg_after": "You lower yourself down.",
+      "max_height": 1,
+      "easy_climb_back_up": 1
+    },
+    "condition": { "type": "trait", "flag": "TEST_M05B_RAPPELLER" }
+  },
+  {
+    "type": "skill",
+    "id": "test_m05b_capped_skill",
+    "//": "LOOP-J10: capped at level 3, above the level 2 the skill rust test sets every skill to.",
+    "name": { "str": "test capped skill" },
+    "description": "A skill that can't be practiced past level 3.",
+    "display_category": "display_crafting",
+    "sort_rank": 900101,
+    "consumes_focus": false,
+    "max_level": 3
+  }
+]

@@ -26,3 +26,8 @@ def parse_json_flag(json, origin):
         write_text(json["vehicle_toggle"].get("name"), origin,
                    comment="Vehicle electronics menu option for parts with "
                    f"JSON flag '{ident}'")
+
+    for blocked in json.get("blocked_actions", []):
+        write_text(blocked.get("message"), origin,
+                   comment="Message when JSON flag "
+                   f"'{ident}' blocks an action")

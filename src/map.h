@@ -100,6 +100,7 @@ class map;
 
 class weather_generator;
 
+enum class creature_size : int;
 enum class ter_furn_flag : int;
 struct pathfinding_cache;
 struct pathfinding_settings;
@@ -201,6 +202,24 @@ struct bash_params {
     bool bashing_from_above = false;
     // The creature doing the bashing, if any: the alpha talker of the bash EOCs
     Creature *basher = nullptr;
+};
+
+/**
+ * What bashes tiles while this lives: "explosion", "fire", "vehicle", "collapse" or
+ * "projectile". Bash EOCs and the tile_destroyed event get it as their "cause". A bash with no
+ * cause given is a "smash" when a creature does it, and "other" when nothing is known.
+ */
+class bash_cause_scope
+{
+    public:
+        explicit bash_cause_scope( const char *cause );
+        ~bash_cause_scope();
+        bash_cause_scope( const bash_cause_scope & ) = delete;
+        bash_cause_scope &operator=( const bash_cause_scope & ) = delete;
+        /** The cause of a bash now, by @p basher if a creature does it */
+        static std::string current( const Creature *basher );
+    private:
+        const char *previous;
 };
 
 /** Draw parameters used by map::drawsq() and similar methods. */
@@ -466,16 +485,14 @@ class map
                 int );
 
         //FIXME some field processor use private methods
-        friend void field_processor_fd_fire( const tripoint_bub_ms &, field_entry &, field_proc_data & );
+        friend void field_processor_fire( const tripoint_bub_ms &, field_entry &, field_proc_data & );
         friend void field_processor_spread_gas( const tripoint_bub_ms &, field_entry &, field_proc_data & );
         friend void field_processor_wandering_field( const tripoint_bub_ms &, field_entry &,
                 field_proc_data & );
-        friend void field_processor_fd_fire_vent( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
-        friend void field_processor_fd_flame_burst( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
-        friend void field_processor_fd_incendiary( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
+        friend void field_processor_vent_cycle( const tripoint_bub_ms &, field_entry &,
+                                                field_proc_data & );
+        friend void field_processor_incendiary( const tripoint_bub_ms &, field_entry &,
+                                                field_proc_data & );
         friend void field_processor_monster_spawn( const tripoint_bub_ms &, field_entry &,
                 field_proc_data & );
 
@@ -498,6 +515,10 @@ class map
         // Apply phase-change logic for a single map square based on historical
         // weather (10-day average at 08:00). Currently implements "water_freeze".
         void temp_based_phase_change_at( const tripoint_bub_ms &p, const class weather_generator &wgen );
+        // The same for every loaded tile with phase rules, skipping tiles with a creature or a
+        // vehicle on them. Loading a submap does it for that submap; the game does it for the
+        // reality bubble once a day, when the average changes.
+        void refresh_phase_changes();
 
         // Original terrain recording for phase changes
         bool has_original_terrain_at( const tripoint_bub_ms &p ) const;
@@ -540,6 +561,29 @@ class map
         void set_lightmap_cache_dirty_below( int zlev );
         void set_pathfinding_cache_dirty( int zlev );
         void set_pathfinding_cache_dirty( const tripoint_bub_ms &p );
+        // the sound_attenuation of tile p's terrain, furniture or fields changed; every
+        // change that dirties the transparency cache dirties this one too
+        void set_sound_attenuation_dirty( const tripoint_bub_ms &p );
+        /*@}*/
+
+        /**
+         * Sound muffling: the sound_attenuation of terrain, furniture, fields and vehicle
+         * parts. Terrain, furniture and fields come from a per-level cache built on first
+         * use after a change; vehicle parts are read where a sound crosses them. The sums
+         * are scaled by the SOUND_ATTENUATION_PERCENT external option (0: nothing muffles).
+         */
+        /*@{*/
+        // Volume a sound loses crossing tile p
+        int sound_attenuation_at( const tripoint_bub_ms &p ) const;
+        // Volume a sound from `from` loses on its way to `to`: the sum of
+        // sound_attenuation_at over the tiles strictly between them on the line from one
+        // to the other. 0 without a walk when nothing loaded muffles sound, or when nothing
+        // on the levels the line crosses does. The walk stops once the sum reaches stop_at,
+        // for a caller to whom any more makes no difference.
+        int sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_bub_ms &to,
+                                       int stop_at = INT_MAX ) const;
+        // Whether anything on level zlev may muffle sound; brings its cache up to date
+        bool sound_muffled_on_level( int zlev ) const;
         /*@}*/
 
         void invalidate_map_cache( int zlev );
@@ -674,10 +718,10 @@ class map
         void spread_gas( field_entry &cur, const tripoint_bub_ms &p, int percent_spread,
                          const time_duration &outdoor_age_speedup, scent_block &sblk,
                          const oter_id &om_ter );
-        void create_hot_air( const tripoint_bub_ms &p, int intensity );
+        // Spreads the hot_air_field of the field's current intensity around p
+        void create_hot_air( const tripoint_bub_ms &p, const field_entry &cur );
         bool gas_can_spread_to( field_entry &cur, const maptile &dst );
         void gas_spread_to( field_entry &cur, maptile &dst, const tripoint_bub_ms &p );
-        int burn_body_part( Character &you, field_entry &cur, const bodypart_id &bp, int scale );
     public:
 
         // Movement and LOS
@@ -1197,6 +1241,9 @@ class map
         bool has_flag_furn( ter_furn_flag flag, const tripoint_bub_ms &p ) const;
         // Checks terrain or furniture
         bool has_flag_ter_or_furn( ter_furn_flag flag, const tripoint_bub_ms &p ) const;
+        // Whether a creature of this size fits on the tile: its terrain and furniture both let it
+        // (SMALL_PASSAGE, max_creature_size)
+        bool fits_creature_size( const tripoint_bub_ms &p, creature_size size ) const;
 
         // Returns true if a and b are on matching stairs connecting them
         // across exactly one z-level (one has GOES_UP, the other GOES_DOWN).
@@ -1355,7 +1402,6 @@ class map
 
         // Effects of attacks/items
         bool hit_with_acid( const tripoint_bub_ms &p );
-        bool hit_with_fire( const tripoint_bub_ms &p );
 
         /**
          * Returns true if there is furniture for which filter returns true in a 1 tile radius of p.
@@ -1760,9 +1806,11 @@ class map
         void clear_fields( const tripoint_bub_ms &p );
 
         /**
-         * Get applicable fd_electricity field type for a given point
+         * The field placed at p for the given type: its opaque_variant on a tile that isn't
+         * transparent, the field it is the opaque_variant of on a transparent one, else itself
+         * (fd_electricity and fd_electricity_unlit).
          */
-        const field_type_str_id &get_applicable_electricity_field( const tripoint_bub_ms &p ) const;
+        field_type_id placed_field_type( const tripoint_bub_ms &p, const field_type_id &type ) const;
 
     private:
         // Is called when field intensity is changed.
@@ -2025,6 +2073,12 @@ class map
          * If false, monsters are not spawned in view of player character.
          */
         void spawn_monsters( bool ignore_sight, bool spawn_nonlocal = false );
+        /**
+         * Places the monsters queued on this map's submaps (by fields, rotting items, births
+         * and the like) now, instead of at the next map shift. Saved monsters and overmap
+         * groups are left to spawn_monsters. Does nothing unless this is the game's map.
+         */
+        void spawn_queued_monsters();
 
         /**
         * Checks to see if the corpse that is rotting away generates items when it does.
@@ -2051,6 +2105,8 @@ class map
         // Helper #1 - spawns monsters on one submap
         void spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight,
                                     bool spawn_nonlocal = false );
+        // Helper #1b - places the monsters queued on one submap's spawn points
+        void spawn_queued_monsters_submap( const tripoint_rel_sm &gp, submap &current_submap );
         // Helper #2 - spawns monsters on one submap and from one group on this submap
         void spawn_monsters_submap_group( const tripoint_rel_sm &gp, mongroup &group,
                                           bool ignore_sight );
@@ -2141,6 +2197,8 @@ class map
         // true if any value changed.
         bool build_transparency_cache( int zlev );
         bool build_vision_transparency_cache( int zlev );
+        // rebuilds the dirty submaps of level zlev's sound_attenuation_cache
+        void build_sound_attenuation_cache( int zlev ) const;
         // cover cells the avatar's posture overrides in vision_transparency_cache
         // on level zlev, with the value each takes
         std::vector<std::pair<point_bub_ms, float>> observer_vision_overrides( int zlev ) const;

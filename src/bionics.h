@@ -96,10 +96,14 @@ struct bionic_data {
     translation activation_fail_message;
     /** When NPCs switch this bionic on (weapon CBMs are picked by their flags instead) */
     bionic_npc_use npc_use = bionic_npc_use::none;
+    /** NPCs switch on the bionics of one npc_use highest priority first */
+    int npc_use_priority = 0;
     /** bionic enchantments */
     std::vector<enchantment_id> enchantments;
     /** kown martial arts styles */
     std::vector<matype_id> ma_styles;
+    /** Martial arts styles learned on install (and forgotten on uninstall, if it taught them) */
+    std::vector<matype_id> learned_ma_styles;
     /**
      * Proficiencies given on install (and removed on uninstall) of this bionic
      */
@@ -126,6 +130,16 @@ struct bionic_data {
      * deactivated automatically when this bionic is activated.
      */
     std::vector<bionic_id> autodeactivated_bionics;
+    /**
+     * Faulty bionics a failed installation of this one can leave (MUT-J09); empty means
+     * any BIONIC_FAULTY bionic.
+     */
+    std::vector<bionic_id> faulty_pool;
+    /**
+     * The bionic whose effects coded in C++ (bio_teleport, bio_nanobots, ...) this one has:
+     * its own id, or that of the bionic it was copied from, so a copy-from keeps them (MUT-J12).
+     */
+    bionic_id hardcoded_behavior;
     cata::flat_set<json_character_flag> flags;
     cata::flat_set<json_character_flag> active_flags;
     cata::flat_set<json_character_flag> inactive_flags;
@@ -237,6 +251,12 @@ struct bionic {
         bool        auto_shutdown = true;
         /* An amount of time during which this bionic has been rendered inoperative. */
         time_duration        incapacitated_time;
+        /**
+         * Experience this bionic added to spells the character already knew, raising them to
+         * the level it teaches. Removing the bionic takes it back. Empty for bionics installed
+         * before this was recorded: removing those leaves the raised level.
+         */
+        std::map<spell_id, int> raised_spell_xp;
 
         bionic() : bionic( bionic_id( "bio_batteries" ), 'a', 0 ) { }
         bionic( bionic_id pid, char pinvlet, bionic_uid pbionic_uid,
@@ -312,5 +332,11 @@ int bionic_manip_cos( float adjusted_skill, int bionic_difficulty );
 
 std::vector<bionic_id> bionics_cancelling_trait( const std::vector<bionic_id> &bios,
         const trait_id &tid );
+
+namespace bionic_menus
+{
+/** In tests, where no menu can be shown: the bio_remote function picked (below 0 cancels). */
+extern std::function<int()> remote_test_choice;
+} // namespace bionic_menus
 
 #endif // CATA_SRC_BIONICS_H

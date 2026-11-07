@@ -98,6 +98,7 @@
 #include "units.h"
 #include "units_utility.h"
 #include "value_ptr.h"
+#include "veh_type.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
 #include "visitable.h"
@@ -144,6 +145,8 @@ static const faction_id faction_robofac( "robofac" );
 
 static const furn_str_id furn_f_arcfurnace_empty( "f_arcfurnace_empty" );
 static const furn_str_id furn_f_arcfurnace_full( "f_arcfurnace_full" );
+static const furn_str_id furn_f_autoclave( "f_autoclave" );
+static const furn_str_id furn_f_autoclave_full( "f_autoclave_full" );
 static const furn_str_id furn_f_compost_empty( "f_compost_empty" );
 static const furn_str_id furn_f_compost_full( "f_compost_full" );
 static const furn_str_id furn_f_diesel_tank( "f_diesel_tank" );
@@ -160,11 +163,8 @@ static const furn_str_id furn_f_kiln_metal_empty( "f_kiln_metal_empty" );
 static const furn_str_id furn_f_kiln_metal_full( "f_kiln_metal_full" );
 static const furn_str_id furn_f_kiln_portable_empty( "f_kiln_portable_empty" );
 static const furn_str_id furn_f_kiln_portable_full( "f_kiln_portable_full" );
-static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
-static const furn_str_id furn_f_metal_smoking_rack_active( "f_metal_smoking_rack_active" );
+static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
-static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
-static const furn_str_id furn_f_smoking_rack_active( "f_smoking_rack_active" );
 static const furn_str_id furn_f_stook_empty( "f_stook_empty" );
 static const furn_str_id furn_f_stook_full( "f_stook_full" );
 static const furn_str_id furn_f_water_mill( "f_water_mill" );
@@ -215,6 +215,7 @@ static const itype_id itype_unfinished_charcoal( "unfinished_charcoal" );
 static const itype_id itype_withered( "withered" );
 
 static const json_character_flag json_flag_GLIDE( "GLIDE" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_LEVITATION( "LEVITATION" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
 static const json_character_flag json_flag_SAFECRACK_NO_TOOL( "SAFECRACK_NO_TOOL" );
@@ -243,7 +244,6 @@ static const proficiency_id proficiency_prof_safecracking( "prof_safecracking" )
 static const proficiency_id proficiency_prof_traps( "prof_traps" );
 static const proficiency_id proficiency_prof_trapsetting( "prof_trapsetting" );
 
-static const quality_id qual_ANESTHESIA( "ANESTHESIA" );
 static const quality_id qual_DIG( "DIG" );
 static const quality_id qual_DRILL( "DRILL" );
 static const quality_id qual_GRASS_CUT( "GRASS_CUT" );
@@ -307,7 +307,6 @@ static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
 static const trait_id trait_CANNOT_GAIN_PSIONICS( "CANNOT_GAIN_PSIONICS" );
 static const trait_id trait_ESPER_ADVANCEMENT_OKAY( "ESPER_ADVANCEMENT_OKAY" );
 static const trait_id trait_ESPER_STARTER_ADVANCEMENT_OKAY( "ESPER_STARTER_ADVANCEMENT_OKAY" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 static const trait_id trait_INSECT_ARMS_OK( "INSECT_ARMS_OK" );
 static const trait_id trait_INTERCOM_OPERATOR( "INTERCOM_OPERATOR" );
 static const trait_id trait_M_DEFENDER( "M_DEFENDER" );
@@ -319,8 +318,6 @@ static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_SHELL3( "SHELL3" );
 static const trait_id trait_THRESH_MARLOSS( "THRESH_MARLOSS" );
 static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
-
-static const trap_str_id tr_telepad( "tr_telepad" );
 
 // @TODO maybe make this a property of the item (depend on volume/type)
 static const time_duration milling_time = 6_hours;
@@ -1040,6 +1037,23 @@ void iexamine::atm( Character &you, const tripoint_bub_ms & )
     atm_menu {you}.start();
 }
 
+bool iexamine::vending_pay( Character &you, const int price, const bool use_bank )
+{
+    // The cards pay first, then the bank: a price equal to the cards' balance was free, and on
+    // a networked machine the bank paid all of any price the cards couldn't (TERR-B11)
+    const int card = you.charges_of( itype_cash_card );
+    const int from_bank = use_bank ? std::max( 0, price - card ) : 0;
+    if( price - from_bank > card || ( from_bank > 0 && from_bank > you.cash ) ) {
+        return false;
+    }
+    const int from_cards = price - from_bank;
+    if( from_cards > 0 ) {
+        you.use_charges( itype_cash_card, from_cards );
+    }
+    you.cash -= from_bank;
+    return true;
+}
+
 /**
  * Generates vending machine UI and allows players to purchase contained items with a cash card.
  */
@@ -1209,14 +1223,12 @@ void iexamine::vending( Character &you, const tripoint_bub_ms &examp )
                 you.mod_moves( -moves_cost );
             }
 
+            if( !vending_pay( you, iprice, use_bank ) ) {
+                popup( _( "You can't afford that item." ) );
+                continue;
+            }
             money -= iprice;
 
-            if( iprice < you.charges_of( itype_cash_card ) ) {
-                // necessary to check just your cash card charges here because aftershock charges your cards first then your bank
-                you.use_charges( itype_cash_card, iprice );
-            } else if( use_bank ) {
-                you.cash -= iprice;
-            }
             you.i_add_or_drop( *cur_item );
 
             vend_items.erase( cur_item );
@@ -1424,7 +1436,7 @@ void iexamine::controls_gate( Character &you, const tripoint_bub_ms &examp )
 
 bool iexamine::can_hack( Character &you )
 {
-    if( you.has_trait( trait_ILLITERATE ) ) {
+    if( you.has_flag( json_flag_ILLITERATE ) ) {
         add_msg( _( "You cannot read!" ) );
         return false;
     }
@@ -2689,6 +2701,21 @@ void iexamine::plant_seed( Character &you, const tripoint_bub_ms &examp, const i
     you.assign_activity( actor );
 }
 
+void iexamine::set_seeded_terrain( map &here, const tripoint_bub_ms &examp,
+                                   const itype_id &seed_id )
+{
+    // planting by hand (plant_seed_activity_actor) and with a vehicle planter (VINT-J05)
+    if( here.has_flag_furn( seed_id->seed->required_terrain_flag, examp ) &&
+        here.furn( examp )->plant != nullptr ) {
+        here.furn_set( examp, here.furn( examp )->plant->transform );
+    } else if( seed_id->seed->required_terrain_flag == ter_furn_flag::TFLAG_PLANTABLE ) {
+        // ACT-J10: the terrain's plant_result, by default dirt
+        here.set( examp, here.ter( examp )->planted_terrain(), furn_f_plant_seed );
+    } else {
+        here.furn_set( examp, furn_f_plant_seed );
+    }
+}
+
 /**
  * If it's warm enough, pick one of the player's seeds and plant it.
  */
@@ -3049,6 +3076,13 @@ static void pick_firestarter_and_fire( Character &you, const tripoint_bub_ms &ex
     }
 }
 
+void iexamine::fire_process( Character &you, const tripoint_bub_ms &examp )
+{
+    pick_firestarter_and_fire( you, examp, firestarter_actor::start_type::PROCESS );
+}
+
+// The kilns, arc furnace, stook and autoclave are process_start / process_finish examine actors
+// now. These functions stay for mods that name them; they work on the vanilla ids only.
 // Highly modified fermenting vat functions
 void iexamine::kiln_empty( Character &you, const tripoint_bub_ms &examp )
 {
@@ -3444,8 +3478,8 @@ void iexamine::autoclave_empty( Character &you, const tripoint_bub_ms &examp )
     map &here = get_map();
     const furn_id &cur_autoclave_type = here.furn( examp );
     furn_id next_autoclave_type = furn_str_id::NULL_ID();
-    if( cur_autoclave_type == furn_id( "f_autoclave" ) ) {
-        next_autoclave_type = furn_id( "f_autoclave_full" );
+    if( cur_autoclave_type == furn_f_autoclave ) {
+        next_autoclave_type = furn_f_autoclave_full;
     } else {
         debugmsg( "Examined furniture has action autoclave_empty, but is of type %s",
                   cur_autoclave_type.id().c_str() );
@@ -3504,8 +3538,8 @@ void iexamine::autoclave_full( Character &, const tripoint_bub_ms &examp )
     map &here = get_map();
     const furn_id &cur_autoclave_type = here.furn( examp );
     furn_id next_autoclave_type = furn_str_id::NULL_ID();
-    if( cur_autoclave_type == furn_id( "f_autoclave_full" ) ) {
-        next_autoclave_type = furn_id( "f_autoclave" );
+    if( cur_autoclave_type == furn_f_autoclave_full ) {
+        next_autoclave_type = furn_f_autoclave;
     } else {
         debugmsg( "Examined furniture has action autoclave_full, but is of type %s",
                   cur_autoclave_type.id().c_str() );
@@ -4222,6 +4256,16 @@ bool iexamine::has_keg( const tripoint_bub_ms &pos )
     return get_keg_capacity( pos ) > 0_ml;
 }
 
+item *iexamine::keg_liquid( const tripoint_bub_ms &pos )
+{
+    for( item &it : get_map().i_at( pos ) ) {
+        if( it.made_of_from_type( phase_id::LIQUID ) ) {
+            return &it;
+        }
+    }
+    return nullptr;
+}
+
 static void displace_items_except_one_liquid( const tripoint_bub_ms &examp )
 {
     map &here = get_map();
@@ -4255,16 +4299,11 @@ void iexamine::keg( Character &you, const tripoint_bub_ms &examp )
     const std::string keg_name = here.name( examp );
     const units::volume keg_cap = get_keg_capacity( examp );
 
-    const bool has_container_with_liquid = map_cursor( tripoint_bub_ms( examp ) ).has_item_with( [](
-    const item & it ) {
-        return !it.is_container_empty() && it.can_unload();
-    } );
-    const bool liquid_present = map_cursor( tripoint_bub_ms( examp ) ).has_item_with( [](
-    const item & it ) {
-        return it.made_of_from_type( phase_id::LIQUID );
-    } );
+    // Only the liquid poured in counts: a full canteen dropped in a bathtub of water left it
+    // "empty", and filling it deleted the water (TERR-B04)
+    const bool liquid_present = keg_liquid( examp ) != nullptr;
 
-    if( !liquid_present || has_container_with_liquid ) {
+    if( !liquid_present ) {
         add_msg( m_info, _( "It is empty." ) );
         // Get list of all drinks
         auto drinks_inv = you.items_with( [&you]( const item & it ) {
@@ -4334,7 +4373,7 @@ void iexamine::keg( Character &you, const tripoint_bub_ms &examp )
                      keg_name, item::nname( drink_type ) );
         }
         you.mod_moves( -to_moves<int>( 10_seconds ) );
-        here.i_clear( examp );
+        // there was no liquid, and everything else was moved out
         here.add_item( examp, drink );
         return;
     } else {
@@ -4420,17 +4459,22 @@ bool iexamine::pour_into_keg( const tripoint_bub_ms &pos, item &liquid, bool sil
     map &here = get_map();
     const std::string keg_name = here.name( pos );
 
-    map_stack stack = here.i_at( pos );
-    if( stack.empty() ) {
-        here.add_item( pos, liquid );
-        here.i_at( pos ).only_item().charges = 0; // Will be set later
-    } else if( stack.only_item().typeId() != liquid.typeId() ) {
+    // Other things can lie in it (a bathtub takes items): only its liquid counts (TERR-B04)
+    item *stored = keg_liquid( pos );
+    if( stored == nullptr ) {
+        item &added = here.add_item( pos, liquid );
+        if( added.is_null() ) {
+            return false;
+        }
+        added.charges = 0; // Will be set later
+        stored = &added;
+    } else if( stored->typeId() != liquid.typeId() ) {
         add_msg( _( "The %s already contains some %s, you can't add a different liquid to it." ),
-                 keg_name, item::nname( stack.only_item().typeId() ) );
+                 keg_name, item::nname( stored->typeId() ) );
         return false;
     }
 
-    item &drink = stack.only_item();
+    item &drink = *stored;
     if( drink.volume() >= keg_cap ) {
         add_msg( _( "The %s is full." ), keg_name );
         return false;
@@ -4751,17 +4795,24 @@ void trap::examine( const tripoint_bub_ms &examp ) const
         add_msg( m_info, _( "That %s looks too dangerous to mess with.  Best leave it alone." ), name() );
         return;
     }
+    // "disarm_condition"
+    if( !can_try_disarm( player_character, examp ) ) {
+        add_msg( m_info, disarm_condition_msg.translated(), name() );
+        return;
+    }
+    // What the disarm EOCs get: the trap is gone from the map by the time they run
+    const tripoint_abs_ms trap_location = here.get_abs( examp );
 
     // Some traps are not actual traps. Those should get a different query, no skill checks, and the option to grab it right away.
-    // If there is a telepad and we are anchored, there is no risk involved in disarming it also.
-    if( easy_take_down() || ( id == tr_telepad &&
-                              player_character.worn_with_flag(
-                                  flag_DIMENSIONAL_ANCHOR ) ) ) { // Separated so saying no doesn't trigger the other query.
+    // A trap's "easy_take_down_condition" can say the same (a telepad, for a character
+    // wearing a dimensional anchor). Separated so saying no doesn't trigger the other query.
+    if( easy_take_down( player_character, examp ) ) {
         if( !query_yn( _( "There is a %s there.  Take down?" ), name() ) ) {
             return;
         }
         add_msg( _( "The %s is taken down." ), name() );
         on_disarmed( here, examp );
+        run_eocs( disarm_eocs, &player_character, trap_location );
         return;
     }
 
@@ -4800,11 +4851,13 @@ void trap::examine( const tripoint_bub_ms &examp ) const
             if( difficulty > 1.25 * traps_skill_level ) { // failure might have set off trap
                 player_character.practice( skill_traps, 1.5 * ( difficulty - traps_skill_level ) );
             }
+            run_eocs( disarm_eocs, &player_character, trap_location );
         } else if( roll >= ( difficulty * .8 ) ) {
             add_msg( _( "You fail to disarm the trap." ) );
             if( difficulty > 1.25 * traps_skill_level ) {
                 player_character.practice( skill_traps, 1.5 * ( difficulty - traps_skill_level ) );
             }
+            run_eocs( disarm_fail_eocs, &player_character, trap_location );
         } else {
             add_msg( m_bad, _( "You fail to disarm the trap, and you set it off!" ) );
             trigger( examp, player_character );
@@ -4813,6 +4866,7 @@ void trap::examine( const tripoint_bub_ms &examp ) const
                 // case the trap may not be disarmable).
                 player_character.practice( skill_traps, 2 * difficulty );
             }
+            run_eocs( disarm_fail_eocs, &player_character, trap_location );
         }
         //Picking up bubble wrap continuously could powerlevel trap proficiencies, with no risk involved.
         if( difficulty != 0 ) {
@@ -5054,7 +5108,7 @@ void iexamine::sign( Character &you, const tripoint_bub_ms &examp )
 
     // Display existing message, or lack thereof.
     if( here.furn( examp )->has_flag( ter_furn_flag::TFLAG_SIGN_ALWAYS ) || previous_signage_exists ) {
-        if( you.has_trait( trait_ILLITERATE ) ) {
+        if( you.has_flag( json_flag_ILLITERATE ) ) {
             popup( _( "You're illiterate, and can't read the message on the sign." ) );
         } else if( previous_signage_exists ) {
             popup( existing_signage );
@@ -5185,7 +5239,7 @@ static int findBestGasDiscount( Character &you )
 
 static std::string str_to_illiterate_str( std::string s )
 {
-    if( !get_player_character().has_trait( trait_ILLITERATE ) ) {
+    if( !get_player_character().has_flag( json_flag_ILLITERATE ) ) {
         return s;
     } else {
         for( char &i : s ) {
@@ -5329,7 +5383,7 @@ void iexamine::pay_gas( Character &you, const tripoint_bub_ms &examp )
     const int hack = 3;
     const int refund = 4;
 
-    if( you.has_trait( trait_ILLITERATE ) ) {
+    if( you.has_flag( json_flag_ILLITERATE ) ) {
         popup( _( "You're illiterate, and can't read the screen." ) );
     }
 
@@ -5440,7 +5494,16 @@ void iexamine::pay_gas( Character &you, const tripoint_bub_ms &examp )
                         fuelTypeStr, maximum_liters ) || liters <= 0 ) {
             return;
         }
-        clamp( liters, 0, maximum_liters );
+        // The amount typed was pumped whatever the cards held (TERR-B10)
+        liters = std::clamp( liters, 0, maximum_liters );
+        if( liters <= 0 ) {
+            return;
+        }
+        if( liters * pricePerUnit > you.charges_of( itype_cash_card ) ) {
+            popup( str_to_illiterate_str(
+                       _( "Not enough money, please refill your cash card." ) ) );
+            return;
+        }
 
         const std::optional<tripoint_bub_ms> pGasPump = getGasPumpByNumber( examp,
                 uistate.ags_pay_gas_selected_pump );
@@ -5582,7 +5645,7 @@ void iexamine::ledge( Character &you, const tripoint_bub_ms &examp )
 
             if( you.get_str() < 4 ) {
                 add_msg( m_warning, _( "You are too weak to jump over an obstacle." ) );
-            } else if( 100 * you.weight_carried() / you.weight_capacity() > 25 ) {
+            } else if( you.weight_carried_percent() > 25 ) {
                 add_msg( m_warning, _( "You are too burdened to jump over an obstacle." ) );
             } else if( !here.valid_move( examp, jump_target, false, true ) ) {
                 add_msg( m_warning, _( "You cannot jump over an obstacle - something is blocking the way." ) );
@@ -5903,21 +5966,10 @@ void iexamine::autodoc( Character &you, const tripoint_bub_ms &examp )
     amenu.query();
 
     bool needs_anesthesia = true;
-    std::vector<tool_comp> anesth_kit;
 
     if( patient.has_flag( json_flag_PAIN_IMMUNE ) || patient.has_bionic( bio_painkiller ) ||
         amenu.ret > 1 ) {
         needs_anesthesia = false;
-    } else {
-        const temp_crafting_inventory &crafting_inv = you.crafting_inventory();
-        std::vector<const item *> a_filter = crafting_inv.items_with( []( const item & it ) {
-            return it.get_quality( qual_ANESTHESIA ) > 0;
-        } );
-        for( const item *anesthesia_item : a_filter ) {
-            if( anesthesia_item->ammo_remaining( ) >= 1 ) {
-                anesth_kit.emplace_back( anesthesia_item->typeId(), 1 );
-            }
-        }
     }
 
     switch( amenu.ret ) {
@@ -6000,11 +6052,22 @@ void iexamine::autodoc( Character &you, const tripoint_bub_ms &examp )
             }
 
             const bionic_id &bid = bio_list[bionic_index];
-            const int difficulty =  bid->itype()->bionic->difficulty;
-            const float volume_anesth = difficulty * 20 * 2; // 2ml/min
+            const itype &cbm = *bid->itype();
+            const int difficulty = cbm.bionic->difficulty;
 
             Character &installer = best_installer( you, null_player, difficulty );
             if( &installer == &null_player ) {
+                return;
+            }
+
+            // The same anesthetic as installing it, checked before the operation: the
+            // uninstall used to go ahead, with full narcosis, when there was none (TERR-B05)
+            if( needs_anesthesia && !you.has_enough_anesth( cbm, patient ) ) {
+                const int weight = units::to_kilogram( patient.bodyweight() ) / 10;
+                const requirement_data req_anesth = *requirement_data_anesthetic *
+                                                    difficulty * 2 * weight;
+                popup( _( "You don't have enough anesthetic to perform the uninstallation.\n%s" ),
+                       req_anesth.list_missing() );
                 return;
             }
 
@@ -6012,7 +6075,7 @@ void iexamine::autodoc( Character &you, const tripoint_bub_ms &examp )
                 const time_duration duration = difficulty * 20_minutes;
                 patient.introduce_into_anesthesia( duration, installer, needs_anesthesia );
                 if( needs_anesthesia ) {
-                    you.consume_tools( anesth_kit, volume_anesth );
+                    you.consume_anesth_requirement( cbm, patient );
                 }
                 installer.mod_moves( -to_moves<int>( 1_minutes ) );
                 patient.uninstall_bionic( *bionics[bionic_index], installer, true );
@@ -6186,8 +6249,25 @@ namespace sm_rack
 static const int MIN_CHARCOAL = 1200;
 static const int CHARCOAL_PER_LITER = 600;
 static const units::volume MAX_FOOD_VOLUME = units::from_liter( 20 );
-static const units::volume MAX_FOOD_VOLUME_PORTABLE = units::from_liter( 15 );
 } // namespace sm_rack
+
+// ACT-J11: a smoking rack is told by its furniture's "smoker" object: a lit one has "unlit"
+static bool smoker_is_lit( const furn_id &f )
+{
+    return f->smoker && !f->smoker->unlit.is_empty();
+}
+
+// ACT-J11: what a lit rack goes back to; the furniture itself for an unlit one
+static furn_str_id smoker_unlit( const furn_id &f )
+{
+    return smoker_is_lit( f ) ? f->smoker->unlit : f.id();
+}
+
+// ACT-J11: how much food the rack holds
+static units::volume smoker_capacity( const furn_id &f )
+{
+    return f->smoker ? f->smoker->capacity : sm_rack::MAX_FOOD_VOLUME;
+}
 
 static int get_charcoal_charges( units::volume food )
 {
@@ -6424,14 +6504,13 @@ bool iexamine::smoker_prep( Character &you, const tripoint_bub_ms &examp )
 
     const furn_id &cur_smoker_type = here.furn( examp );
 
-    const bool portable = cur_smoker_type == furn_f_metal_smoking_rack ||
-                          cur_smoker_type == furn_f_metal_smoking_rack_active;
-
-    if( cur_smoker_type != furn_f_smoking_rack && cur_smoker_type != furn_f_metal_smoking_rack ) {
+    // ACT-J11: an unlit rack, from its "smoker" object
+    if( !cur_smoker_type->smoker || cur_smoker_type->smoker->lit.is_empty() ) {
         debugmsg( "Examined furniture has action smoker_activate, but is of type %s",
                   cur_smoker_type.id().c_str() );
         return false;
     }
+    const units::volume capacity = cur_smoker_type->smoker->capacity;
 
     map_stack items = here.i_at( examp );
 
@@ -6467,15 +6546,10 @@ bool iexamine::smoker_prep( Character &you, const tripoint_bub_ms &examp )
         add_msg( _( "There is no charcoal in the rack." ) );
         return false;
     }
-    if( portable && food_volume > sm_rack::MAX_FOOD_VOLUME_PORTABLE ) {
+    if( food_volume > capacity ) {
         add_msg( _( "This rack is overloaded with food, and it blocks the flow of smoke.  Remove some and try again." ) );
         add_msg( _( "You think that you can load about %s %s in it." ),
-                 format_volume( sm_rack::MAX_FOOD_VOLUME_PORTABLE ), volume_units_long() );
-        return false;
-    } else if( food_volume > sm_rack::MAX_FOOD_VOLUME ) {
-        add_msg( _( "This rack is overloaded with food, and it blocks the flow of smoke.  Remove some and try again." ) );
-        add_msg( _( "You think that you can load about %s %s in it." ),
-                 format_volume( sm_rack::MAX_FOOD_VOLUME ), volume_units_long() );
+                 format_volume( capacity ), volume_units_long() );
         return false;
     }
 
@@ -6499,13 +6573,8 @@ bool iexamine::smoker_fire( Character &you, const tripoint_bub_ms &examp )
         return false;
     }
 
-    const furn_id &cur_smoker_type = here.furn( examp );
-    furn_id next_smoker_type = furn_str_id::NULL_ID();
-    if( cur_smoker_type == furn_f_smoking_rack ) {
-        next_smoker_type = furn_f_smoking_rack_active;
-    } else if( cur_smoker_type == furn_f_metal_smoking_rack ) {
-        next_smoker_type = furn_f_metal_smoking_rack_active;
-    }
+    // ACT-J11: smoker_prep checked it's an unlit rack
+    const furn_id next_smoker_type( here.furn( examp )->smoker->lit );
 
     for( item &it : here.i_at( examp ) ) {
         if( it.is_smokable() ) {
@@ -6656,16 +6725,13 @@ static void smoker_finalize( map &here, Character &, const tripoint_bub_ms &exam
                              const time_point &start_time )
 {
     const furn_id &cur_smoker_type = here.furn( examp );
-    furn_id next_smoker_type = furn_str_id::NULL_ID();
-    if( cur_smoker_type == furn_f_smoking_rack_active ) {
-        next_smoker_type = furn_f_smoking_rack;
-    } else if( cur_smoker_type == furn_f_metal_smoking_rack_active ) {
-        next_smoker_type = furn_f_metal_smoking_rack;
-    } else {
+    // ACT-J11: a lit rack goes back to its "smoker" object's unlit furniture
+    if( !smoker_is_lit( cur_smoker_type ) ) {
         debugmsg( "Furniture executed action smoker_finalize, but is of type %s",
                   cur_smoker_type.id().c_str() );
         return;
     }
+    const furn_id next_smoker_type( cur_smoker_type->smoker->unlit );
 
     map_stack items = here.i_at( examp );
     if( items.empty() ) {
@@ -6716,15 +6782,12 @@ static void smoker_load_food( Character &you, const tripoint_bub_ms &examp,
 {
     map &here = get_map();
     const furn_id &rack = here.furn( examp );
-    if( rack == furn_f_smoking_rack_active ||
-        rack == furn_f_metal_smoking_rack_active ) {
+    if( smoker_is_lit( rack ) ) {
         you.add_msg_if_player( _( "You can't place more food while it's smoking." ) );
         return;
     }
 
-    units::volume total_capacity = rack == furn_f_metal_smoking_rack ?
-                                   sm_rack::MAX_FOOD_VOLUME_PORTABLE :
-                                   sm_rack::MAX_FOOD_VOLUME;
+    const units::volume total_capacity = smoker_capacity( rack );
     units::volume used_capacity = total_capacity - remaining_capacity;
 
     drop_locations locs = game_menus::inv::smoke_food( you, total_capacity, used_capacity );
@@ -6890,9 +6953,7 @@ static void mill_load_food( Character &you, const tripoint_bub_ms &examp,
 
 void iexamine::on_smoke_out( map &here, const tripoint_bub_ms &examp, const time_point &start_time )
 {
-    const furn_id &f = here.furn( examp );
-    if( f == furn_f_smoking_rack_active ||
-        f == furn_f_metal_smoking_rack_active ) {
+    if( smoker_is_lit( here.furn( examp ) ) ) {
         smoker_finalize( here, get_avatar(), examp, start_time );
     }
 }
@@ -7074,29 +7135,27 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
 {
     map &here = get_map();
     const furn_id &f = here.furn( examp );
-    const bool active = f == furn_f_smoking_rack_active ||
-                        f == furn_f_metal_smoking_rack_active;
-    const bool portable = f == furn_f_metal_smoking_rack ||
-                          f == furn_f_metal_smoking_rack_active;
-    map_stack items_here = here.i_at( examp );
-
-    if( portable && items_here.empty() && active ) {
-        debugmsg( "f_metal_smoking_rack_active was empty!" );
-        here.furn_set( examp, furn_f_metal_smoking_rack );
-        return;
-    } else if( items_here.empty() && active ) {
-        debugmsg( "f_smoking_rack_active was empty!" );
-        here.furn_set( examp, furn_f_smoking_rack );
+    // ACT-J11: the rack's "smoker" object; one that can be packed up has a deployed_item
+    if( !f->smoker ) {
+        debugmsg( "Examined furniture has action smoker_options, but no smoker data: %s",
+                  f.id().c_str() );
         return;
     }
-    if( portable && items_here.size() == 1 && items_here.begin()->typeId() == itype_fake_smoke_plume ) {
-        debugmsg( "f_metal_smoking_rack_active was empty, and had fake_smoke_plume!" );
-        here.furn_set( examp, furn_f_metal_smoking_rack );
-        items_here.erase( items_here.begin() );
+    const bool active = smoker_is_lit( f );
+    const bool portable = item::type_is_defined( f->deployed_item );
+    const furn_str_id unlit = smoker_unlit( f );
+    const units::volume capacity = smoker_capacity( f );
+    map_stack items_here = here.i_at( examp );
+
+    if( items_here.empty() && active ) {
+        debugmsg( "%s was empty!", f.id().c_str() );
+        here.furn_set( examp, unlit );
         return;
-    } else if( items_here.size() == 1 && items_here.begin()->typeId() == itype_fake_smoke_plume ) {
-        debugmsg( "f_smoking_rack_active was empty, and had fake_smoke_plume!" );
-        here.furn_set( examp, furn_f_smoking_rack );
+    }
+    if( active && items_here.size() == 1 &&
+        items_here.begin()->typeId() == itype_fake_smoke_plume ) {
+        debugmsg( "%s was empty, and had fake_smoke_plume!", f.id().c_str() );
+        here.furn_set( examp, unlit );
         items_here.erase( items_here.begin() );
         return;
     }
@@ -7124,10 +7183,8 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
     const itype *type = fo.crafting_pseudo_item_type();
     std::vector<const itype *> ammo_list = fo.crafting_ammo_item_types();
     const bool empty = f_volume == 0_ml;
-    const bool full = f_volume >= sm_rack::MAX_FOOD_VOLUME;
-    const bool full_portable = f_volume >= sm_rack::MAX_FOOD_VOLUME_PORTABLE;
-    const auto remaining_capacity = sm_rack::MAX_FOOD_VOLUME - f_volume;
-    const auto remaining_capacity_portable = sm_rack::MAX_FOOD_VOLUME_PORTABLE - f_volume;
+    const bool full = f_volume >= capacity;
+    const units::volume remaining_capacity = capacity - f_volume;
     const bool has_coal_in_inventory = you.crafting_inventory().charges_of( itype_charcoal ) > 0;
     const int coal_charges = count_charges_in_list( item::find_type( itype_charcoal ), items_here );
     const int need_charges = get_charcoal_charges( f_volume );
@@ -7150,23 +7207,15 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
                                  need_charges - coal_charges ) :
                              _( "Light up and smoke food" ),
                              _( "Light up the smoking rack and start smoking.  Smoking will take about 6 hours." ) );
+        smenu.addentry_desc( 2, !full, 'f',
+                             full ? _( "Insert food for smoking… smoking rack is full" ) :
+                             string_format( _( "Insert food for smoking… remaining capacity is %s %s" ),
+                                            format_volume( remaining_capacity ), volume_units_abbr() ),
+                             _( "Fill the smoking rack with raw meat, fish or sausages for smoking or fruit or vegetable or smoked meat for drying." ) );
         if( portable ) {
-            smenu.addentry_desc( 2, !full_portable, 'f',
-                                 full_portable ? _( "Insert food for smoking… smoking rack is full" ) :
-                                 string_format( _( "Insert food for smoking… remaining capacity is %s %s" ),
-                                                format_volume( remaining_capacity_portable ), volume_units_abbr() ),
-                                 _( "Fill the smoking rack with raw meat, fish or sausages for smoking or fruit or vegetable or smoked meat for drying." ) );
-
             smenu.addentry_desc( 8, !active, 'z',
                                  active ? _( "You cannot disassemble this smoking rack while it is active!" ) :
                                  _( "Disassemble the smoking rack" ), "" );
-
-        } else {
-            smenu.addentry_desc( 2, !full, 'f',
-                                 full ? _( "Insert food for smoking… smoking rack is full" ) :
-                                 string_format( _( "Insert food for smoking… remaining capacity is %s %s" ),
-                                                format_volume( remaining_capacity ), volume_units_abbr() ),
-                                 _( "Fill the smoking rack with raw meat, fish or sausages for smoking or fruit or vegetable or smoked meat for drying." ) );
         }
 
         if( f_check ) {
@@ -7243,11 +7292,7 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
             break;
         case 2:
             // load food
-            if( portable ) {
-                smoker_load_food( you, examp, remaining_capacity_portable );
-            } else {
-                smoker_load_food( you, examp, remaining_capacity );
-            }
+            smoker_load_food( you, examp, remaining_capacity );
             break;
         case 3:
             // load charcoal
@@ -7276,11 +7321,8 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
                     ++it;
                 }
             }
-            if( portable && active && rem_f_opt ) {
-                here.furn_set( examp, furn_f_metal_smoking_rack );
-                add_msg( m_info, _( "You stop the smoking process." ) );
-            } else if( active && rem_f_opt ) {
-                here.furn_set( examp, furn_f_smoking_rack );
+            if( active && rem_f_opt ) {
+                here.furn_set( examp, unlit );
                 add_msg( m_info, _( "You stop the smoking process." ) );
             }
         }
@@ -7290,16 +7332,11 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
             break;
         case 7:
             stop_processing( here, examp, true );
-            if( portable ) {
-                here.furn_set( examp, furn_f_metal_smoking_rack );
-                add_msg( m_info, _( "You stop the smoking process." ) );
-            } else {
-                here.furn_set( examp, furn_f_smoking_rack );
-                add_msg( m_info, _( "You stop the smoking process." ) );
-            }
+            here.furn_set( examp, unlit );
+            add_msg( m_info, _( "You stop the smoking process." ) );
             break;
         case 8:
-            here.furn_set( examp, furn_f_metal_smoking_rack );
+            here.furn_set( examp, unlit );
             deployed_furniture( you, examp );
             break;
     }
@@ -7332,12 +7369,17 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
 {
     std::vector<item_location> crafts;
     std::string name;
+    // UIINV-J02: the workbench's "recipe_filter" starts the crafting menu's search
+    std::string recipe_filter;
     bool is_undeployable = false;
     bool items_at_loc = false;
     map &here = get_map();
 
     if( part ) {
         name = part->part().name();
+        if( const std::optional<vpslot_workbench> &wb_info = part->part().info().workbench_info ) {
+            recipe_filter = wb_info->recipe_filter;
+        }
         for( item &it : part->items() ) {
             if( it.is_craft() ) {
                 crafts.emplace_back( vehicle_cursor( part->vehicle(), part->part_index() ), &it );
@@ -7346,6 +7388,9 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
     } else {
         const furn_t &fo = here.furn( examp ).obj();
         name = fo.name();
+        if( fo.workbench ) {
+            recipe_filter = fo.workbench->recipe_filter;
+        }
         if( item::type_is_defined( fo.deployed_item ) ) {
             is_undeployable = true;
         }
@@ -7398,7 +7443,7 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
             } else if( shapeshift_handless ) {
                 add_msg( m_info, _( "You don't have proper hands to do that." ) );
             } else {
-                you.craft( examp );
+                you.craft( examp, recipe_id(), recipe_filter );
             }
             break;
         }
@@ -7422,7 +7467,7 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
             } else if( shapeshift_handless ) {
                 add_msg( m_info, _( "You don't have proper hands to do that." ) );
             } else {
-                you.long_craft( examp );
+                you.long_craft( examp, recipe_id(), recipe_filter );
             }
             break;
         }

@@ -768,6 +768,9 @@ class hacking_activity_actor : public activity_actor
         void start( player_activity &act, Character &who ) override;
         void do_turn( player_activity &, Character & ) override {}
         void finish( player_activity &act, Character &who ) override;
+        // what a successful hack at `examp` does: routes a gas pump's fuel, opens a card reader's
+        // doors as its card would, or opens an electronic safe into its `hack_result` (ACT-J06)
+        static void hack_success( Character &who, const tripoint_bub_ms &examp );
 
         std::unique_ptr<activity_actor> clone() const override {
             return std::make_unique<hacking_activity_actor>( *this );
@@ -2608,15 +2611,22 @@ class insert_item_activity_actor : public activity_actor
         bool reopen_menu;
         // allow put charge items into holster's nested pocket
         bool allow_fill_count_by_charge_item_nested;
+        // the pocket of holster the items go in, or -1 for the best one
+        int pocket_index = -1;
 
     public:
 
         insert_item_activity_actor() = default;
+        /**
+         * @param pocket_index the pocket of @p holster to put the items in, as
+         * item::get_container_pockets lists them (a drag and drop names it); -1: the best one
+         */
         insert_item_activity_actor( const item_location &holster, const drop_locations &holstered_list,
-                                    bool reopen_menu = false, bool allow_fill_count_by_charge_item_nested = true ) : holster( holster ),
+                                    bool reopen_menu = false, bool allow_fill_count_by_charge_item_nested = true,
+                                    int pocket_index = -1 ) : holster( holster ),
             items( holstered_list ),
             reopen_menu( reopen_menu ), allow_fill_count_by_charge_item_nested(
-                allow_fill_count_by_charge_item_nested ) {}
+                allow_fill_count_by_charge_item_nested ), pocket_index( pocket_index ) {}
 
         const activity_id &get_type() const override {
             static const activity_id ACT_INSERT_ITEM( "ACT_INSERT_ITEM" );
@@ -3436,12 +3446,13 @@ class fire_start_activity_actor : public activity_actor
     private:
         fire_start_activity_actor() = default;
     public:
+        /** @param method the id of the item's firestarter action that is used */
         fire_start_activity_actor( const tripoint_abs_ms &fire_placement, const item_location &fire_starter,
                                    int potential_skill_gain, int initial_moves,
-                                   bool tinder_consumed = false ) :
+                                   bool tinder_consumed = false, const std::string &method = "firestarter" ) :
             fire_placement( fire_placement ), fire_starter( fire_starter ),
             potential_skill_gain( potential_skill_gain ), initial_moves( initial_moves ),
-            used_tinder( tinder_consumed ) {
+            used_tinder( tinder_consumed ), method( method ) {
         };
         const activity_id &get_type() const override {
             static const activity_id ACT_START_FIRE( "ACT_START_FIRE" );
@@ -3465,6 +3476,8 @@ class fire_start_activity_actor : public activity_actor
         int potential_skill_gain;
         int initial_moves; // NOLINT(cata-serialize)
         bool used_tinder;
+        // The firestarter action's id (old saves have none: the item's firestarter action)
+        std::string method = "firestarter";
 };
 
 class wear_activity_actor : public activity_actor
@@ -3581,9 +3594,11 @@ class chop_planks_activity_actor : public activity_actor
 {
     public:
         chop_planks_activity_actor() = default;
-        // The log, if given, is used up when the cut is done.
-        explicit chop_planks_activity_actor( int moves, const item_location &log = item_location() ) :
-            moves( moves ), target_log( log ), uses_log( static_cast<bool>( log ) ) {}
+        // The log, if given, is used up when the cut is done.  logs is how many logs' worth of
+        // planks the cut yields (a trunk gives several); moves is the time for all of them.
+        explicit chop_planks_activity_actor( int moves, const item_location &log = item_location(),
+                                             int logs = 1 ) :
+            moves( moves ), target_log( log ), uses_log( static_cast<bool>( log ) ), logs( logs ) {}
 
         const activity_id &get_type() const override {
             static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
@@ -3606,13 +3621,17 @@ class chop_planks_activity_actor : public activity_actor
         item_location target_log;
         // there was a log to cut: no planks if it is gone by the end
         bool uses_log = false;
+        int logs = 1;
 };
 
 class chop_tree_activity_actor : public activity_actor
 {
     public:
         chop_tree_activity_actor() = default;
-        chop_tree_activity_actor( int moves, const item_location &tool ) : moves( moves ), tool( tool ) {}
+        /** @param auto_fall the tree falls where nobody is, as in a zone job; else the avatar
+         * chooses where */
+        chop_tree_activity_actor( int moves, const item_location &tool, bool auto_fall = false ) :
+            moves( moves ), tool( tool ), auto_fall( auto_fall ) {}
 
         const activity_id &get_type() const override {
             static const activity_id ACT_CHOP_TREE( "ACT_CHOP_TREE" );
@@ -3633,6 +3652,7 @@ class chop_tree_activity_actor : public activity_actor
     private:
         int moves;
         item_location tool;
+        bool auto_fall = false;
 };
 
 class churn_activity_actor : public activity_actor
@@ -3818,8 +3838,14 @@ class firstaid_activity_actor : public activity_actor
 {
     public:
         firstaid_activity_actor() = default;
-        firstaid_activity_actor( int moves, std::string name, character_id patientID ) : moves( moves ),
-            name( std::move( name ) ), patientID( patientID ) {}
+        /**
+         * @param reopen_menu the avatar gets the consume menu again when done
+         * @param method the id of the item's heal action that is used
+         */
+        firstaid_activity_actor( int moves, std::string name, character_id patientID,
+                                 bool reopen_menu = true, std::string method = "heal" ) : moves( moves ),
+            name( std::move( name ) ), patientID( patientID ), reopen_menu( reopen_menu ),
+            method( std::move( method ) ) {}
 
         const activity_id &get_type() const override {
             static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
@@ -3842,6 +3868,9 @@ class firstaid_activity_actor : public activity_actor
         int moves;
         std::string name;
         character_id patientID;
+        bool reopen_menu = true;
+        // The heal action's id (old saves have none: the item's heal action)
+        std::string method = "heal";
 };
 
 class forage_activity_actor : public activity_actor

@@ -1,0 +1,92 @@
+[
+  {
+    "type": "forest_biome_mapgen",
+    "id": "test_m09a_biome",
+    "//": "OMAP-J03: listed with the later component first; the sequence decides the order.",
+    "components": [ "test_m09a_comp_a", "test_m09a_comp_b" ]
+  },
+  {
+    "type": "forest_biome_component",
+    "id": "test_m09a_comp_a",
+    "sequence": 1,
+    "chance": 1,
+    "types": [ [ "t_dirt", 1 ] ]
+  },
+  {
+    "type": "forest_biome_component",
+    "id": "test_m09a_comp_b",
+    "sequence": 0,
+    "chance": 1,
+    "types": [ [ "t_grass", 1 ] ]
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_m09a_wilderness",
+    "//": "OMAP-B08: an open-ended city distance whose minimum must hold.  Never placed by worldgen.",
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "field" } ],
+    "locations": [ "land" ],
+    "city_distance": [ 5, -1 ],
+    "city_sizes": [ 0, 20 ],
+    "occurrences": [ 0, 0 ]
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_m09a_near_city",
+    "//": "OMAP-B08: needs a city of size 4 to 16 at most 10 tiles away.  Never placed by worldgen.",
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "field" } ],
+    "locations": [ "land" ],
+    "city_distance": [ 1, 10 ],
+    "city_sizes": [ 4, 16 ],
+    "occurrences": [ 0, 0 ]
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_m09a_eoc_special",
+    "//": "OMAP-J07: an EOC whose condition is a global and whose effect reads the placement.  Never placed by worldgen.",
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "field" } ],
+    "locations": [ "land" ],
+    "occurrences": [ 0, 0 ],
+    "eoc": {
+      "id": "EOC_TEST_M09A_SPECIAL",
+      "condition": { "math": [ "test_m09a_allow == 1" ] },
+      "effect": [
+        { "math": [ "test_m09a_placed += 1" ] },
+        { "math": [ "test_m09a_city_size = _city_size" ] },
+        { "math": [ "test_m09a_city_distance = _city_distance" ] },
+        { "math": [ "test_m09a_offset = omt_distance(_special_pos, _overmap_pos)" ] },
+        {
+          "run_eocs": {
+            "id": "EOC_TEST_M09A_SPECIAL_CONTEXT",
+            "condition": {
+              "and": [
+                { "compare_string": [ "east", { "context_val": "rotation" } ] },
+                { "compare_string": [ "test_m09a_eoc_special", { "context_val": "special_id" } ] },
+                { "compare_string": [ "m09a town", { "context_val": "city_name" } ] }
+              ]
+            },
+            "effect": [ { "math": [ "test_m09a_context_ok = 1" ] } ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M09A_RADIO_ADD",
+    "//": "OMAP-J08",
+    "effect": [
+      {
+        "add_radio_station": { "context_val": "radio_loc" },
+        "message": "m09a test broadcast",
+        "strength": 77,
+        "frequency_var": { "global_val": "test_m09a_frequency" }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M09A_RADIO_REMOVE",
+    "//": "OMAP-J08",
+    "effect": [ { "remove_radio_station": { "context_val": "radio_loc" } } ]
+  }
+]

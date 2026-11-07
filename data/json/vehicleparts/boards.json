@@ -104,6 +104,7 @@
     "id": "board",
     "type": "vehicle_part",
     "copy-from": "board_abstract",
+    "sound_attenuation": 6,
     "name": { "str": "board" },
     "description": "A metal wall.  Keeps zombies outside the vehicle and prevents people from seeing through it.",
     "extend": { "flags": [ "OPAQUE", "FULL_BOARD" ] }
@@ -141,6 +142,7 @@
     "id": "clothboard",
     "copy-from": "clothboard_abstract",
     "type": "vehicle_part",
+    "sound_attenuation": 1,
     "name": { "str": "cloth board" },
     "description": "A cloth wall.  Keeps zombies outside the vehicle and prevents people from seeing through it.",
     "extend": { "flags": [ "OPAQUE", "FULL_BOARD" ] }
@@ -162,6 +164,7 @@
     "item": "sheet_metal",
     "color": "white",
     "durability": 80,
+    "sound_attenuation": 6,
     "description": "A metal wall with a storage locker.  Keeps zombies outside the vehicle and prevents people from seeing through it.",
     "size": "62500 ml",
     "//": "1 m square sheet, assume 200 cm weld, 50 cm weld per damage quadrant to repair",
@@ -183,6 +186,7 @@
     "type": "vehicle_part",
     "name": { "str": "heavy-duty stow board" },
     "item": "steel_plate",
+    "sound_attenuation": 10,
     "color": "brown",
     "broken_color": "dark_gray",
     "proportional": { "durability": 4.15, "size": 0.76 },
@@ -213,6 +217,7 @@
     "id": "hdboard",
     "type": "vehicle_part",
     "copy-from": "hdboard_abstract",
+    "sound_attenuation": 10,
     "name": { "str": "heavy-duty board" },
     "extend": { "flags": [ "OPAQUE", "FULL_BOARD" ] }
   },
@@ -245,6 +250,7 @@
     "id": "woodboard",
     "type": "vehicle_part",
     "copy-from": "woodboard_abstract",
+    "sound_attenuation": 6,
     "name": { "str": "wooden board" },
     "description": "A wooden wall.  Keeps zombies outside the vehicle and prevents people from seeing through it.",
     "extend": { "flags": [ "OPAQUE", "FULL_BOARD" ] }

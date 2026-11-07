@@ -1,0 +1,188 @@
+[
+  {
+    "//": "MGEN-B08: a nested chunk turned by its own rotation, as it allows; one that only asks for a rotation; and one turned with the chunk that places it.",
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_turned",
+    "object": {
+      "mapgensize": [ 3, 3 ],
+      "rotation": 1,
+      "allow_rotation": true,
+      "rows": [
+        ".b.",
+        "...",
+        "..."
+      ],
+      "furniture": { "b": "f_chair" },
+      "set": [ { "point": "terrain", "id": "t_linoleum_white", "x": 0, "y": 0 } ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_not_turned",
+    "object": { "mapgensize": [ 3, 3 ], "rotation": 1, "set": [ { "point": "terrain", "id": "t_linoleum_white", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_turned_outer",
+    "object": {
+      "mapgensize": [ 4, 4 ],
+      "rotation": 1,
+      "allow_rotation": true,
+      "place_nested": [ { "chunks": [ "test_audit_m08a_inner" ], "x": 0, "y": 0 } ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_inner",
+    "object": {
+      "mapgensize": [ 2, 2 ],
+      "set": [
+        { "point": "terrain", "id": "t_linoleum_gray", "x": 0, "y": 0 },
+        { "point": "terrain", "id": "t_linoleum_white", "x": 1, "y": 0 }
+      ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_m08a_place_turned",
+    "object": {
+      "place_nested": [
+        { "chunks": [ "test_audit_m08a_turned" ], "x": 5, "y": 5 },
+        { "chunks": [ "test_audit_m08a_not_turned" ], "x": 10, "y": 5 },
+        { "chunks": [ "test_audit_m08a_turned_outer" ], "x": 15, "y": 5 }
+      ]
+    }
+  },
+  {
+    "//": "MGEN-B09: a parameter declared three chunks down, and one in a chunk listed after null, must reach the top mapgen.",
+    "type": "overmap_terrain",
+    "id": "test_audit_m08a_nest_omt",
+    "name": "audit nested parameter test",
+    "sym": "%",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ]
+  },
+  {
+    "type": "mapgen",
+    "om_terrain": "test_audit_m08a_nest_omt",
+    "object": {
+      "fill_ter": "t_floor",
+      "place_nested": [
+        { "chunks": [ "test_audit_m08a_nest_a" ], "x": 0, "y": 0 },
+        { "chunks": [ { "distribution": [ "null", "test_audit_m08a_nest_after_null" ] } ], "x": 10, "y": 10 }
+      ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_nest_a",
+    "object": { "mapgensize": [ 3, 3 ], "place_nested": [ { "chunks": [ "test_audit_m08a_nest_b" ], "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_nest_b",
+    "object": { "mapgensize": [ 2, 2 ], "place_nested": [ { "chunks": [ "test_audit_m08a_nest_c" ], "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_nest_c",
+    "object": {
+      "mapgensize": [ 1, 1 ],
+      "parameters": {
+        "audit_m08a_grandchild_floor": { "type": "ter_str_id", "scope": "overmap_special", "default": { "distribution": [ "t_floor", "t_linoleum_white" ] } }
+      },
+      "rows": [ "x" ],
+      "terrain": { "x": { "param": "audit_m08a_grandchild_floor", "fallback": "t_floor" } }
+    }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_m08a_nest_after_null",
+    "object": {
+      "mapgensize": [ 1, 1 ],
+      "parameters": {
+        "audit_m08a_after_null_floor": { "type": "ter_str_id", "scope": "overmap_special", "default": { "distribution": [ "t_floor", "t_linoleum_gray" ] } }
+      },
+      "rows": [ "x" ],
+      "terrain": { "x": { "param": "audit_m08a_after_null_floor", "fallback": "t_floor" } }
+    }
+  },
+  {
+    "//": "MGEN-J01: place_eocs queues its EOC with the place and the overmap terrain; place_variables rolls its range.",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_m08a_place_eoc",
+    "object": {
+      "place_eocs": [
+        {
+          "eoc": {
+            "id": "EOC_test_audit_m08a_placed",
+            "effect": [
+              { "copy_var": { "context_val": "loc" }, "target_var": { "global_val": "audit_m08a_eoc_loc" } },
+              { "copy_var": { "context_val": "oter_id" }, "target_var": { "global_val": "audit_m08a_eoc_oter" } }
+            ]
+          },
+          "x": 3,
+          "y": 4
+        }
+      ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_m08a_variable_range",
+    "object": { "place_variables": [ { "name": "audit_m08a_ranged_point", "x": [ 3, 5 ], "y": 7 } ] }
+  },
+  {
+    "//": "MGEN-J01, MGEN-J03: a map extra with a condition and EOCs. No region lists it, so it is only placed by the tests.",
+    "id": "test_audit_m08a_mx",
+    "type": "map_extra",
+    "name": { "str": "audit test extra" },
+    "description": "Only placed by the tests.",
+    "generator": { "generator_method": "update_mapgen", "generator_id": "test_audit_m08a_mx_update" },
+    "condition": {
+      "and": [
+        { "math": [ "value_or( audit_m08a_mx_allowed, 0 ) == 1" ] },
+        { "compare_string": [ "field", { "context_val": "oter_id" } ] }
+      ]
+    },
+    "eocs": [
+      {
+        "id": "EOC_test_audit_m08a_mx_placed",
+        "effect": [
+          { "copy_var": { "context_val": "loc" }, "target_var": { "global_val": "audit_m08a_mx_loc" } },
+          { "copy_var": { "context_val": "map_extra" }, "target_var": { "global_val": "audit_m08a_mx_id" } }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_m08a_mx_update",
+    "object": { "set": [ { "point": "terrain", "id": "t_linoleum_gray", "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "MGEN-J02: an update with a parameter, marking its origin and the tile east of it; and EOCs that note how an EOC mapgen_update went.",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_m08a_mark_origin",
+    "object": {
+      "parameters": { "audit_m08a_mark": { "type": "ter_str_id", "scope": "omt", "default": { "distribution": [ "t_linoleum_white" ] } } },
+      "place_terrain": [
+        { "ter": { "param": "audit_m08a_mark", "fallback": "t_linoleum_white" }, "x": 0, "y": 0 },
+        { "ter": "t_floor", "x": 1, "y": 0 }
+      ]
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_audit_m08a_update_ok",
+    "effect": [ { "copy_var": { "context_val": "update_id" }, "target_var": { "global_val": "audit_m08a_update_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_audit_m08a_update_failed",
+    "effect": [ { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "audit_m08a_update_reason" } } ]
+  }
+]

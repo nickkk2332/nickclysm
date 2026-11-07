@@ -2819,7 +2819,7 @@
         "time": "1 h",
         "activity_level": "MODERATE_EXERCISE",
         "proficiencies": [ { "proficiency": "prof_blacksmithing" } ],
-        "quality": { "id": "CHISEL", "level": 3 }
+        "qualities": [ { "id": "CHISEL", "level": 3 } ]
       },
       {
         "name": "Lining bands with strong glue.  Wedging bands into wood.  Cold driving them in place",

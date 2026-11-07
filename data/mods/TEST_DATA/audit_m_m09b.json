@@ -1,0 +1,52 @@
+[
+  {
+    "type": "overmap_terrain",
+    "id": "test_m09b_flagged_omt",
+    "name": "custom flag test",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "//": "TEST_M09B_SAFEHOUSE is no engine flag: OMAP-J12 keeps it as the mod's own.",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN", "SOURCE_FOOD", "TEST_M09B_SAFEHOUSE" ],
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_m09b_flagged_copy_omt",
+    "copy-from": "test_m09b_flagged_omt",
+    "name": "custom flag copy test",
+    "extend": { "flags": [ "TEST_M09B_OUTPOST" ] },
+    "delete": { "flags": [ "TEST_M09B_SAFEHOUSE", "SOURCE_FOOD", "RISK_HIGH" ] },
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "overmap_location",
+    "id": "test_m09b_safehouse_location",
+    "flags": [ "TEST_M09B_SAFEHOUSE" ]
+  },
+  {
+    "type": "overmap_location",
+    "id": "test_m09b_extended_location",
+    "copy-from": "test_m09b_safehouse_location",
+    "extend": { "terrains": [ "test_m09b_flagged_copy_omt" ] }
+  },
+  {
+    "type": "overmap_connection",
+    "id": "test_m09b_connection",
+    "subtypes": [
+      { "terrain": "road", "locations": [ "field" ], "basic_cost": 5 },
+      { "terrain": "road", "locations": [ "forest" ], "basic_cost": 20 }
+    ]
+  },
+  {
+    "type": "overmap_connection",
+    "id": "test_m09b_connection_changed",
+    "copy-from": "test_m09b_connection",
+    "//": "OMAP-J11: a copy-from can append and remove subtypes, and set where specials build it from.",
+    "extend": { "subtypes": [ { "terrain": "road", "locations": [ "swamp" ], "basic_cost": 40 } ] },
+    "delete": { "subtypes": [ { "terrain": "road", "locations": [ "forest" ] } ] },
+    "special_target": "nearest_existing"
+  }
+]

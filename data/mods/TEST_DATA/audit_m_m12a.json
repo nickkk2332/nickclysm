@@ -1,0 +1,118 @@
+[
+  {
+    "id": "audit_m12a_trinket",
+    "type": "ITEM",
+    "name": { "str": "TEST trinket" },
+    "description": "A small solid thing, one per item (INV-J05, INV-J07, INV-J08).",
+    "weight": "50 g",
+    "volume": "250 ml",
+    "material": [ "plastic" ],
+    "symbol": "*",
+    "color": "light_gray"
+  },
+  {
+    "id": "audit_m12a_bead",
+    "type": "ITEM",
+    "name": { "str": "TEST bead" },
+    "description": "A tiny bead counted by charges (INV-J07).",
+    "weight": "1 g",
+    "volume": "1 ml",
+    "material": [ "plastic" ],
+    "symbol": "*",
+    "color": "red",
+    "stackable": true,
+    "flags": [ "TRADER_AVOID" ]
+  },
+  {
+    "id": "audit_m12a_box",
+    "type": "ITEM",
+    "name": { "str": "TEST box" },
+    "description": "A box with room for a few trinkets (INV-J05, INV-J07).",
+    "weight": "100 g",
+    "volume": "2500 ml",
+    "material": [ "plastic" ],
+    "symbol": ")",
+    "color": "brown",
+    "pocket_data": [
+      { "pocket_type": "CONTAINER", "rigid": true, "max_contains_volume": "2 L", "max_contains_weight": "5 kg", "moves": 100 }
+    ]
+  },
+  {
+    "id": "audit_m12a_inner_box",
+    "type": "ITEM",
+    "name": { "str": "TEST inner box" },
+    "description": "A box that fits inside the TEST box (INV-J07).",
+    "weight": "50 g",
+    "volume": "600 ml",
+    "material": [ "plastic" ],
+    "symbol": ")",
+    "color": "yellow",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "max_contains_volume": "500 ml",
+        "max_contains_weight": "2 kg",
+        "moves": 100
+      }
+    ]
+  },
+  {
+    "id": "audit_m12a_small_box",
+    "type": "ITEM",
+    "name": { "str": "TEST small box" },
+    "description": "A rigid box with room for exactly two trinkets (INV-J07).",
+    "weight": "50 g",
+    "volume": "600 ml",
+    "material": [ "plastic" ],
+    "symbol": ")",
+    "color": "green",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "max_contains_volume": "500 ml",
+        "max_contains_weight": "2 kg",
+        "moves": 100
+      }
+    ]
+  },
+  {
+    "id": "audit_m12a_sealed_pouch",
+    "type": "ITEM",
+    "name": { "str": "TEST sealed pouch" },
+    "description": "Holds liquid and gas, shows its contents, keeps them warm and is slow to open, but only while sealed (INV-J09).",
+    "weight": "20 g",
+    "volume": "250 ml",
+    "material": [ "plastic" ],
+    "symbol": ")",
+    "color": "white",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "500 ml",
+        "max_contains_weight": "1 kg",
+        "moves": 100,
+        "sealed_data": { "spoil_multiplier": 0.5, "watertight": true, "airtight": true, "transparent": true, "insulation": 3.0, "moves": 400 }
+      }
+    ]
+  },
+  {
+    "type": "mutation",
+    "id": "audit_m12a_quick_hands",
+    "name": { "str": "TEST quick hands" },
+    "points": 0,
+    "valid": false,
+    "description": "Draws and puts away items in half the time (INV-J06).",
+    "enchantments": [
+      {
+        "values": [ { "value": "OBTAIN_COST_MULTIPLIER", "multiply": -0.5 }, { "value": "STORE_COST_MULTIPLIER", "multiply": -0.5 } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "audit_m12a_count_contents",
+    "effect": [ { "math": [ "g_audit_m12a_seen = g_audit_m12a_seen + 1" ] } ]
+  }
+]

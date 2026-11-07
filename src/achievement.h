@@ -121,12 +121,24 @@ class achievement
             return manually_given_;
         }
 
+        /** Tracked in a game that started before it was loaded (a mod added to the save) */
+        bool allows_late_tracking() const {
+            return allow_late_tracking_;
+        }
+
+        /** Once completed in any game, every profession and scenario can be picked */
+        bool unlocks_all_content() const {
+            return unlocks_all_content_;
+        }
+
     private:
         translation name_;
         translation description_;
         bool is_conduct_ = false;
         // if the achievement is given by an EOC
         bool manually_given_ = false;
+        bool allow_late_tracking_ = false;
+        bool unlocks_all_content_ = false;
         std::vector<achievement_id> hidden_by_;
         std::optional<time_bound> time_constraint_;
         std::vector<achievement_requirement> requirements_;
@@ -202,7 +214,7 @@ class achievements_tracker : public event_subscriber
             bool active );
         ~achievements_tracker() override;
 
-        // Return all scores which are valid now and existed at game start
+        // Return all achievements which are valid now and tracked (see is_tracked)
         std::vector<const achievement *> valid_achievements() const;
 
         void report_achievement( const achievement *, achievement_completion );
@@ -211,6 +223,9 @@ class achievements_tracker : public event_subscriber
             std::ostream &achievement_file, const std::string &avatar_name ) const;
 
         achievement_completion is_completed( const achievement_id & ) const;
+        /** Whether this game tracks the achievement: it existed when the game started, or it
+         * allows late tracking */
+        bool is_tracked( const achievement_id & ) const;
         bool is_hidden( const achievement * ) const;
         std::string ui_text_for( const achievement * ) const;
         bool is_enabled() const {

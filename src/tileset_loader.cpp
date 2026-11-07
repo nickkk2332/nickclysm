@@ -482,7 +482,7 @@ atlas_upload_interrupt tileset_cache::loader::load( const std::string &tileset_i
         // below, or season lookups would return freed tiles
         for( auto &by_season : ts.tile_ids_by_season ) {
             for( auto it = by_season.begin(); it != by_season.end(); ) {
-                auto &value = it->second;
+                tileset::season_tile_value &value = it->second;
                 if( invalid_tiles.count( value.default_tile ) ) {
                     value.default_tile = nullptr;
                 }
@@ -520,6 +520,9 @@ atlas_upload_interrupt tileset_cache::loader::load( const std::string &tileset_i
     } else {
         ts.set_default_item_highlight_index( std::nullopt );
     }
+
+    // tile_ids is final now: invalid tiles are gone and nothing more is added
+    ts.link_multitile_subtiles();
 
     ts.tileset_id = tileset_id;
 
@@ -615,14 +618,40 @@ void tileset_cache::loader::parse_atlases( const JsonObject &config,
         offset += size;
     }
 
-    // allows a tileset to override the order of mutation images being applied to a character
+    // allows a tileset to override the order of mutation images being applied to a character.
+    // REND-B07: kept with the tileset; the main (TILES) context publishes it when it binds the
+    // tileset (cata_tiles::load_tileset)
     if( config.has_array( "overlay_ordering" ) ) {
-        load_overlay_ordering_into_array( config, tileset_mutation_overlay_ordering );
+        load_overlay_ordering_into_array( config, ts.mutation_overlay_ordering );
     }
 
     // offset should be the total number of sprites loaded from every tileset image
     // eliminate any sprite references that are too high to exist
     // also eliminate negative sprite references
+}
+
+// The "sprite" array of a layering.json item or field variant: each sprite id with its weight
+// (a sprite listed twice gets both weights).  Returns the total weight.  REND-B03: as in tile
+// fg and bg lists, a sprite whose weight isn't above 0 is left out, and a variant with no
+// sprite left is left out with an error in the log, as a tile without valid sprites is.  An
+// empty or zero-weight list divided by zero when it was drawn.
+static int load_layer_sprites( const JsonObject &vars, const std::string &context,
+                               const std::string &variant_id, std::map<std::string, int> &sprites )
+{
+    int total_weight = 0;
+    for( const JsonObject sprite : vars.get_array( "sprite" ) ) {
+        const std::string id = sprite.get_string( "id" );
+        const int weight = sprite.get_int( "weight", 1 );
+        if( weight > 0 ) {
+            sprites[id] += weight;
+            total_weight += weight;
+        }
+    }
+    if( total_weight <= 0 ) {
+        dbg( D_ERROR ) << "layering variant " << variant_id << " of " << context
+                       << " has no sprite with a weight above 0";
+    }
+    return total_weight;
 }
 
 void tileset_cache::loader::load_layers( const JsonObject &config )
@@ -676,19 +705,17 @@ void tileset_cache::loader::load_layers( const JsonObject &config )
 
                         int total_weight = 0;
                         if( vars.has_array( "sprite" ) ) {
-                            for( const JsonObject sprites : vars.get_array( "sprite" ) ) {
-                                std::string id = sprites.get_string( "id" );
-                                int weight = sprites.get_int( "weight", 1 );
-                                lcs.sprite.emplace( id, weight );
-                                total_weight += weight;
-                            }
+                            total_weight = load_layer_sprites( vars, context, lcs.id, lcs.sprite );
                         } else {
                             //default if unprovided = item name
                             lcs.sprite.emplace( lcs.id, 1 );
                             total_weight = 1;
                         }
                         lcs.total_weight = total_weight;
-                        item_layers.push_back( lcs );
+                        // REND-B03: no sprite to pick (and a pick would divide by zero)
+                        if( total_weight > 0 ) {
+                            item_layers.push_back( lcs );
+                        }
                     } else {
                         config.throw_error( "items configured incorrectly" );
                     }
@@ -714,16 +741,11 @@ void tileset_cache::loader::load_layers( const JsonObject &config )
                         }
                         lcs.offset = offset;
 
-                        int total_weight = 0;
-                        for( const JsonObject sprites : vars.get_array( "sprite" ) ) {
-                            std::string id = sprites.get_string( "id" );
-                            int weight = sprites.get_int( "weight", 1 );
-                            lcs.sprite.emplace( id, weight );
-
-                            total_weight += weight;
+                        lcs.total_weight = load_layer_sprites( vars, context, lcs.id, lcs.sprite );
+                        // REND-B03: no sprite to pick (and a pick would divide by zero)
+                        if( lcs.total_weight > 0 ) {
+                            field_layers.push_back( lcs );
                         }
-                        lcs.total_weight = total_weight;
-                        field_layers.push_back( lcs );
                     } else {
                         config.throw_error( "fields configured incorrectly" );
                     }

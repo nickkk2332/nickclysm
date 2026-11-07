@@ -1,0 +1,298 @@
+[
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_crock",
+    "//": "ITEM-B10: a wide container for a liquid that turns solid",
+    "name": { "str": "audit crock" },
+    "description": "Test container.",
+    "weight": "500 g",
+    "volume": "2500 ml",
+    "material": [ "test_material" ],
+    "symbol": ")",
+    "color": "brown",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "watertight": true,
+        "rigid": true,
+        "max_contains_volume": "2 L",
+        "max_contains_weight": "10 kg"
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "audit_m10a_brine_active",
+    "//": "ITEM-B10: a liquid counted by charges whose countdown turns it into a solid that isn't",
+    "name": { "str_sp": "audit curing brine" },
+    "description": "Test liquid.",
+    "comestible_type": "DRINK",
+    "phase": "liquid",
+    "material": [ "test_material" ],
+    "weight": "100 g",
+    "volume": "100 ml",
+    "charges": 1,
+    "symbol": "~",
+    "color": "blue",
+    "flags": [ "SPAWN_ACTIVE" ],
+    "countdown_interval": "1 seconds",
+    "revert_to": "audit_m10a_cured"
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "audit_m10a_cured",
+    "//": "ITEM-B10: one of these per charge of the brine; ITEM-J04: food for item_temperature and item_freshness",
+    "name": { "str": "audit cured bit" },
+    "description": "Test food.",
+    "comestible_type": "FOOD",
+    "material": [ "test_material" ],
+    "weight": "50 g",
+    "volume": "50 ml",
+    "symbol": "%",
+    "color": "brown",
+    "spoils_in": "2 days"
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_degrading_rock",
+    "//": "ITEM-J02: not a vehicle part, but degrades because it says so",
+    "name": { "str": "audit degrading rock" },
+    "description": "Test item.",
+    "weight": "500 g",
+    "volume": "250 ml",
+    "material": [ "test_material" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "degradation_multiplier": 2
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_degrading_child",
+    "//": "ITEM-J02: its own multiplier replaces the parent's instead of stacking on it",
+    "copy-from": "audit_m10a_degrading_rock",
+    "name": { "str": "audit degrading child" },
+    "degradation_multiplier": 0.5
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_degrading_grandchild",
+    "//": "ITEM-J02: inherits the child's multiplier",
+    "copy-from": "audit_m10a_degrading_child",
+    "name": { "str": "audit degrading grandchild" }
+  },
+  {
+    "type": "fault",
+    "id": "fault_audit_m10a_squeak",
+    "//": "ITEM-J03, ITEM-J08",
+    "fault_type": "audit_m10a_noise",
+    "name": { "str": "squeaky" },
+    "description": "Test fault: the %s squeaks."
+  },
+  {
+    "type": "fault",
+    "id": "fault_audit_m10a_rattle",
+    "//": "ITEM-J03",
+    "fault_type": "audit_m10a_noise",
+    "name": { "str": "rattling" },
+    "description": "Test fault: the %s rattles."
+  },
+  {
+    "type": "fault_group",
+    "id": "audit_m10a_noises",
+    "//": "ITEM-J03",
+    "group": [ { "fault": "fault_audit_m10a_rattle" } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_fault_parent",
+    "//": "ITEM-J03: a fault and a fault group to inherit; ITEM-J08: the item to mend",
+    "name": { "str": "audit widget" },
+    "description": "Test item.",
+    "weight": "500 g",
+    "volume": "250 ml",
+    "material": [ "test_material" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "faults": [ { "fault": "fault_audit_m10a_squeak" }, { "fault_group": "audit_m10a_noises" } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_fault_cleared",
+    "//": "ITEM-J03: an empty list removes the inherited faults",
+    "copy-from": "audit_m10a_fault_parent",
+    "name": { "str": "audit widget without faults" },
+    "faults": [  ]
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_fault_replaced",
+    "//": "ITEM-J03: a list replaces the inherited one",
+    "copy-from": "audit_m10a_fault_parent",
+    "name": { "str": "audit rattling widget" },
+    "faults": [ { "fault_group": "audit_m10a_noises" } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_fault_trimmed",
+    "//": "ITEM-J03: delete removes an inherited fault",
+    "copy-from": "audit_m10a_fault_parent",
+    "name": { "str": "audit widget that doesn't squeak" },
+    "delete": { "faults": [ "fault_audit_m10a_squeak" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_fault_ungrouped",
+    "//": "ITEM-J03: delete removes an inherited fault group",
+    "copy-from": "audit_m10a_fault_parent",
+    "name": { "str": "audit widget that doesn't rattle" },
+    "delete": { "faults": [ { "fault_group": "audit_m10a_noises" } ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m10a_fault_extended",
+    "//": "ITEM-J03: extend adds to the inherited list",
+    "copy-from": "audit_m10a_fault_cleared",
+    "name": { "str": "audit widget that rattles again" },
+    "extend": { "faults": [ { "fault": "fault_audit_m10a_rattle" } ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m10a_eat_a",
+    "//": "ITEM-J03",
+    "effect": [ { "math": [ "audit_m10a_ate = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m10a_eat_b",
+    "//": "ITEM-J03",
+    "effect": [ { "math": [ "audit_m10a_ate = 2" ] } ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "audit_m10a_snack",
+    "//": "ITEM-J03: consumption EOCs to inherit",
+    "name": { "str": "audit snack" },
+    "description": "Test food.",
+    "comestible_type": "FOOD",
+    "material": [ "test_material" ],
+    "weight": "50 g",
+    "volume": "50 ml",
+    "symbol": "%",
+    "color": "brown",
+    "consumption_effect_on_conditions": [ "EOC_audit_m10a_eat_a" ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "audit_m10a_snack_plain",
+    "//": "ITEM-J03: an empty list removes the inherited EOCs",
+    "copy-from": "audit_m10a_snack",
+    "name": { "str": "audit plain snack" },
+    "consumption_effect_on_conditions": [  ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "audit_m10a_snack_more",
+    "//": "ITEM-J03: extend adds an EOC",
+    "copy-from": "audit_m10a_snack",
+    "name": { "str": "audit bigger snack" },
+    "extend": { "consumption_effect_on_conditions": [ "EOC_audit_m10a_eat_b" ] }
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "audit_m10a_snack_other",
+    "//": "ITEM-J03: delete removes an inherited EOC",
+    "copy-from": "audit_m10a_snack_more",
+    "name": { "str": "audit other snack" },
+    "delete": { "consumption_effect_on_conditions": [ "EOC_audit_m10a_eat_a" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m10a_relic_recharge",
+    "//": "ITEM-J05: the relic recharges while this condition is true (its effect never runs)",
+    "condition": { "math": [ "audit_m10a_recharge == 1" ] },
+    "effect": [ { "math": [ "audit_m10a_recharge_ran = 1" ] } ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "ARTIFACT" ],
+    "id": "audit_m10a_relic",
+    "//": "ITEM-J04: item_relic_charges; ITEM-J05: activation event and condition recharge",
+    "name": { "str": "audit relic" },
+    "description": "Test relic.",
+    "weight": "100 g",
+    "volume": "250 ml",
+    "material": [ "test_material" ],
+    "symbol": "*",
+    "color": "white",
+    "charge_info": {
+      "recharge_type": "condition",
+      "recharge_eoc": "EOC_audit_m10a_relic_recharge",
+      "time": "1 s",
+      "max_charges": 3,
+      "charges": 0
+    }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m10a_quick_riser",
+    "copy-from": "mon_zombie",
+    "name": { "str": "audit quick riser" },
+    "description": "A zombie whose corpse keeps briefly and gets up soon, for corpse timing tests.",
+    "corpse_shelf_life": "12 h",
+    "corpse_rot_away": "2 d",
+    "revive_delay": { "min": "1 h", "guaranteed": "2 h" }
+  },
+  {
+    "type": "json_flag",
+    "id": "AUDIT_M10A_SLOW_ROT",
+    "//": "ITEM-J06: an item with this flag rots half as fast",
+    "rot_multiplier": 0.5
+  },
+  {
+    "type": "item_group",
+    "id": "audit_m10a_conditional",
+    "//": "ITEM-J07: an entry that spawns only while a global variable is set",
+    "subtype": "collection",
+    "entries": [ { "item": "audit_m10a_cured", "condition": { "math": [ "audit_m10a_spawn == 1" ] } }, { "item": "audit_m10a_crock" } ]
+  },
+  {
+    "type": "item_group",
+    "id": "audit_m10a_conditional_pick",
+    "//": "ITEM-J07: a distribution whose only entry has a condition",
+    "subtype": "distribution",
+    "entries": [ { "item": "audit_m10a_cured", "prob": 100, "condition": { "math": [ "audit_m10a_spawn == 1" ] } } ]
+  },
+  {
+    "type": "item_group",
+    "id": "audit_m10a_trimmed",
+    "//": "ITEM-J07: the next definition deletes entries from it",
+    "subtype": "collection",
+    "entries": [ { "item": "audit_m10a_cured" }, { "item": "audit_m10a_crock" }, { "group": "audit_m10a_conditional_pick" } ]
+  },
+  {
+    "type": "item_group",
+    "id": "audit_m10a_trimmed",
+    "//": "ITEM-J07: delete before extend",
+    "copy-from": "audit_m10a_trimmed",
+    "subtype": "collection",
+    "delete": { "items": [ "audit_m10a_cured" ], "groups": [ "audit_m10a_conditional_pick" ] },
+    "extend": { "entries": [ { "item": "audit_m10a_relic" } ] }
+  },
+  {
+    "type": "fault_fix",
+    "id": "audit_m10a_oil_squeak",
+    "//": "ITEM-J08: a fix offered only while a global variable is set, that runs an EOC",
+    "name": "Oil the squeak",
+    "success_msg": "You oil the %s.",
+    "time": "1 s",
+    "faults_removed": [ "fault_audit_m10a_squeak" ],
+    "condition": { "math": [ "audit_m10a_can_oil == 1" ] },
+    "effect_on_conditions": [ { "id": "EOC_audit_m10a_oiled", "effect": [ { "math": [ "audit_m10a_oiled = n_item_wetness() + 1" ] } ] } ]
+  }
+]

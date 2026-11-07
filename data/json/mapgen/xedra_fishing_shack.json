@@ -9,6 +9,7 @@
     "color": "cyan",
     "move_cost": 0,
     "coverage": 95,
+    "sound_attenuation": 8,
     "roof": "t_metal_roof",
     "connect_groups": "WALL",
     "connects_to": "WALL",

@@ -2,7 +2,7 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_BLOOD_ADDICTION",
-    "condition": { "math": [ "rand(2000) <= addiction_rational(2000, 20, u_addiction_intensity('blood'))" ] },
+    "condition": { "math": [ "rand(2000) <= addiction_rational(2000, 20, u_addiction_intensity('human_blood'))" ] },
     "effect": [
       {
         "run_eocs": {

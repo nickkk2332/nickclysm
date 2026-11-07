@@ -60,6 +60,7 @@ static const mtype_id mon_dog_zombie_brute( "mon_dog_zombie_brute" );
 static const mtype_id mon_test_zombie( "mon_test_zombie" );
 static const mtype_id pseudo_dormant_mon_zombie_fat( "pseudo_dormant_mon_zombie_fat" );
 
+static const oter_str_id oter_empty_rock( "empty_rock" );
 static const oter_str_id oter_field( "field" );
 
 static const ter_str_id ter_t_fence( "t_fence" );
@@ -984,6 +985,11 @@ static void clear_area( const tripoint_abs_omt &start, const tripoint_abs_omt &e
     clear_overmaps();
     for( const tripoint_abs_omt &to_flatten : tripoint_range<tripoint_abs_omt>( start, end ) ) {
         overmap_buffer.ter_set( to_flatten, oter_field );
+        // Under the fields too: a basement or bunker left there puts its NPCs in the solid
+        // rock wipe_map_terrain() lays at z -1, and placing them fails with a debugmsg.
+        for( int z = -1; z >= -OVERMAP_DEPTH; --z ) {
+            overmap_buffer.ter_set( tripoint_abs_omt( to_flatten.xy(), z ), oter_empty_rock );
+        }
     }
 }
 
@@ -1026,7 +1032,9 @@ static void walk_toward_monster_off_the_map( tripoint_abs_omt origin, point offs
             wipe_map_terrain();
         }
         for( monster &critter : g->all_monsters() ) {
-            if( critter.type->id != id ) {
+            // Mapgen can place other monsters of the target's type (dormant zombies come from
+            // map extras): only the one at the spot the test chose is the target.
+            if( critter.type->id != id || square_dist( critter.pos_abs(), monster_pos ) > 1 ) {
                 critter.die( &here, nullptr );
             }
         }
@@ -1045,11 +1053,13 @@ static void walk_toward_monster_off_the_map( tripoint_abs_omt origin, point offs
     CAPTURE( here.ter( expected_local ) );
     CAPTURE( here.furn( expected_local ) );
     CAPTURE( here.move_cost( expected_local ) );
+    // The target is the monster of its type nearest the spot it was put on.
     monster *tgt_monster = nullptr;
     for( monster &critter : g->all_monsters() ) {
-        if( critter.type->id == id ) {
+        if( critter.type->id == id && ( tgt_monster == nullptr ||
+                                        square_dist( critter.pos_abs(), monster_pos ) <
+                                        square_dist( tgt_monster->pos_abs(), monster_pos ) ) ) {
             tgt_monster = &critter;
-            break;
         }
     }
     REQUIRE( tgt_monster != nullptr );

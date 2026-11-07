@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "cached_options.h" // IWYU pragma: keep
@@ -36,10 +37,11 @@
 #include "point.h"
 #include "popup.h"
 #include "ret_val.h"
+#include "translation.h"
 #include "translations.h"
 #include "type_id.h"
-#include "uilist.h"
 #include "ui_manager.h"
+#include "uilist.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 
@@ -477,6 +479,24 @@ bool can_action_change_worldstate( const action_id act )
         default:
             return true;
     }
+}
+
+std::optional<std::string> action_blocked_by_flags( const Character &you, const action_id act )
+{
+    const std::vector<flag_id> &blocking = json_flag::get_action_blocking();
+    if( blocking.empty() ) {
+        return std::nullopt;
+    }
+    const std::string ident = action_ident( act );
+    for( const flag_id &flag : blocking ) {
+        for( const json_flag::blocked_actions_t &entry : flag->blocked_actions() ) {
+            if( std::find( entry.actions.begin(), entry.actions.end(), ident ) != entry.actions.end() &&
+                you.has_flag( flag ) ) {
+                return entry.message.translated();
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 action_id look_up_action( const std::string &ident )

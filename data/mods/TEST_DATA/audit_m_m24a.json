@@ -1,0 +1,161 @@
+[
+  {
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "id": "test_m24a_mending_kit",
+    "name": { "str": "test mending kit" },
+    "description": "VINT-J09 fixture: a repair tool that needs no ammo, provided by a vehicle part.",
+    "weight": "100 g",
+    "volume": "250 ml",
+    "price": "1 USD",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray",
+    "use_action": [
+      {
+        "type": "repair_item",
+        "item_action_type": "repair_metal",
+        "materials": [ "wood" ],
+        "skill": "fabrication",
+        "tool_quality": 1,
+        "cost_scaling": 0.1,
+        "move_cost": 1000
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_m24a_washer",
+    "copy-from": "test_m06a_dryer",
+    "name": { "str": "test washer" },
+    "description": "VINT-J08 fixture: the base item of the test washer appliance."
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_lock_frame",
+    "copy-from": "frame",
+    "name": { "str": "test lock frame" },
+    "description": "VINT-B05 fixture: a frame that makes its vehicle unmodifiable.",
+    "extend": { "flags": [ "NO_MODIFY_VEHICLE" ] }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_simple_seat",
+    "copy-from": "seat",
+    "name": { "str": "test simple seat" },
+    "description": "VINT-B05 fixture: a SIMPLE_PART seat.",
+    "extend": { "flags": [ "SIMPLE_PART" ] }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_proof_seat",
+    "copy-from": "seat",
+    "name": { "str": "test player-proof seat" },
+    "description": "VINT-B05 fixture: a seat players can't install.",
+    "extend": { "flags": [ "NO_INSTALL_PLAYER" ] }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_easy_seat",
+    "copy-from": "seat",
+    "name": { "str": "test easy seat" },
+    "description": "VINT-B06 fixture: repaired with nothing, with a skill its install doesn't use.",
+    "requirements": {
+      "install": { "skills": [ [ "mechanics", 1 ] ], "time": "30 m" },
+      "repair": { "skills": [ [ "tailor", 1 ] ], "time": "6 m" }
+    }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_mending_bench",
+    "copy-from": "seat",
+    "name": { "str": "test mending bench" },
+    "description": "VINT-J09 fixture: a seat that provides a repair tool.",
+    "pseudo_tools": [ { "id": "test_m24a_mending_kit" } ]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_bare_bench",
+    "copy-from": "test_m24a_mending_bench",
+    "name": { "str": "test bare bench" },
+    "description": "VINT-B08 fixture: an empty pseudo_tools list clears the copied tools.",
+    "pseudo_tools": [  ]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_ench_seat",
+    "copy-from": "seat",
+    "description": "VINT-B07 fixture: a nameless (copied name) part with an inline enchantment.",
+    "enchantments": [ { "condition": "ALWAYS", "values": [ { "value": "SPEED", "add": 1 } ] } ]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_ench_seat_child",
+    "copy-from": "test_m24a_ench_seat",
+    "description": "VINT-B07 fixture: adds an inline enchantment to the copied one.",
+    "extend": { "enchantments": [ { "condition": "ALWAYS", "values": [ { "value": "SPEED", "add": 2 } ] } ] }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_ench_seat_cleared",
+    "copy-from": "test_m24a_ench_seat",
+    "description": "VINT-B07 fixture: an empty list drops the copied enchantment.",
+    "enchantments": [  ]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_m24a_reaper",
+    "copy-from": "reaper",
+    "name": { "str": "test reaper" },
+    "description": "VINT-J05 fixture: a reaper with fixed yields.",
+    "reaper": { "plant_yield": [ 2, 2 ], "seed_yield": [ 1, 1 ] }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "ap_test_m24a_washer",
+    "copy-from": "ap_test_m06a_dryer",
+    "name": { "str": "test washer" },
+    "item": "test_m24a_washer",
+    "description": "VINT-J08 fixture: a cycle that only starts when everything inside is filthy.",
+    "processing_cycle": {
+      "duration": "10 m",
+      "unset_item_flags": [ "FILTHY" ],
+      "item_condition": { "u_has_flag": "FILTHY" },
+      "item_condition_message": "Only filthy things go in the test washer."
+    }
+  },
+  {
+    "type": "vehicle",
+    "id": "test_m24a_proto_parent",
+    "name": "test m24a parent",
+    "parts": [ { "x": 0, "y": 0, "parts": [ "frame", "seat" ] }, { "x": 1, "y": 0, "parts": [ "frame", "seat" ] } ],
+    "items": [ { "x": 0, "y": 0, "chance": 100, "items": [ "rock" ] } ],
+    "zones": [ { "x": 0, "y": 0, "type": "LOOT_UNSORTED" } ]
+  },
+  {
+    "type": "vehicle",
+    "id": "test_m24a_proto_child",
+    "copy-from": "test_m24a_proto_parent",
+    "name": "test m24a child",
+    "//": "VINT-B08: deletes a copied part, and appends parts, items and zones",
+    "delete": { "parts": [ { "x": 1, "y": 0, "part": "seat" } ] },
+    "parts": [ { "x": 1, "y": 0, "parts": [ "trunk" ] } ],
+    "items": [ { "x": 1, "y": 0, "chance": 100, "items": [ "stick" ] } ],
+    "zones": [ { "x": 1, "y": 0, "type": "LOOT_FOOD" } ]
+  },
+  {
+    "type": "vehicle",
+    "id": "test_m24a_proto_no_zones",
+    "copy-from": "test_m24a_proto_parent",
+    "name": "test m24a no zones",
+    "//": "VINT-B08: deleting a copied zone works now",
+    "delete": { "zones": [ { "x": 0, "y": 0, "type": "LOOT_UNSORTED" } ] }
+  },
+  {
+    "type": "vehicle",
+    "abstract": "test_m24a_proto_abstract",
+    "name": "test m24a abstract",
+    "//": "VINT-B09: an abstract prototype is no vehicle group",
+    "parts": [ { "x": 0, "y": 0, "parts": [ "frame" ] } ]
+  }
+]

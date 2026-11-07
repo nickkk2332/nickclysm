@@ -17,6 +17,8 @@ class past_achievements_info
         void clear();
         bool is_completed( const achievement_id & ) const;
         std::vector<std::string> avatars_completed( const achievement_id & ) const;
+        /** Whether a past game completed an achievement that unlocks all content */
+        bool unlocks_all_content() const;
 
     private:
         bool loaded_ = false;

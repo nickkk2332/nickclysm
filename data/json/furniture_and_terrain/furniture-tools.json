@@ -381,7 +381,20 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "kiln_empty",
+    "examine_action": {
+      "type": "process_start",
+      "accepts": { "materials": [ "wood", "bone" ] },
+      "reject_if_contains": { "items": [ "charcoal" ] },
+      "contains_message": [ "This kiln already contains charcoal.", "Remove it before firing the kiln again." ],
+      "reject_message": "This kiln contains %s, which can't be made into charcoal!",
+      "empty_message": "This kiln is empty.  Fill it with wood or bone and try again.",
+      "skill": "fabrication",
+      "yield_percent": { "math": [ "100 - trunc(60 - 2 * _skill_level)" ] },
+      "intermediate": "unfinished_charcoal",
+      "too_small_message": "The batch in this kiln is too small to yield any charcoal.",
+      "firestarter": true,
+      "furn_set": "f_kiln_full"
+    },
     "max_volume": "250 L",
     "crafting_pseudo_item": "fake_char_kiln",
     "flags": [ "CONTAINER", "FIRE_CONTAINER", "PLACE_ITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
@@ -405,7 +418,24 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "kiln_full",
+    "examine_action": {
+      "type": "process_finish",
+      "//": "internet guides claim about one day for a fairly large pot",
+      "duration": "24 h",
+      "empty_message": "This kiln is empty…",
+      "examine_message": "There's a charcoal kiln there.",
+      "time_left_message": {
+        "hours": { "str": "It will finish burning in about %d hour.", "str_pl": "It will finish burning in about %d hours." },
+        "less_than_an_hour": "It will finish burning in less than an hour.",
+        "minutes": {
+          "str": "It should take about %d minute to finish burning.",
+          "str_pl": "It should take about %d minutes to finish burning."
+        }
+      },
+      "output": { "item": "charcoal", "from": [ "unfinished_charcoal", "charcoal" ] },
+      "done_message": "It has finished burning, yielding %d charcoal.",
+      "furn_set": "f_kiln_empty"
+    },
     "flags": [ "NOITEM", "SEALED", "CONTAINER", "FIRE_CONTAINER", "SUPPRESS_SMOKE", "PLACE_ITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "deconstruct": { "items": [ { "item": "rock", "count": [ 30, 30 ] } ] },
     "bash": {
@@ -428,7 +458,20 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "kiln_empty",
+    "examine_action": {
+      "type": "process_start",
+      "accepts": { "materials": [ "wood", "bone" ] },
+      "reject_if_contains": { "items": [ "charcoal" ] },
+      "contains_message": [ "This kiln already contains charcoal.", "Remove it before firing the kiln again." ],
+      "reject_message": "This kiln contains %s, which can't be made into charcoal!",
+      "empty_message": "This kiln is empty.  Fill it with wood or bone and try again.",
+      "skill": "fabrication",
+      "yield_percent": { "math": [ "100 - trunc(25 - 2 * _skill_level)" ] },
+      "intermediate": "unfinished_charcoal",
+      "too_small_message": "The batch in this kiln is too small to yield any charcoal.",
+      "firestarter": true,
+      "furn_set": "f_kiln_portable_full"
+    },
     "max_volume": "200 L",
     "crafting_pseudo_item": "fake_char_kiln",
     "flags": [ "CONTAINER", "FIRE_CONTAINER", "PLACE_ITEM" ],
@@ -446,7 +489,24 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "kiln_full",
+    "examine_action": {
+      "type": "process_finish",
+      "//": "internet guides claim about one day for a fairly large pot",
+      "duration": "24 h",
+      "empty_message": "This kiln is empty…",
+      "examine_message": "There's a charcoal kiln there.",
+      "time_left_message": {
+        "hours": { "str": "It will finish burning in about %d hour.", "str_pl": "It will finish burning in about %d hours." },
+        "less_than_an_hour": "It will finish burning in less than an hour.",
+        "minutes": {
+          "str": "It should take about %d minute to finish burning.",
+          "str_pl": "It should take about %d minutes to finish burning."
+        }
+      },
+      "output": { "item": "charcoal", "from": [ "unfinished_charcoal", "charcoal" ] },
+      "done_message": "It has finished burning, yielding %d charcoal.",
+      "furn_set": "f_kiln_portable_empty"
+    },
     "item": "char_kiln",
     "flags": [ "NOITEM", "SEALED", "CONTAINER", "FIRE_CONTAINER", "SUPPRESS_SMOKE", "PLACE_ITEM" ],
     "bash": { "str_min": 12, "str_max": 40, "sound": "metal screeching!", "sound_fail": "clang!" }
@@ -462,7 +522,20 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "kiln_empty",
+    "examine_action": {
+      "type": "process_start",
+      "accepts": { "materials": [ "wood", "bone" ] },
+      "reject_if_contains": { "items": [ "charcoal" ] },
+      "contains_message": [ "This kiln already contains charcoal.", "Remove it before firing the kiln again." ],
+      "reject_message": "This kiln contains %s, which can't be made into charcoal!",
+      "empty_message": "This kiln is empty.  Fill it with wood or bone and try again.",
+      "skill": "fabrication",
+      "yield_percent": { "math": [ "100 - trunc(20 - 2 * _skill_level)" ] },
+      "intermediate": "unfinished_charcoal",
+      "too_small_message": "The batch in this kiln is too small to yield any charcoal.",
+      "firestarter": true,
+      "furn_set": "f_kiln_metal_full"
+    },
     "max_volume": "250 L",
     "crafting_pseudo_item": "fake_char_kiln",
     "flags": [ "CONTAINER", "FIRE_CONTAINER", "PLACE_ITEM" ],
@@ -490,7 +563,24 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "kiln_full",
+    "examine_action": {
+      "type": "process_finish",
+      "//": "internet guides claim about one day for a fairly large pot",
+      "duration": "24 h",
+      "empty_message": "This kiln is empty…",
+      "examine_message": "There's a charcoal kiln there.",
+      "time_left_message": {
+        "hours": { "str": "It will finish burning in about %d hour.", "str_pl": "It will finish burning in about %d hours." },
+        "less_than_an_hour": "It will finish burning in less than an hour.",
+        "minutes": {
+          "str": "It should take about %d minute to finish burning.",
+          "str_pl": "It should take about %d minutes to finish burning."
+        }
+      },
+      "output": { "item": "charcoal", "from": [ "unfinished_charcoal", "charcoal" ] },
+      "done_message": "It has finished burning, yielding %d charcoal.",
+      "furn_set": "f_kiln_metal_empty"
+    },
     "deconstruct": { "items": [ { "item": "metal_tank", "count": [ 1, 4 ] }, { "item": "pipe", "count": [ 2, 4 ] } ] },
     "flags": [ "NOITEM", "SEALED", "CONTAINER", "FIRE_CONTAINER", "SUPPRESS_SMOKE", "PLACE_ITEM" ],
     "bash": {
@@ -534,7 +624,24 @@
     "move_cost_mod": -1,
     "coverage": 40,
     "required_str": -1,
-    "examine_action": "arcfurnace_full",
+    "examine_action": {
+      "type": "process_finish",
+      "//": "Arc furnaces work really fast in reality",
+      "duration": "2 h",
+      "empty_message": "This furnace is empty…",
+      "examine_message": "There's an arc furnace there.",
+      "time_left_message": {
+        "hours": { "str": "It will finish burning in about %d hour.", "str_pl": "It will finish burning in about %d hours." },
+        "less_than_an_hour": "It will finish burning in less than an hour.",
+        "minutes": {
+          "str": "It should take about %d minute to finish burning.",
+          "str_pl": "It should take about %d minutes to finish burning."
+        }
+      },
+      "output": { "item": "chem_carbide", "from": [ "chem_carbide" ] },
+      "done_message": "It has finished burning, yielding %d calcium carbide.",
+      "furn_set": "f_arcfurnace_empty"
+    },
     "flags": [ "NOITEM", "SEALED", "CONTAINER", "FIRE_CONTAINER", "SUPPRESS_SMOKE", "PLACE_ITEM" ],
     "deconstruct": { "items": [ { "item": "metal_tank", "count": [ 1, 4 ] }, { "item": "pipe", "count": [ 2, 4 ] } ] },
     "bash": {
@@ -562,6 +669,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "lit": "f_smoking_rack_active", "capacity": "20 L" },
     "deconstruct": { "items": [ { "item": "rock", "count": 8 }, { "item": "stick", "count": [ 16, 16 ] } ] },
     "bash": {
       "str_min": 18,
@@ -690,6 +798,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "unlit": "f_smoking_rack", "capacity": "20 L" },
     "bash": {
       "str_min": 18,
       "str_max": 50,
@@ -712,6 +821,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "lit": "f_metal_smoking_rack_active", "capacity": "15 L" },
     "item": "metal_smoking_rack",
     "bash": { "str_min": 18, "str_max": 50, "sound": "metal screeching!", "sound_fail": "clang!" }
   },
@@ -729,6 +839,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "unlit": "f_metal_smoking_rack", "capacity": "15 L" },
     "item": "metal_smoking_rack",
     "bash": { "str_min": 18, "str_max": 50, "sound": "metal screeching!", "sound_fail": "clang!" }
   },

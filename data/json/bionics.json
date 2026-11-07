@@ -70,7 +70,7 @@
       [ "hand_r", { "bash": 3, "cut": 3, "bullet": 3, "stab": 3 } ]
     ],
     "encumbrance": [ [ "arm_l", 1 ], [ "arm_r", 1 ], [ "hand_l", 1 ], [ "hand_r", 1 ] ],
-    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF" ],
+    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF", "ARMORED_ARMS" ],
     "mutation_conflicts": [
       "AMORPHOUS",
       "BENDY2",
@@ -131,7 +131,7 @@
       [ "foot_r", { "bash": 3, "cut": 3, "bullet": 3, "stab": 3 } ]
     ],
     "encumbrance": [ [ "leg_l", 1 ], [ "leg_r", 1 ], [ "foot_l", 1 ], [ "foot_r", 1 ] ],
-    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF" ],
+    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF", "ARMORED_LEGS" ],
     "mutation_conflicts": [
       "AMORPHOUS",
       "BENDY2",
@@ -388,6 +388,8 @@
       "style_wingchun",
       "style_zui_quan"
     ],
+    "enchantments": [ { "condition": "ACTIVE", "skill_floor": { "melee": 5, "unarmed": 5, "bashing": 5, "cutting": 5, "stabbing": 5 } } ],
+    "active_flags": [ "NO_MELEE_PRACTICE", "CQB_LEARNING" ],
     "flags": [ "BIONIC_TOGGLED" ]
   },
   {
@@ -413,6 +415,7 @@
     "act_cost": "5 J",
     "react_cost": "5 J",
     "time": "1 s",
+    "npc_use": { "when": "combat", "priority": 5 },
     "flags": [ "BIONIC_NPC_USABLE", "BIONIC_TOGGLED" ]
   },
   {
@@ -589,6 +592,7 @@
     "act_cost": "5 J",
     "react_cost": "5 J",
     "time": "1 s",
+    "npc_use": { "when": "combat", "priority": 5 },
     "flags": [ "BIONIC_NPC_USABLE", "BIONIC_TOGGLED" ]
   },
   {
@@ -862,6 +866,7 @@
     "act_cost": "5 J",
     "react_cost": "5 J",
     "time": "1 s",
+    "npc_use": { "when": "upkeep", "priority": -10 },
     "flags": [ "BIONIC_NPC_USABLE", "BIONIC_TOGGLED" ]
   },
   {
@@ -980,6 +985,7 @@
     "fuel_efficiency": 0.25,
     "time": "1 s",
     "processed_eocs": [ "bio_noise_digestive" ],
+    "npc_use": { "when": "upkeep", "priority": 5 },
     "flags": [ "BIONIC_POWER_SOURCE", "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ]
   },
   {
@@ -1284,6 +1290,7 @@
     "act_cost": "10 J",
     "react_cost": "10 J",
     "time": "1 s",
+    "npc_use": { "when": "combat", "priority": 10 },
     "flags": [ "BIONIC_NPC_USABLE", "BIONIC_TOGGLED" ]
   },
   {
@@ -1316,6 +1323,7 @@
     "act_cost": "5 J",
     "react_cost": "5 J",
     "time": "1 s",
+    "npc_use": { "when": "combat", "priority": 5 },
     "flags": [ "BIONIC_NPC_USABLE", "BIONIC_TOGGLED" ]
   },
   {
@@ -1382,6 +1390,7 @@
     "name": { "str": "Super Stun Gun" },
     "description": "You have a powerful stun gun built into your hand.  Activate to zap an adjacent enemy.",
     "occupied_bodyparts": [ [ "hand_r", 3 ] ],
+    "npc_use": "melee",
     "flags": [ "BIONIC_NPC_USABLE" ],
     "spell_on_activation": { "id": "bio_taser_spell" },
     "activated_close_ui": true
@@ -1475,6 +1484,7 @@
     "fuel_options": [ "muscle" ],
     "fuel_efficiency": 0.125,
     "passive_fuel_efficiency": 0.00625,
+    "npc_use": { "when": "upkeep", "priority": 5 },
     "flags": [ "BIONIC_POWER_SOURCE", "BIONIC_NPC_USABLE", "BIONIC_TOGGLED" ],
     "mutation_conflicts": [
       "AMORPHOUS",
@@ -1858,6 +1868,7 @@
     "name": { "str": "Bone Marrow Bio-Factory" },
     "description": "Your bone marrow is now home to several specialized nanorobots.  Activating them will increase blood cell production at the cost of stored calories and bionic energy.",
     "occupied_bodyparts": [ [ "torso", 1 ], [ "arm_l", 1 ], [ "arm_r", 1 ], [ "leg_l", 1 ], [ "leg_r", 1 ] ],
+    "npc_use": "sleep",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE", "BIONIC_SLEEP_FRIENDLY", "BIONIC_SHOCKPROOF" ],
     "act_cost": "40 J",
     "react_cost": "40 J",
@@ -2041,6 +2052,7 @@
     "name": { "str": "Heart of The Warrior CBM" },
     "description": "The Cree'yn Cag'gii, a forgotten relic of the Exodii.  You feel the strength of its previous owner with you in every beat.  While it beats on its own, in needs constant bionic power to keep it working at physiologically appropriate levels.",
     "occupied_bodyparts": [ [ "torso", 10 ] ],
+    "npc_use": { "when": "upkeep", "priority": 10 },
     "flags": [ "BIONIC_SLEEP_FRIENDLY", "BIONIC_SHOCKPROOF", "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "canceled_mutations": [ "GOODCARDIO", "BADCARDIO", "GOODCARDIO2", "PERSISTENCE_HUNTER", "PERSISTENCE_HUNTER2" ],
     "act_cost": "1 J",

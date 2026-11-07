@@ -104,5 +104,12 @@
       }
     ],
     "speaker_effect": [ { "sentinel": "meeting_weaponmaster", "effect": { "u_add_var": "u_met_weaponmaster", "value": "yes" } } ]
+  },
+  {
+    "id": "TALK_WEAPONMASTER_EXODII_DO_NOT_SPEAK_TO_FAIR_FOLK",
+    "//": "Only reached with Xedra Evolved (EOC_CONDITION_XE_YOU_ARE_FAIR_FOLK), which used to define it.",
+    "type": "talk_topic",
+    "dynamic_line": { "str": "&No matter what you do or say, the mechanical creature refuses to acknowledge you." },
+    "responses": [ { "text": "Leaves.", "topic": "TALK_DONE" } ]
   }
 ]

@@ -12,6 +12,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -26,7 +27,9 @@
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
@@ -37,7 +40,9 @@
 #include "incapacitation.h"
 #include "item.h"
 #include "line.h"
+#include "magic_enchantment.h"
 #include "map.h"
+#include "map_field.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
@@ -58,6 +63,7 @@
 #include "scent_map.h"
 #include "sounds.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "tileray.h"
 #include "translations.h"
 #include "trap.h"
@@ -67,6 +73,7 @@
 #include "viewer.h"
 #include "vpart_position.h"
 #include "weather.h"
+#include "weather_gen.h"
 
 static const damage_type_id damage_bash( "bash" );
 static const damage_type_id damage_cut( "cut" );
@@ -109,11 +116,8 @@ static const itype_id itype_pressurized_tank( "pressurized_tank" );
 
 static const json_character_flag json_flag_SNOWWALKING( "SNOWWALKING" );
 
-static const material_id material_iflesh( "iflesh" );
-
 static const mfaction_str_id monfaction_player( "player" );
 
-static const species_id species_FUNGUS( "FUNGUS" );
 static const species_id species_ZOMBIE( "ZOMBIE" );
 
 static const ter_str_id ter_t_lava( "t_lava" );
@@ -123,22 +127,15 @@ static const ter_str_id ter_t_pit_spiked( "t_pit_spiked" );
 
 bool monster::is_immune_field( const field_type_id &fid ) const
 {
-    if( fid == fd_fungal_haze ) {
-        return has_flag( mon_flag_NO_BREATHE ) || type->in_species( species_FUNGUS );
-    }
-    if( fid == fd_fungicidal_gas ) {
-        return !type->in_species( species_FUNGUS );
-    }
-    if( fid == fd_insecticidal_gas ) {
-        return !made_of( material_iflesh ) || has_flag( mon_flag_INSECTICIDEPROOF );
+    const field_type &ft = fid.obj();
+    // Gases that spare non-breathers or the wrong species, sap and sludge that fliers pass over
+    if( const std::optional<bool> immune = map_field_processing::monster_contact_immunity( ft,
+                                           *this ) ) {
+        return *immune;
     }
     if( fid == fd_web ) {
         return has_flag( mon_flag_WEBWALK );
     }
-    if( fid == fd_sludge || fid == fd_sap ) {
-        return flies();
-    }
-    const field_type &ft = fid.obj();
     if( ft.has_fume ) {
         return has_flag( mon_flag_NO_BREATHE );
     }
@@ -248,9 +245,8 @@ bool monster::will_move_to( map *here, const tripoint_bub_ms &p ) const
         return false;
     }
 
-    if( get_size() > creature_size::medium &&
-        here->has_flag_ter( ter_furn_flag::TFLAG_SMALL_PASSAGE, p ) ) {
-        return false; // if a large critter, can't move through tight passages
+    if( !here->fits_creature_size( p, get_size() ) ) {
+        return false; // too big for a tight passage (SMALL_PASSAGE, max_creature_size)
     }
 
     return true;
@@ -324,15 +320,20 @@ bool monster::know_danger_at( map *here, const tripoint_bub_ms &p ) const
             return false;
         }
 
-        // Without avoid_complex, only fire and electricity are checked for field
-        // avoidance.
-        if( avoid_fire && target_field.find_field( fd_fire ) &&
-            !is_immune_field( fd_fire ) ) {
-            return false;
-        }
-        if( avoid_simple && target_field.find_field( fd_electricity ) &&
-            !is_immune_field( fd_electricity ) ) {
-            return false;
+        // Without avoid_complex, only fire and electricity (fields with the fire or
+        // electricity contact processor) are checked for field avoidance.
+        if( avoid_fire || avoid_simple ) {
+            for( const auto &fd : target_field ) {
+                const field_type &ft = *fd.first;
+                if( !fd.second.is_field_alive() ) {
+                    continue;
+                }
+                if( ( ( avoid_fire && ft.has_contact( field_contact_type::fire ) ) ||
+                      ( avoid_simple && ft.has_contact( field_contact_type::electricity ) ) ) &&
+                    !is_immune_field( fd.first ) ) {
+                    return false;
+                }
+            }
         }
     }
 
@@ -449,6 +450,15 @@ struct monster_plan {
     const int fears_hostile_near;
     const int fears_hostile_seen;
 
+    // MONAI-J08: the triggers' ranges and caps, as the monster's JSON may set them
+    const int hostile_near_range;
+    const int fear_near_range;
+    const int hostile_near_cap;
+    const int hostile_seen_cap;
+    const int mating_season_cap;
+    const int cub_range;
+    const int hostile_weak_cap;
+
     Creature *target = nullptr;
 };
 
@@ -459,19 +469,39 @@ monster_plan::monster_plan( const monster &mon )
       placate_hostile_weak(
           mon.type->has_placate_trigger( mon_trigger::HOSTILE_WEAK ) ),
       angers_hostile_near(
-          mon.type->has_anger_trigger( mon_trigger::HOSTILE_CLOSE ) ? 5 : 0 ),
+          mon.type->has_anger_trigger( mon_trigger::HOSTILE_CLOSE ) ?
+          mon.type->trigger_amount( mon_trigger_kind::anger, mon_trigger::HOSTILE_CLOSE, 5 ) : 0 ),
       angers_hostile_seen( mon.type->has_anger_trigger( mon_trigger::HOSTILE_SEEN )
-                           ? rng( 0, 2 )
+                           ? rng( 0, mon.type->trigger_amount( mon_trigger_kind::anger,
+                                   mon_trigger::HOSTILE_SEEN, 2 ) )
                            : 0 ),
       angers_mating_season(
-          mon.type->has_anger_trigger( mon_trigger::MATING_SEASON ) ? 3 : 0 ),
+          mon.type->has_anger_trigger( mon_trigger::MATING_SEASON ) ?
+          mon.type->trigger_amount( mon_trigger_kind::anger, mon_trigger::MATING_SEASON, 3 ) : 0 ),
       angers_cub_threatened(
-          mon.type->has_anger_trigger( mon_trigger::PLAYER_NEAR_BABY ) ? 8 : 0 ),
+          mon.type->has_anger_trigger( mon_trigger::PLAYER_NEAR_BABY ) ?
+          mon.type->trigger_amount( mon_trigger_kind::anger, mon_trigger::PLAYER_NEAR_BABY, 8 ) : 0 ),
       fears_hostile_near(
-          mon.type->has_fear_trigger( mon_trigger::HOSTILE_CLOSE ) ? 5 : 0 ),
+          mon.type->has_fear_trigger( mon_trigger::HOSTILE_CLOSE ) ?
+          mon.type->trigger_amount( mon_trigger_kind::fear, mon_trigger::HOSTILE_CLOSE, 5 ) : 0 ),
       fears_hostile_seen( mon.type->has_fear_trigger( mon_trigger::HOSTILE_SEEN )
-                          ? rng( 0, 2 )
-                          : 0 )
+                          ? rng( 0, mon.type->trigger_amount( mon_trigger_kind::fear,
+                                  mon_trigger::HOSTILE_SEEN, 2 ) )
+                          : 0 ),
+      hostile_near_range( mon.type->trigger_range( mon_trigger_kind::anger,
+                          mon_trigger::HOSTILE_CLOSE, 5 ) ),
+      fear_near_range( mon.type->trigger_range( mon_trigger_kind::fear, mon_trigger::HOSTILE_CLOSE,
+                       5 ) ),
+      hostile_near_cap( mon.type->trigger_cap( mon_trigger_kind::anger, mon_trigger::HOSTILE_CLOSE,
+                        30 ) ),
+      hostile_seen_cap( mon.type->trigger_cap( mon_trigger_kind::anger, mon_trigger::HOSTILE_SEEN,
+                        20 ) ),
+      mating_season_cap( mon.type->trigger_cap( mon_trigger_kind::anger,
+                         mon_trigger::MATING_SEASON, 30 ) ),
+      cub_range( mon.type->trigger_range( mon_trigger_kind::anger, mon_trigger::PLAYER_NEAR_BABY,
+                                          3 ) ),
+      hostile_weak_cap( mon.type->trigger_cap( mon_trigger_kind::anger, mon_trigger::HOSTILE_WEAK,
+                        40 ) )
 {
     smart_planning = mon.has_flag( mon_flag_PRIORITIZE_TARGETS );
     max_sight_range = std::max( mon.type->vision_day, mon.type->vision_night );
@@ -496,9 +526,10 @@ void monster::anger_hostile_seen( const monster_plan &mon_plan )
             add_msg_debug( debugmode::DF_MONSTER,
                            "%s's character aggro triggered by seeing you", name() );
         } else {
+            // The target can be a monster (MONAI-B08): as_npc() is null then
             add_msg_debug( debugmode::DF_MONSTER,
                            "%s's character aggro triggered by seeing %s", name(),
-                           mon_plan.target->as_npc()->name );
+                           mon_plan.target->disp_name() );
         }
         aggro_character = true;
     }
@@ -506,7 +537,7 @@ void monster::anger_hostile_seen( const monster_plan &mon_plan )
 
 void monster::anger_mating_season( const monster_plan &mon_plan )
 {
-    if( mon_plan.angers_mating_season > 0 && anger <= 30 ) {
+    if( mon_plan.angers_mating_season > 0 && anger <= mon_plan.mating_season_cap ) {
         if( mating_angry() ) {
             anger += mon_plan.angers_mating_season;
             if( x_in_y( anger, 100 ) ) {
@@ -530,6 +561,8 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
         return;
     }
 
+    const map &here = get_map();
+    const Creature &threat = *mon_plan.target;
     for( const shared_ptr_fast<monster> &tmp_ptr : get_creature_tracker().get_monsters_list() ) {
         monster &tmp = *tmp_ptr;
         if( tmp.is_dead() ) {
@@ -539,16 +572,19 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
         if( !type->baby_type.baby_monster.is_null() ) {
             is_baby = type->baby_type.baby_monster == tmp.type->id;
         }
-        if( !type->baby_type.baby_monster_group.is_null() ) {
+        // Either one: the group used to overwrite a match of the baby monster
+        if( !is_baby && !type->baby_type.baby_monster_group.is_null() ) {
             is_baby = MonsterGroupManager::IsMonsterInGroup(
                           type->baby_type.baby_monster_group, tmp.type->id );
         }
         if( is_baby ) {
-            // baby nearby; is the player too close? (Rated from the baby's position; this
-            // must not overwrite this monster's own target distance.)
-            const float baby_dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
-                                    mon_plan.smart_planning );
-            if( baby_dist <= 3 ) {
+            // baby nearby; is the player too close?  The baby's own distance, and it must
+            // see the player.  (MONAI-B08: this was the baby's rate_target() against this
+            // monster's target distance: a power rating for PRIORITIZE_TARGETS monsters, and
+            // FLT_MAX whenever the baby was farther from the player than this monster.)  The
+            // range is the trigger's (MONAI-J08), 3 by default.
+            if( rl_dist( tmp.pos_abs(), threat.pos_abs() ) <= mon_plan.cub_range &&
+                tmp.sees( here, threat ) ) {
                 // proximity to baby; monster gets furious and less likely to flee
                 anger += mon_plan.angers_cub_threatened;
                 morale += mon_plan.angers_cub_threatened / 2;
@@ -582,6 +618,10 @@ void monster::plan()
     if( get_power_actors().plan( *this ) ) {
         return;
     }
+    // A destination or target an EOC forced on the monster comes before its own plans.
+    if( follow_forced_goal() ) {
+        return;
+    }
     monster_plan mon_plan( *this );
 
     map &here = get_map();
@@ -602,14 +642,15 @@ void monster::plan()
             rate_target( player_character, mon_plan.dist, mon_plan.smart_planning );
         mon_plan.fleeing = mon_plan.fleeing || is_fleeing( player_character );
         mon_plan.target = &player_character;
-        if( !mon_plan.fleeing && anger <= 20 ) {
+        if( !mon_plan.fleeing && anger <= mon_plan.hostile_seen_cap ) {
             anger += mon_plan.angers_hostile_seen;
         }
 
         anger_hostile_seen( mon_plan );
 
-        if( mon_plan.dist <= 5 ) {
-            if( anger <= 30 ) {
+        // MONAI-J08: each with its own range (5 unless the JSON says)
+        if( mon_plan.dist <= mon_plan.hostile_near_range ) {
+            if( anger <= mon_plan.hostile_near_cap ) {
                 anger += mon_plan.angers_hostile_near;
             }
             if( mon_plan.angers_hostile_near && x_in_y( anger, 100 ) ) {
@@ -617,7 +658,11 @@ void monster::plan()
                                "%s's character aggro triggered by proximity", name() );
                 aggro_character = true;
             }
+        }
+        if( mon_plan.dist <= mon_plan.fear_near_range ) {
             morale -= mon_plan.fears_hostile_near;
+        }
+        if( mon_plan.dist <= 5 ) {
             anger_mating_season( mon_plan );
         }
         anger_cub_threatened( mon_plan );
@@ -682,8 +727,8 @@ void monster::plan()
             valid_targets = 1;
         }
         mon_plan.fleeing = mon_plan.fleeing || fleeing_from;
-        if( rating <= 5 ) {
-            if( anger <= 30 ) {
+        if( rating <= mon_plan.hostile_near_range ) {
+            if( anger <= mon_plan.hostile_near_cap ) {
                 anger += mon_plan.angers_hostile_near;
             }
             if( mon_plan.angers_hostile_near && x_in_y( anger, 100 ) ) {
@@ -692,10 +737,14 @@ void monster::plan()
                                name(), who.name );
                 aggro_character = true;
             }
+        }
+        if( rating <= mon_plan.fear_near_range ) {
             morale -= mon_plan.fears_hostile_near;
+        }
+        if( rating <= 5 ) {
             anger_mating_season( mon_plan );
         }
-        if( !mon_plan.fleeing && anger <= 20 && valid_targets != 0 ) {
+        if( !mon_plan.fleeing && anger <= mon_plan.hostile_seen_cap && valid_targets != 0 ) {
             anger += mon_plan.angers_hostile_seen;
         }
         if( !mon_plan.fleeing && valid_targets != 0 ) {
@@ -703,6 +752,9 @@ void monster::plan()
             anger_hostile_seen( mon_plan );
         }
     }
+
+    // MONAI-J08: the CONDITION triggers, about the target chosen so far
+    process_condition_triggers( mon_plan.target );
 
     mon_plan.fleeing = mon_plan.fleeing || ( mood == MATT_FLEE );
     // Throttle monster thinking, if there are no apparent threats, stop paying
@@ -904,7 +956,7 @@ void monster::plan()
             att_to_target != Attitude::FRIENDLY ) {
             int hp_per = mon_plan.target->hp_percentage();
             if( hp_per <= 70 ) {
-                if( mon_plan.angers_hostile_weak && anger <= 40 ) {
+                if( mon_plan.angers_hostile_weak && anger <= mon_plan.hostile_weak_cap ) {
                     anger += 10 - static_cast<int>( hp_per / 10 );
                     if( x_in_y( anger, 100 ) ) {
                         add_msg_debug( debugmode::DF_MONSTER,
@@ -988,6 +1040,71 @@ bool monster::is_aquatic_danger( const tripoint_bub_ms &at_pos ) const
            !here.veh_at( at_pos ).part_with_feature( "BOARDABLE", false );
 }
 
+namespace
+{
+// How a monster of a size shoves a vehicle of a mass out of its way (velocity 0: it can't)
+struct vehicle_shove {
+    int moves_minimal = 0;
+    int veh_mass_moves_factor = 0;
+    int velocity = 0;
+    float damage_min = 0.0f;
+    float damage_max = 0.0f;
+};
+
+vehicle_shove vehicle_shove_for( const creature_size size, const units::mass &veh_mass )
+{
+    vehicle_shove shove;
+    switch( size ) {
+        case creature_size::tiny:
+        case creature_size::small:
+            break;
+        case creature_size::medium:
+            if( veh_mass < 500_kilogram ) {
+                shove.moves_minimal = 150;
+                shove.veh_mass_moves_factor = 20;
+                shove.velocity = 500;
+                shove.damage_min = 0.00F;
+                shove.damage_max = 0.01F;
+            }
+            break;
+        case creature_size::large:
+            if( veh_mass < 1000_kilogram ) {
+                shove.moves_minimal = 100;
+                shove.veh_mass_moves_factor = 8;
+                shove.velocity = 1000;
+                shove.damage_min = 0.00F;
+                shove.damage_max = 0.03F;
+            }
+            break;
+        case creature_size::huge:
+            if( veh_mass < 2000_kilogram ) {
+                shove.moves_minimal = 50;
+                shove.veh_mass_moves_factor = 4;
+                shove.velocity = 1500;
+                shove.damage_min = 0.00F;
+                shove.damage_max = 0.05F;
+            }
+            break;
+        default:
+            break;
+    }
+    return shove;
+}
+
+// A PUSH_VEH monster would shove the vehicle that blocks p out of its way
+bool can_shove_vehicle_at( const monster &z, map &here, const tripoint_bub_ms &p )
+{
+    if( !z.has_flag( mon_flag_PUSH_VEH ) || z.is_hallucination() ) {
+        return false;
+    }
+    const optional_vpart_position vp = here.veh_at( p );
+    if( !vp || !vp.obstacle_at_part() ) {
+        return false;
+    }
+    return vehicle_shove_for( z.get_size(), vp->vehicle().total_mass( here ) ).velocity > 0;
+}
+} // namespace
+
 bool monster::die_if_drowning( const tripoint_bub_ms &at_pos, const int chance )
 {
     map &here = get_map();
@@ -1021,7 +1138,8 @@ void monster::move()
     if( get_power_actors().take_turn( *this ) ) {
         return;
     }
-    const bool commanded = get_power_actors().owner_of( *this ).has_value();
+    // A forced destination or target (see plan()) is followed like a bond's order.
+    const bool commanded = get_power_actors().owner_of( *this ).has_value() || has_forced_goal();
     map &here = get_map();
 
     add_msg_debug( debugmode::DF_MONMOVE,
@@ -1044,6 +1162,22 @@ void monster::move()
     behavior::tree goals;
     goals.add( type->get_goals() );
     std::string action = goals.tick( &oracle );
+    // MONAI-J09: a goal "eoc:ID" runs that EOC, with the monster as u and its attack target (if
+    // any) as npc; "special:NAME" is the special attack NAME, as a bare NAME is
+    if( action.rfind( "eoc:", 0 ) == 0 ) {
+        const effect_on_condition_id eoc( action.substr( 4 ) );
+        action.clear();
+        if( eoc.is_valid() ) {
+            Creature *const target = attack_target();
+            dialogue d( get_talker_for( this ), target == nullptr ? nullptr : get_talker_for( target ) );
+            eoc->activate( d );
+            if( is_dead() ) {
+                return;
+            }
+        }
+    } else if( action.rfind( "special:", 0 ) == 0 ) {
+        action.erase( 0, 8 );
+    }
     // The monster can consume objects it stands on. Check if there are any.
     // If there are. Consume them.
     //  TODO: Stick this in a map and dispatch to it via the action string.
@@ -1055,6 +1189,7 @@ void monster::move()
         if( special_attacks.count( action ) != 0 ) {
             reset_special( action );
         }
+        notify_special_used( action );
     }
     // record position before moving to put the player there if we're dragging
     tripoint_abs_ms drag_to = pos_abs();
@@ -1089,6 +1224,7 @@ void monster::move()
                     add_msg_debug( debugmode::DF_MATTACK, "Attack failed" );
                     continue;
                 }
+                notify_special_used( special_name );
 
                 // `special_attacks` might have changed at this point. Sadly
                 // `reset_special` doesn't check the attack name, so we need to do it
@@ -1327,6 +1463,8 @@ void monster::move()
     }
 
     tripoint_abs_ms next_step;
+    // The vehicle on next_step is in the way, and gets shoved aside once the step is final
+    bool shove_next_step = false;
     const bool can_open_doors =
         has_flag( mon_flag_CAN_OPEN_DOORS ) && !is_hallucination();
     const bool staggers = has_flag( mon_flag_STUMBLES );
@@ -1432,6 +1570,7 @@ void monster::move()
                     // When attacking an adjacent enemy, we're direct.
                     moved = true;
                     next_step = candidate_abs;
+                    shove_next_step = false;
                     break;
                 }
                 if( att == Attitude::FRIENDLY &&
@@ -1457,19 +1596,26 @@ void monster::move()
                 here.open_door( *this, candidate, !here.is_outside( pos_bub() ), true ) ) {
                 moved = true;
                 next_step = candidate_abs;
+                shove_next_step = false;
                 continue;
             } else if( can_open_doors &&
                        doors::can_unlock_door( here, *this, candidate ) ) {
                 doors::unlock_door( here, *this, candidate );
                 moved = true;
                 next_step = candidate_abs;
+                shove_next_step = false;
                 continue;
             }
 
-            // Try to shove vehicle out of the way
-            shove_vehicle( destination, tripoint_bub_ms( candidate ) );
+            // A vehicle we'd shove out of the way doesn't block the square.  The shove used
+            // to happen here, for every square considered, before one was chosen and even
+            // while pacified (MONAI-B10); it now happens once, on the square chosen.  Not on
+            // our goal's own square: shoving that away gets us no closer.
+            const bool shoves_vehicle = !pacified &&
+                                        !( has_dest() && candidate_abs == get_dest() ) &&
+                                        can_shove_vehicle_at( *this, here, candidate );
             // Bail out if we can't move there and we can't bash.
-            if( !pathed && !can_move_to( candidate ) ) {
+            if( !pathed && !shoves_vehicle && !can_move_to( candidate ) ) {
                 if( !can_bash || has_flag( json_flag_CANNOT_ATTACK ) ) {
                     continue;
                 }
@@ -1500,6 +1646,7 @@ void monster::move()
             if( progress > 0 && ( !moved || x_in_y( progress, switch_chance ) ) ) {
                 moved = true;
                 next_step = candidate_abs;
+                shove_next_step = shoves_vehicle;
                 // If we stumble, pick a random square, otherwise take the first one,
                 // which is the most direct path.
                 // Except if the direct path is bad, then check others
@@ -1514,6 +1661,10 @@ void monster::move()
     //  move to (moved = true).
     if( moved ) { // Actual effects of moving to the square we've chosen
         const tripoint_bub_ms local_next_step = here.get_bub( next_step );
+        if( shove_next_step ) {
+            // Try to shove vehicle out of the way
+            shove_vehicle( destination, local_next_step );
+        }
         const bool did_something =
             ( !pacified && attack_at( local_next_step ) ) ||
             ( !pacified && can_open_doors &&
@@ -1667,36 +1818,44 @@ void monster::footsteps( const tripoint_bub_ms &p )
     }
     made_footstep = true;
     int volume = 6; // same as player's footsteps
-    if( flies() || has_flag( mon_flag_SILENTMOVES ) ) {
-        volume = 0; // Flying monsters don't have footsteps!
+    if( type->footstep_volume ) {
+        // MONAI-J04: set in JSON, it replaces all of the below
+        volume = *type->footstep_volume;
+    } else {
+        if( flies() || has_flag( mon_flag_SILENTMOVES ) ) {
+            volume = 0; // Flying monsters don't have footsteps!
+        }
+        if( digging() ) {
+            volume = 10;
+        }
+        switch( type->size ) {
+            case creature_size::tiny:
+                volume = 0; // No sound for the tinies
+                break;
+            case creature_size::small:
+                volume /= 3;
+                break;
+            case creature_size::medium:
+                break;
+            case creature_size::large:
+                volume *= 1.5;
+                break;
+            case creature_size::huge:
+                volume *= 2;
+                break;
+            default:
+                break;
+        }
+        if( has_flag( mon_flag_LOUDMOVES ) ) {
+            volume += 6;
+        } else if( has_flag( mon_flag_QUIETMOVES ) ) {
+            volume -= 3;
+        }
     }
-    if( digging() ) {
-        volume = 10;
-    }
-    switch( type->size ) {
-        case creature_size::tiny:
-            volume = 0; // No sound for the tinies
-            break;
-        case creature_size::small:
-            volume /= 3;
-            break;
-        case creature_size::medium:
-            break;
-        case creature_size::large:
-            volume *= 1.5;
-            break;
-        case creature_size::huge:
-            volume *= 2;
-            break;
-        default:
-            break;
-    }
-    if( has_flag( mon_flag_LOUDMOVES ) ) {
-        volume += 6;
-    } else if( has_flag( mon_flag_QUIETMOVES ) ) {
-        volume -= 3;
-    }
-    if( volume == 0 ) {
+    volume = static_cast<int>( calculate_by_enchantment( volume, enchant_vals::mod::FOOTSTEP_NOISE,
+                               true ) );
+    // A small QUIETMOVES monster came to 6 / 3 - 3 = -1, which got past a == 0 test
+    if( volume <= 0 ) {
         return;
     }
     int dist = rl_dist( p, get_player_character().pos_bub() );
@@ -1722,12 +1881,10 @@ tripoint_bub_ms monster::scent_move()
     std::vector<tripoint_bub_ms> sdirection;
     std::vector<tripoint_bub_ms> smoves;
 
-    int bestsmell = 10;        // Squares with smell 0 are not eligible targets.
-    int smell_threshold = 200; // Squares at or above this level are ineligible.
-    if( has_flag( mon_flag_KEENNOSE ) ) {
-        bestsmell = 1;
-        smell_threshold = 400;
-    }
+    // Squares with smell 0 are not eligible targets.  "scent_sensitivity" in JSON, else
+    // 10 and 200, or 1 and 400 with KEENNOSE (MONAI-J04).
+    int bestsmell = type->get_scent_min();
+    int smell_threshold = type->get_scent_max(); // Squares at or above this level are ineligible.
 
     Character &player_character = get_player_character();
     const bool fleeing = is_fleeing( player_character );
@@ -1988,10 +2145,17 @@ int monster::calc_movecost( const map &here, const tripoint_bub_ms &from,
             !here.is_roofed( pos_bub() ) &&
             !terrain.has_flag( ter_furn_flag::TFLAG_SWIMMABLE ) &&
             !terrain.has_flag( ter_furn_flag::TFLAG_SWIM_UNDER ) ) {
-            const double snow_mm = get_weather().get_snow_depth_mm( pos_abs_omt() );
-            if( snow_mm >= 100 && !has_flag( json_flag_FLIES ) &&
+            const weather_manager &weather = get_weather();
+            const double snow_mm = weather.get_snow_depth_mm( pos_abs_omt() );
+            if( snow_mm > 0.0 && !has_flag( json_flag_FLIES ) &&
                 !has_flag( json_flag_SNOWWALKING ) ) {
-                snowcost = snow_mm >= 500 ? 4 : ( snow_mm >= 250 ? 2 : 1 );
+                // The region's snow move_cost table (by default 1 from 100 mm, 2 from 250 mm
+                // and 4 from 500 mm)
+                const snow_settings &snow = weather.get_cur_weather_gen().snow;
+                const snow_move_cost *step = snow.move_cost_at( snow_mm );
+                if( step != nullptr ) {
+                    snowcost = step->monster;
+                }
             }
         }
 
@@ -2815,14 +2979,16 @@ void monster::knock_back_to( const tripoint_bub_ms &to )
         return;
     }
 
-    if( npc *const p = creatures.creature_at<npc>( to ) ) {
+    // The player as well as NPCs: creature_at<npc> skips the avatar, so a monster knocked
+    // toward the player landed on the player's tile (MONAI-B06)
+    if( Character *const p = creatures.creature_at<Character>( to ) ) {
         apply_damage( p, bodypart_id( "torso" ), 3 );
         add_effect( effect_stunned, 1_turns );
         p->deal_damage(
             this, bodypart_id( "torso" ),
             damage_instance( damage_bash, static_cast<float>( type->size ) ) );
         if( u_see ) {
-            add_msg( _( "The %1$s bounces off %2$s!" ), name(), p->get_name() );
+            add_msg( _( "The %1$s bounces off %2$s!" ), name(), p->disp_name() );
         }
 
         p->check_dead_state( &here );
@@ -2830,13 +2996,9 @@ void monster::knock_back_to( const tripoint_bub_ms &to )
     }
 
     // If we're still in the function at this point, we're actually moving a tile!
-    // die_if_drowning will kill the monster if necessary, but if the deep water
-    // tile is on a vehicle, we should check for swimmers out of water
-    if( !die_if_drowning( to ) && has_flag( mon_flag_AQUATIC ) ) {
-        die( &here, nullptr );
-        if( u_see ) {
-            add_msg( _( "The %s flops around and dies!" ), name() );
-        }
+    // die_if_drowning kills a monster that can drown in deep water.
+    if( die_if_drowning( to ) ) {
+        return;
     }
 
     // It's some kind of wall.
@@ -2851,6 +3013,18 @@ void monster::knock_back_to( const tripoint_bub_ms &to )
 
     } else { // It's no wall
         setpos( here, to );
+        // A swimmer knocked out of the water (where will_move_to() lets it go) dies.  AQUATIC
+        // monsters can't drown, so the old test ("didn't drown, and is AQUATIC") killed all of
+        // them, even in deep water.
+        if( has_flag( mon_flag_AQUATIC ) &&
+            !here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, to ) &&
+            !here.has_flag( ter_furn_flag::TFLAG_SWIM_UNDER, to ) ) {
+            die( &here, nullptr );
+            if( u_see ) {
+                add_msg( _( "The %s flops around and dies!" ), name() );
+            }
+            return;
+        }
     }
     check_dead_state( &here );
 }
@@ -2944,52 +3118,14 @@ void monster::shove_vehicle( const tripoint_bub_ms &remote_destination,
         if( vp ) {
             vehicle &veh = vp->vehicle();
             const units::mass veh_mass = veh.total_mass( here );
-            int shove_moves_minimal = 0;
-            int shove_veh_mass_moves_factor = 0;
-            int shove_velocity = 0;
-            float shove_damage_min = 0.00F;
-            float shove_damage_max = 0.00F;
-            switch( this->get_size() ) {
-                case creature_size::tiny:
-                case creature_size::small:
-                    break;
-                case creature_size::medium:
-                    if( veh_mass < 500_kilogram ) {
-                        shove_moves_minimal = 150;
-                        shove_veh_mass_moves_factor = 20;
-                        shove_velocity = 500;
-                        shove_damage_min = 0.00F;
-                        shove_damage_max = 0.01F;
-                    }
-                    break;
-                case creature_size::large:
-                    if( veh_mass < 1000_kilogram ) {
-                        shove_moves_minimal = 100;
-                        shove_veh_mass_moves_factor = 8;
-                        shove_velocity = 1000;
-                        shove_damage_min = 0.00F;
-                        shove_damage_max = 0.03F;
-                    }
-                    break;
-                case creature_size::huge:
-                    if( veh_mass < 2000_kilogram ) {
-                        shove_moves_minimal = 50;
-                        shove_veh_mass_moves_factor = 4;
-                        shove_velocity = 1500;
-                        shove_damage_min = 0.00F;
-                        shove_damage_max = 0.05F;
-                    }
-                    break;
-                default:
-                    break;
-            }
-            if( shove_velocity > 0 ) {
+            const vehicle_shove shove = vehicle_shove_for( this->get_size(), veh_mass );
+            if( shove.velocity > 0 ) {
                 add_msg_if_player_sees( this->pos_bub(), m_bad,
                                         //~ %1$s - monster name, %2$s - vehicle name
                                         _( "%1$s shoves %2$s out of their way!" ),
                                         this->disp_name(), veh.disp_name() );
-                int shove_moves = shove_veh_mass_moves_factor * veh_mass / 10_kilogram;
-                shove_moves = std::max( shove_moves, shove_moves_minimal );
+                int shove_moves = shove.veh_mass_moves_factor * veh_mass / 10_kilogram;
+                shove_moves = std::max( shove_moves, shove.moves_minimal );
                 this->mod_moves( -shove_moves );
                 const tripoint_rel_ms destination_delta( remote_destination -
                         nearby_destination );
@@ -2998,16 +3134,16 @@ void monster::shove_vehicle( const tripoint_bub_ms &remote_destination,
                     clamp( destination_delta.y(), -1, 1 ),
                     clamp( destination_delta.z(), -1, 1 ) );
                 veh.skidding = true;
-                veh.velocity = shove_velocity;
+                veh.velocity = shove.velocity;
                 if( shove_destination != tripoint_rel_ms::zero ) {
                     if( shove_destination.z() != 0 ) {
                         veh.vertical_velocity =
-                            shove_destination.z() < 0 ? -shove_velocity : +shove_velocity;
+                            shove_destination.z() < 0 ? -shove.velocity : +shove.velocity;
                     }
                     here.move_vehicle( veh, shove_destination, veh.face );
                 }
                 veh.move = tileray( destination_delta.xy() );
-                veh.smash( here, shove_damage_min, shove_damage_max, 0.10F );
+                veh.smash( here, shove.damage_min, shove.damage_max, 0.10F );
             }
         }
     }

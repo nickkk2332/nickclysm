@@ -135,7 +135,7 @@ class item_pocket
         bool has_any_with( const std::function<bool( const item & )> &filter ) const;
 
         bool is_type( pocket_type ptype ) const;
-        bool is_type( const std::set<pocket_type> &ptype ) const;
+        bool is_type( pocket_type_set ptype ) const;
         bool is_ablative() const;
         bool is_holster() const;
         // checks if the pocket is a holster and if it has something in it
@@ -385,9 +385,9 @@ class item_pocket
         // @relates visitable
         // the "parent is the item location who's contents you're visiting.
         VisitResponse visit_contents( const std::function<VisitResponse( const item_location & )> &func,
-                                      const item_location &parent, const std::set<pocket_type> &allowed_pockets );
+                                      const item_location &parent, pocket_type_set allowed_pockets );
         VisitResponse visit_contents_legacy( const std::function<VisitResponse( item *, item * )> &func,
-                                             item *parent, const std::set<pocket_type> &allowed_pockets = { pocket_type::CONTAINER } );
+                                             item *parent, pocket_type_set allowed_pockets = { pocket_type::CONTAINER } );
 
         void general_info( std::vector<iteminfo> &info, int pocket_number, bool disp_pocket_number ) const;
         void contents_info( std::vector<iteminfo> &info, int pocket_number, bool disp_pocket_number ) const;
@@ -469,18 +469,24 @@ class item_pocket
 };
 
 /**
- *  There are a few implicit things about this struct when applied to pocket_data:
- *  - When a pocket_data::open_container == true, if it's sealed this is false.
- *  - When a pocket_data::watertight == false, if it's sealed this is true.
- *     This is relevant for crafting and spawned items.
- *     Example: Plastic bag with liquid in it, you need to
-  *     poke a hole into it to get the liquid, and it's no longer watertight
+ *  The values of a pocket that differ while it is sealed.
+ *  - A sealed pocket never spills, whatever pocket_data::open_container says, and an
+ *    open_container pocket is not transparent while sealed.
+ *  - Each optional value below, when set, replaces the pocket's own value while it is sealed
+ *    (item_pocket's accessors read it). Example: a plastic bag of liquid that is watertight
+ *    only until a hole is poked in it.
  */
 struct sealable_data {
     // required for generic_factory
     bool was_loaded = false;
     /** multiplier for spoilage rate of contained items when sealed */
     float spoil_multiplier = 1.0f;
+    std::optional<bool> watertight;
+    std::optional<bool> airtight;
+    std::optional<bool> transparent;
+    std::optional<float> insulation;
+    /** moves to take an item out of the sealed pocket, which unseals it */
+    std::optional<int> moves;
 
     void load( const JsonObject &jo );
     void deserialize( const JsonObject &data );

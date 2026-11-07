@@ -43,7 +43,8 @@ float item_reference::insulation() const
     return std::accumulate(
                pocket_chain.begin(), pocket_chain.end(), 1.0F,
     []( float a, item_pocket const * pk ) {
-        return a * pk->get_pocket_data()->insulation;
+        // insulation() honours a sealed pocket's own value
+        return a * pk->insulation();
     } );
 }
 

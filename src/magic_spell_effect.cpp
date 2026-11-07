@@ -24,6 +24,7 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
+#include "character_id.h"
 #include "character_martial_arts.h"
 #include "color.h"
 #include "condition.h"
@@ -36,6 +37,8 @@
 #include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "execution_combat.h"
 #include "explosion.h"
 #include "field.h"
@@ -202,15 +205,39 @@ void spell_effect::short_range_teleport( const spell &sp, Creature &caster,
 static void swap_pos( Creature &caster, const tripoint_bub_ms &target )
 {
     map &here = get_map();
+    creature_tracker &creatures = get_creature_tracker();
 
-    Creature *const critter = get_creature_tracker().creature_at<Creature>( target );
-    critter->setpos( caster.pos_abs() );
-    caster.setpos( here, target );
+    Creature *const critter = creatures.creature_at<Creature>( target );
+    // the spell may have killed what it hit, or have been cast at an empty tile or the caster
+    if( critter == nullptr || critter == &caster || critter->is_dead_state() ||
+        caster.is_dead_state() ) {
+        return;
+    }
+    const tripoint_abs_ms caster_pos = caster.pos_abs();
+    monster *const caster_mon = caster.as_monster();
+    monster *const critter_mon = critter->as_monster();
+    if( caster_mon != nullptr && critter_mon != nullptr ) {
+        // moving either monster first would put it on the other's tile in the tracker
+        creatures.swap_positions( *caster_mon, *critter_mon );
+    } else {
+        const auto unboard = [&here]( Creature & moving ) {
+            Character *const guy = moving.as_character();
+            if( guy != nullptr && guy->in_vehicle ) {
+                here.unboard_vehicle( guy->pos_bub() );
+            }
+        };
+        unboard( *critter );
+        unboard( caster );
+        critter->setpos( caster_pos );
+        caster.setpos( here, target );
+    }
 
     //update map in case a monster swapped positions with the player
-    Character &you = get_player_character();
-    here.vertical_shift( you.posz() );
-    g->update_map( you );
+    if( caster.is_avatar() || critter->is_avatar() ) {
+        Character &you = get_player_character();
+        here.vertical_shift( you.posz() );
+        g->update_map( you );
+    }
 }
 
 void spell_effect::pain_split( const spell &sp, Creature &caster, const tripoint_bub_ms & )
@@ -220,19 +247,27 @@ void spell_effect::pain_split( const spell &sp, Creature &caster, const tripoint
         return;
     }
     sp.make_sound( caster.pos_bub(), caster );
-    add_msg( m_info, _( "Your injuries even out." ) );
-    int num_limbs = 0; // number of limbs effected (broken don't count)
-    int total_hp = 0; // total hp among limbs
-
-    for( const std::pair<const bodypart_str_id, bodypart> &elem : you->get_body() ) {
-        if( elem.first == bodypart_str_id::NULL_ID() ) {
+    you->add_msg_if_player( m_info, _( "Your injuries even out." ) );
+    // The main body parts share out their damage. Minor parts (hands, feet, eyes...) have no
+    // hit points of their own and a broken limb stays broken, so neither counts.
+    std::vector<bodypart_id> limbs;
+    int total_hp = 0;
+    for( const bodypart_id &bp : you->get_all_body_parts( get_body_part_flags::only_main ) ) {
+        const int hp = you->get_part_hp_cur( bp );
+        if( hp <= 0 ) {
             continue;
         }
-        num_limbs++;
-        total_hp += elem.second.get_hp_cur();
+        limbs.push_back( bp );
+        total_hp += hp;
     }
-    const int hp_each = total_hp / num_limbs;
-    you->set_all_parts_hp_cur( hp_each );
+    if( limbs.empty() ) {
+        return;
+    }
+    const int hp_each = total_hp / static_cast<int>( limbs.size() );
+    for( const bodypart_id &bp : limbs ) {
+        // never above a part's own maximum: the wounds move, nothing heals
+        you->set_part_hp_cur( bp, std::min( hp_each, you->get_part_hp_max( bp ) ) );
+    }
 }
 
 static bool in_spell_aoe( const tripoint_bub_ms &start, const tripoint_bub_ms &end,
@@ -962,6 +997,17 @@ static bool touch_required_hit( Creature &caster,
     return caster.hit_roll() > target.dodge_roll();
 }
 
+double spell_defence_mitigation( const int defence, const int spell_accuracy, const int roll )
+{
+    const int margin = defence - spell_accuracy;
+    if( margin <= 0 ) {
+        return 0.0;
+    }
+    // 5% of the d20 roll, capped at the margin, of a third of the damage: 0 to 1/3
+    const int points = std::max( 0, std::min( std::min( roll, 20 ), margin ) );
+    return 0.05 * points / 3.0;
+}
+
 static void execution_spell_damage( const spell &sp, Creature &caster, Creature &target,
                                     const bodypart_id &bp, const damage_instance &damage )
 {
@@ -1021,24 +1067,20 @@ static void damage_targets( const spell &sp, Creature &caster,
             add_effect_to_target( target, sp, caster );
         }
         if( sp.damage( caster ) > 0 ) {
-            // calculate damage mitigation from various sources
-            // 5% per point (linear) ranging from 0-33%, capped at block score
+            // Each of the target's defences above the spell's accuracy (block bonus, dodge and,
+            // against magic, spell resistance) takes up to a third off the damage. The dodge is
+            // compared, not tried: a spell hit doesn't spend the target's dodges or stamina.
             double damage_mitigation_multiplier = 1.0;
-            if( const int spell_block = cr->get_block_bonus() - spell_accuracy > 0 ) {
-                const int roll = std::round( rng( 1, 20 ) );
-                damage_mitigation_multiplier -= ( 1 - 0.05 * std::max( roll, spell_block ) ) / 3.0;
-            }
-
-            if( cr->dodge_check( spell_accuracy ) ) {
-                const int spell_dodge = cr->get_dodge() - spell_accuracy;
-                const int roll = std::round( rng( 1, 20 ) );
-                damage_mitigation_multiplier -= ( 1 - 0.05 * std::max( roll, spell_dodge ) ) / 3.0;
-            }
-
-            if( const int spell_resist = cr->get_spell_resist() - spell_accuracy > 0 &&
-                                         !sp.has_flag( spell_flag::NON_MAGICAL ) ) {
-                const int roll = std::round( rng( 1, 20 ) );
-                damage_mitigation_multiplier -= ( 1 - 0.05 * std::max( roll, spell_resist ) ) / 3.0;
+            const auto mitigate = [&]( const int defence ) {
+                if( defence > spell_accuracy ) {
+                    const int roll = rng( 1, 20 );
+                    damage_mitigation_multiplier -= spell_defence_mitigation( defence, spell_accuracy, roll );
+                }
+            };
+            mitigate( cr->get_block_bonus() );
+            mitigate( static_cast<int>( cr->get_dodge() ) );
+            if( !sp.has_flag( spell_flag::NON_MAGICAL ) ) {
+                mitigate( cr->get_spell_resist() );
             }
 
             for( damage_unit &val : atk.proj.impact.damage_units ) {
@@ -1766,7 +1808,6 @@ std::optional<timed_event_type> spell_effect::timed_event_from_effect_str(
         { "amigara", timed_event_type::AMIGARA },
         { "artifact_light", timed_event_type::ARTIFACT_LIGHT },
         { "dim", timed_event_type::DIM },
-        { "help", timed_event_type::HELP },
         { "roots_die", timed_event_type::ROOTS_DIE },
         { "spawn_wyrms", timed_event_type::SPAWN_WYRMS },
         { "temple_flood", timed_event_type::TEMPLE_FLOOD },
@@ -1840,6 +1881,16 @@ void spell_effect::spawn_summoned_monster( const spell &sp, Creature &caster,
         const tripoint_bub_ms &target )
 {
     std::set<tripoint_bub_ms> area = spell_effect_area( sp, target, caster );
+    // A tile someone stands on (the caster's own, when the spell may target "self") can't take
+    // a monster.
+    creature_tracker &creatures = get_creature_tracker();
+    for( auto it = area.begin(); it != area.end(); ) {
+        if( creatures.creature_at<Creature>( *it ) != nullptr ) {
+            it = area.erase( it );
+        } else {
+            ++it;
+        }
+    }
     // this should never be negative, but this'll keep problems from happening
     size_t num_mons = std::abs( sp.damage( caster ) );
     const time_duration summon_time = sp.duration_turns( caster );
@@ -1851,7 +1902,9 @@ void spell_effect::spawn_summoned_monster( const spell &sp, Creature &caster,
             num_mons--;
             sp.make_sound( *iter, caster );
         } else {
-            debugmsg( "failed to place monster" );
+            // a tile the monster won't go to (fire, deep water...): try another one
+            add_msg_debug( debugmode::DF_GAME, "%s could not place a monster at %s", sp.id().str(),
+                           iter->to_string() );
         }
         // whether or not we succeed in spawning a monster, we don't want to try this tripoint again
         area.erase( iter );
@@ -1994,7 +2047,9 @@ void spell_effect::vomit( const spell &sp, Creature &caster, const tripoint_bub_
 void spell_effect::pull_to_caster( const spell &sp, Creature &caster,
                                    const tripoint_bub_ms &target )
 {
-    caster.longpull( sp.name(), target );
+    // A spell with damage pulls with that strength, in place of the caster's
+    const int power = sp.damage( caster );
+    caster.longpull( sp.name(), target, power > 0 ? std::optional<int>( power ) : std::nullopt );
 }
 
 void spell_effect::explosion( const spell &sp, Creature &caster, const tripoint_bub_ms &target )
@@ -2085,6 +2140,14 @@ void spell_effect::charm_monster( const spell &sp, Creature &caster, const tripo
             if( mon->friendly != -1 && sp.has_flag( spell_flag::CHARM_PET ) ) {
                 mon->friendly = -1;
                 mon->add_effect( effect_pet, 1_turns, true );
+                // MONDT-J14: the caster is alpha (a monster caster has no character id)
+                if( !mon->is_hallucination() ) {
+                    const Character *who = caster.as_character();
+                    const cata::event tamed = cata::event::make<event_type::monster_tamed>(
+                                                  who != nullptr ? who->getID() : character_id(), mon->type->id,
+                                                  std::string( "spell" ) );
+                    get_event_bus().send_with_talker( &caster, mon, tamed );
+                }
             }
             success = true;
         }

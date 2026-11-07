@@ -219,7 +219,8 @@ bool vehicle_part::is_cleaner_on() const
     const bool is_cleaner = info().has_flag( VPFLAG_AUTOCLAVE ) ||
                             info().has_flag( VPFLAG_DISHWASHER ) ||
                             info().has_flag( VPFLAG_WASHING_MACHINE );
-    return is_cleaner && enabled;
+    // a running processing_cycle keeps its contents shut in too (MAP-J03)
+    return ( is_cleaner && enabled ) || processing_cycles::running( *this );
 }
 
 bool vehicle_part::is_unavailable( const bool carried ) const
@@ -519,6 +520,33 @@ const std::set<fault_id> &vehicle_part::faults() const
 bool vehicle_part::has_fault_flag( const std::string &searched_flag ) const
 {
     return base.has_fault_flag( searched_flag );
+}
+
+double vehicle_part::fault_engine_power_mult() const
+{
+    double mult = 1.0;
+    for( const fault_id &f : faults() ) {
+        mult *= f->engine_power_mult();
+    }
+    return mult;
+}
+
+double vehicle_part::fault_fuel_consumption_mult() const
+{
+    double mult = 1.0;
+    for( const fault_id &f : faults() ) {
+        mult *= f->fuel_consumption_mult();
+    }
+    return mult;
+}
+
+double vehicle_part::fault_exhaust_mult() const
+{
+    double mult = 1.0;
+    for( const fault_id &f : faults() ) {
+        mult *= f->exhaust_mult();
+    }
+    return mult;
 }
 
 bool vehicle_part::has_fault( const fault_id &fault ) const

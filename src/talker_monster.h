@@ -107,6 +107,9 @@ class talker_monster: public talker_monster_const, public talker_cloner<talker_m
                        ) override;
         void remove_effect( const efftype_id &old_effect, const std::string &bp ) override;
         void mod_pain( int amount ) override;
+        // MATH-J06: n_pain() = x and n_hp('torso') = x on a monster, which has one pool of each
+        void set_pain( int amount ) override;
+        void set_part_hp_cur( const bodypart_id &, int set ) override;
 
         void set_value( const std::string &var_name, diag_value const &value ) override;
         void remove_value( const std::string &var_name ) override;

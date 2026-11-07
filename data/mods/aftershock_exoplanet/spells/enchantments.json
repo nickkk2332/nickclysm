@@ -21,7 +21,7 @@
     "type": "enchantment",
     "id": "melee_optimization",
     "condition": "ACTIVE",
-    "hit_you_effect": [ { "id": "afs_generic_speed_bonus", "hit_self": true } ]
+    "hit_you_effect": [ { "id": "afs_generic_speed_bonus", "hit_types": [ "melee" ], "hit_self": true } ]
   },
   {
     "type": "enchantment",

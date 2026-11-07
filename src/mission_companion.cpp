@@ -75,6 +75,27 @@
 
 static const efftype_id effect_riding( "riding" );
 
+static const faction_mission_id faction_mission_camp_clearcut( "camp_clearcut" );
+static const faction_mission_id faction_mission_camp_collect_firewood( "camp_collect_firewood" );
+static const faction_mission_id faction_mission_camp_combat_patrol( "camp_combat_patrol" );
+static const faction_mission_id faction_mission_camp_cut_logs( "camp_cut_logs" );
+static const faction_mission_id faction_mission_camp_foraging( "camp_foraging" );
+static const faction_mission_id faction_mission_camp_gathering( "camp_gathering" );
+static const faction_mission_id faction_mission_camp_harvest( "camp_harvest" );
+static const faction_mission_id faction_mission_camp_hunting( "camp_hunting" );
+static const faction_mission_id faction_mission_camp_menial( "camp_menial" );
+static const faction_mission_id faction_mission_camp_plant( "camp_plant" );
+static const faction_mission_id faction_mission_camp_plow( "camp_plow" );
+static const faction_mission_id faction_mission_camp_recruiting( "camp_recruiting" );
+static const faction_mission_id faction_mission_camp_relay_hide_site( "camp_relay_hide_site" );
+static const faction_mission_id faction_mission_camp_scouting( "camp_scouting" );
+static const faction_mission_id faction_mission_camp_setup_hide_site( "camp_setup_hide_site" );
+static const faction_mission_id faction_mission_camp_survey_expansion( "camp_survey_expansion" );
+static const faction_mission_id faction_mission_camp_survey_field( "camp_survey_field" );
+static const faction_mission_id faction_mission_camp_trapping( "camp_trapping" );
+
+static const flag_id json_flag_NO_CAMP_FARMING( "NO_CAMP_FARMING" );
+
 static const furn_str_id furn_f_plant_harvest( "f_plant_harvest" );
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 
@@ -86,8 +107,6 @@ static const item_group_id Item_spawn_data_forage_winter( "forage_winter" );
 static const item_group_id Item_spawn_data_npc_weapon_random( "npc_weapon_random" );
 
 static const itype_id itype_FMCNote( "FMCNote" );
-static const itype_id itype_fungal_seeds( "fungal_seeds" );
-static const itype_id itype_marloss_seed( "marloss_seed" );
 
 static const oter_str_id oter_looted_hospital( "looted_hospital" );
 static const oter_str_id oter_looted_hospital_roof( "looted_hospital_roof" );
@@ -166,6 +185,18 @@ static const std::string role_id_faction_camp = "FACTION_CAMP";
 static const std::string omt_evac_center_18 = "evac_center_18";
 static const std::string omt_ranch_camp_63 = "ranch_camp_63";
 
+// What the outpost missions of @ref giver pay (and charge) in: its faction's currency, or merch
+// for a faction with none (CAMP-J11)
+static itype_id outpost_currency( const npc &giver )
+{
+    const faction *fac = giver.get_faction();
+    if( fac != nullptr && !fac->currency.is_empty() && !fac->currency.is_null() &&
+        fac->currency.is_valid() ) {
+        return fac->currency;
+    }
+    return itype_FMCNote;
+}
+
 static const std::string return_ally_question_string =
     translate_marker( "\n\nDo you wish to bring your allies back into your party?" );
 
@@ -225,6 +256,7 @@ std::string enum_to_string<mission_kind>( mission_kind data )
         case mission_kind::Camp_Plow: return "Camp_Plow";
         case mission_kind::Camp_Plant: return "Camp_Plant";
         case mission_kind::Camp_Harvest: return "Camp_Harvest";
+        case mission_kind::Camp_Generic: return "Camp_Generic";
         // *INDENT-ON*
         case mission_kind::last_mission_kind:
             break;
@@ -234,7 +266,7 @@ std::string enum_to_string<mission_kind>( mission_kind data )
 
 } // namespace io
 
-static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
+static const std::array < miss_data, last_mission_kind > miss_info = { {
         {
             //  No_Mission
             "",
@@ -268,7 +300,7 @@ static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
             "Caravan_Commune_Center_Job",
             no_translation( "" )
         },
-        //  Faction camp missions
+        //  Faction camp missions.  Those from JSON have their texts in their faction_mission
         {
             "Camp_Distribute_Food",
             no_translation( "" )
@@ -315,51 +347,51 @@ static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
         },
         {
             "Camp_Gather_Materials",
-            to_translation( "Searching for materials to upgrade the camp.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Collect_Firewood",
-            to_translation( "Searching for firewood.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Menial",
-            to_translation( "Performing menial labor…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Survey_Field",
-            to_translation( "Surveying for suitable fields…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Survey_Expansion",
-            to_translation( "Surveying for expansion…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Cut_Logs",
-            to_translation( "Cutting logs in the woods…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Clearcut",
-            to_translation( "Clearing a forest…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Setup_Hide_Site",
-            to_translation( "Setting up a hide site…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Relay_Hide_Site",
-            to_translation( "Transferring gear to a hide site…\n" )
+            no_translation( "" )
         },
         {
             "Camp Foraging",
-            to_translation( "Foraging for edible plants.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Trapping",
-            to_translation( "Trapping Small Game.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Hunting",
-            to_translation( "Hunting large animals.\n" )
+            no_translation( "" )
         },
         {
             "Camp_OM_Fortifications",
@@ -367,27 +399,32 @@ static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
         },
         {
             "Camp_Recruiting",
-            to_translation( "Searching for recruits.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Scouting",
-            to_translation( "Scouting the region.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Combat Patrol",
-            to_translation( "Patrolling the region.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Plow",
-            to_translation( "Working to plow your fields!\n" )
+            no_translation( "" )
         },
         {
             "Camp_Plant",
-            to_translation( "Working to plant your fields!\n" )
+            no_translation( "" )
         },
         {
             "Camp_Harvest",
-            to_translation( "Working to harvest your fields!\n" )
+            no_translation( "" )
+        },
+        {
+            //  a camp mission from JSON; its texts are in its faction_mission
+            "Camp_Generic",
+            no_translation( "" )
         }
     }
 };
@@ -397,12 +434,59 @@ std::string action_of( mission_kind kind )
     return miss_info[kind].action.translated();
 }
 
+std::string action_of( const mission_id &miss_id )
+{
+    faction_mission_id type = miss_id.type;
+    if( type.is_empty() ) {
+        type = legacy_camp_mission( miss_id.id );
+    }
+    if( type.is_valid() ) {
+        return type->progress_text() + "\n";
+    }
+    return action_of( miss_id.id );
+}
+
+mission_id::mission_id( mission_kind kind, std::string params, mapgen_arguments args,
+                        std::optional<point_rel_omt> direction, faction_mission_id camp_mission ) :
+    id( kind ), parameters( std::move( params ) ), mapgen_args( std::move( args ) ),
+    dir( direction ), type( camp_mission )
+{
+}
+
 bool is_equal( const mission_id &first, const mission_id &second )
 {
     return first.id == second.id &&
+           first.type == second.type &&
            first.parameters == second.parameters &&
            first.mapgen_args == second.mapgen_args &&
            first.dir == second.dir;
+}
+
+faction_mission_id legacy_camp_mission( const mission_kind kind )
+{
+    // the vanilla camp missions that ran on their mission_kind alone
+    static const std::map<mission_kind, faction_mission_id> legacy = {
+        { Camp_Gather_Materials, faction_mission_camp_gathering },
+        { Camp_Collect_Firewood, faction_mission_camp_collect_firewood },
+        { Camp_Menial, faction_mission_camp_menial },
+        { Camp_Survey_Field, faction_mission_camp_survey_field },
+        { Camp_Survey_Expansion, faction_mission_camp_survey_expansion },
+        { Camp_Cut_Logs, faction_mission_camp_cut_logs },
+        { Camp_Clearcut, faction_mission_camp_clearcut },
+        { Camp_Setup_Hide_Site, faction_mission_camp_setup_hide_site },
+        { Camp_Relay_Hide_Site, faction_mission_camp_relay_hide_site },
+        { Camp_Foraging, faction_mission_camp_foraging },
+        { Camp_Trapping, faction_mission_camp_trapping },
+        { Camp_Hunting, faction_mission_camp_hunting },
+        { Camp_Recruiting, faction_mission_camp_recruiting },
+        { Camp_Scouting, faction_mission_camp_scouting },
+        { Camp_Combat_Patrol, faction_mission_camp_combat_patrol },
+        { Camp_Plow, faction_mission_camp_plow },
+        { Camp_Plant, faction_mission_camp_plant },
+        { Camp_Harvest, faction_mission_camp_harvest },
+    };
+    const auto found = legacy.find( kind );
+    return found == legacy.end() ? faction_mission_id() : found->second;
 }
 
 void reset_miss_id( mission_id &miss_id )
@@ -417,18 +501,31 @@ void mission_id::serialize( JsonOut &jsout ) const
     jsout.member( "parameters", parameters );
     jsout.member( "mapgen_args", mapgen_args );
     jsout.member( "dir", dir );
+    if( !type.is_empty() ) {
+        jsout.member( "camp_mission", type );
+    }
     jsout.end_object();
 }
 
 void mission_id::deserialize( const JsonValue &val )
 {
-    *this = { No_Mission, "", {}, std::nullopt };
+    *this = {};
     if( val.test_object() ) {
         JsonObject obj = val.get_object();
         obj.read( "id", id );
         obj.read( "parameters", parameters );
         obj.read( "mapgen_args", mapgen_args );
         obj.read( "dir", dir );
+        obj.read( "camp_mission", type );
+        if( type.is_empty() ) {
+            // saved before camp missions had ids
+            type = legacy_camp_mission( id );
+        }
+        // the camp mission's JSON says what runs it now; a mission whose JSON is gone keeps its
+        // kind, and emergency recall brings its companion back
+        if( type.is_valid() ) {
+            id = type->behavior;
+        }
     } else {
         debugmsg( "Mission id in JSON should be an object" );
     }
@@ -504,6 +601,9 @@ void talk_function::companion_mission( npc &p )
         field_harvest( p, omt_ranch_camp_63 );
         return;
     } else {
+        debugmsg( "%s has no companion missions for the role \"%s\": the companion_mission effect "
+                  "knows SCAVENGER, COMMUNE CROPS, FOREMAN, REFUGEE MERCHANT, PLANT FIELD and "
+                  "HARVEST FIELD", p.get_name(), role_id );
         return;
     }
     if( display_and_choose_opts( mission_key, omt_pos, role_id, title ) ) {
@@ -1202,7 +1302,8 @@ npc_ptr talk_function::individual_mission( const tripoint_abs_omt &omt_pos,
     popup( "%s %s", comp->get_name(), desc );
     comp->set_companion_mission( omt_pos, role_id, miss_id );
     get_event_bus().send<event_type::companion_mission_started>( comp->getID(),
-            io::enum_to_string( miss_id.id ), project_to<coords::ms>( omt_pos ).raw() );
+            io::enum_to_string( miss_id.id ), project_to<coords::ms>( omt_pos ).raw(),
+            miss_id.type.str() );
     if( group ) {
         comp->companion_mission_time = calendar::before_time_starts;
     } else {
@@ -1318,7 +1419,7 @@ void talk_function::caravan_return( npc &p, const std::string &dest, const missi
     }
 
     if( merch_amount != 0 ) {
-        item merch = item( itype_FMCNote );
+        item merch = item( outpost_currency( p ) );
         get_player_character().i_add_or_drop( merch, merch_amount );
         popup( _( "The caravan party has returned.  Your share of the profits are %d merch!" ),
                merch_amount );
@@ -1424,7 +1525,7 @@ void talk_function::field_plant( npc &p, const std::string &place )
     std::vector<item_location> seed_inv = player_character.cache_get_items_with( "is_seed",
                                           &item::is_seed,
     []( const item_location & itm ) {
-        return itm->typeId() != itype_marloss_seed && itm->typeId() != itype_fungal_seeds;
+        return !itm->has_flag( json_flag_NO_CAMP_FARMING );
     } );
     if( seed_inv.empty() ) {
         popup( _( "You have no seeds to plant." ) );
@@ -1486,7 +1587,7 @@ void talk_function::field_plant( npc &p, const std::string &place )
         limiting_number = empty_plots;
     }
 
-    int player_merch = player_character.amount_of( itype_FMCNote );
+    int player_merch = player_character.amount_of( outpost_currency( p ) );
     if( player_merch == 0 ) {
         popup( _( "I'm sorry, you don't have any money to plant those seeds…" ) );
         return;
@@ -1507,7 +1608,7 @@ void talk_function::field_plant( npc &p, const std::string &place )
         }
     }
 
-    player_character.use_amount( itype_FMCNote, limiting_number );
+    player_character.use_amount( outpost_currency( p ), limiting_number );
 
     //Plant the actual seeds
     for( const tripoint_omt_ms &plot : bay.points_on_zlevel() ) {
@@ -1627,7 +1728,7 @@ void talk_function::field_harvest( npc &p, const std::string &place )
     int merch_amount = std::max( 0, ( number_plants * tmp.price( true ) / 250 ) - number_plots );
     bool liquidate = false;
 
-    if( !player_character.has_amount( itype_FMCNote, number_plots ) ) {
+    if( !player_character.has_amount( outpost_currency( p ), number_plots ) ) {
         liquidate = true;
         popup( _( "You don't have enough to pay the workers to harvest the crop, so you are forced "
                   "to sell…" ) );
@@ -1639,7 +1740,7 @@ void talk_function::field_harvest( npc &p, const std::string &place )
     //Add fruit
     if( liquidate ) {
         add_msg( _( "The %s are sold for %d merch…" ), plant_names[plant_index], merch_amount );
-        item merch = item( itype_FMCNote );
+        item merch = item( outpost_currency( p ) );
         player_character.i_add_or_drop( merch, merch_amount );
     } else {
         if( tmp.count_by_charges() ) {
@@ -1721,7 +1822,7 @@ bool talk_function::scavenging_patrol_return( npc &p )
                   "participate in daring raids." ), p.get_name() );
     }
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     get_player_character().i_add_or_drop( merch, merch_amount );
 
     companion_return( *comp );
@@ -1759,7 +1860,7 @@ bool talk_function::scavenging_raid_return( npc &p )
     }
     Character &player_character = get_player_character();
     tripoint_abs_omt loot_location = player_character.pos_abs_omt();
-    std::set<item> all_returned_items;
+    std::vector<item> all_returned_items;
 
     for( int i = 0; i < rng( 2, 3 ); i++ ) {
         tripoint_abs_omt site = overmap_buffer.find_closest(
@@ -1789,8 +1890,9 @@ bool talk_function::scavenging_raid_return( npc &p )
             }
 
             overmap_buffer.reveal( site, 2 );
-            std::set<item> returned_items = loot_building( site, looted_replacement );
-            all_returned_items.insert( returned_items.begin(), returned_items.end() );
+            std::vector<item> returned_items = loot_building( site, looted_replacement );
+            all_returned_items.insert( all_returned_items.end(), returned_items.begin(),
+                                       returned_items.end() );
         }
     }
 
@@ -1827,7 +1929,7 @@ bool talk_function::scavenging_raid_return( npc &p )
     }
     distribute_items_to_npc_zones( to_distribute, p );
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     player_character.i_add_or_drop( merch, merch_amount );
 
     companion_return( *comp );
@@ -1867,7 +1969,7 @@ bool talk_function::hospital_raid_return( npc &p )
     }
     Character &player_character = get_player_character();
     tripoint_abs_omt loot_location = player_character.pos_abs_omt();
-    std::set<item> all_returned_items;
+    std::vector<item> all_returned_items;
     for( int i = 0; i < rng( 2, 3 ); i++ ) {
         tripoint_abs_omt site = overmap_buffer.find_closest(
                                     loot_location, "hospital", 0, false, ot_match_type::prefix );
@@ -1891,8 +1993,9 @@ bool talk_function::hospital_raid_return( npc &p )
                 }
 
                 overmap_buffer.reveal( site, 2 );
-                std::set<item> returned_items = loot_building( site, looted_replacement );
-                all_returned_items.insert( returned_items.begin(), returned_items.end() );
+                std::vector<item> returned_items = loot_building( site, looted_replacement );
+                all_returned_items.insert( all_returned_items.end(), returned_items.begin(),
+                                           returned_items.end() );
             }
         }
     }
@@ -1957,7 +2060,7 @@ bool talk_function::labor_return( npc &p )
                   "participate in advanced tasks." ), p.get_name() );
     }
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     get_player_character().i_add_or_drop( merch, merch_amount );
 
     return true;
@@ -2012,7 +2115,7 @@ bool talk_function::carpenter_return( npc &p )
     popup( _( "%s returns from working as a carpenter having earned %d merch and a bit of "
               "experience…" ), comp->get_name(), merch_amount );
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     get_player_character().i_add_or_drop( merch, merch_amount );
 
     companion_return( *comp );
@@ -2080,7 +2183,7 @@ bool talk_function::forage_return( npc &p )
     popup( _( "%s returns from working as a forager having earned %d merch and a bit of "
               "experience…" ), comp->get_name(), merch_amount );
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     player_character.i_add_or_drop( merch, merch_amount );
     // the following doxygen aliases do not yet exist. this is marked for future reference
 
@@ -2364,7 +2467,7 @@ void talk_function::send_companion_mission_finished( const npc &comp,
     const npc_companion_mission mission = comp.get_companion_mission();
     get_event_bus().send<event_type::companion_mission_finished>( comp.getID(),
             io::enum_to_string( mission.miss_id.id ),
-            project_to<coords::ms>( mission.position ).raw(), outcome );
+            project_to<coords::ms>( mission.position ).raw(), outcome, mission.miss_id.type.str() );
 }
 
 bool talk_function::companion_mission_death( npc &comp )
@@ -2667,7 +2770,8 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
         const mission_id &miss_id,
         const time_point &deadline,
         const bool by_mission,
-        const bool ignore_parameters )
+        const bool ignore_parameters,
+        const bool until_planned_return )
 {
     std::vector<npc_ptr> available;
     Character &player_character = get_player_character();
@@ -2679,7 +2783,8 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
         }
 
         if( by_mission ) {
-            if( c_mission.miss_id.id != miss_id.id || c_mission.miss_id.dir != miss_id.dir ) {
+            if( c_mission.miss_id.id != miss_id.id || c_mission.miss_id.dir != miss_id.dir ||
+                c_mission.miss_id.type != miss_id.type ) {
                 continue;
             }
             if( !ignore_parameters && c_mission.miss_id.parameters != miss_id.parameters ) {
@@ -2687,10 +2792,13 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
             }
         }
 
-        if( player_character.has_trait( trait_DEBUG_HS ) ||
-            guy->companion_mission_time <= deadline ||
-            ( deadline == calendar::before_time_starts &&
-              guy->companion_mission_time_ret <= calendar::turn ) ) {
+        const bool due = until_planned_return ?
+                         guy->companion_mission_time <= deadline &&
+                         guy->companion_mission_time_ret <= calendar::turn :
+                         guy->companion_mission_time <= deadline ||
+                         ( deadline == calendar::before_time_starts &&
+                           guy->companion_mission_time_ret <= calendar::turn );
+        if( player_character.has_trait( trait_DEBUG_HS ) || due ) {
             available.push_back( guy );
         }
     }
@@ -2723,7 +2831,7 @@ npc_ptr talk_function::companion_choose_return( comp_list &npc_list )
 }
 
 //Smash stuff, steal valuables, and change map marker
-std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
+std::vector<item> talk_function::loot_building( const tripoint_abs_omt &site,
         const oter_str_id &looted_replacement )
 {
     tinymap bay;
@@ -2731,7 +2839,9 @@ std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
     // Redundant as long as map operations aren't using get_map() in a transitive call chain. Added for future proofing.
     swap_map swap( *bay.cast_to_map() );
     creature_tracker &creatures = get_creature_tracker();
-    std::set<item> return_items;
+    const Character &player_character = get_player_character();
+    // every item taken comes back: a set kept one of each equal-looking item (CAMP-B07)
+    std::vector<item> return_items;
     for( const tripoint_omt_ms &p : bay.points_on_zlevel() ) {
         const ter_id &t = bay.ter( p );
         //Open all the doors, doesn't need to be exhaustive
@@ -2786,8 +2896,10 @@ std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
             }
         }
         //Kill zombies!  Only works against pre-spawned enemies at the moment...
-        Creature *critter = creatures.creature_at( rebase_bub( p ) );
-        if( critter != nullptr ) {
+        // Only hostile monsters: never the avatar, an NPC or a pet (CAMP-B07)
+        monster *critter = creatures.creature_at<monster>( rebase_bub( p ) );
+        if( critter != nullptr &&
+            critter->attitude_to( player_character ) == Creature::Attitude::HOSTILE ) {
             critter->die( bay.cast_to_map(), nullptr );
         }
         //Hoover up tasty items!
@@ -2796,7 +2908,7 @@ std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
             if( !it->made_of( phase_id::LIQUID ) &&
                 ( ( ( it->is_food() || it->is_food_container() ) && !one_in( 8 ) ) ||
                   ( it->price( true ) > 1000 && !one_in( 4 ) ) || one_in( 5 ) ) ) {
-                return_items.insert( *it );
+                return_items.push_back( *it );
                 it = items.erase( it );
             } else {
                 ++it;

@@ -275,7 +275,7 @@
     "smash_message": "You use your flippin' face to smash the %s.  EXTREME.",
     "smash_efficiency": 0.25,
     "bionic_slots": 4,
-    "flags": [ "LIMB_UPPER" ],
+    "flags": [ "LIMB_UPPER", "FROSTBITE_VULNERABLE" ],
     "sub_parts": [ "mouth_lips", "mouth_nose", "mouth_cheeks", "mouth_chin" ],
     "bmi_encumbrance_threshold": 10,
     "bmi_encumbrance_scalar": 0.75
@@ -424,6 +424,7 @@
     "drench_capacity": 300,
     "smash_message": "You smash the %s with your fist.",
     "bionic_slots": 5,
+    "flags": [ "FROSTBITE_VULNERABLE" ],
     "sub_parts": [ "hand_wrist_l", "hand_palm_l", "hand_back_l", "hand_fingers_l" ],
     "bmi_encumbrance_threshold": 20,
     "bmi_encumbrance_scalar": 0.15
@@ -455,6 +456,7 @@
     "drench_capacity": 300,
     "smash_message": "You smash the %s with your fist.",
     "bionic_slots": 5,
+    "flags": [ "FROSTBITE_VULNERABLE" ],
     "sub_parts": [ "hand_wrist_r", "hand_palm_r", "hand_back_r", "hand_fingers_r" ],
     "bmi_encumbrance_threshold": 20,
     "bmi_encumbrance_scalar": 0.15
@@ -620,7 +622,7 @@
     "techniques": [ "tech_base_kick" ],
     "bionic_slots": 7,
     "sub_parts": [ "foot_sole_l", "foot_arch_l", "foot_toes_l", "foot_ankle_l", "foot_heel_l" ],
-    "flags": [ "LIMB_LOWER" ],
+    "flags": [ "LIMB_LOWER", "FROSTBITE_VULNERABLE" ],
     "bmi_encumbrance_threshold": 20,
     "bmi_encumbrance_scalar": 0.15
   },
@@ -654,7 +656,7 @@
     "techniques": [ "tech_base_kick" ],
     "bionic_slots": 7,
     "sub_parts": [ "foot_sole_r", "foot_arch_r", "foot_toes_r", "foot_ankle_r", "foot_heel_r" ],
-    "flags": [ "LIMB_LOWER" ],
+    "flags": [ "LIMB_LOWER", "FROSTBITE_VULNERABLE" ],
     "bmi_encumbrance_threshold": 20,
     "bmi_encumbrance_scalar": 0.15
   },

@@ -1,15 +1,16 @@
 #include "iuse_actor.h"
 
+#include <imgui/imgui.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <functional>
-#include <imgui/imgui.h>
 #include <iterator>
 #include <limits>
 #include <list>
 #include <memory>
+#include <string_view>
 #include <unordered_set>
 
 #include "action.h"
@@ -46,6 +47,7 @@
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "iexamine.h"
+#include "iexamine_actors.h"
 #include "input_popup.h"
 #include "item.h"
 #include "item_components.h"
@@ -105,6 +107,8 @@
 static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
 static const activity_id ACT_REPAIR_ITEM( "ACT_REPAIR_ITEM" );
 
+static const addiction_id addiction_nicotine( "nicotine" );
+
 static const damage_type_id damage_acid( "acid" );
 static const damage_type_id damage_bash( "bash" );
 static const damage_type_id damage_bullet( "bullet" );
@@ -115,6 +119,7 @@ static const efftype_id effect_asthma( "asthma" );
 static const efftype_id effect_bandaged( "bandaged" );
 static const efftype_id effect_bite( "bite" );
 static const efftype_id effect_bleed( "bleed" );
+static const efftype_id effect_cig( "cig" );
 static const efftype_id effect_disinfected( "disinfected" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_infected( "infected" );
@@ -127,12 +132,6 @@ static const efftype_id effect_stunned( "stunned" );
 
 static const fault_id fault_bionic_salvaged( "fault_bionic_salvaged" );
 
-static const furn_str_id furn_f_kiln_empty( "f_kiln_empty" );
-static const furn_str_id furn_f_kiln_metal_empty( "f_kiln_metal_empty" );
-static const furn_str_id furn_f_kiln_portable_empty( "f_kiln_portable_empty" );
-static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
-static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
-
 static const gun_mode_id gun_mode_DEFAULT( "DEFAULT" );
 
 static const itype_id itype_barrel_small( "barrel_small" );
@@ -143,6 +142,7 @@ static const itype_id itype_power_cord( "power_cord" );
 static const itype_id itype_stock_none( "stock_none" );
 static const itype_id itype_syringe( "syringe" );
 
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_MANUAL_CBM_INSTALLATION( "MANUAL_CBM_INSTALLATION" );
 static const json_character_flag json_flag_NO_LIMB_FIRST_AID( "NO_LIMB_FIRST_AID" );
 static const json_character_flag
@@ -173,10 +173,7 @@ static const skill_id skill_survival( "survival" );
 static const skill_id skill_traps( "traps" );
 
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
-static const trait_id trait_LIGHTWEIGHT( "LIGHTWEIGHT" );
 static const trait_id trait_SORCERER( "SORCERER" );
-static const trait_id trait_TOLERANCE( "TOLERANCE" );
 
 static const trap_str_id tr_firewood_source( "tr_firewood_source" );
 
@@ -333,7 +330,6 @@ void iuse_transform::load( const JsonObject &obj, const std::string & )
 
     optional( obj, false, "qualities_needed", qualities_needed );
 
-    optional( obj, false, "menu_text", menu_text );
 }
 
 std::optional<int> iuse_transform::use( Character *p, item &it, map *,
@@ -344,7 +340,7 @@ std::optional<int> iuse_transform::use( Character *p, item &it, map *,
     }
 
     int scale = 1;
-    auto iter = it.type->ammo_scale.find( type );
+    auto iter = it.type->ammo_scale.find( id );
     if( iter != it.type->ammo_scale.end() ) {
         scale = iter->second;
     }
@@ -502,14 +498,6 @@ ret_val<void> iuse_transform::can_use( const Character &p, const item &it,
     return ret_val<void>::make_failure( n_gettext( "You need a tool with %s.",
                                         "You need tools with %s.",
                                         unmet_reqs.size() ), unmet_reqs_string );
-}
-
-std::string iuse_transform::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void iuse_transform::finalize( const itype_id &my_item_type )
@@ -862,6 +850,32 @@ class drug_vitamin_reader : public generic_typed_reader<drug_vitamin_reader>
 };
 } // namespace
 
+// A consume_drug stat_adjustments stat must be one Character::mod_stat changes for good: str,
+// dex, per, int and the combat bonuses are reset every turn, so adjusting them did nothing
+// (USE-J05).
+static void check_drug_stat( const JsonObject &obj, const std::string &stat )
+{
+    static constexpr std::array<std::string_view, 8> lasting = {{
+            "hunger", "thirst", "sleepiness", "stamina", "oxygen", "healthy", "pain", "moves"
+        }
+    };
+    static constexpr std::array<std::string_view, 10> per_turn = {{
+            "str", "dex", "per", "int", "speed", "dodge", "block", "hit", "bash", "cut"
+        }
+    };
+    if( std::find( lasting.begin(), lasting.end(), stat ) != lasting.end() ) {
+        return;
+    }
+    if( std::find( per_turn.begin(), per_turn.end(), stat ) != per_turn.end() ) {
+        obj.throw_error_at( "stat_adjustments", string_format(
+                                "\"%s\" is a bonus that only lasts until the next turn: give an effect that changes it "
+                                "instead", stat ) );
+    }
+    obj.throw_error_at( "stat_adjustments", string_format(
+                            "unknown stat \"%s\" (use hunger, thirst, sleepiness, stamina, oxygen, healthy, pain or "
+                            "moves)", stat ) );
+}
+
 void consume_drug_iuse::load( const JsonObject &obj, const std::string & )
 {
     optional( obj, false, "activation_message", activation_message );
@@ -869,13 +883,49 @@ void consume_drug_iuse::load( const JsonObject &obj, const std::string & )
     optional( obj, false, "tools_needed", tools_needed );
 
     optional( obj, false, "effects", effects );
+    optional( obj, false, "remove_effects", remove_effects );
     optional( obj, false, "damage_over_time", damage_over_time );
     optional( obj, false, "stat_adjustments", stat_adjustments );
+    for( const std::pair<const std::string, int> &stat : stat_adjustments ) {
+        check_drug_stat( obj, stat.first );
+    }
     optional( obj, false, "fields_produced", fields_produced );
+    optional( obj, false, "field_count", field_count, 3 );
+    optional( obj, false, "field_radius", field_radius, 2 );
+    if( field_count < 0 ) {
+        obj.throw_error_at( "field_count", "can't be negative" );
+    }
+    if( field_radius < 0 ) {
+        obj.throw_error_at( "field_radius", "can't be negative" );
+    }
     optional( obj, false, "moves", moves, 100 );
+    if( obj.has_member( "consume_time" ) ) {
+        time_duration time = 0_turns;
+        mandatory( obj, false, "consume_time", time );
+        if( time < 0_turns ) {
+            obj.throw_error_at( "consume_time", "can't be negative" );
+        }
+        consume_time = time;
+    }
     optional( obj, false, "used_up_item", used_up_item, itype_id::NULL_ID() );
 
     optional( obj, false, "vitamins", vitamins, drug_vitamin_reader{} );
+}
+
+void consume_drug_iuse::finalize( const itype_id &my_item_type )
+{
+    for( const std::pair<const std::string, int> &field : fields_produced ) {
+        if( !field_type_str_id( field.first ).is_valid() ) {
+            debugmsg( "Item %s's consume_drug produces the unknown field %s", my_item_type.str(),
+                      field.first );
+        }
+    }
+    for( const efftype_id &eff : remove_effects ) {
+        if( !eff.is_valid() ) {
+            debugmsg( "Item %s's consume_drug removes the unknown effect %s", my_item_type.str(),
+                      eff.str() );
+        }
+    }
 }
 
 void consume_drug_iuse::info( const item &, std::vector<iteminfo> &dump ) const
@@ -932,14 +982,14 @@ std::optional<int> consume_drug_iuse::use( Character *p, item &it, map *here,
             return std::nullopt;
         }
     }
-    // Apply the various effects.
+    for( const efftype_id &eff : remove_effects ) {
+        p->remove_effect( eff );
+    }
+    // Apply the various effects. How long they last is the DRUG_DURATION enchantment value's
+    // (Substance Tolerance x0.8, Lightweight x1.2) (USE-J05)
     for( const iuse::effect_data &eff : effects ) {
-        time_duration dur = eff.duration;
-        if( p->has_trait( trait_TOLERANCE ) ) {
-            dur *= .8;
-        } else if( p->has_trait( trait_LIGHTWEIGHT ) ) {
-            dur *= 1.2;
-        }
+        const time_duration dur = p->enchantment_cache->modify_value( enchant_vals::mod::DRUG_DURATION,
+                                  eff.duration );
         p->add_effect( eff.id, dur, eff.bp, eff.permanent, eff.intensity );
     }
     //Apply the various damage_over_time
@@ -951,8 +1001,8 @@ std::optional<int> consume_drug_iuse::use( Character *p, item &it, map *here,
     }
     for( const auto &field : fields_produced ) {
         const field_type_id fid = field_type_id( field.first );
-        for( int i = 0; i < 3; i++ ) {
-            point_rel_ms offset( rng( -2, 2 ), rng( -2, 2 ) );
+        for( int i = 0; i < field_count; i++ ) {
+            point_rel_ms offset( rng( -field_radius, field_radius ), rng( -field_radius, field_radius ) );
             here->add_field( p->pos_bub( *here ) + offset, fid, field.second );
         }
     }
@@ -1489,16 +1539,18 @@ firestarter_actor::start_type firestarter_actor::prep_firestarter_use( Character
         return start_type::NONE;
     }
 
-    const furn_id &f_id = here->furn( pos );
-    const bool is_smoking_rack = f_id == furn_f_metal_smoking_rack ||
-                                 f_id == furn_f_smoking_rack;
-    const bool is_kiln = f_id == furn_f_kiln_empty ||
-                         f_id == furn_f_kiln_metal_empty || f_id == furn_f_kiln_portable_empty;
-
-    if( is_smoking_rack ) {
-        return iexamine::smoker_prep( p, pos ) ? start_type::SMOKER : start_type::NONE;
-    } else if( is_kiln ) {
-        return iexamine::kiln_prep( p, pos ) ? start_type::KILN : start_type::NONE;
+    switch( furniture_start_type( here->furn( pos ) ) ) {
+        case start_type::SMOKER:
+            return iexamine::smoker_prep( p, pos ) ? start_type::SMOKER : start_type::NONE;
+        case start_type::KILN:
+            return iexamine::kiln_prep( p, pos ) ? start_type::KILN : start_type::NONE;
+        case start_type::PROCESS: {
+            const process_start_examine_actor *process =
+                process_start_examine_actor::firestarter_process( here->furn( pos ).obj() );
+            return process != nullptr && process->prep( p, pos ) ? start_type::PROCESS : start_type::NONE;
+        }
+        default:
+            break;
     }
 
     if( here->get_field( pos, fd_fire ) ) {
@@ -1567,6 +1619,22 @@ void firestarter_actor::resolve_firestarter_use( Character *p, map *here,
     }
 }
 
+firestarter_actor::start_type firestarter_actor::furniture_start_type( const furn_id &furn )
+{
+    // ACT-J11: an unlit smoking rack, by its "smoker" object
+    if( furn->smoker && !furn->smoker->lit.is_empty() ) {
+        return start_type::SMOKER;
+    }
+    if( process_start_examine_actor::firestarter_process( furn.obj() ) != nullptr ) {
+        return start_type::PROCESS;
+    }
+    // a mod's furniture that still names the old kiln action
+    if( furn.obj().has_examine( iexamine::kiln_empty ) ) {
+        return start_type::KILN;
+    }
+    return start_type::FIRE;
+}
+
 bool firestarter_actor::resolve_start( Character *p, map *here,
                                        const tripoint_bub_ms &pos, start_type type )
 {
@@ -1577,6 +1645,11 @@ bool firestarter_actor::resolve_start( Character *p, map *here,
             return iexamine::smoker_fire( *p, pos );
         case start_type::KILN:
             return iexamine::kiln_fire( *p, pos );
+        case start_type::PROCESS: {
+            const process_start_examine_actor *process =
+                process_start_examine_actor::firestarter_process( here->furn( pos ).obj() );
+            return process != nullptr && process->fire( *p, pos );
+        }
         case start_type::NONE:
         default:
             return false;
@@ -1704,7 +1777,7 @@ std::optional<int> firestarter_actor::use( Character *p, item &it,
     // skill gains are handled by the activity, but stored here in the index field
     const int potential_skill_gain = moves_modifier * ( std::min( 10.0, moves_cost_fast / 100.0 ) + 2 );
     p->assign_activity( fire_start_activity_actor( here->get_abs( pos ), form_loc( *p, here, pos, it ),
-                        potential_skill_gain, moves ) );
+                        potential_skill_gain, moves, false, id ) );
     // charges to use are handled by the activity
     return 0;
 }
@@ -1793,7 +1866,7 @@ bool firestarter_actor::npc_start_fire( npc &who, item &tool,
     item_location tool_loc( who, &tool );
     who.assign_activity( fire_start_activity_actor(
                              here.get_abs( fire_pos ), tool_loc,
-                             potential_skill_gain, moves, tinder_consumed ) );
+                             potential_skill_gain, moves, tinder_consumed, id ) );
     return true;
 }
 
@@ -2707,7 +2780,7 @@ void learn_spell_actor::info( const item &, std::vector<iteminfo> &dump ) const
             spell_text = string_format( pgettext( "spell name, spell class", "%s, %s" ),
                                         spell_text, sp_id->spell_class->name() );
         }
-        if( pc.has_trait( trait_ILLITERATE ) ) {
+        if( pc.has_flag( json_flag_ILLITERATE ) ) {
             dump.emplace_back( "SPELL", spell_text );
         } else {
             if( pc.magic->knows_spell( sp_id ) ) {
@@ -2738,7 +2811,7 @@ std::optional<int> learn_spell_actor::use( Character *p, item &, map *,
         p->add_msg_if_player( m_bad, _( "It's too dark to read." ) );
         return std::nullopt;
     }
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_bad, _( "You can't read." ) );
         return std::nullopt;
     }
@@ -3127,10 +3200,17 @@ std::optional<int> repair_item_actor::use( Character *p, item &it,
     }
 
     p->assign_activity( ACT_REPAIR_ITEM, 0, p->get_item_position( &it ), INT_MIN );
-    // We also need to store the repair actor subtype in the activity
-    p->activity.str_values.push_back( type );
-    // storing of item_location to support repairs by tools on the ground
-    p->activity.targets.emplace_back( form_loc( *p, here, pos, it ) );
+    // We also need to store which repair action this is in the activity: its id (its type, the
+    // item_action_type, unless it has an "id"; old saves have the type)
+    p->activity.str_values.push_back( id );
+    // storing of item_location to support repairs by tools on the ground. A tool a vehicle
+    // provides (a PSEUDO item) is nowhere: vehicle::use_vehicle_tool hands the activity the
+    // tile to find it on (VINT-J09), so it isn't an error that it can't be found.
+    if( it.has_flag( flag_PSEUDO ) ) {
+        p->activity.targets.emplace_back( try_form_loc( *p, here, pos, it ).value_or( item_location() ) );
+    } else {
+        p->activity.targets.emplace_back( form_loc( *p, here, pos, it ) );
+    }
     // All repairs are done in the activity, including charge cost and target item selection
     return 0;
 }
@@ -3640,9 +3720,56 @@ std::string repair_item_actor::get_description() const
     return string_format( _( "Repair %s" ), mats );
 }
 
-void heal_actor::load( const JsonObject &obj, const std::string & )
+heal_actor::heal_actor( const std::string &type ) : iuse_actor( type ), skill( skill_firstaid )
+{
+    // each tier of wound care halves the time and adds to the skill level
+    proficiencies.push_back( { proficiency_prof_wound_care, 0.5f, 1.0f } );
+    proficiencies.push_back( { proficiency_prof_wound_care_expert, 0.5f, 2.0f } );
+}
+
+void heal_actor::proficiency_bonus::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "id", id );
+    optional( jo, false, "time_mult", time_mult, 1.0f );
+    optional( jo, false, "bonus", bonus, 0.0f );
+}
+
+void heal_actor::cure_data::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "effect", effect );
+    optional( jo, false, "chance", chance, 1.0f );
+    optional( jo, false, "replace_with", replace_with, efftype_id::NULL_ID() );
+    optional( jo, false, "message", message, to_translation( "The treatment works." ) );
+    optional( jo, false, "fail_message", fail_message,
+              to_translation( "The treatment doesn't work this time." ) );
+}
+
+void heal_actor::load( const JsonObject &obj, const std::string &src )
 {
     mandatory( obj, false, "move_cost", move_cost );
+    optional( obj, false, "skill", skill, skill_firstaid );
+    if( obj.has_member( "proficiencies" ) ) {
+        proficiencies.clear();
+        mandatory( obj, false, "proficiencies", proficiencies );
+    }
+    // "cures": an effect id, or an object (USE-J08, NPC-J08)
+    if( obj.has_member( "cures" ) ) {
+        cures.clear();
+        for( const JsonValue jv : obj.get_array( "cures" ) ) {
+            cure_data cure;
+            if( jv.test_string() ) {
+                cure.effect = efftype_id( jv.get_string() );
+                cure.message = to_translation( "The treatment works." );
+                cure.fail_message = to_translation( "The treatment doesn't work this time." );
+            } else {
+                cure.deserialize( jv.get_object() );
+            }
+            cures.push_back( cure );
+        }
+    }
+    for( JsonValue jv : obj.get_array( "finish_eocs" ) ) {
+        finish_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
 
     optional( obj, false, "limb_power", limb_power, 0 );
     optional( obj, false, "bandages_power", bandages_power, 0 );
@@ -3669,9 +3796,10 @@ void heal_actor::load( const JsonObject &obj, const std::string & )
     const bool heal_over_time = bandages_power;
     const bool stops_bleed = bleed;
     const bool has_any_disinfect = disinfectant_power || bite || infect;
-    const bool has_scripted_effect = obj.has_array( "effects" );
+    const bool has_scripted_effect = obj.has_array( "effects" ) || !cures.empty() ||
+                                     !finish_eocs.empty();
     if( !does_instant_healing && !heal_over_time && !stops_bleed
-        && !has_any_disinfect && !has_scripted_effect ) {
+        && !has_any_disinfect && !has_scripted_effect && cures.empty() ) {
         obj.throw_error( _( "Heal actor is missing any valid healing effect" ) );
     }
 
@@ -3684,6 +3812,108 @@ void heal_actor::load( const JsonObject &obj, const std::string & )
         optional( u, false, "charges", used_up_item_charges, 1 );
         optional( u, false, "flags", used_up_item_flags );
     }
+}
+
+// the effects some healing item cures; a superset after a data reload, which costs a lookup only
+static std::set<efftype_id> &curable_effect_set()
+{
+    static std::set<efftype_id> curable;
+    return curable;
+}
+
+const std::set<efftype_id> &heal_actor::curable_effects()
+{
+    return curable_effect_set();
+}
+
+void heal_actor::clear_curable_effects()
+{
+    curable_effect_set().clear();
+}
+
+void heal_actor::finalize( const itype_id &my_item_type )
+{
+    if( !skill.is_valid() ) {
+        debugmsg( "Item %s has a heal action with invalid skill %s", my_item_type.str(), skill.str() );
+    }
+    for( const proficiency_bonus &prof : proficiencies ) {
+        if( !prof.id.is_valid() ) {
+            debugmsg( "Item %s has a heal action with invalid proficiency %s", my_item_type.str(),
+                      prof.id.str() );
+        }
+    }
+    for( const cure_data &cure : cures ) {
+        if( !cure.effect.is_valid() ) {
+            debugmsg( "Item %s has a heal action that cures invalid effect %s", my_item_type.str(),
+                      cure.effect.str() );
+        } else {
+            // NPC-J08: NPCs look for these on their patients
+            curable_effect_set().insert( cure.effect );
+        }
+        if( !cure.replace_with.is_null() && !cure.replace_with.is_valid() ) {
+            debugmsg( "Item %s has a heal action that replaces %s with invalid effect %s",
+                      my_item_type.str(), cure.effect.str(), cure.replace_with.str() );
+        }
+    }
+}
+
+int heal_actor::get_move_cost( const Character &healer ) const
+{
+    int cost = move_cost;
+    for( const proficiency_bonus &prof : proficiencies ) {
+        if( healer.has_proficiency( prof.id ) ) {
+            cost = static_cast<int>( cost * prof.time_mult );
+        }
+    }
+    return cost;
+}
+
+float heal_actor::get_proficiency_bonus( const Character &healer ) const
+{
+    float bonus = 0.0f;
+    for( const proficiency_bonus &prof : proficiencies ) {
+        if( healer.has_proficiency( prof.id ) ) {
+            bonus += prof.bonus;
+        }
+    }
+    return bonus;
+}
+
+// The part a cure's effect is on: the treated part, else the whole body (an effect on no part,
+// such as poison), else none.
+static std::optional<bodypart_id> cure_target( const Character &patient, const efftype_id &eff,
+        const bodypart_id &healed )
+{
+    if( healed.id() != bodypart_str_id::NULL_ID() && !patient.get_effect( eff, healed ).is_null() ) {
+        return healed;
+    }
+    if( !patient.get_effect( eff, bodypart_str_id::NULL_ID() ).is_null() ) {
+        return bodypart_str_id::NULL_ID().id();
+    }
+    return std::nullopt;
+}
+
+bool heal_actor::can_cure( const Character &patient, const bodypart_id &healed ) const
+{
+    return std::any_of( cures.begin(), cures.end(), [&]( const cure_data & cure ) {
+        return cure_target( patient, cure.effect, healed ).has_value();
+    } );
+}
+
+float heal_actor::cure_urgency( const Character &patient, const bodypart_id &healed ) const
+{
+    // An effect on the whole body counts for the torso, which it is treated through (NPC-J08),
+    // or for every part of a patient without one
+    const bodypart_id torso( "torso" );
+    const bool whole_body_here = healed == torso || !patient.has_part( torso );
+    float urgency = 0.0f;
+    for( const cure_data &cure : cures ) {
+        const std::optional<bodypart_id> on = cure_target( patient, cure.effect, healed );
+        if( on && ( *on != bodypart_str_id::NULL_ID().id() || whole_body_here ) ) {
+            urgency += cure.chance * to_minutes<float>( patient.get_effect_dur( cure.effect, *on ) );
+        }
+    }
+    return urgency;
 }
 
 static Character &get_patient( Character &healer, map *here, const tripoint_bub_ms &pos )
@@ -3725,11 +3955,9 @@ std::optional<int> heal_actor::use( Character *p, item &it, map *here,
     }
 
     // each tier of proficiency cuts required time by half
-    int cost = move_cost;
-    cost = p->has_proficiency( proficiency_prof_wound_care_expert ) ? cost / 2 : cost;
-    cost = p->has_proficiency( proficiency_prof_wound_care ) ? cost / 2 : cost;
+    const int cost = get_move_cost( *p );
 
-    p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID() ) );
+    p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID(), true, id ) );
 
     // Player: Only time this item_location gets used in firstaid::finish() is when activating the item's
     // container from the inventory window, so an item_on_person impl is all that is needed.
@@ -3750,10 +3978,12 @@ int heal_actor::get_heal_value( const Character &healer, bodypart_id healed ) co
 {
     int heal_base;
     float bonus_mult;
-    if( healed == bodypart_id( "head" ) ) {
+    // by the part's limb type, so a modded or mutated head or torso heals as one
+    const bp_type limb = healed->primary_limb_type();
+    if( limb == bp_type::head ) {
         heal_base = head_power;
         bonus_mult = head_scaling;
-    } else if( healed == bodypart_id( "torso" ) ) {
+    } else if( limb == bp_type::torso ) {
         heal_base = torso_power;
         bonus_mult = torso_scaling;
     } else {
@@ -3763,7 +3993,7 @@ int heal_actor::get_heal_value( const Character &healer, bodypart_id healed ) co
 
     if( heal_base > 0 ) {
         /** @EFFECT_FIRSTAID increases healing item effects */
-        return round( heal_base + bonus_mult * healer.get_skill_level( skill_firstaid ) );
+        return round( heal_base + bonus_mult * healer.get_skill_level( skill ) );
     }
 
     return heal_base;
@@ -3772,11 +4002,7 @@ int heal_actor::get_heal_value( const Character &healer, bodypart_id healed ) co
 int heal_actor::get_bandaged_level( const Character &healer ) const
 {
     if( bandages_power > 0 ) {
-        float prof_bonus = healer.get_skill_level( skill_firstaid );
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care ) ?
-                     prof_bonus + 1 : prof_bonus;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
-                     prof_bonus + 2 : prof_bonus;
+        const float prof_bonus = healer.get_skill_level( skill ) + get_proficiency_bonus( healer );
         /** @EFFECT_FIRSTAID increases healing item effects */
         float total_bonus = bandages_power + bandages_scaling * prof_bonus;
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::BANDAGE_BONUS,
@@ -3791,11 +4017,7 @@ int heal_actor::get_disinfected_level( const Character &healer ) const
 {
     if( disinfectant_power > 0 ) {
         /** @EFFECT_FIRSTAID increases healing item effects */
-        float prof_bonus = healer.get_skill_level( skill_firstaid );
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care ) ?
-                     prof_bonus + 1 : prof_bonus;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
-                     prof_bonus + 2 : prof_bonus;
+        const float prof_bonus = healer.get_skill_level( skill ) + get_proficiency_bonus( healer );
         float total_bonus = disinfectant_power + disinfectant_scaling * prof_bonus;
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::DISINFECTANT_BONUS,
                       total_bonus );
@@ -3809,11 +4031,8 @@ int heal_actor::get_stopbleed_level( const Character &healer ) const
 {
     if( bleed > 0 ) {
         /** @EFFECT_FIRSTAID increases healing item effects */
-        float prof_bonus = healer.get_skill_level( skill_firstaid ) / 2;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care ) ?
-                     prof_bonus + 1 : prof_bonus;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
-                     prof_bonus + 2 : prof_bonus;
+        const float prof_bonus = healer.get_skill_level( skill ) / 2 +
+                                 get_proficiency_bonus( healer );
         // bleed is the base value at First Aid 0; skill and proficiencies add multiples of it.
         float total_bonus = bleed * ( 1.0f + prof_bonus );
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::BLEED_STOP_BONUS,
@@ -3905,6 +4124,25 @@ int heal_actor::finish_using( Character &healer, Character &patient, item &it,
 
         practice_amount += infect * 10.0f;
     }
+    for( const cure_data &cure : cures ) {
+        const std::optional<bodypart_id> on = cure_target( patient, cure.effect, healed );
+        if( !on ) {
+            continue;
+        }
+        if( x_in_y( cure.chance, 1.0f ) ) {
+            const time_duration left = patient.get_effect_dur( cure.effect, *on );
+            patient.remove_effect( cure.effect, *on );
+            if( !cure.replace_with.is_null() ) {
+                patient.add_effect( cure.replace_with, left );
+            }
+            if( u_see ) {
+                add_msg( m_good, "%s", cure.message.translated() );
+            }
+        } else if( u_see ) {
+            add_msg( m_warning, "%s", cure.fail_message.translated() );
+        }
+        practice_amount += cure.chance * 3.0f;
+    }
 
     healer.add_msg_if_player( _( "You finish using the %s." ), it.tname() );
 
@@ -3956,11 +4194,16 @@ int heal_actor::finish_using( Character &healer, Character &patient, item &it,
     }
     practice_amount = std::max( 9.0f, practice_amount );
 
-    healer.practice( skill_firstaid, static_cast<int>( practice_amount ) );
-    healer.practice_proficiency( proficiency_prof_wound_care,
-                                 time_duration::from_turns( practice_amount ) );
-    healer.practice_proficiency( proficiency_prof_wound_care_expert,
-                                 time_duration::from_turns( practice_amount ) );
+    healer.practice( skill, static_cast<int>( practice_amount ) );
+    for( const proficiency_bonus &prof : proficiencies ) {
+        healer.practice_proficiency( prof.id, time_duration::from_turns( practice_amount ) );
+    }
+
+    for( const effect_on_condition_id &eoc : finish_eocs ) {
+        dialogue d( get_talker_for( healer ), get_talker_for( patient ) );
+        write_var_value( var_type::context, "bodypart", &d, healed.id().str() );
+        eoc->activate( d );
+    }
     return 1;
 }
 
@@ -3969,7 +4212,7 @@ static bodypart_id pick_part_to_heal(
     const std::string &menu_header,
     int limb_power, int head_bonus, int torso_bonus,
     int bleed_stop, float bite_chance, float infect_chance,
-    bool force, float bandage_power, float disinfectant_power )
+    bool force, float bandage_power, float disinfectant_power, const heal_actor &actor )
 {
     const bool bleed = bleed_stop > 0;
     const bool bite = bite_chance > 0.0f;
@@ -3977,14 +4220,19 @@ static bodypart_id pick_part_to_heal(
     const bool precise = &healer == &patient ? false :
                          /** @EFFECT_PER slightly increases precision when using first aid on someone else */
                          /** @EFFECT_FIRSTAID increases precision when using first aid on someone else */
-                         ( ( healer.get_skill_level( skill_firstaid ) +
+                         ( ( healer.get_skill_level( actor.skill ) +
                              ( healer.has_proficiency( proficiency_prof_wound_care ) ? 0 : 1 ) +
                              ( healer.has_proficiency( proficiency_prof_wound_care ) ? 0 : 2 ) ) * 4 +
                            healer.get_per() >= 20 );
+    // a part with an effect one of the item's cures removes can be chosen
+    const std::function<bool( const bodypart_id & )> cures = [&actor, &patient](
+    const bodypart_id & bp ) {
+        return actor.can_cure( patient, bp );
+    };
     while( true ) {
         bodypart_id healed_part = patient.body_window( menu_header, force, precise,
                                   limb_power, head_bonus, torso_bonus,
-                                  bleed_stop, bite_chance, infect_chance, bandage_power, disinfectant_power );
+                                  bleed_stop, bite_chance, infect_chance, bandage_power, disinfectant_power, cures );
         if( healed_part == bodypart_str_id::NULL_ID() ) {
             return healed_part;
         }
@@ -3996,17 +4244,20 @@ static bodypart_id pick_part_to_heal(
 
         if( ( infect && patient.has_effect( effect_infected, healed_part ) ) ||
             ( bite && patient.has_effect( effect_bite, healed_part ) ) ||
-            ( bleed && patient.has_effect( effect_bleed, healed_part ) ) ) {
+            ( bleed && patient.has_effect( effect_bleed, healed_part ) ) ||
+            actor.can_cure( patient, healed_part ) ) {
             return healed_part;
         }
 
         if( patient.is_limb_broken( healed_part ) ) {
-            if( healed_part == bodypart_id( "arm_l" ) || healed_part == bodypart_id( "arm_r" ) ) {
+            if( healed_part->primary_limb_type() == bp_type::arm ) {
                 add_msg( m_info, _( "That arm is broken.  It needs surgical attention or a splint." ) );
-            } else if( healed_part == bodypart_id( "leg_l" ) || healed_part == bodypart_id( "leg_r" ) ) {
+            } else if( healed_part->primary_limb_type() == bp_type::leg ) {
                 add_msg( m_info, _( "That leg is broken.  It needs surgical attention or a splint." ) );
             } else {
-                debugmsg( "That body part is bugged.  It needs developer's attention." );
+                //~ %s: body part name
+                add_msg( m_info, _( "Your %s is broken.  It needs surgical attention or a splint." ),
+                         body_part_name( healed_part ) );
             }
 
             continue;
@@ -4050,9 +4301,19 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
             if( patient.has_effect( effect_bite, part_id ) && disinfectant_power > 0 ) {
                 damage += bite * patient.get_effect_dur( effect_bite, part_id ) / 1_minutes;
             }
+            damage += static_cast<int>( cure_urgency( patient, part_id ) );
             if( damage > highest_damage ) {
                 highest_damage = damage;
                 healed = part_id;
+            }
+        }
+        // an effect it cures on the whole body is treated through the torso
+        if( healed == bodypart_str_id::NULL_ID() ) {
+            for( const cure_data &cure : cures ) {
+                if( !patient.get_effect( cure.effect, bodypart_str_id::NULL_ID() ).is_null() ) {
+                    healed = bodypart_id( "torso" );
+                    break;
+                }
             }
         }
     } else if( patient.is_avatar() ) {
@@ -4061,7 +4322,7 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
             const std::string menu_header = _( "Select a body part for: " ) + it.tname();
             healed = pick_part_to_heal( healer, patient, menu_header, limb_power, head_bonus, torso_bonus,
                                         get_stopbleed_level( healer ), bite, infect, force, get_bandaged_level( healer ),
-                                        get_disinfected_level( healer ) );
+                                        get_disinfected_level( healer ), *this );
             if( healed == bodypart_str_id::NULL_ID() ) {
                 add_msg( m_info, _( "Never mind." ) );
                 return bodypart_str_id::NULL_ID().id(); // canceled
@@ -4080,16 +4341,23 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
                                         patient.disp_name(), it.tname() );
         healed = pick_part_to_heal( healer, patient, menu_header, limb_power, head_bonus, torso_bonus,
                                     get_stopbleed_level( healer ), bite, infect, force, get_bandaged_level( healer ),
-                                    get_disinfected_level( healer ) );
+                                    get_disinfected_level( healer ), *this );
     }
 
     return healed;
 }
 
+// the name to show for an effect a healing item cures
+static std::string cure_name( const efftype_id &id )
+{
+    const std::string name = effect( &id.obj() ).disp_name();
+    return name.empty() ? std::string( _( "ailment" ) ) : name;
+}
+
 void heal_actor::info( const item &, std::vector<iteminfo> &dump ) const
 {
     if( head_power > 0 || torso_power > 0 || limb_power > 0 || bandages_power > 0 ||
-        disinfectant_power > 0 || bleed > 0 || bite > 0.0f || infect > 0.0f ) {
+        disinfectant_power > 0 || bleed > 0 || bite > 0.0f || infect > 0.0f || !cures.empty() ) {
         dump.emplace_back( "HEAL", _( "<bold>Healing effects</bold> " ) );
     }
 
@@ -4145,7 +4413,70 @@ void heal_actor::info( const item &, std::vector<iteminfo> &dump ) const
                                static_cast<int>( infect * 100 ) );
         }
     }
+    if( !cures.empty() ) {
+        dump.emplace_back( "HEAL", _( "Chance to treat (percent): " ) );
+        for( const cure_data &cure : cures ) {
+            dump.emplace_back( "HEAL", string_format( "* %s: ", cure_name( cure.effect ) ),
+                               static_cast<int>( cure.chance * 100 ) );
+        }
+    }
     dump.emplace_back( "HEAL", _( "Moves to use: " ), move_cost );
+}
+
+void smoke_actor::load( const JsonObject &obj, const std::string & )
+{
+    mandatory( obj, false, "lit_item", lit_item );
+    optional( obj, false, "burn_time", burn_time, 4_minutes );
+    optional( obj, false, "hunger", hunger, 0 );
+    optional( obj, false, "thirst", thirst, 0 );
+}
+
+void smoke_actor::finalize( const itype_id &my_item_type )
+{
+    if( !item::type_is_defined( lit_item ) ) {
+        debugmsg( "Item %s has a smoke action with invalid lit_item %s", my_item_type.str(),
+                  lit_item.str() );
+    } else if( !lit_item->has_flag( flag_LITCIG ) ) {
+        // without LITCIG it would never burn down nor go out
+        debugmsg( "Item %s has a smoke action whose lit_item %s lacks the LITCIG flag",
+                  my_item_type.str(), lit_item.str() );
+    }
+}
+
+std::optional<int> smoke_actor::use( Character *p, item &it, map *,
+                                     const tripoint_bub_ms & ) const
+{
+    if( p == nullptr ) {
+        return std::nullopt;
+    }
+    if( const std::optional<std::string> refusal = iuse::can_smoke( *p ) ) {
+        p->add_msg_if_player( m_info, "%s", *refusal );
+        return std::nullopt;
+    }
+    item lit( lit_item, calendar::turn );
+    lit.item_counter = to_turns<int>( burn_time );
+    lit.active = true;
+    // a lit item that isn't worn or wielded goes out at once
+    const ret_val<void> wear = p->can_wear( lit );
+    if( !wear.success() ) {
+        p->add_msg_if_player( m_info, "%s", wear.str() );
+        return std::nullopt;
+    }
+    p->mod_hunger( hunger );
+    p->mod_thirst( thirst );
+    p->use_charges_if_avail( itype_fire, 1 );
+    p->wear_item( lit, false );
+    p->add_msg_if_player( m_neutral, _( "You light a %s." ), it.tname() );
+    if( p->get_effect_dur( effect_cig ) > 10_minutes * ( p->addiction_level(
+                addiction_nicotine ) + 1 ) ) {
+        p->add_msg_if_player( m_bad, _( "Ugh, too much smoke… you feel nasty." ) );
+    }
+    return 1;
+}
+
+std::unique_ptr<iuse_actor> smoke_actor::clone() const
+{
+    return std::make_unique<smoke_actor>( *this );
 }
 
 place_trap_actor::place_trap_actor( const std::string &type ) :
@@ -4868,7 +5199,6 @@ void link_up_actor::load( const JsonObject &jo, const std::string & )
     optional( jo, false, "charge_rate", charge_rate, 0_W );
     optional( jo, false, "efficiency", efficiency, 0.85f );
     optional( jo, false, "move_cost", move_cost, 5 );
-    optional( jo, false, "menu_text", menu_text );
     optional( jo, false, "targets", targets, { link_state::no_link, link_state::vehicle_port } );
     optional( jo, false, "can_extend", can_extend );
 }
@@ -4876,14 +5206,6 @@ void link_up_actor::load( const JsonObject &jo, const std::string & )
 std::unique_ptr<iuse_actor> link_up_actor::clone() const
 {
     return std::make_unique<link_up_actor>( *this );
-}
-
-std::string link_up_actor::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void link_up_actor::info( const item &it, std::vector<iteminfo> &dump ) const
@@ -5130,7 +5452,7 @@ std::optional<int> link_up_actor::use( Character *p, item &it, map *here,
         // Selection: Detach & respool.
 
         // Reopen the menu after respooling.
-        p->assign_activity( invoke_item_activity_actor( item_location{*p, &it}, "link_up" ) );
+        p->assign_activity( invoke_item_activity_actor( item_location{*p, &it}, id ) );
         p->activity.auto_resume = true;
 
         if( t_veh ) {
@@ -5718,6 +6040,66 @@ std::unique_ptr<iuse_actor> weigh_self_actor::clone() const
     return std::make_unique<weigh_self_actor>( *this );
 }
 
+void wash_actor::load( const JsonObject &obj, const std::string & )
+{
+    const washing_rules defaults;
+    optional( obj, false, "soft", rules.soft, defaults.soft );
+    optional( obj, false, "hard", rules.hard, defaults.hard );
+    optional( obj, false, "water_requirement", rules.water, defaults.water );
+    optional( obj, false, "cleanser_requirement", rules.cleanser, defaults.cleanser );
+    optional( obj, false, "water_per", rules.water_per, defaults.water_per );
+    optional( obj, false, "cleanser_per", rules.cleanser_per, defaults.cleanser_per );
+    optional( obj, false, "time", rules.time, defaults.time );
+    optional( obj, false, "time_per", rules.time_per, defaults.time_per );
+    if( !rules.soft && !rules.hard ) {
+        obj.throw_error( R"(washes nothing: "soft" and "hard" are both false)" );
+    }
+    const auto check_per = [&obj]( const std::string_view member, const units::volume & per ) {
+        if( per <= 0_ml ) {
+            obj.throw_error_at( member, "must be more than 0 ml" );
+        }
+    };
+    check_per( "water_per", rules.water_per );
+    check_per( "cleanser_per", rules.cleanser_per );
+    check_per( "time_per", rules.time_per );
+    if( rules.time < 0_turns ) {
+        obj.throw_error_at( "time", "can't be negative" );
+    }
+}
+
+void wash_actor::finalize( const itype_id &my_item_type )
+{
+    const std::array<requirement_id, 2> supplies = {{ rules.water, rules.cleanser }};
+    for( const requirement_id &req : supplies ) {
+        if( !req.is_empty() && !req.is_null() && !req.is_valid() ) {
+            debugmsg( "Item %s has a wash action with the unknown requirement %s",
+                      my_item_type.str(), req.str() );
+        }
+    }
+}
+
+std::optional<int> wash_actor::use( Character *p, item &, map *, const tripoint_bub_ms & ) const
+{
+    if( p == nullptr ) {
+        return std::nullopt;
+    }
+    if( p->fine_detail_vision_mod() > 4 ) {
+        p->add_msg_if_player( _( "You can't see to do that!" ) );
+        return std::nullopt;
+    }
+    // As the WASH_* use actions: washing with no free space might break it
+    if( p->free_space() <= 0_ml ) {
+        p->add_msg_if_player( _( "You're carrying too much to clean anything." ) );
+        return std::nullopt;
+    }
+    return iuse::wash_items( p, rules );
+}
+
+std::unique_ptr<iuse_actor> wash_actor::clone() const
+{
+    return std::make_unique<wash_actor>( *this );
+}
+
 void sew_advanced_actor::load( const JsonObject &obj, const std::string & )
 {
     mandatory( obj, false, "materials", materials );
@@ -5834,7 +6216,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
     for( const clothing_mod_id &cm : clothing_mods ) {
         const clothing_mod &obj = cm.obj();
         item temp_item = modded_copy( mod, obj.flag );
-        temp_item.update_clothing_mod_val();
 
         bool enab = false;
         std::string prompt;
@@ -5912,7 +6293,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
         if( query_yn( _( "Are you sure?  You will not gain any materials back." ) ) ) {
             mod.unset_flag( the_mod );
         }
-        mod.update_clothing_mod_val();
 
         return 0;
     }
@@ -5955,7 +6335,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
                               mod.tname() );
         p->consume_items( comps, 1, is_crafting_component );
         mod.set_flag( the_mod );
-        mod.update_clothing_mod_val();
         p->calc_encumbrance();
         p->calc_discomfort();
         return thread_needed;
@@ -5963,7 +6342,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
 
     p->add_msg_if_player( m_good, _( "You modify your %s!" ), mod.tname() );
     mod.set_flag( the_mod );
-    mod.update_clothing_mod_val();
     p->consume_items( comps, 1, is_crafting_component );
     p->calc_encumbrance();
     p->calc_discomfort();
@@ -6023,7 +6401,6 @@ void effect_on_conditions_actor::load( const JsonObject &obj, const std::string 
 {
     optional( obj, false, "consume", consume, false );
     optional( obj, false, "description", description );
-    optional( obj, false, "menu_text", menu_text );
     optional( obj, false, "need_worn", need_worn, false );
     optional( obj, false, "need_wielding", need_wielding, false );
     if( obj.has_member( "condition" ) ) {
@@ -6075,14 +6452,6 @@ ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const ite
         }
     }
     return ret_val<void>::make_success();
-}
-
-std::string effect_on_conditions_actor::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void effect_on_conditions_actor::info( const item &, std::vector<iteminfo> &dump ) const
@@ -6187,6 +6556,11 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
     write_var_value( var_type::context, "id", &d, it.typeId().str() );
     // The tile the item is used at: u_activate's target_var, else the user's or item's tile.
     write_var_value( var_type::context, "use_location", &d, here->get_abs( pos ) );
+    // _method: the use action's id, which the item's use menu and u_activate know it by (its
+    // type when it has no "id"; for a tick, countdown or drop action too).
+    write_var_value( var_type::context, "method", &d, id );
+    // _item_pos: where the item is, its carrier's tile when carried
+    write_var_value( var_type::context, "item_pos", &d, loc ? loc.pos_abs() : here->get_abs( pos ) );
     // Read before the EOCs run: they may destroy the item.
     const bool comestible = static_cast<bool>( it.type->comestible );
     eoc_use_request request;

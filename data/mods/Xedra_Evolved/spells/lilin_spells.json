@@ -269,12 +269,14 @@
     "min_duration": {
       "math": [
         "100 + ( (u_vitamin('lilin_ruach_vitamin') * 9) * ( (u_has_trait('INFIMMUNE') * 0.25) + 1) * ( (u_has_trait('DISIMMUNE') * 0.25) + 1) * ( (u_has_trait('LILIN_DISEASE_DAMAGE_STRIKES') * 0.35) + 1) )"
-      ]
+      ],
+      "optional_ids": true
     },
     "max_duration": {
       "math": [
         "1500 + ( (u_vitamin('lilin_ruach_vitamin') * 24) * ( (u_has_trait('INFIMMUNE') * 0.25) + 1) * ( (u_has_trait('DISIMMUNE') * 0.25) + 1) * ( (u_has_trait('LILIN_DISEASE_DAMAGE_STRIKES') * 0.35) + 1) )"
-      ]
+      ],
+      "optional_ids": true
     },
     "energy_source": { "type": "VITAMIN", "vitamin": "lilin_ruach_vitamin" },
     "base_energy_cost": { "math": [ "240 * lilin_has_ruach_efficiency()" ] },
@@ -303,22 +305,26 @@
     "min_dot": {
       "math": [
         "min( ( ( (u_vitamin('lilin_ruach_vitamin') / 12000) * (u_has_trait('LILIN_DISEASE_DAMAGE_STRIKES') * 0.35) + 1) ), 0.2)"
-      ]
+      ],
+      "optional_ids": true
     },
     "max_dot": {
       "math": [
         "min( ( ( (u_vitamin('lilin_ruach_vitamin') / 9000) * (u_has_trait('LILIN_DISEASE_DAMAGE_STRIKES') * 0.35) + 1) ), 0.5)"
-      ]
+      ],
+      "optional_ids": true
     },
     "min_duration": {
       "math": [
         "100 + ( (u_vitamin('lilin_ruach_vitamin') * 3) * ( (u_has_trait('INFIMMUNE') * 0.25) + 1) * ( (u_has_trait('DISIMMUNE') * 0.25) + 1) * ( (u_has_trait('LILIN_DISEASE_DAMAGE_STRIKES') * 0.35) + 1) )"
-      ]
+      ],
+      "optional_ids": true
     },
     "max_duration": {
       "math": [
         "1500 + ( (u_vitamin('lilin_ruach_vitamin') * 9) * ( (u_has_trait('INFIMMUNE') * 0.25) + 1) * ( (u_has_trait('DISIMMUNE') * 0.25) + 1) * ( (u_has_trait('LILIN_DISEASE_DAMAGE_STRIKES') * 0.35) + 1))"
-      ]
+      ],
+      "optional_ids": true
     },
     "energy_source": { "type": "VITAMIN", "vitamin": "lilin_ruach_vitamin" },
     "base_energy_cost": { "math": [ "180 * lilin_has_ruach_efficiency()" ] },

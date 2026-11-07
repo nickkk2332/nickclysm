@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -80,18 +81,27 @@ std::string bye_message( const npc *npc_actor );
  */
 struct talk_trial {
     talk_trial_type type = TALK_TRIAL_NONE;
-    int difficulty = 0;
+    // A number, a variable or math, worked out each time it's shown or rolled
+    dbl_or_var difficulty;
     std::function<bool( const_dialogue const & )> condition;
+    // The speech practice a LIE, PERSUADE or INTIMIDATE roll gives, when JSON says (the context
+    // values `chance` and `success` say how it went); otherwise (100 - chance) / 10 on a success
+    // and / 7 on a failure
+    std::optional<dbl_or_var> speech_practice;
 
     // If this talk_trial is skill check, this is the string ID of the skill that we check the level of.
     std::string skill_required;
 
+    // `difficulty` now, rounded
+    int get_difficulty( const_dialogue const &d ) const;
     int calc_chance( const_dialogue const &d ) const;
     /**
      * Returns a user-friendly representation of @ref type
      */
     std::string name() const;
     std::vector<trial_mod> modifiers;
+    // "mod" entries that are math, each adding what it gives to the chance (MATH-J03)
+    std::vector<dbl_or_var> math_modifiers;
     explicit operator bool() const {
         return type != TALK_TRIAL_NONE;
     }
@@ -475,6 +485,9 @@ class json_talk_response
         explicit json_talk_response( const JsonObject &jo, std::string_view src );
 
         const talk_response &get_actual_response() const;
+        const std::string &get_failure_topic() const {
+            return failure_topic;
+        }
         bool has_condition() const {
             return has_condition_;
         }
@@ -530,13 +543,18 @@ class json_talk_topic
         // FIXME: Use real null IDs not std::optional juggling :(
         std::optional<character_portrait_id> portrait_override;
 
+        // Removes the responses `match` ("text" and/or "topic") selects; throws if there are none.
+        void delete_responses( const JsonObject &match );
+
     public:
         json_talk_topic() = default;
         /**
          * Load data from json.
-         * This will append responses (not change existing ones).
-         * It will override dynamic_line and replace_built_in_responses if those entries
-         * exist in the input, otherwise they will not be changed at all.
+         * This will append responses (not change existing ones), after removing the earlier
+         * ones that "delete": { "responses": [ ... ] } names, or all of them with
+         * "replace_responses": true.
+         * It will override dynamic_line, portrait_override and replace_built_in_responses if
+         * those entries exist in the input, otherwise they will not be changed at all.
          */
         void load( const JsonObject &jo, std::string_view src );
 
@@ -544,7 +562,8 @@ class json_talk_topic
         std::vector<json_dynamic_line_effect> get_speaker_effects() const;
         std::optional<character_portrait_id> get_portrait_override() const;
 
-        void check_consistency() const;
+        // Reports topics and skills the responses name that don't exist; @p id is this topic's
+        void check_consistency( const std::string &id ) const;
         /**
          * Callback from @ref dialogue::gen_responses, it should add the response from here
          * into the list of possible responses (that will be presented to the player).
@@ -556,11 +575,13 @@ class json_talk_topic
 
         cata::flat_set<std::string> get_directly_reachable_topics( bool only_unconditional ) const;
 
-        std::vector<json_talk_response> get_responses();
+        std::vector<json_talk_response> get_responses() const;
 };
 
 void unload_talk_topics();
 void load_talk_topic( const JsonObject &jo, std::string_view src );
+/** Checks the loaded talk topics' references, once all data is loaded (EOC-J03) */
+void check_talk_topic_consistency();
 void get_raw_debug_fields( const JsonObject &jo, std::map<std::string, std::string> &debug_info );
 
 #endif // CATA_SRC_DIALOGUE_H

@@ -3,6 +3,7 @@
 #include "avatar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "explosion.h"
 #include "global_vars.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -25,6 +26,14 @@ static const ter_str_id ter_test_t_bash_eoc_wall( "test_t_bash_eoc_wall" );
 static const diag_value *bash_global( const std::string &name )
 {
     return get_globals().maybe_get_global_value( name );
+}
+
+// A global set by the test EOCs, which must have run
+static const diag_value &bash_value( const std::string &name )
+{
+    const diag_value *value = bash_global( name );
+    REQUIRE( value != nullptr );
+    return *value;
 }
 
 // MAP-J01: nothing ran when terrain, furniture or fields were hit or broken. The bash object
@@ -130,5 +139,57 @@ TEST_CASE( "map-j01_bash_eocs_run_when_a_tile_is_hit_or_broken", "[audit][map][e
         const diag_value *cleared = bash_global( "test_bash_web_cleared_count" );
         REQUIRE( cleared != nullptr );
         CHECK( cleared->dbl() == 1 );
+    }
+}
+
+// MAP-J01: nothing but the bash's own EOCs knew a tile was destroyed, and a bash with no creature
+// behind it couldn't say what did it. Every bash now has a cause, and destroying terrain or
+// furniture sends tile_destroyed, whoever or whatever did it.
+TEST_CASE( "map-j01_tile_destroyed_is_sent_with_the_cause", "[audit][map][eoc]" )
+{
+    clear_map_without_vision();
+    clear_avatar();
+    clear_creatures();
+    get_globals().clear_global_values();
+    map &here = get_map();
+    avatar &u = get_avatar();
+
+    SECTION( "the avatar's smash" ) {
+        const tripoint_bub_ms target = u.pos_bub() + tripoint_rel_ms::east;
+        here.furn_set( target, furn_test_f_bash_eoc_crate );
+        tripoint_bub_ms smashp = target;
+        for( int i = 0; i < 10 && here.furn( target ) == furn_test_f_bash_eoc_crate; ++i ) {
+            u.smash( smashp );
+        }
+        REQUIRE( here.furn( target ) == furn_str_id::NULL_ID() );
+        CHECK( bash_value( "test_bash_crate_cause" ).str() == "smash" );
+        CHECK( bash_value( "test_tile_destroyed_cause" ).str() == "smash" );
+        CHECK( bash_value( "test_tile_destroyed_alpha" ).dbl() == 1 );
+        CHECK( bash_value( "test_tile_destroyed_loc" ).tripoint() == here.get_abs( target ) );
+        CHECK( bash_value( "test_tile_destroyed_new_furn" ).str() == furn_str_id::NULL_ID().str() );
+        CHECK( bash_value( "test_tile_destroyed_count" ).dbl() == 1 );
+    }
+
+    SECTION( "an explosion no creature set off" ) {
+        const tripoint_bub_ms target = u.pos_bub() + tripoint_rel_ms( 8, 0, 0 );
+        here.furn_set( target, furn_test_f_bash_eoc_crate );
+        // a blast of power 60 bashes its center with strength 8
+        explosion_handler::explosion( nullptr, target, 60.0f, 0.8f, false, 0 );
+        explosion_handler::process_explosions();
+        REQUIRE( here.furn( target ) == furn_str_id::NULL_ID() );
+        CHECK( bash_value( "test_bash_crate_cause" ).str() == "explosion" );
+        CHECK( bash_value( "test_tile_destroyed_cause" ).str() == "explosion" );
+        // no creature did it, so the alpha talker is empty, not the avatar
+        CHECK( bash_value( "test_tile_destroyed_alpha" ).dbl() == 0 );
+        CHECK( bash_value( "test_tile_destroyed_count" ).dbl() == 1 );
+    }
+
+    SECTION( "a bash nothing is known about" ) {
+        const tripoint_bub_ms target = u.pos_bub() + tripoint_rel_ms::east;
+        here.furn_set( target, furn_test_f_bash_eoc_crate );
+        here.bash( target, 50 );
+        REQUIRE( here.furn( target ) == furn_str_id::NULL_ID() );
+        CHECK( bash_value( "test_bash_crate_cause" ).str() == "other" );
+        CHECK( bash_value( "test_tile_destroyed_cause" ).str() == "other" );
     }
 }

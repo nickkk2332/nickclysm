@@ -93,6 +93,7 @@ The various ways this artifact can charge and use charges.
 - **full_moon** This artifact takes 'time' amount of time to recharge, only recharges on the nights of the full moon
 - **new_moon** This artifact takes 'time' amount of time to recharge, only recharges on the nights of the new moon
 - **forest** This artifact takes 'time' amount of time to recharge, only recharges in a wooded area (forest, thick forest, and swamp tiles) and character is both outside and not in a city.
+- **condition** This artifact takes 'time' amount of time to recharge, only recharges while the condition of the EOC named by `recharge_eoc` is true (the artifact is `u`, the character carrying it `npc`)
 
 #### recharge_conditions
 

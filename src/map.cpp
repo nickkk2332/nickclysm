@@ -4,7 +4,9 @@
 #include <array>
 #include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <queue>
@@ -45,6 +47,8 @@
 #include "drawing_primitives.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "execution_fatal.h"
 #include "explosion.h"
 #include "field.h"
@@ -61,6 +65,7 @@
 #include "item_factory.h"
 #include "item_group.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "item_wakeup.h"
 #include "itype.h"
 #include "iuse.h"
@@ -74,6 +79,7 @@
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "mapgen.h"
 #include "material.h"
 #include "math_defines.h"
@@ -206,7 +212,6 @@ static const itype_id itype_HEW_printout_data_vitrified( "HEW_printout_data_vitr
 static const itype_id
 itype_HEW_printout_data_void_spider_lair( "HEW_printout_data_void_spider_lair" );
 static const itype_id itype_battery( "battery" );
-static const itype_id itype_maple_sap( "maple_sap" );
 static const itype_id itype_mws_monster_corpse_weather_data( "mws_monster_corpse_weather_data" );
 static const itype_id itype_mws_portal_storm_weather_data( "mws_portal_storm_weather_data" );
 static const itype_id itype_mws_weather_data( "mws_weather_data" );
@@ -255,7 +260,6 @@ static const ter_str_id ter_t_grass( "t_grass" );
 static const ter_str_id ter_t_open_air( "t_open_air" );
 static const ter_str_id ter_t_reb_cage( "t_reb_cage" );
 static const ter_str_id ter_t_rock_floor( "t_rock_floor" );
-static const ter_str_id ter_t_rootcellar( "t_rootcellar" );
 static const ter_str_id ter_t_stump( "t_stump" );
 static const ter_str_id ter_t_tree_birch( "t_tree_birch" );
 static const ter_str_id ter_t_tree_birch_harvested( "t_tree_birch_harvested" );
@@ -264,7 +268,6 @@ static const ter_str_id ter_t_tree_deadpine( "t_tree_deadpine" );
 static const ter_str_id ter_t_tree_hickory( "t_tree_hickory" );
 static const ter_str_id ter_t_tree_hickory_dead( "t_tree_hickory_dead" );
 static const ter_str_id ter_t_tree_hickory_harvested( "t_tree_hickory_harvested" );
-static const ter_str_id ter_t_tree_maple_tapped( "t_tree_maple_tapped" );
 static const ter_str_id ter_t_tree_pine( "t_tree_pine" );
 static const ter_str_id ter_t_tree_willow( "t_tree_willow" );
 static const ter_str_id ter_t_tree_willow_harvested( "t_tree_willow_harvested" );
@@ -411,6 +414,7 @@ void map::set_transparency_cache_dirty( const int zlev )
     if( inbounds_z( zlev ) ) {
         if( level_cache *ch = get_cache_lazy( zlev ) ) {
             ch->transparency_cache_dirty.set();
+            ch->sound_attenuation_dirty.set();
         }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( zlev );
@@ -424,12 +428,23 @@ void map::set_transparency_cache_dirty( const tripoint_bub_ms &p, bool field )
         const tripoint_bub_sm smp = coords::project_to<coords::sm>( p );
         if( level_cache *ch = get_cache_lazy( smp.z() ) ) {
             ch->transparency_cache_dirty.set( smp.x() * MAPSIZE + smp.y() );
+            ch->sound_attenuation_dirty.set( smp.x() * MAPSIZE + smp.y() );
         }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( smp.z() );
         if( !field ) {
             get_creature_tracker().invalidate_reachability_cache();
             bump_geometry_revision( smp.z() );
+        }
+    }
+}
+
+void map::set_sound_attenuation_dirty( const tripoint_bub_ms &p )
+{
+    if( inbounds( p ) ) {
+        const tripoint_bub_sm smp = coords::project_to<coords::sm>( p );
+        if( level_cache *ch = get_cache_lazy( smp.z() ) ) {
+            ch->sound_attenuation_dirty.set( smp.x() * MAPSIZE + smp.y() );
         }
     }
 }
@@ -1013,6 +1028,24 @@ void map::vehmove()
     const tripoint_abs_ms player_pos = get_player_character().pos_abs();
     // An avatar carried (or flung) to another OMT is reported once, when the vehicles are done.
     cata_event_dispatch::avatar_move_scope moving;
+    // A summoned vehicle's time runs down once per turn, before anything moves (it used to run
+    // in vehicle::act_on_map(), once per tile moved). One whose time is up winks out, which
+    // takes it off the vehicle lists, so they are gathered first.
+    std::vector<vehicle *> summoned;
+    for( int zlev = minz; zlev <= maxz; ++zlev ) {
+        const level_cache *cache_lazy = get_cache_lazy( zlev );
+        if( !cache_lazy ) {
+            continue;
+        }
+        for( vehicle *veh : cache_lazy->vehicle_list ) {
+            if( veh->summon_time_limit ) {
+                summoned.push_back( veh );
+            }
+        }
+    }
+    for( vehicle *veh : summoned ) {
+        veh->decrement_summon_timer( *this );
+    }
     for( int zlev = minz; zlev <= maxz; ++zlev ) {
         level_cache *cache_lazy = get_cache_lazy( zlev );
         if( !cache_lazy ) {
@@ -1279,7 +1312,12 @@ vehicle *map::move_vehicle( vehicle &veh, const tripoint_rel_ms &dp, const tiler
         for( const tripoint_abs_ms &p : veh.get_points() ) {
             const tripoint_bub_ms pos = get_bub( p );
             const ter_id &pter = ter( pos );
-            if( pter == ter_t_dirt || pter == ter_t_grass ) {
+            // MAP-J05: the terrain's churned_into, by default dirt and grass into a mound
+            if( !pter->churned_into.is_empty() ) {
+                if( pter->churned_into != pter.id() ) {
+                    ter_set( pos, pter->churned_into );
+                }
+            } else if( pter == ter_t_dirt || pter == ter_t_grass ) {
                 ter_set( pos, ter_t_dirtmound );
             }
         }
@@ -1412,6 +1450,9 @@ float map::vehicle_vehicle_collision( vehicle &veh, vehicle &veh2,
     }
     vehicle_part &vp1 = veh.part( c.part );
     vehicle_part &vp2 = veh2.part( c.target_part );
+    // for the vehicle_collides event (VEH-J03), before the parts are damaged
+    const std::string vp1_id = vp1.info().id.str();
+    const int velocity_before = veh.velocity;
 
     // Check whether avatar sees the collision, and log a message if so
     const avatar &you = get_avatar();
@@ -1580,6 +1621,12 @@ float map::vehicle_vehicle_collision( vehicle &veh, vehicle &veh2,
     if( dmg_veh2 > 800 ) {
         veh2.skidding = true;
     }
+
+    // VEH-J03: alpha is the vehicle that hit; the one it hit gets no talker, as it may be gone
+    // by the time the event is sent
+    veh.queue_event( cata::event::make<event_type::vehicle_collides>( std::string( "vehicle" ),
+                     veh2.disp_name(), vp1_id, std::abs( velocity_before - veh.velocity ),
+                     static_cast<int>( dmg_veh1 ) ) );
 
     // Return the impulse of the collision
     return dmg_veh1;
@@ -2179,7 +2226,7 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
     }
     current_submap->set_furn( l, new_target_furniture );
     current_submap->set_map_damage( point_sm_ms( l ), 0 );
-    clear_original_terrain_at( p );
+    // The terrain under it, and the terrain phase rules recorded for it (frozen water), stay.
 
     // Set the dirty flags
     const furn_t &old_f = old_id.obj();
@@ -2230,6 +2277,9 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
         old_f.has_flag( ter_furn_flag::TFLAG_TRANSLUCENT ) != new_f.has_flag(
             ter_furn_flag::TFLAG_TRANSLUCENT ) ) {
         set_transparency_cache_dirty( p );
+    }
+    if( old_f.sound_attenuation != new_f.sound_attenuation ) {
+        set_sound_attenuation_dirty( p );
     }
 
     if( old_f.light_emitted != new_f.light_emitted ||
@@ -2723,6 +2773,9 @@ bool map::ter_set( const tripoint_bub_ms &p, const ter_id &new_terrain, bool avo
         old_t.has_flag( ter_furn_flag::TFLAG_TRANSLUCENT ) != new_t.has_flag(
             ter_furn_flag::TFLAG_TRANSLUCENT ) ) {
         set_transparency_cache_dirty( p );
+    }
+    if( old_t.sound_attenuation != new_t.sound_attenuation ) {
+        set_sound_attenuation_dirty( p );
     }
 
     if( old_t.light_emitted != new_t.light_emitted ||
@@ -3610,6 +3663,16 @@ bool map::has_flag_ter_or_furn( const ter_furn_flag flag, const tripoint_bub_ms 
            current_submap->get_furn( l ).obj().has_flag( flag );
 }
 
+bool map::fits_creature_size( const tripoint_bub_ms &p, creature_size size ) const
+{
+    if( !inbounds( p ) ) {
+        return true;
+    }
+    const const_maptile tile = maptile_at( p );
+    return tile.get_ter_t().fits_creature_size( size ) &&
+           tile.get_furn_t().fits_creature_size( size );
+}
+
 bool map::on_matching_stairs( const tripoint_bub_ms &a, const tripoint_bub_ms &b ) const
 {
     if( a.xy() != b.xy() ) {
@@ -4139,8 +4202,14 @@ bool map::has_adjacent_furniture_with( const tripoint_bub_ms &p,
 bool map::has_nearby_fire( const tripoint_bub_ms &p, int radius ) const
 {
     for( const tripoint_bub_ms &pt : points_in_radius( p, radius ) ) {
-        if( has_field_at( pt, fd_fire ) ) {
-            return true;
+        // A field with has_fire that radiates heat at its intensity, such as fd_fire
+        if( has_field_at( pt ) ) {
+            for( const auto &fd : field_at( pt ) ) {
+                if( fd.second.is_field_alive() &&
+                    fd.first->is_usable_fire( fd.second.get_field_intensity() ) ) {
+                    return true;
+                }
+            }
         }
         if( has_flag_ter_or_furn( ter_furn_flag::TFLAG_USABLE_FIRE, pt ) ) {
             return true;
@@ -4335,6 +4404,7 @@ int map::collapse_check( const tripoint_bub_ms &p ) const
 void map::collapse_at( const tripoint_bub_ms &p, const bool silent, const bool was_supporting,
                        const bool destroy_pos )
 {
+    const bash_cause_scope collapsing( "collapse" );
     const bool supports = was_supporting || has_flag( ter_furn_flag::TFLAG_SUPPORTS_ROOF, p );
     const bool wall_tree = was_supporting || has_flag( ter_furn_flag::TFLAG_WALL, p ) ||
                            has_flag( ter_furn_flag::TFLAG_TREE, p );
@@ -4638,6 +4708,60 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
     return false;
 }
 
+void spawn_data::apply( monster &placed ) const
+{
+    if( !patrol.empty() ) {
+        placed.set_patrol_route( rolled_patrol() );
+    }
+    for( const spawn_effect &eff : effects ) {
+        if( !eff.id.is_valid() ) {
+            continue;
+        }
+        placed.add_effect( eff.id, time_duration::from_turns( eff.duration.get() ), eff.permanent,
+                           eff.intensity.get() );
+    }
+    for( const std::pair<const std::string, std::string> &var : str_variables ) {
+        placed.set_value( var.first, diag_value( var.second ) );
+    }
+    for( const std::pair<const std::string, double> &var : num_variables ) {
+        placed.set_value( var.first, diag_value( var.second ) );
+    }
+    if( !faction.is_empty() && faction.is_valid() ) {
+        placed.faction = faction.id();
+        get_creature_tracker().invalidate_reachability_cache();
+    }
+    // MGEN-J06: the spawn's EOCs, with the monster as u, once it has all of the above
+    for( const effect_on_condition_id &eoc : eocs ) {
+        if( !eoc.is_valid() ) {
+            continue;
+        }
+        dialogue d( get_talker_for( placed ), nullptr );
+        d.set_value( "loc", placed.pos_abs() );
+        eoc->activate( d );
+    }
+}
+
+// The innermost bash_cause_scope's cause, if any
+static const char *current_bash_cause = nullptr;
+
+bash_cause_scope::bash_cause_scope( const char *cause ) : previous( current_bash_cause )
+{
+    current_bash_cause = cause;
+}
+
+bash_cause_scope::~bash_cause_scope()
+{
+    current_bash_cause = previous;
+}
+
+std::string bash_cause_scope::current( const Creature *basher )
+{
+    if( current_bash_cause != nullptr ) {
+        return current_bash_cause;
+    }
+    return basher != nullptr ? "smash" : "other";
+}
+
 // Runs a bash's eoc_on_hit or eoc_on_destroy for the tile at p, with the basher (if any) as alpha.
 // With no known basher, alpha is an empty talker (as for ammo_effect EOCs): an EOC needs at least
 // one talker. Only on the main map: mapgen bashes temporary maps, where nothing happens in the
@@ -4651,6 +4775,7 @@ static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
     }
     dialogue d( basher ? get_talker_for( basher ) : std::make_unique<talker>(), nullptr );
     d.set_value( "loc", m.get_abs( p ) );
+    d.set_value( "cause", bash_cause_scope::current( basher ) );
     for( const std::pair<std::string, std::string> &var : context ) {
         d.set_value( var.first, var.second );
     }
@@ -4981,6 +5106,18 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
         run_bash_eoc( *this, bash->eoc_on_destroy, p, params.basher,
                       ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
     }
+    // Only on the main map, as for the EOCs: mapgen bashes temporary maps
+    if( this == &get_map() ) {
+        const cata::event destroyed = cata::event::make<event_type::tile_destroyed>(
+                                          get_abs( p ).raw(), terid.id, furnid.id, ter( p ).id(), furn( p ).id(),
+                                          bash_cause_scope::current( params.basher ) );
+        if( params.basher != nullptr ) {
+            get_event_bus().send_with_talker( params.basher, static_cast<Creature *>( nullptr ),
+                                              destroyed );
+        } else {
+            get_event_bus().send_without_talker( destroyed );
+        }
+    }
 }
 
 bash_params map::bash( const tripoint_bub_ms &p, const int str,
@@ -5029,12 +5166,8 @@ bash_params map::bash( const tripoint_bub_ms &p, const std::map<damage_type_id, 
         bash_ter_furn( p, bsh, repair_missing_ground );
     }
 
-    // If the bash operation modified the tile (solid) then treat it as a
-    // deliberate map modification and clear any recorded original terrain
-    // to avoid incorrect phase-change reversion.
-    if( bsh.did_bash && bsh.bashed_solid ) {
-        clear_original_terrain_at( p );
-    }
+    // A bash that changes the terrain drops the terrain recorded under it (ter_set does). Bashing
+    // furniture, a vehicle or a field on it leaves frozen water free to thaw.
 
     return bsh;
 }
@@ -5207,7 +5340,6 @@ void map::destroy( const tripoint_bub_ms &p, const bool silent )
     while( count <= 25 && bash( p, 999, silent, true ).success ) {
         count++;
     }
-    clear_original_terrain_at( p );
 }
 
 void map::destroy_furn( const tripoint_bub_ms &p, const bool silent )
@@ -5219,8 +5351,6 @@ void map::destroy_furn( const tripoint_bub_ms &p, const bool silent )
            bash( p, 999, silent, true ).success ) {
         count++;
     }
-
-    clear_original_terrain_at( p );
 }
 
 void map::destroy_vehicle( const tripoint_bub_ms &p, const bool silent )
@@ -5307,6 +5437,7 @@ void map::crush( const tripoint_bub_ms &p )
 
 double map::shoot( const tripoint_bub_ms &p, projectile &proj, const bool hit_items )
 {
+    const bash_cause_scope shooting( "projectile" );
     if( !inbounds( p ) ) {
         debugmsg( "Called map::shoot on out-of-bounds tile %s", p.to_string() );
         return 0;
@@ -5500,21 +5631,6 @@ bool map::hit_with_acid( const tripoint_bub_ms &p )
         return false;
     } else if( t == ter_t_card_science || t == ter_t_card_military || t == ter_t_card_industrial ) {
         ter_set( p, ter_t_card_reader_broken );
-    }
-    return true;
-}
-
-// returns true if terrain stops fire
-bool map::hit_with_fire( const tripoint_bub_ms &p )
-{
-    if( passable( p ) ) {
-        return false;    // Didn't hit the tile!
-    }
-
-    // non passable but flammable terrain, set it on fire
-    if( has_flag( ter_furn_flag::TFLAG_FLAMMABLE, p ) ||
-        has_flag( ter_furn_flag::TFLAG_FLAMMABLE_ASH, p ) ) {
-        add_field( p, fd_fire, 3 );
     }
     return true;
 }
@@ -6373,11 +6489,52 @@ void map::update_lum( item_location &loc, bool add )
     set_lightmap_cache_dirty( loc.pos_bub( *this ).z() );
 }
 
+// Registers the items in @p top (on the map or in a vehicle) that need processing
+static void make_active_in( map &here, const map_cursor &cur, item &top )
+{
+    item_location loc( cur, &top );
+    here.make_active( loc );
+}
+
+static void make_active_in( map &, const vehicle_cursor &cur, item &top )
+{
+    item_location loc( cur, &top );
+    loc.make_active();
+}
+
+// A stack counted by charges that processing converted into a type that isn't (a countdown into a
+// solid) stands for one item per charge it had: puts the other @p copies next to it.
+template <typename veh_or_map_cursor>
+static void split_converted_stack( map &here, item_stack &items, const item &converted,
+                                   item *parent, const veh_or_map_cursor &cur, int copies )
+{
+    if( parent == nullptr ) {
+        for( int i = 0; i < copies; i++ ) {
+            items.insert( here, converted );
+        }
+        return;
+    }
+    item_pocket *const pocket = parent->contained_where( converted );
+    if( pocket == nullptr ) {
+        return;
+    }
+    std::vector<item *> added;
+    pocket->add( converted, copies, added );
+    // the copies are processed like the item: register them through the item on the tile
+    for( item &top : items ) {
+        if( top.has_item( *parent ) ) {
+            make_active_in( here, cur, top );
+            break;
+        }
+    }
+}
+
 template <typename veh_or_map_cursor>
 static bool process_map_items( map &here, item_stack &items, safe_reference<item> &item_ref,
                                item *parent, const tripoint_bub_ms &location, const veh_or_map_cursor &cur, float insulation,
                                temperature_flag flag, float spoil_multiplier, bool watertight_container )
 {
+    const int stack_size = item_ref->count_by_charges() ? item_ref->charges : 0;
     if( item_ref->process( here, nullptr, location, insulation, flag, spoil_multiplier,
                            watertight_container, false ) ) {
         // Item is to be destroyed so erase it from the map stack
@@ -6396,12 +6553,18 @@ static bool process_map_items( map &here, item_stack &items, safe_reference<item
         return true;
     }
     // Item not destroyed
+    if( item_ref && stack_size > 1 && !item_ref->count_by_charges() ) {
+        split_converted_stack( here, items, *item_ref, parent, cur, stack_size - 1 );
+    }
     return false;
 }
 
 static void process_vehicle_items( vehicle &cur_veh, int part )
 {
     map &here = get_map();
+
+    // MAP-J03: a part's JSON processing_cycle
+    processing_cycles::process( cur_veh, part );
 
     vehicle_part &vp = cur_veh.part( part );
     const vpart_info &vpi = vp.info();
@@ -6782,10 +6945,12 @@ void map::process_items_in_submap( submap &current_submap, const tripoint_rel_sm
             // Lets not process it at all.
             continue;
         }
-        // root cellars are special
+        // root cellars are special (MAP-J04: so is any furniture or terrain with item_temperature)
         temperature_flag flag = temperature_flag::NORMAL;
-        if( ter( map_location ) == ter_t_rootcellar ) {
-            flag = temperature_flag::ROOT_CELLAR;
+        if( furn.item_temperature ) {
+            flag = *furn.item_temperature;
+        } else if( const ter_t &terrain = ter( map_location ).obj(); terrain.item_temperature ) {
+            flag = *terrain.item_temperature;
         }
 
         float spoil_multiplier = 1.0f;
@@ -7690,9 +7855,9 @@ bool map::add_field( const tripoint_bub_ms &p, const field_type_id &type_id, int
         return false;
     }
 
-    // Hacky way to force electricity fields to become unlit electricity fields
-    const field_type_id &converted_type_id = ( type_id == fd_electricity ||
-            type_id == fd_electricity_unlit ) ? get_applicable_electricity_field( p ) : type_id;
+    // A field with an opaque_variant is placed as that on a tile that isn't transparent, and the
+    // variant turns back into it on a transparent one (fd_electricity and fd_electricity_unlit)
+    const field_type_id converted_type_id = placed_field_type( p, type_id );
     const field_type &fd_type = *converted_type_id;
 
     intensity = std::min( intensity, fd_type.get_max_intensity() );
@@ -7802,6 +7967,9 @@ void map::on_field_modified( const tripoint_bub_ms &p, const field_type &fd_type
     // Dirty the transparency cache now that field processing doesn't always do it
     if( fd_type.dirty_transparency_cache || !fd_type.is_transparent() ) {
         set_transparency_cache_dirty( p, true );
+    }
+    if( fd_type.muffles_sound ) {
+        set_sound_attenuation_dirty( p );
     }
 
     if( fd_type.is_dangerous() ) {
@@ -9680,6 +9848,42 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
     }
 }
 
+void map::refresh_phase_changes()
+{
+    const weather_generator &wgen = get_weather().get_cur_weather_gen();
+    const scoped_phase_temperatures phase_temperatures( wgen );
+    const creature_tracker &creatures = get_creature_tracker();
+    const int zmin = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
+    const int zmax = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+    for( int gz = zmin; gz <= zmax; gz++ ) {
+        for( int gx = 0; gx < my_MAPSIZE; gx++ ) {
+            for( int gy = 0; gy < my_MAPSIZE; gy++ ) {
+                const tripoint_rel_sm gp( gx, gy, gz );
+                const submap *const sm = get_submap_at_grid( gp );
+                if( sm == nullptr ) {
+                    continue;
+                }
+                const tripoint_bub_ms sm_origin = rebase_bub( coords::project_to<coords::ms>( gp ) );
+                for( int sx = 0; sx < SEEX; ++sx ) {
+                    for( int sy = 0; sy < SEEY; ++sy ) {
+                        const point_sm_ms l( sx, sy );
+                        if( !sm->has_original_ter( l ) && sm->get_ter( l )->phase_method.empty() ) {
+                            continue;
+                        }
+                        const tripoint_bub_ms p = sm_origin + point( sx, sy );
+                        // Nothing is frozen in or dropped through: a tile with a creature or a
+                        // vehicle on it waits for the next pass, or for the next load.
+                        if( creatures.creature_at( get_abs( p ) ) != nullptr || veh_at( p ) ) {
+                            continue;
+                        }
+                        temp_based_phase_change_at( p, wgen );
+                    }
+                }
+            }
+        }
+    }
+}
+
 void map::handle_decayed_corpse( const item &it, const tripoint_abs_ms &pnt )
 {
     if( !it.is_corpse() ) {
@@ -9899,41 +10103,48 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
         return;
     }
 
-    if( !( ter( p ) == ter_t_tree_maple_tapped ) ) {
+    // MAP-J04: what the terrain makes, and when, is its produces_liquid (a tapped maple's sap:
+    // 224 charges, 56 L, from late winter to early spring)
+    const ter_t &terrain = ter( p ).obj();
+    if( !terrain.produces_liquid ) {
         return;
     }
+    const ter_liquid_production &production = *terrain.produces_liquid;
+    const double span = production.start < production.end ? production.end - production.start :
+                        4.0 - production.start + production.end;
+    const bool wraps = production.start > production.end;
 
-    // Amount of maple sap liters produced per season per tap
-    static const int maple_sap_per_season = 56;
+    // How long a year it is made for
+    const time_duration producing_length = span * calendar::season_length();
 
-    // How many turns to produce 1 charge (250 ml) of sap?
-    const time_duration producing_length = 0.75 * calendar::season_length();
+    // How many turns to produce 1 charge?
+    const time_duration turns_to_produce = producing_length / production.amount;
 
-    const time_duration turns_to_produce = producing_length / ( maple_sap_per_season * 4 );
-
-    // How long of this time_since_last_actualize have we been in the producing period (late winter, early spring)?
+    // How long of this time_since_last_actualize have we been in the producing period?
     time_duration time_producing = 0_turns;
 
     if( time_since_last_actualize >= calendar::year_length() ) {
         time_producing = producing_length;
     } else {
-        // We are only producing sap on the intersection with the sap producing season.
-        const time_duration early_spring_end = 0.5f * calendar::season_length();
-        const time_duration late_winter_start = 3.75f * calendar::season_length();
+        // We are only producing on the intersection with the producing span.
+        const time_duration span_end = static_cast<float>( production.end ) * calendar::season_length();
+        const time_duration span_start = static_cast<float>( production.start ) *
+                                         calendar::season_length();
+        const auto producing_at = [&]( const time_duration & tof ) {
+            return wraps ? tof >= span_start || tof < span_end : tof >= span_start && tof < span_end;
+        };
 
         const time_point last_actualize = calendar::turn - time_since_last_actualize;
         // Times of year from the start of spring (turn_zero), like the bounds above.
         // time_past_new_year() counts from Jan 1, 81 days later.
         const time_duration last_actualize_tof = ( last_actualize - calendar::turn_zero ) %
                 calendar::year_length();
-        bool last_producing = last_actualize_tof >= late_winter_start ||
-                              last_actualize_tof < early_spring_end;
+        bool last_producing = producing_at( last_actualize_tof );
         const time_duration current_tof = ( calendar::turn - calendar::turn_zero ) %
                                           calendar::year_length();
-        bool current_producing = current_tof >= late_winter_start ||
-                                 current_tof < early_spring_end;
+        bool current_producing = producing_at( current_tof );
 
-        const time_duration non_producing_length = 3.25 * calendar::season_length();
+        const time_duration non_producing_length = ( 4.0 - span ) * calendar::season_length();
 
         if( last_producing && current_producing ) {
             if( time_since_last_actualize < non_producing_length ) {
@@ -9946,29 +10157,30 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
                 time_producing = time_since_last_actualize - non_producing_length;
             }
         } else if( last_producing && !current_producing ) {
-            // We hit the end of early spring
-            if( last_actualize_tof < early_spring_end ) {
-                time_producing = early_spring_end - last_actualize_tof;
+            // We hit the end of the span
+            if( last_actualize_tof < span_end ) {
+                time_producing = span_end - last_actualize_tof;
             } else {
-                time_producing = calendar::year_length() - last_actualize_tof + early_spring_end;
+                time_producing = calendar::year_length() - last_actualize_tof + span_end;
             }
         } else if( !last_producing && current_producing ) {
-            // We hit the start of late winter
-            if( current_tof >= late_winter_start ) {
-                time_producing = current_tof - late_winter_start;
+            // We hit the start of the span
+            if( current_tof >= span_start ) {
+                time_producing = current_tof - span_start;
             } else {
-                time_producing = 0.25f * calendar::season_length() + current_tof;
+                time_producing = static_cast<float>( 4.0 - production.start ) * calendar::season_length() +
+                                 current_tof;
             }
         }
     }
 
     int new_charges = roll_remainder( time_producing / turns_to_produce );
-    // Not enough time to produce 1 charge of sap
+    // Not enough time to produce 1 charge
     if( new_charges <= 0 ) {
         return;
     }
 
-    item sap( itype_maple_sap, calendar::turn );
+    item sap( production.item, calendar::turn );
 
     sap.set_item_temperature( get_weather().get_temperature( p ) );
     sap.charges = new_charges;
@@ -9982,7 +10194,7 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
                 sap.charges = std::min( sap.charges, capacity );
 
                 // The environment might have poisoned the sap with animals passing by, insects, leaves or contaminants in the ground
-                sap.poison = one_in( 10 ) ? 1 : 0;
+                sap.poison = production.poison_chance > 0 && one_in( production.poison_chance ) ? 1 : 0;
 
                 it.put_in( sap, pocket_type::CONTAINER );
             }
@@ -10004,6 +10216,11 @@ void map::cut_down_tree( tripoint_bub_ms p, point_rel_ms dir )
         return;
     }
 
+    // MAP-J05: what this tree leaves, by default a pine's trunk and stump
+    const ter_t &tree_ter = ter( p ).obj();
+    const ter_str_id &trunk = tree_ter.felled_trunk.is_empty() ? ter_t_trunk : tree_ter.felled_trunk;
+    const ter_str_id &stump = tree_ter.felled_stump.is_empty() ? ter_t_stump : tree_ter.felled_stump;
+
     tripoint_bub_ms to = p + 3 * dir + point( rng( -1, 1 ), rng( -1, 1 ) );
 
     // TODO: make line_to type aware.
@@ -10021,7 +10238,7 @@ void map::cut_down_tree( tripoint_bub_ms p, point_rel_ms dir )
             batter( elem, bash_strength, bash_attempts );
             const bool smashed_thru = ter( elem.xy() ) != original_terrain_at;
             if( ( open_ground || smashed_thru ) && passable( elem.xy() ) ) {
-                ter_set( elem, ter_t_trunk ); // effectively continues, no further execution this loop.
+                ter_set( elem, trunk ); // effectively continues, no further execution this loop.
                 continue;                     // but just to be sure :)
             } else {
                 shattered_tree = true;
@@ -10036,12 +10253,12 @@ void map::cut_down_tree( tripoint_bub_ms p, point_rel_ms dir )
                 batter( elem, bash_strength, bash_attempts );
             }
             // safety: trunk might not have bash data! It does right now, but maybe we remove that in the future(??)
-            if( ter_t_trunk->bash ) {
-                spawn_items( elem, item_group::items_from( ter_t_trunk->bash->drop_group, calendar::turn ) );
+            if( trunk->bash ) {
+                spawn_items( elem, item_group::items_from( trunk->bash->drop_group, calendar::turn ) );
             }
         }
     }
-    ter_set( p, ter_t_stump );
+    ter_set( p, stump );
 }
 
 void map::rad_scorch( const tripoint_bub_ms &p, const time_duration &time_since_last_actualize )
@@ -10065,7 +10282,14 @@ void map::rad_scorch( const tripoint_bub_ms &p, const time_duration &time_since_
     }
 
     const ter_id &tid = ter( p );
-    // TODO: De-hardcode this
+    // MAP-J04: the terrain's own rad_scorch, if it has one
+    if( !tid->rad_scorch.is_empty() ) {
+        if( tid->rad_scorch != tid.id() ) {
+            ter_set( p, tid->rad_scorch );
+        }
+        return;
+    }
+    // The built-in rules, for terrain without one
     static const std::map<ter_id, ter_str_id> dies_into {{
             {ter_t_grass, ter_t_dirt},
             {ter_t_tree_young, ter_t_dirt},
@@ -10468,14 +10692,40 @@ void map::spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight, b
                   gp.z() );
         return;
     }
+    spawn_queued_monsters_submap( gp, *current_submap );
+}
+
+void map::spawn_queued_monsters()
+{
+    if( this != &get_map() ) {
+        // another map's queue waits until its submaps come into the reality bubble
+        return;
+    }
+    const int zmin = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
+    const int zmax = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+    for( int gz = zmin; gz <= zmax; gz++ ) {
+        for( int gx = 0; gx < my_MAPSIZE; gx++ ) {
+            for( int gy = 0; gy < my_MAPSIZE; gy++ ) {
+                const tripoint_rel_sm gp( gx, gy, gz );
+                submap *const current_submap = get_submap_at_grid( gp );
+                if( current_submap != nullptr && !current_submap->spawns.empty() ) {
+                    spawn_queued_monsters_submap( gp, *current_submap );
+                }
+            }
+        }
+    }
+}
+
+void map::spawn_queued_monsters_submap( const tripoint_rel_sm &gp, submap &current_submap )
+{
     const tripoint_bub_ms gp_ms = rebase_bub( coords::project_to<coords::ms>( gp ) );
 
     // The list of spawns on the submap might be updated while we are iterating it.
     // For example, `monster::on_load` -> `monster::try_reproduce` calls `map::add_spawn`.
     // Therefore, this intentionally uses old-school indexed for-loop with re-check against `.size()` each step.
     // NOLINTNEXTLINE(modernize-loop-convert)
-    for( size_t sp_i = 0; sp_i < current_submap->spawns.size(); ++sp_i ) {
-        const spawn_point i = current_submap->spawns[sp_i]; // intentional copy
+    for( size_t sp_i = 0; sp_i < current_submap.spawns.size(); ++sp_i ) {
+        const spawn_point i = current_submap.spawns[sp_i]; // intentional copy
         const tripoint_bub_ms center = gp_ms + rebase_rel( i.pos );
         const tripoint_range<tripoint_bub_ms> points = points_in_radius( center, 3 );
 
@@ -10519,10 +10769,16 @@ void map::spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight, b
 
             // This can fail, but there isn't much we can do about it if it does. We could output some
             // kind of info message, but, again, it's unlikely to result in anything that can be acted on.
-            g->place_critter_at_or_within( make_shared_fast<monster>( tmp ), this, center, points );
+            monster *placed = g->place_critter_at_or_within( make_shared_fast<monster>( tmp ), this,
+                              center, points );
+            // the rest of the spawn data needs the monster where it is: a patrol route is relative
+            // to its overmap tile
+            if( placed != nullptr ) {
+                i.data.apply( *placed );
+            }
         }
     }
-    current_submap->spawns.clear();
+    current_submap.spawns.clear();
 }
 
 void map::spawn_monsters( bool ignore_sight, bool spawn_nonlocal )
@@ -11114,6 +11370,173 @@ void map::build_scene_caches()
         build_transparency_cache( z );
     }
     scene_build_pending = false;
+}
+
+void map::build_sound_attenuation_cache( const int zlev ) const
+{
+    level_cache &ch = get_cache( zlev );
+    if( ch.sound_attenuation_dirty.none() ) {
+        return;
+    }
+    cata::mdarray<uint16_t, point_bub_ms> &grid = ch.sound_attenuation_cache;
+    for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
+        for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
+            const size_t index = smx * MAPSIZE + smy;
+            if( !ch.sound_attenuation_dirty[index] ) {
+                continue;
+            }
+            const submap *cur_submap = get_submap_at_grid( tripoint_rel_sm( smx, smy, zlev ) );
+            int count = 0;
+            for( int sx = 0; sx < SEEX; ++sx ) {
+                for( int sy = 0; sy < SEEY; ++sy ) {
+                    const point_sm_ms sp( sx, sy );
+                    int value = 0;
+                    if( cur_submap != nullptr ) {
+                        value = cur_submap->get_ter( sp ).obj().sound_attenuation +
+                                cur_submap->get_furn( sp ).obj().sound_attenuation;
+                        const field &fields = cur_submap->get_field( sp );
+                        if( fields.displayed_field_type() ) {
+                            for( const auto &fld : fields ) {
+                                if( fld.second.is_field_alive() ) {
+                                    value += fld.second.get_intensity_level().sound_attenuation;
+                                }
+                            }
+                        }
+                    }
+                    value = std::min<int>( value, std::numeric_limits<uint16_t>::max() );
+                    grid[sx + smx * SEEX][sy + smy * SEEY] = static_cast<uint16_t>( value );
+                    count += value > 0 ? 1 : 0;
+                }
+            }
+            ch.sound_attenuating_total += count - ch.sound_attenuating_tiles[index];
+            ch.sound_attenuating_tiles[index] = static_cast<uint8_t>( count );
+        }
+    }
+    ch.sound_attenuation_dirty.reset();
+}
+
+bool map::sound_muffled_on_level( const int zlev ) const
+{
+    if( !inbounds_z( zlev ) || sound_attenuation_percent <= 0 ) {
+        return false;
+    }
+    if( sounds::terrain_can_muffle() ) {
+        build_sound_attenuation_cache( zlev );
+        if( get_cache_ref( zlev ).sound_attenuating_total > 0 ) {
+            return true;
+        }
+    }
+    return sounds::vehicles_can_muffle() && get_cache_ref( zlev ).get_veh_in_active_range();
+}
+
+// What the vehicle parts at vp muffle: each part's sound_attenuation, unless it is broken
+// or an open door, hatch or curtain
+static int vehicle_sound_attenuation( const vpart_position &vp )
+{
+    const vehicle &veh = vp.vehicle();
+    int total = 0;
+    for( const int index : veh.parts_at_relative( vp.mount_pos(), true, true ) ) {
+        const vehicle_part &part = veh.part( index );
+        const vpart_info &info = part.info();
+        if( info.sound_attenuation == 0 || part.removed || part.is_broken() ||
+            ( part.open && info.has_flag( VPFLAG_OPENABLE ) ) ) {
+            continue;
+        }
+        total += info.sound_attenuation;
+    }
+    return total;
+}
+
+// A sum of sound_attenuation values scaled by the SOUND_ATTENUATION_PERCENT external
+// option (100: as given, 0: nothing muffles)
+static int scaled_sound_attenuation( const int total )
+{
+    if( total <= 0 || sound_attenuation_percent <= 0 ) {
+        return 0;
+    }
+    const int64_t scaled = static_cast<int64_t>( total ) * sound_attenuation_percent / 100;
+    return static_cast<int>( std::min<int64_t>( scaled, std::numeric_limits<int>::max() ) );
+}
+
+int map::sound_attenuation_at( const tripoint_bub_ms &p ) const
+{
+    if( !inbounds( p ) || sound_attenuation_percent <= 0 ) {
+        return 0;
+    }
+    int total = 0;
+    if( sounds::terrain_can_muffle() ) {
+        build_sound_attenuation_cache( p.z() );
+        total += get_cache_ref( p.z() ).sound_attenuation_cache[p.x()][p.y()];
+    }
+    if( sounds::vehicles_can_muffle() ) {
+        if( const optional_vpart_position vp = veh_at( p ) ) {
+            total += vehicle_sound_attenuation( *vp );
+        }
+    }
+    return scaled_sound_attenuation( total );
+}
+
+int map::sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_bub_ms &to,
+                                    const int stop_at ) const
+{
+    const bool terrain = sounds::terrain_can_muffle();
+    const bool vehicles = sounds::vehicles_can_muffle();
+    // with nothing loaded that muffles, or SOUND_ATTENUATION_PERCENT at 0, nothing muffles
+    // sound, and adjacent tiles have nothing between
+    if( ( !terrain && !vehicles ) || sound_attenuation_percent <= 0 || stop_at <= 0 ||
+        square_dist( from, to ) <= 1 ) {
+        return 0;
+    }
+    // what may muffle on each level the line crosses; the line is walked only if any does
+    struct walk_state {
+        tripoint_bub_ms to;
+        int stop_at = 0;
+        // the cache of a level with terrain, furniture or fields that muffle, or null
+        std::array<const level_cache *, OVERMAP_LAYERS> terrain_caches{};
+        std::array<bool, OVERMAP_LAYERS> vehicle_levels{};
+        int total = 0;
+    } state;
+    state.to = to;
+    state.stop_at = stop_at;
+    bool any = false;
+    for( int z = std::min( from.z(), to.z() ); z <= std::max( from.z(), to.z() ); ++z ) {
+        if( !inbounds_z( z ) ) {
+            continue;
+        }
+        const size_t index = z + OVERMAP_DEPTH;
+        const level_cache &ch = get_cache_ref( z );
+        if( terrain ) {
+            build_sound_attenuation_cache( z );
+            if( ch.sound_attenuating_total > 0 ) {
+                state.terrain_caches[index] = &ch;
+            }
+        }
+        state.vehicle_levels[index] = vehicles && ch.get_veh_in_active_range();
+        any |= state.terrain_caches[index] != nullptr || state.vehicle_levels[index];
+    }
+    if( !any ) {
+        return 0;
+    }
+    // two pointers, so the std::function bresenham takes doesn't allocate
+    bresenham( from, to, 0, 0, [this, &state]( const tripoint_bub_ms & p ) {
+        if( p == state.to ) {
+            return false;
+        }
+        if( !inbounds( p ) ) {
+            return true;
+        }
+        const size_t index = p.z() + OVERMAP_DEPTH;
+        if( const level_cache *ch = state.terrain_caches[index] ) {
+            state.total += ch->sound_attenuation_cache[p.x()][p.y()];
+        }
+        if( state.vehicle_levels[index] ) {
+            if( const optional_vpart_position vp = veh_at( p ) ) {
+                state.total += vehicle_sound_attenuation( *vp );
+            }
+        }
+        return scaled_sound_attenuation( state.total ) < state.stop_at;
+    } );
+    return scaled_sound_attenuation( state.total );
 }
 
 void map::ensure_scene_caches() const
@@ -11844,6 +12267,8 @@ bool map::try_fall( const tripoint_bub_ms &p, Creature *c )
         return false;
     }
 
+    // CHAR-J10: sent after the landing, with the Z-levels fallen
+    const int levels_fallen = height;
     if( you->is_avatar() ) {
         add_msg( m_bad, n_gettext( "You fall down %d story!", "You fall down %d stories!", height ),
                  height );
@@ -11900,6 +12325,7 @@ bool map::try_fall( const tripoint_bub_ms &p, Creature *c )
         you->add_msg_player_or_npc( _( "You dive into water." ), _( "<npcname> dives into water." ) );
     }
 
+    get_event_bus().send<event_type::character_falls>( you->getID(), levels_fallen );
     return true;
 }
 
@@ -12311,7 +12737,9 @@ void map::update_pathfinding_cache( const tripoint_bub_ms &p ) const
         cur_value |= PathfindingFlag::Slow;
     } else if( cost <= 0 ) {
         cur_value |= PathfindingFlag::Obstacle;
-        if( terrain.has_flag( ter_furn_flag::TFLAG_CLIMBABLE ) ) {
+        // Climbing goes over furniture too (sandbag walls, barricades), as moving does
+        if( terrain.has_flag( ter_furn_flag::TFLAG_CLIMBABLE ) ||
+            furniture.has_flag( ter_furn_flag::TFLAG_CLIMBABLE ) ) {
             cur_value |= PathfindingFlag::Climbable;
         }
     }
@@ -12353,12 +12781,30 @@ void map::update_pathfinding_cache( const tripoint_bub_ms &p ) const
         cur_value |= PathfindingFlag::GoesDown | PathfindingFlag::RampDown;
     }
 
-    if( terrain.has_flag( ter_furn_flag::TFLAG_SHARP ) && !this->has_vehicle_floor( p ) ) {
+    if( ( terrain.has_flag( ter_furn_flag::TFLAG_SHARP ) ||
+          furniture.has_flag( ter_furn_flag::TFLAG_SHARP ) ) && !this->has_vehicle_floor( p ) ) {
         cur_value |= PathfindingFlag::Sharp;
     }
 
-    if( terrain.has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) ) {
-        cur_value |= ( PathfindingFlag::RestrictLarge | PathfindingFlag::RestrictHuge );
+    // Each size too big for the tile (SMALL_PASSAGE, max_creature_size) is kept off it
+    std::optional<creature_size> fit = terrain.max_fitting_size();
+    const std::optional<creature_size> furn_fit = furniture.max_fitting_size();
+    if( furn_fit && ( !fit || *furn_fit < *fit ) ) {
+        fit = furn_fit;
+    }
+    if( fit ) {
+        if( *fit < creature_size::small ) {
+            cur_value |= PathfindingFlag::RestrictSmall;
+        }
+        if( *fit < creature_size::medium ) {
+            cur_value |= PathfindingFlag::RestrictMedium;
+        }
+        if( *fit < creature_size::large ) {
+            cur_value |= PathfindingFlag::RestrictLarge;
+        }
+        if( *fit < creature_size::huge ) {
+            cur_value |= PathfindingFlag::RestrictHuge;
+        }
     }
 
     cache.special[p.x()][p.y()] = cur_value;

@@ -124,7 +124,7 @@
     "effect": "effect_on_condition",
     "effect_str": "EOC_TELEPORT_ITEM_APPORT",
     "shape": "blast",
-    "min_range": { "math": [ "min( (( (u_spell_level('teleport_item_appport') * 1.25) + 2) * psionic_power_modifiers() ), 80)" ] },
+    "min_range": { "math": [ "min( (( (u_spell_level('teleport_item_apport') * 1.25) + 2) * psionic_power_modifiers() ), 80)" ] },
     "max_range": 80,
     "base_energy_cost": 2500,
     "final_energy_cost": 1250,

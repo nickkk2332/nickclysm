@@ -15,6 +15,8 @@
 #include "type_id.h"
 
 class JsonObject;
+class JsonOut;
+class JsonValue;
 class monfaction;
 template <typename E> struct enum_traits;
 template <typename T> class generic_factory;
@@ -45,6 +47,21 @@ const std::vector<monfaction> &get_all();
 void reset();
 void finalize();
 void load_monster_faction( const JsonObject &jo, const std::string &src );
+
+// MONDT-J12: changes made during a game to how one faction treats another
+// (set_monfaction_attitude), on top of the JSON, saved with the game. They act as if the
+// faction's JSON listed the other one, so factions based on it follow unless they list it too.
+// nullopt removes the change. Rebuilds the attitude cache.
+void set_attitude_override( const mfaction_str_id &from, const mfaction_str_id &to,
+                            const std::optional<mf_attitude> &att );
+void clear_attitude_overrides();
+std::optional<mf_attitude> get_attitude_override( const mfaction_str_id &from,
+        const mfaction_str_id &to );
+// "BY_MOOD", "NEUTRAL", "FRIENDLY" or "HATE"; "DEFAULT" gives nullopt (no change). False for
+// anything else.
+bool parse_attitude( std::string_view name, std::optional<mf_attitude> &att );
+void serialize_attitude_overrides( JsonOut &jsout );
+void deserialize_attitude_overrides( const JsonValue &jv );
 } // namespace monfactions
 
 class monfaction
@@ -61,6 +78,10 @@ class monfaction
         mfaction_str_id id = mfaction_str_id::NULL_ID();
         std::vector<std::pair<mfaction_str_id, mod_id>> src;
         mfaction_str_id base_faction = mfaction_str_id::NULL_ID();
+        // MONAI-J06: "ignores_npcs_if_option", a boolean (external) option: while it is on, the
+        // faction's monsters ignore every NPC (Personal Portal Storms' PORTAL_STORM_IGNORE_NPC).
+        // Not inherited by factions based on this one. Empty for none.
+        std::string ignores_npcs_if_option;
 
     private:
         // used by generic_factory
@@ -92,12 +113,21 @@ class monfaction
         // populates attitude_vec using `attitude_rec` function
         void populate_attitude_vec() const;
 
+        // attitude_map from this faction's own JSON lists and the attitude overrides
+        void reset_attitude_map() const;
+        // rebuilds every faction's attitude_map and attitude_vec
+        static void rebuild_attitudes();
+
         /** Load from JSON */
         void load( const JsonObject &jo, std::string_view src );
 
         void finalize();
 
         friend void monfactions::finalize();
+        friend void monfactions::set_attitude_override( const mfaction_str_id &,
+                const mfaction_str_id &, const std::optional<mf_attitude> & );
+        friend void monfactions::clear_attitude_overrides();
+        friend void monfactions::deserialize_attitude_overrides( const JsonValue & );
         friend class generic_factory<monfaction>;
 };
 

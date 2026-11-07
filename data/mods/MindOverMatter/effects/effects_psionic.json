@@ -1698,7 +1698,7 @@
             }
           }
         ],
-        "hit_you_effect": [ { "id": "pyro_aura_attack", "hit_self": false } ]
+        "hit_you_effect": [ { "id": "pyro_aura_attack", "hit_types": [ "melee" ], "hit_self": false } ]
       },
       {
         "condition": {
@@ -2524,7 +2524,7 @@
           "and": [ { "not": { "u_has_flag": "DIMENSIONAL_ANCHOR" } }, { "not": { "u_has_worn_with_flag": "DIMENSIONAL_ANCHOR" } } ]
         },
         "mutations": [ "GENERIC_UNCANNY_DODGE_TRAIT" ],
-        "hit_you_effect": [ { "id": "teleport_warper_combat_warp_chance_attacker", "hit_self": false, "once_in": 3 } ],
+        "hit_you_effect": [ { "id": "teleport_warper_combat_warp_chance_attacker", "hit_types": [ "melee" ], "hit_self": false, "once_in": 3 } ],
         "hit_me_effect": [ { "id": "teleport_warper_combat_warp_chance_attacked", "hit_self": true, "once_in": 3 } ],
         "melee_damage_bonus": [
           {

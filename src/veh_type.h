@@ -4,6 +4,7 @@
 
 #include <array>
 #include <bitset>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -18,6 +19,9 @@
 #include "color.h"
 #include "lightmap.h"
 #include "coordinates.h"
+#include "dialogue_helpers.h"
+#include "global_vars.h"
+#include "damage.h"
 #include "memory_fast.h"
 #include "point.h"
 #include "requirements.h"
@@ -31,6 +35,7 @@ class JsonOut;
 class JsonValue;
 class vehicle;
 class vpart_info;
+struct const_dialogue;
 struct vehicle_prototype;
 template <typename T> class generic_factory;
 
@@ -137,6 +142,15 @@ struct vpslot_engine {
     int m2c = 100;
     std::vector<std::string> exclusions;
     std::vector<itype_id> fuel_opts;
+    // VEH-J11: the engine's power in watts, evaluated with the vehicle as alpha and whoever is on
+    // the engine's tile as beta; replaces "power" and the built-in animal, muscle and wind formulas
+    std::optional<dbl_or_var> power_math;
+    // VEH-J11: the engine drives as well in reverse as forward (no 60% acceleration and 1/4 top
+    // speed in reverse). Unset until vpart_info::finalize(): true for battery engines.
+    std::optional<bool> full_reverse;
+    // VEH-J11: "The <vehicle>'s engine dies!" when it stops for lack of power. Unset until
+    // vpart_info::finalize(): false for animal, muscle, wind and mana engines.
+    std::optional<bool> stall_message;
 
     void deserialize( const JsonObject &jo );
 };
@@ -162,6 +176,11 @@ struct vpslot_wheel {
     float offroad_rating = 0.5f;
 
     void deserialize( const JsonObject &jo );
+    // The move cost of this wheel on a tile with these terrain flags, from the tile's own move
+    // cost: an override of an entry whose flag is there replaces it (the lowest one if several
+    // apply), else the largest penalty of the entries whose flag is missing is added. Penalties
+    // don't stack and the order of the entries doesn't matter.
+    int terrain_move_cost( const std::set<std::string> &ter_flags, int move_cost ) const;
 };
 
 struct vpslot_rotor {
@@ -178,6 +197,8 @@ struct vpslot_workbench {
     // Mass/volume allowed before a crafting speed penalty is applied
     units::mass allowed_mass = 0_gram;
     units::volume allowed_volume = 0_ml;
+    // The crafting menu opened here starts with this search (UIINV-J02)
+    std::string recipe_filter;
 
     void deserialize( const JsonObject &jo );
 };
@@ -188,6 +209,26 @@ struct vpslot_toolkit {
     std::set<itype_id> allowed_types;
 
     void deserialize( const JsonObject &jo );
+};
+
+// MAP-J03: a timed cycle a CARGO part runs on what it holds (a washer, a dryer, a sterilizer)
+struct vpslot_processing_cycle {
+    time_duration duration = 0_turns;
+    std::set<flag_id> unset_item_flags;
+    std::set<flag_id> set_item_flags;
+    // items of the first type become the second
+    std::vector<std::pair<itype_id, itype_id>> transform_items;
+    translation start_message;
+    translation progress_message;
+    translation finish_message;
+    // run with the avatar as alpha talker and the vehicle as beta; the cycle starts only if the
+    // start EOC's condition holds
+    std::optional<effect_on_condition_id> eoc_on_start;
+    std::optional<effect_on_condition_id> eoc_on_finish;
+    // VINT-J08: the cycle starts only if every item inside meets it, the item as alpha talker
+    // and the vehicle as beta (all filthy, no CBMs...); if one doesn't, item_condition_message
+    std::function<bool( const_dialogue const & )> item_condition;
+    translation item_condition_message;
 };
 
 struct vpslot_terrain_transform {
@@ -205,7 +246,17 @@ struct vpslot_terrain_transform {
 struct vp_control_req {
     std::set<std::pair<skill_id, int>> skills;
     std::set<proficiency_id> proficiencies;
+    // VEH-J08: what steering in this mode uses and trains. Unset falls back to driving and the
+    // built-in proficiency (prof_driver, or prof_boat_pilot in deep water); unset "trains" trains
+    // the handling proficiency.
+    std::optional<skill_id> handling_skill;
+    std::optional<proficiency_id> handling_proficiency;
+    std::optional<std::vector<proficiency_id>> trains;
+    // VEH-J08: "air" only. Needed to install, repair or remove parts of a flyable aircraft
+    // without losing its airworthiness (prof_aircraft_mechanic when no part sets it).
+    std::optional<proficiency_id> maintenance_proficiency;
 
+    bool empty() const;
     void deserialize( const JsonObject &jo );
 };
 
@@ -339,6 +390,11 @@ class vpart_info
         //Enchantments
         std::vector<enchantment_id> enchantments;
         std::optional<effect_on_condition_id> activatable_eoc;
+        std::optional<vpslot_processing_cycle> processing_cycle;
+        // REAPER: how many plants and seeds one harvest yields, at random between the two
+        // bounds; without a plant_yield, between 1 and bonus (VINT-J05)
+        std::optional<std::pair<int, int>> reaper_plant_yield;
+        std::pair<int, int> reaper_seed_yield = { 1, 3 };
 
         std::set<std::pair<itype_id, int>> get_pseudo_tools() const;
 
@@ -395,6 +451,8 @@ class vpart_info
         // required skill to control vehicle
         vp_control_req control_air;
         vp_control_req control_land;
+        // VEH-J08: in deep water
+        vp_control_req control_water;
 
         /** @ref item_group this part breaks into when destroyed */
         item_group_id breaks_into_group = item_group_id( "EMPTY_GROUP" );
@@ -454,6 +512,13 @@ class vpart_info
         int dmg_mod = 100;
 
         /**
+         * Damage this part deals to a creature it rams, each amount a fraction of the collision
+         * damage: "collision_damage" if set, else cut 1.0 for SHARP parts and bash 1.0 otherwise
+         */
+        const damage_instance &get_collision_damage() const;
+        std::optional<damage_instance> collision_damage;
+
+        /**
          * Electrical power, flat rate energy (per second); positive for generation, negative for consumption
          * For electric motor consumption scaled with powertrain demand see @ref energy_consumption instead
          */
@@ -478,13 +543,26 @@ class vpart_info
         /** Removal time for component (@see removal_time), default is half \p install_moves */
         time_duration removal_moves = -1_seconds;
 
-        // seatbelt (str, currently non-functional #30239)
-        // muffler (% noise reduction)
-        // horn (sound volume)
-        // light (intensity)
-        // recharging (charging speed in watts)
-        // funnel (water collection area in mm^2)
+        // Legacy catch-all, read by the part's flags (doc/JSON/JSON_INFO.md):
+        // seatbelt (crash damage it takes off), muffler (% of the noise left), horn (sound volume),
+        // light (intensity), recharging (watts), funnel (radius in mm), shock absorber (damage it
+        // takes off), rotor (extra diameter), camera (vision range), beeper (volume), reaper (the
+        // most plants a harvest yields)
         int bonus = 0;
+
+        // Typed fields for some of those (VEH-J07); each falls back on bonus when unset
+        std::optional<units::length> funnel_radius;
+        std::optional<double> muffle_factor;
+        std::optional<int> seatbelt_strength;
+        std::optional<int> shock_absorption;
+        /** FUNNEL: radius of the funnel's opening, in mm */
+        int get_funnel_radius_mm() const;
+        /** MUFFLER: share of the engine noise left, 0.4 is 60% quieter */
+        double get_muffle_factor() const;
+        /** SEATBELT: damage it takes off a passenger's crash damage */
+        int get_seatbelt_strength() const;
+        /** SHOCK_ABSORBER: damage it takes off the shock of a distant collision */
+        int get_shock_absorption() const;
         light_color_rgb light_color{};
 
         /** cargo weight modifier (percentage) */
@@ -492,6 +570,8 @@ class vpart_info
 
         /*Comfort data for sleeping in vehicles*/
         int comfort = 0;
+        /** Volume a sound loses passing through this part's tile, unless the part is broken or open */
+        int sound_attenuation = 0;
         units::temperature_delta floor_bedding_warmth = 0_C_delta;
         units::temperature_delta bonus_fire_warmth_feet = 0.6_C_delta;
 
@@ -547,7 +627,10 @@ struct vehicle_prototype {
 
             void deserialize( const JsonObject &jo );
             bool operator==( const zone_def &other ) const {
-                return zone_type == other.zone_type && name == other.name && filter == other.name && pt == other.pt;
+                // filter == other.filter: it compared the filter with the other's name, so
+                // "delete" couldn't remove a zone (VINT-B08)
+                return zone_type == other.zone_type && name == other.name && filter == other.filter &&
+                       pt == other.pt;
             }
         };
 
@@ -556,6 +639,12 @@ struct vehicle_prototype {
         std::vector<part_def> parts;
         std::vector<vehicle_item_spawn> item_spawns;
         std::vector<zone_def> zone_defs;
+        // what a vehicle built from it has to say: its "Talk to" entry starts with these
+        std::vector<std::string> chat_topics;
+        // VEH-J10: variables each vehicle built from it starts with
+        global_variables::impl_t variables;
+        // VEH-J10: run with the vehicle as alpha when one is placed on the map
+        std::vector<effect_on_condition_id> spawn_eocs;
         std::vector<std::pair<vproto_id, mod_id>> src;
 
         shared_ptr_fast<vehicle> blueprint;

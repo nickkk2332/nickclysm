@@ -32,10 +32,6 @@
 #include "talker.h"
 #include "translations.h"
 
-static const damage_type_id damage_bash( "bash" );
-static const damage_type_id damage_cut( "cut" );
-static const damage_type_id damage_stab( "stab" );
-
 static const limb_score_id limb_score_reaction( "reaction" );
 static const limb_score_id limb_score_vision( "vision" );
 
@@ -363,13 +359,19 @@ weakpoint_attack::type_of_melee_attack( const damage_instance &damage )
             primary_amount = du.amount;
         }
     }
-    // FIXME: Hardcoded damage types
-    if( primary == damage_bash ) {
-        return attack_type::MELEE_BASH;
-    } else if( primary == damage_cut ) {
-        return attack_type::MELEE_CUT;
-    } else if( primary == damage_stab ) {
-        return attack_type::MELEE_STAB;
+    // CMBT-J12: the main damage type's "weakpoint_attack"
+    if( primary.is_null() || !primary.is_valid() ) {
+        return attack_type::NONE;
+    }
+    switch( primary->weakpoint_attack ) {
+        case melee_weakpoint_kind::bash:
+            return attack_type::MELEE_BASH;
+        case melee_weakpoint_kind::cut:
+            return attack_type::MELEE_CUT;
+        case melee_weakpoint_kind::stab:
+            return attack_type::MELEE_STAB;
+        case melee_weakpoint_kind::none:
+            break;
     }
     return attack_type::NONE;
 }

@@ -36,6 +36,7 @@
 #include "coordinates.h"
 #include "crafting.h"
 #include "crafting_enums.h"
+#include "crafting_gui_helpers.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -69,6 +70,8 @@
 #include "weather.h"
 #include "weather_type.h"
 
+class Character;
+
 static const faction_id faction_your_followers( "your_followers" );
 
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
@@ -86,6 +89,8 @@ static const itype_id itype_rock( "rock" );
 static const itype_id itype_scrap( "scrap" );
 static const itype_id itype_seed_buckwheat( "seed_buckwheat" );
 
+static const recipe_id recipe_bat( "bat" );
+static const recipe_id recipe_crossbow( "crossbow" );
 static const recipe_id
 recipe_cudgel_test_unattended_with_qual( "cudgel_test_unattended_with_qual" );
 
@@ -469,6 +474,53 @@ TEST_CASE( "bench_crafting_recompute_scoped", "[.][benchmark_scenario]" )
         }
         CHECK( checksum != 0 );
     } );
+}
+
+// UIINV-P01: the crafting menu redraws about 100 times a second. Its info panel for one
+// selection, redrawn 100 times for each of two recipes (one with tools, qualities and
+// proficiencies, one with steps), in a dense base, inside the menu's query cache scope.
+// "rebuilt" builds the panel on every redraw, as the menu did before (a lower bound: the old
+// draw code also asked for the time and the success chance several times per redraw);
+// "cached" reads it from the menu's panel cache.
+TEST_CASE( "bench_crafting_panel_redraws", "[.][benchmark_scenario]" )
+{
+    fixed_weather weather;
+    const std::vector<const recipe *> recipes = { &recipe_crossbow.obj(), &recipe_bat.obj() };
+    const auto setup = []() {
+        clear_avatar();
+        clear_map();
+        avatar &u = get_avatar();
+        const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+        u.setpos( get_map(), center );
+        build_dense_base( center );
+        fill_inventory( u );
+    };
+    const auto redraws = [&recipes]( const bool cached ) {
+        return [&recipes, cached]() {
+            temp_crafting_inventory::query_cache_scope cache_scope;
+            avatar &u = get_avatar();
+            const std::vector<Character *> group = u.get_crafting_group();
+            std::map<const recipe *, availability> availability_cache;
+            const recipe_panel_context ctx{ u, group, u.get_group_available_recipes(),
+                                            availability_cache };
+            recipe_panel_cache panel_cache;
+            size_t checksum = 0;
+            for( const recipe *rec : recipes ) {
+                const availability avail( u, rec );
+                for( int redraw = 0; redraw < 100; ++redraw ) {
+                    checksum += cached ? panel_cache.get( *rec, avail, 1, ctx ).stats_plain.size() :
+                                build_recipe_panel( *rec, avail, 1, ctx ).stats_plain.size();
+                }
+            }
+            CHECK( checksum > 0 );
+        };
+    };
+    run_scenario( "crafting_panel_redraws_rebuilt",
+                  "info panel of 2 recipes, 100 redraws each, rebuilt each time, in a dense base",
+                  setup, redraws( false ) );
+    run_scenario( "crafting_panel_redraws_cached",
+                  "info panel of 2 recipes, 100 redraws each, from the panel cache, in a dense base",
+                  setup, redraws( true ) );
 }
 
 // ACT-P01: zone sorting asks, for every item, which nearby loot zone takes it.

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "activity_actor_definitions.h"
+#include "ammo.h"
 #include "avatar.h"
 #include "ballistics.h"
 #include "bionics.h"
@@ -118,24 +119,6 @@ static const ammo_effect_str_id ammo_effect_TANGLE( "TANGLE" );
 static const ammo_effect_str_id ammo_effect_WHIP( "WHIP" );
 static const ammo_effect_str_id ammo_effect_WIDE( "WIDE" );
 
-static const ammotype ammo_120mm( "120mm" );
-static const ammotype ammo_12mm( "12mm" );
-static const ammotype ammo_40x46mm( "40x46mm" );
-static const ammotype ammo_40x53mm( "40x53mm" );
-static const ammotype ammo_66mm( "66mm" );
-static const ammotype ammo_84x246mm( "84x246mm" );
-static const ammotype ammo_RPG_7( "RPG-7" );
-static const ammotype ammo_arrow( "arrow" );
-static const ammotype ammo_atgm( "atgm" );
-static const ammotype ammo_atlatl( "atlatl" );
-static const ammotype ammo_bolt( "bolt" );
-static const ammotype ammo_bolt_ballista( "bolt_ballista" );
-static const ammotype ammo_flammable( "flammable" );
-static const ammotype ammo_homebrew_rocket( "homebrew_rocket" );
-static const ammotype ammo_m235( "m235" );
-static const ammotype ammo_metal_rail( "metal_rail" );
-static const ammotype ammo_strange_arrow( "strange_arrow" );
-
 static const bionic_id bio_railgun( "bio_railgun" );
 
 static const character_modifier_id
@@ -171,6 +154,13 @@ static const flag_id json_flag_LEVER_ACTION( "LEVER_ACTION" );
 static const flag_id json_flag_PUMP_ACTION( "PUMP_ACTION" );
 static const flag_id json_flag_SINGLE_ACTION( "SINGLE_ACTION" );
 
+static const json_character_flag json_flag_CANNOT_USE_FIREARMS( "CANNOT_USE_FIREARMS" );
+static const json_character_flag json_flag_CANNOT_USE_RANGED( "CANNOT_USE_RANGED" );
+static const json_character_flag
+json_flag_HANDS_CANNOT_USE_FIREARMS( "HANDS_CANNOT_USE_FIREARMS" );
+static const json_character_flag
+json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS( "TEMPORARY_SHAPESHIFT_NO_HANDS" );
+
 static const material_id material_budget_steel( "budget_steel" );
 static const material_id material_glass( "glass" );
 static const material_id material_hardened_steel( "hardened_steel" );
@@ -192,9 +182,6 @@ static const skill_id skill_gun( "gun" );
 static const skill_id skill_launcher( "launcher" );
 static const skill_id skill_swimming( "swimming" );
 static const skill_id skill_throw( "throw" );
-
-static const trait_id trait_BRAWLER( "BRAWLER" );
-static const trait_id trait_GUNSHY( "GUNSHY" );
 
 static const trap_str_id tr_practice_target( "tr_practice_target" );
 static const trap_str_id tr_target_spinner( "tr_target_spinner" );
@@ -741,19 +728,73 @@ int Character::gun_engagement_moves( const item &gun, int target, int start,
     return mv;
 }
 
+// CMBT-J09: the moves spent working a gun's action after a shot, before skill: its "cycle_time",
+// else the usual time for its action flag. T is the itype or the item, whose flags count.
+template<typename T>
+static int gun_cycle_time( const islot_gun &gun, const T &flags_of )
+{
+    if( gun.cycle_time ) {
+        return *gun.cycle_time;
+    }
+    if( flags_of.has_flag( json_flag_LEVER_ACTION ) ) {
+        // in moves, 0.8 seconds
+        return 80;
+    } else if( flags_of.has_flag( json_flag_SINGLE_ACTION ) ) {
+        return 100;
+    } else if( flags_of.has_flag( json_flag_PUMP_ACTION ) ) {
+        return 120;
+    } else if( flags_of.has_flag( json_flag_BOLT_ACTION ) ) {
+        return 160;
+    }
+    return 0;
+}
+
+// CMBT-J09: the first (by id) of the gun's ammunition types that passes the test
+template<typename Pred>
+static const ammunition_type *first_ammo_type_where( const item &gun, const Pred &pred )
+{
+    const ammunition_type *found = nullptr;
+    std::string found_id;
+    for( const ammotype &at : gun.ammo_types() ) {
+        if( at.is_valid() && pred( at.obj() ) && ( found == nullptr ||
+                at.str().compare( found_id ) < 0 ) ) {
+            found = &at.obj();
+            found_id = at.str();
+        }
+    }
+    return found;
+}
+
+// CMBT-J09: how the gun sounds: its own "fire_sound", else its ammunition type's
+static const gun_fire_sound *gun_fire_sound_of( const item &gun )
+{
+    if( gun.type->gun && gun.type->gun->fire_sound ) {
+        return &*gun.type->gun->fire_sound;
+    }
+    const ammunition_type *at = first_ammo_type_where( gun, []( const ammunition_type & t ) {
+        return t.fire_sound().has_value();
+    } );
+    return at == nullptr ? nullptr : &*at->fire_sound();
+}
+
+// CMBT-J09: the ammunition type through which firing the gun satisfies a pyromaniac, one with its
+// own message first (flamethrowers before rocket launchers)
+static const ammunition_type *pyromania_ammo_type_of( const item &gun )
+{
+    const ammunition_type *with_message = first_ammo_type_where( gun, []( const ammunition_type & t ) {
+        return t.satisfies_pyromania() && !t.pyromania_message().empty();
+    } );
+    if( with_message != nullptr ) {
+        return with_message;
+    }
+    return first_ammo_type_where( gun, []( const ammunition_type & t ) {
+        return t.satisfies_pyromania();
+    } );
+}
+
 static int action_time( const Character &p, const itype &firing )
 {
-    float operation_time = 0.f;
-    if( firing.has_flag( json_flag_LEVER_ACTION ) ) {
-        // in moves, 0.8 seconds
-        operation_time += 80.f;
-    } else if( firing.has_flag( json_flag_SINGLE_ACTION ) ) {
-        operation_time += 100.f;
-    } else if( firing.has_flag( json_flag_PUMP_ACTION ) ) {
-        operation_time += 120.f;
-    } else if( firing.has_flag( json_flag_BOLT_ACTION ) ) {
-        operation_time += 160.f;
-    }
+    float operation_time = gun_cycle_time( *firing.gun, firing );
 
     // either 10 in gun skill, or 10 in marksmanship, or something in between would mitigate 50% of penalty
     const float operation_skill =
@@ -1072,17 +1113,8 @@ static int get_action_penalty( const map &here, const Character &guy, const item
         return 0;
     }
 
-    float action_penalty = 0;
-
-    if( gun.has_flag( json_flag_LEVER_ACTION ) ) {
-        action_penalty += 800.f;
-    } else if( gun.has_flag( json_flag_SINGLE_ACTION ) ) {
-        action_penalty += 1000.f;
-    } else if( gun.has_flag( json_flag_PUMP_ACTION ) ) {
-        action_penalty += 1200.f;
-    } else if( gun.has_flag( json_flag_BOLT_ACTION ) ) {
-        action_penalty += 1600.f;
-    }
+    // 10 MOA of aim lost for each move of working the action (CMBT-J09: "cycle_time")
+    float action_penalty = gun.type->gun ? 10.f * gun_cycle_time( *gun.type->gun, gun ) : 0.f;
 
     // for higher calibers, the penalty doesn't matter that much,
     // their recoil is already hard enough they have to effectively re-aim from scratch every time
@@ -1223,6 +1255,8 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     tripoint_bub_ms aim = target;
     int curshot = 0;
     int hits = 0; // total shots on target
+    // The ammo of the first shot, for the character_fires_gun event
+    itype_id fired_ammo = itype_id::NULL_ID();
     int delay = 0; // delayed recoil that has yet to be applied
     // Snapshot the gun slot. The wielded item can stop being a gun
     // mid-loop (recoil-induced unwield, fire transforms), and the
@@ -1233,9 +1267,10 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         // Special handling for weapons where we supply the ammo separately (i.e. ammo is populated)
         // instead of it being loaded into the weapon, reload right before firing.
         if( !!ammo && !gun.ammo_remaining( ) ) {
-            Character &you = get_avatar();
+            // The shooter reloads and tires their arms, whoever they are
+            Character &you = *this;
             gun.reload( you, ammo, 1 );
-            you.burn_energy_arms( - gun.get_min_str() * static_cast<int>( 0.006f *
+            you.burn_energy_arms( - gun.get_min_str( you ) * static_cast<int>( 0.006f *
                                   get_option<int>( "PLAYER_MAX_STAMINA_BASE" ) ) );
         }
 
@@ -1259,6 +1294,9 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         // get ammo_id in gun for event character_ranged_attacks_monster. If no ammo, use itype_id::NULL_ID()
         itype_id projectile_use_ammo_id = gun.has_ammo_data() ? gun.ammo_data()->get_id() :
                                           itype_id::NULL_ID();
+        if( curshot == 0 ) {
+            fired_ammo = projectile_use_ammo_id;
+        }
         projectile proj = make_gun_projectile( gun, *this );
 
         for( damage_unit &elem : proj.impact.damage_units ) {
@@ -1300,6 +1338,10 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
                 multi_projectile_hit_message( hit_entry.first, hit_entry.second.first, hit_entry.second.second,
                                               n_gettext( "projectile", "projectiles", hit_entry.second.first ) );
             }
+            // enchantments' hit_you_effect, once a shot for each creature it hit
+            if( !hit_entry.first->is_hallucination() ) {
+                did_hit( *hit_entry.first, hit_type::ranged );
+            }
         }
         if( shot.headshot ) {
             get_event_bus().send<event_type::character_gets_headshot>( getID() );
@@ -1332,16 +1374,15 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
 
         const itype_id current_ammo = gun.ammo_current();
 
+        // CMBT-J09: ammunition types with "satisfies_pyromania" (flamethrowers, rocket launchers)
         if( has_unfulfilled_pyromania() ) {
-            const std::set<ammotype> &at = gun.ammo_types();
-            if( at.count( ammo_flammable ) ) {
-                fulfill_pyromania_msg( string_format(
-                                           _( "You feel a surge of euphoria as flames roar out of the %s!" ),
-                                           gun.tname() ) );
-            } else if( at.count( ammo_66mm ) || at.count( ammo_120mm ) || at.count( ammo_84x246mm ) ||
-                       at.count( ammo_m235 ) || at.count( ammo_atgm ) || at.count( ammo_RPG_7 ) ||
-                       at.count( ammo_homebrew_rocket ) ) {
-                fulfill_pyromania_msg_std();
+            if( const ammunition_type *pyro = pyromania_ammo_type_of( gun ) ) {
+                if( pyro->pyromania_message().empty() ) {
+                    fulfill_pyromania_msg_std();
+                } else {
+                    fulfill_pyromania_msg( string_format( pyro->pyromania_message().translated(),
+                                                          gun.tname() ) );
+                }
             }
         }
 
@@ -1382,6 +1423,12 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     }
     // Use different amounts of time depending on the type of gun and our skill
     mod_moves( -attack_moves );
+
+    // CMBT-J04: one event for the whole burst, for any EOC; not for a turret's targeting NPC
+    if( curshot > 0 && !is_fake() ) {
+        get_event_bus().send<event_type::character_fires_gun>( getID(), gun_id, fired_ammo, curshot,
+                hits );
+    }
 
     const islot_gun *firing = original_gun;
     if( !firing && gun.is_gun() ) {
@@ -1829,6 +1876,10 @@ dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, co
                             c->getID(), c->get_name() );
             get_event_bus().send_with_talker( this, c, e );
         }
+        // enchantments' hit_you_effect, for each creature it hit
+        if( !hit_entry.first->is_hallucination() ) {
+            did_hit( *hit_entry.first, hit_type::thrown );
+        }
     }
     const double missed_by = dealt_attack.missed_by;
 
@@ -1898,7 +1949,7 @@ static void mod_stamina_archery( Character &you, const item &relevant )
 {
     // Set activity level to 10 * str_ratio, with 10 being max (EXTRA_EXERCISE)
     // This ratio should never be below 0 and above 1
-    const float str_ratio = static_cast<float>( relevant.get_min_str() ) / you.get_str();
+    const float str_ratio = static_cast<float>( relevant.get_min_str( you ) ) / you.get_str();
     you.set_activity_level( 10 * str_ratio );
 
     // Calculate stamina drain based on archery, athletics skill, and effective bow strength ratio
@@ -2642,28 +2693,18 @@ item::sound_data item::gun_noise( const bool burst ) const
 
     noise = std::max( noise, 0 );
 
-    const std::set<ammotype> &at = ammo_types();
-    if( at.count( ammo_40x46mm ) || at.count( ammo_40x53mm ) ) {
-        // Grenade launchers
-        return { 8, _( "Thunk!" ) };
-
-    } else if( at.count( ammo_12mm ) || at.count( ammo_metal_rail ) ) {
-        // Railguns
-        return { 24, _( "tz-CRACKck!" ) };
-
-    } else if( at.count( ammo_flammable ) || at.count( ammo_66mm ) || at.count( ammo_120mm ) ||
-               at.count( ammo_84x246mm ) || at.count( ammo_m235 ) || at.count( ammo_atgm ) ||
-               at.count( ammo_RPG_7 ) || at.count( ammo_homebrew_rocket ) ) {
-        // Rocket launchers and flamethrowers
-        return { 4, _( "Fwoosh!" ) };
-    } else if( at.count( ammo_arrow ) ) {
-        return { noise, _( "whizz!" ) };
-    } else if( at.count( ammo_strange_arrow ) ) {
-        return { noise, _( "Crack!" ) };
-    } else if( at.count( ammo_bolt ) || at.count( ammo_bolt_ballista ) ) {
-        return { noise, _( "thonk!" ) };
-    } else if( at.count( ammo_atlatl ) ) {
-        return { noise, _( "swoosh!" ) };
+    // CMBT-J09: the "fire_sound" of the gun, or of its ammunition type (grenade launchers,
+    // railguns, rockets, flamethrowers, bows... set theirs in JSON)
+    if( const gun_fire_sound *fire_sound = gun_fire_sound_of( *this ) ) {
+        if( fire_sound->volume ) {
+            noise = std::max( *fire_sound->volume, 0 );
+        }
+        if( !fire_sound->message.empty() ) {
+            const bool burst_text = burst && !fire_sound->burst_message.empty();
+            return { noise, burst_text ? fire_sound->burst_message.translated() :
+                     fire_sound->message.translated()
+                   };
+        }
     }
 
     auto fx = ammo_effects();
@@ -3113,7 +3154,7 @@ target_handler::trajectory target_ui::run()
                 if( !relevant->ammo_remaining( ) && activity->reload_loc ) {
                     you->mod_moves( -RAS_time( *you, activity->reload_loc ) );
                     relevant->reload( get_avatar(), activity->reload_loc, 1 );
-                    you->burn_energy_arms( - relevant->get_min_str() * static_cast<int>( 0.006f *
+                    you->burn_energy_arms( - relevant->get_min_str( *you ) * static_cast<int>( 0.006f *
                                            get_option<int>( "PLAYER_MAX_STAMINA_BASE" ) ) );
                     activity->reload_loc = item_location();
                 }
@@ -4738,19 +4779,43 @@ void target_ui::on_target_accepted( bool harmful ) const
     }
 }
 
+std::string Character::ranged_ban_reason( const item &gun, const bool held ) const
+{
+    if( has_flag( json_flag_CANNOT_USE_RANGED ) ) {
+        return _( "You refuse to use ranged weapons." );
+    }
+    const bool firearm = gun.is_firearm();
+    if( firearm && has_flag( json_flag_CANNOT_USE_FIREARMS ) ) {
+        return _( "You refuse to use firearms." );
+    }
+    if( held && has_flag( json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS ) ) {
+        return _( "You have no hands and cannot use ranged weapons!" );
+    }
+    if( held && firearm && has_flag( json_flag_HANDS_CANNOT_USE_FIREARMS ) ) {
+        return _( "Your hands aren't suited for using firearms!" );
+    }
+    return std::string();
+}
+
+// Whether the gun (or a gunmod on it) is the one in the character's hands: not a mounted turret
+// or a mutation's or bionic's natural weapon
+static bool holds_gun( const Character &you, const item &gun )
+{
+    const item_location wielded = you.get_wielded_item();
+    return wielded && ( wielded.get_item() == &gun || wielded->has_item( gun ) );
+}
+
 bool gunmode_checks_common( avatar &you, const map &m, std::vector<std::string> &messages,
                             const gun_mode &gmode )
 {
     bool result = true;
-    if( you.has_trait( trait_BRAWLER ) ) {
-        messages.push_back( string_format( _( "Pfft.  You are a brawler; using this %s is beneath you." ),
-                                           gmode->tname() ) );
-        result = false;
-    }
-
-    if( you.has_trait( trait_GUNSHY ) && gmode->is_firearm() ) {
-        messages.push_back( string_format( _( "You're too gun-shy to use this." ) ) );
-        result = false;
+    // CMBT-J03: the BRAWLER and GUNSHY traits grant these flags, so anything else can too
+    if( gmode ) {
+        const std::string ban = you.ranged_ban_reason( *gmode, holds_gun( you, *gmode ) );
+        if( !ban.empty() ) {
+            messages.push_back( ban );
+            result = false;
+        }
     }
 
     // Check that passed gun mode is valid and we are able to use it

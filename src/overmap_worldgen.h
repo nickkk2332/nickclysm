@@ -58,6 +58,8 @@ struct region_point_set {
     // resolves the point set, mapping regions to points
     std::vector<region_voronoi_point> resolve() const;
     void deserialize( const JsonObject &jo );
+    // Reports unknown region ids (OMAP-J05)
+    void check( const std::string &owner ) const;
 };
 
 // defines properties of an in-game dimension
@@ -75,7 +77,10 @@ class dimension_world
         }
         void load( const JsonObject &jo, const std::string_view &src );
         void finalize();
+        void check() const;
         static void finalize_all();
+        // Reports unknown ids of dimensions and their region layouts (OMAP-J05)
+        static void check_consistency();
         static void reset();
         static void load_dimensions( const JsonObject &jo, const std::string &src );
 };
@@ -90,6 +95,8 @@ class dimension_region_layout_generator
         // return the region for the given overmap
         virtual region_settings_id get_overmap_region( const tripoint_abs_om &om_point ) = 0;
         virtual bool is_static_generation() const = 0;
+        // Reports unknown region (and layout) ids; owner names the layout (OMAP-J05)
+        virtual void check( const std::string &owner ) const = 0;
         // generate for one overmap, which will generate the entire layout for static layouts
         void init() {
             get_overmap_region( tripoint_abs_om( 0, 0, 0 ) );
@@ -123,6 +130,7 @@ class dimension_region_layout_static : public dimension_region_layout_generator
 
     public:
         void deserialize( const JsonObject &jo ) override;
+        void check( const std::string &owner ) const override;
         virtual void generate_entire_layout( Region_map &placed_regions,
                                              const tripoint_abs_om &current_om ) = 0;
         region_settings_id get_overmap_region( const tripoint_abs_om &om_point ) override;
@@ -140,6 +148,7 @@ class dimension_region_layout_generator_uniform : public dimension_region_layout
     public:
         void generate_dynamic( Region_map &placed_regions, const tripoint_abs_om &current_om ) override;
         void deserialize( const JsonObject &jo ) override;
+        void check( const std::string &owner ) const override;
 };
 
 class dimension_region_layout_generator_manual : public dimension_region_layout_static
@@ -149,6 +158,7 @@ class dimension_region_layout_generator_manual : public dimension_region_layout_
         void generate_entire_layout( Region_map &placed_regions,
                                      const tripoint_abs_om &current_om ) override;
         void deserialize( const JsonObject &jo ) override;
+        void check( const std::string &owner ) const override;
 };
 
 class dimension_region_layout_generator_random : public dimension_region_layout_dynamic
@@ -157,6 +167,7 @@ class dimension_region_layout_generator_random : public dimension_region_layout_
     public:
         void generate_dynamic( Region_map &placed_regions, const tripoint_abs_om &current_om ) override;
         void deserialize( const JsonObject &jo ) override;
+        void check( const std::string &owner ) const override;
 };
 
 class dimension_region_layout_generator_angles : public dimension_region_layout_dynamic
@@ -167,6 +178,7 @@ class dimension_region_layout_generator_angles : public dimension_region_layout_
     public:
         void generate_dynamic( Region_map &placed_regions, const tripoint_abs_om &current_om ) override;
         void deserialize( const JsonObject &jo ) override;
+        void check( const std::string &owner ) const override;
         int get_sector_count() const {
             return static_cast<int>( angles_regions.size() );
         }
@@ -193,6 +205,7 @@ class dimension_region_layout
         }
 
         void load( const JsonObject &jo, const std::string_view &src );
+        void check() const;
         static void load_dimension_regions( const JsonObject &jo, const std::string &src );
         static void reset();
         static void finalize_all();

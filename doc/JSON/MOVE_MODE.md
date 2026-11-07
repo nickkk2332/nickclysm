@@ -12,6 +12,7 @@
     - [`panel_color`](#panel_color)
     - [`symbol_color`](#symbol_color)
     - [`exertion_level`](#exertion_level)
+    - [`exertion_level_animal_riding`](#exertion_level_animal_riding)
     - [`change_good_x`](#change_good_x)
     - [`change_bad_x`](#change_bad_x)
     - [`move_type`](#move_type)
@@ -21,6 +22,10 @@
     - [`mech_power_use`](#mech_power_use)
     - [`swim_speed_mod`](#swim_speed_mod)
     - [`stop_hauling`](#stop_hauling)
+    - [`condition`](#condition)
+    - [`switch_cost`](#switch_cost)
+  - [Switching cost](#switching-cost)
+  - [EOCs and events](#eocs-and-events)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -53,7 +58,9 @@
   "move_speed_multiplier": 2.5,
   "mech_power_use": 5,
   "swim_speed_mod": -80,
-  "stop_hauling": true
+  "stop_hauling": true,
+  "condition": { "u_has_trait": "WINGS_BIRD" },
+  "switch_cost": 200
 },
 ```
 
@@ -73,10 +80,10 @@ Mandatory. The character shown on the panels when this mode is selected.
 Mandatory. The name of the move mode displayed whenever it is displayed.
 
 ### `panel_color`
-Mandatory. The color shown on the panels when this mode is selected.
+Optional. The color shown on the panels when this mode is selected.
 
 ### `symbol_color`
-Mandatory. The color shown in curses when your character is in this move mode.
+Optional. The color shown in curses when your character is in this move mode.
 
 ### `exertion_level`
 Mandatory. What exertion level this move mode will put you into. The options are, from least to most exercise:
@@ -88,6 +95,9 @@ ACTIVE_EXERCISE
 EXTRA_EXERCISE
 EXPLOSIVE_EXERCISE
 ```
+
+### `exertion_level_animal_riding`
+Optional. The exertion level while riding an animal in this mode, with the same options as `exertion_level`.  Defaults to `NO_EXERCISE`.
 
 ### `prepare_x`
 Mandatory. The message given when the character switches their desired mode to this move mode, before any action is taken.
@@ -105,7 +115,7 @@ There are three values for x: `none`, `animal`, and `mech`.
 
 ### `change_bad_x`
 Optional. The message given when the character fails to switch to this move mode.
-Right now, the only move mode that you can fail to switch are `running` type modes.
+You fail to switch to a `running` type mode when you can't run (stamina, legs), to a `prone` or `crouching` one while riding an animal, and to any mode whose [`condition`](#condition) is false.
 There are three values for x: `none`, `animal`, and `mech`.
 - `none` is the message given when the character is not mounted.
 - `animal` is the message given when riding an animal.
@@ -116,6 +126,7 @@ Defaults to `You feel bugs crawl over your skin.`
 ### `move_type`
 Mandatory. The type of move mode - used to determine if the character is in stealth, walking normally, or fleeing.
 Valid values are:
+- `prone`
 - `crouching`
 - `walking`
 - `running`
@@ -155,4 +166,24 @@ Optional. Determines whether or not hauling is cancelled switching to this mode.
 Valid values are `true` and `false`.
 
 Defaults to false.
+
+### `condition`
+Optional. A [dialogue condition](NPCs.md#dialogue-conditions), with the character as `u_`: the character can only switch to this mode while it is true.  A character in the mode when it stops being true (the wings are gone) goes back to walking on its next step.  The built-in rules still apply too.  Defaults to none: anyone can switch to it.
+
+```jsonc
+"condition": { "u_has_trait": "WINGS_BIRD" }
+```
+
+### `switch_cost`
+Optional. Moves added to the cost of switching to this mode, on top of the [posture change](#switching-cost).  Must be zero or more.  Defaults to `0`.
+
+## Switching cost
+
+Changing mode costs moves: 50 to go between standing (`walking`, `running`) and `crouching`, 100 between `crouching` and `prone`, 150 between standing and `prone`, plus the new mode's `switch_cost`.  Carrying more than your capacity multiplies it by the weight ratio, `DEFT` halves it and `CLUMSY` makes it 1.5 times as much; then the enchantment value [`MOVE_MODE_SWITCH_COST`](MAGIC.md) applies.  The avatar pays when its next action starts; an NPC pays when it switches.
+
+## EOCs and events
+
+- The condition `u_has_move_mode` / `npc_has_move_mode` checks the current mode ([EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md#u_has_move_mode-npc_has_move_mode)).
+- The effect `u_set_move_mode` / `npc_set_move_mode` switches to a mode ([EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md#u_set_move_mode-npc_set_move_mode)).
+- The event `character_changes_move_mode` is sent whenever a character's mode changes.
 

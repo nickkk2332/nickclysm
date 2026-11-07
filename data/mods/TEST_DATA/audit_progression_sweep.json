@@ -103,7 +103,7 @@
     "id": "test_prog_b10_circle_a",
     "category": "prof_test_category",
     "name": { "str": "PROG-B10 Circle A" },
-    "description": "Requires test_prog_b10_circle_b, which requires it.",
+    "description": "Requires test_prog_b10_circle_b, which the test makes require it.",
     "can_learn": true,
     "time_to_learn": "1 h",
     "required_proficiencies": [ "test_prog_b10_circle_b" ]
@@ -113,9 +113,8 @@
     "id": "test_prog_b10_circle_b",
     "category": "prof_test_category",
     "name": { "str": "PROG-B10 Circle B" },
-    "description": "Requires test_prog_b10_circle_a, which requires it.",
+    "description": "Required by test_prog_b10_circle_a.  The test makes it require that one back, which the load check would report.",
     "can_learn": true,
-    "time_to_learn": "1 h",
-    "required_proficiencies": [ "test_prog_b10_circle_a" ]
+    "time_to_learn": "1 h"
   }
 ]

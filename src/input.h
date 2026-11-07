@@ -9,6 +9,8 @@
 #include "input_enums.h"
 #include "translation.h"
 
+class JsonObject;
+class JsonOut;
 class cata_path;
 
 // Curses key constants
@@ -304,6 +306,15 @@ class input_manager
          * and possibly been modified.
          */
         void save();
+        /**
+         * Writes the actions of @p current (context -> action -> attributes) whose bindings
+         * differ from @p defaults, as save() writes them to the user's keybindings file.
+         * An action left as it is in the defaults isn't written, so later changes to the
+         * defaults still reach the player.
+         */
+        void serialize_changed_bindings( JsonOut &jsout,
+                                         const std::map<std::string, std::map<std::string, action_attributes>> &current,
+                                         const std::map<std::string, std::map<std::string, action_attributes>> &defaults ) const;
 
         /**
          * Return the previously pressed key, or 0 if there is no previous input
@@ -362,6 +373,23 @@ class input_manager
         // Checks if a category and bind are present in action_contexts and debugmsg if not
         void check_keybind( const std::string &category, const std::string &keybind,
                             const std::string &context ) const;
+
+        /**
+         * The input events one entry of a "bindings" array stands for
+         * ({ "input_method": ..., "mod": [...], "key": ... }). Throws on bad JSON.
+         */
+        std::vector<input_event> read_binding( const JsonObject &keybinding ) const;
+        /**
+         * Adds an action a mod defines (a "keybinding" JSON object) to the default keybindings,
+         * leaving out keys the context or the global context already uses. The live bindings get
+         * them too, unless the player's keybindings file already binds the action.
+         */
+        void add_mod_action( const std::string &action_id, const std::string &context,
+                             const translation &name, const std::vector<input_event> &keys );
+        /** Undoes add_mod_action when mods unload; keys the player changed stay. */
+        void remove_mod_action( const std::string &action_id, const std::string &context );
+        /** Whether the default keybindings have the action in the context or the global one */
+        bool has_basic_action( const std::string &action_id, const std::string &context ) const;
     private:
         friend class input_context;
 

@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <set>
+#include <string_view>
 #include <utility>
 
 #include "ammo_effect.h"
 #include "calendar.h"
 #include "character.h"
+#include "clone_ptr.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -17,7 +20,9 @@
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "effect_on_condition.h"
+#include "enum_conversions.h"
 #include "explosion.h"
+#include "flag.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "game_constants.h"
@@ -25,6 +30,7 @@
 #include "generic_factory.h"
 #include "inventory_ui.h"
 #include "item.h"
+#include "item_components.h"
 #include "item_location.h"
 #include "itype.h"
 #include "map.h"
@@ -40,20 +46,24 @@
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
 #include "point.h"
+#include "recipe.h"
+#include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "string_formatter.h"
 #include "talker.h"
 #include "timed_event.h"
 #include "translations.h"
 #include "uilist.h"
+#include "units.h"
+#include "units_utility.h"
 #include "value_ptr.h"
 #include "veh_appliance.h"
 #include "visitable.h"
 
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
-static const ter_str_id ter_t_door_metal_c( "t_door_metal_c" );
-static const ter_str_id ter_t_door_metal_locked( "t_door_metal_locked" );
+static const ter_str_id ter_t_card_reader_broken( "t_card_reader_broken" );
 
 void appliance_convert_examine_actor::load( const JsonObject &jo, const std::string & )
 {
@@ -211,7 +221,8 @@ void cardreader_examine_actor::call( Character &you, const tripoint_bub_ms &exam
 
     std::vector<item_location> cards = get_cards( you, examp );
 
-    if( !cards.empty() && query_yn( _( query_msg ) ) ) {
+    // "query": false uses the card without asking
+    if( !cards.empty() && ( !query || query_yn( _( query_msg ) ) ) ) {
         you.mod_moves( -to_moves<int>( 1_seconds ) );
         open = apply( examp );
         for( monster &critter : g->all_monsters() ) {
@@ -240,7 +251,7 @@ void cardreader_examine_actor::call( Character &you, const tripoint_bub_ms &exam
     }
 }
 
-void cardreader_examine_actor::load( const JsonObject &jo, const std::string & )
+void cardreader_examine_actor::load( const JsonObject &jo, const std::string &src )
 {
     mandatory( jo, false, "flags", allowed_flags );
     optional( jo, false, "consume_card", consume, true );
@@ -259,13 +270,70 @@ void cardreader_examine_actor::load( const JsonObject &jo, const std::string & )
     optional( jo, false, "query_msg", query_msg );
     mandatory( jo, false, "success_msg", success_msg );
     mandatory( jo, false, "redundant_msg", redundant_msg );
+    optional( jo, false, "hacked_ter", hacked_ter );
+    optional( jo, false, "hacked_furn", hacked_furn );
+    optional( jo, false, "hack_difficulty", hack_difficulty, 6 );
+    for( JsonValue jv : jo.get_array( "hack_eocs" ) ) {
+        hack_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+}
 
+void cardreader_examine_actor::run_hack_eocs( Character &who, const tripoint_bub_ms &examp ) const
+{
+    const tripoint_abs_ms pos = get_map().get_abs( examp );
+    for( const effect_on_condition_id &eoc : hack_eocs ) {
+        dialogue d( get_talker_for( who ), nullptr );
+        d.set_value( "pos", pos );
+        eoc->activate( d );
+    }
+}
+
+bool cardreader_examine_actor::hack( const tripoint_bub_ms &examp, bool furniture_reader ) const
+{
+    map &here = get_map();
+    const ter_id reader_ter = here.ter( examp );
+    const furn_id reader_furn = here.furn( examp );
+    // the doors (or the mapgen update) first: apply() looks at the tiles around the reader
+    const bool opened = apply( examp );
+    // the reader itself, unless the changes already replaced it
+    if( here.ter( examp ) == reader_ter ) {
+        if( hacked_ter ) {
+            here.ter_set( examp, *hacked_ter );
+        } else if( !furniture_reader ) {
+            here.ter_set( examp, ter_t_card_reader_broken );
+        }
+    }
+    if( hacked_furn && here.furn( examp ) == reader_furn ) {
+        here.furn_set( examp, *hacked_furn );
+    }
+    return opened;
+}
+
+void cardreader_examine_actor::check( const std::string &owner ) const
+{
+    if( hacked_ter && !hacked_ter->is_valid() ) {
+        debugmsg( "card reader of %s: hacked_ter \"%s\" is not a terrain", owner, hacked_ter->str() );
+    }
+    if( hacked_furn && !hacked_furn->is_valid() ) {
+        debugmsg( "card reader of %s: hacked_furn \"%s\" is not furniture", owner,
+                  hacked_furn->str() );
+    }
+    if( hack_difficulty < 0 ) {
+        debugmsg( "card reader of %s: hack_difficulty %d is below 0", owner, hack_difficulty );
+    }
+    // examine actors' finalize() isn't called: its checks run here
+    finalize();
 }
 
 void cardreader_examine_actor::finalize() const
 {
     if( allowed_flags.empty() ) {
         debugmsg( "Cardreader examine actor has no allowed card flags." );
+    }
+    for( const effect_on_condition_id &eoc : hack_eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "Cardreader runs hack_eocs %s that does not exist!", eoc.str() );
+        }
     }
 
     for( const flag_id &flag : allowed_flags ) {
@@ -281,12 +349,7 @@ void cardreader_examine_actor::finalize() const
     if( query && query_msg.empty() ) {
         debugmsg( "Cardreader is told to query, yet does not have a query message defined." );
     }
-
-    if( allow_hacking && ( !furn_changes.empty() || terrain_changes.size() != 1 ||
-                           terrain_changes.count( ter_t_door_metal_locked ) != 1 ||
-                           terrain_changes.at( ter_t_door_metal_locked ) != ter_t_door_metal_c ) ) {
-        debugmsg( "Cardreader allows hacking, but activities different that if hacked." );
-    }
+    // hacking makes the same changes as a card (ACT-J06), so any reader may allow it
 }
 
 std::unique_ptr<iexamine_actor> cardreader_examine_actor::clone() const
@@ -303,18 +366,53 @@ void eoc_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) con
     call_with_context( you, examp, data );
 }
 
-void eoc_examine_actor::call_with_context( Character &you, const tripoint_bub_ms &examp,
-        const map_data_common_t &data ) const
+void eoc_examine_actor::set_context( const_dialogue &d, const tripoint_bub_ms &examp,
+                                     const map_data_common_t &data )
 {
-    map &here = get_map();
+    const map &here = get_map();
     const bool furniture = &data == &here.furn( examp ).obj();
-
-    dialogue d( get_talker_for( you ), nullptr );
     d.set_value( "this", furniture ? here.furn( examp ).id().str() : here.ter( examp ).id().str() );
     d.set_value( "terrain", here.ter( examp ).id().str() );
     d.set_value( "furniture", here.furn( examp ).id().str() );
     d.set_value( "examined_layer", furniture ? "furniture" : "terrain" );
     d.set_value( "pos", here.get_abs( examp ) );
+}
+
+bool eoc_examine_actor::meets_condition( const Character &who, const tripoint_bub_ms &examp,
+        const map_data_common_t &data ) const
+{
+    if( !has_condition ) {
+        return true;
+    }
+    const_dialogue d( get_const_talker_for( who ), nullptr );
+    set_context( d, examp, data );
+    return condition( d );
+}
+
+bool eoc_examine_actor::can_examine( const Character &who, const tripoint_bub_ms &examp,
+                                     const map_data_common_t &data ) const
+{
+    // with a message, examining says why it can't
+    return !condition_fail_msg.empty() || meets_condition( who, examp, data );
+}
+
+bool eoc_examine_actor::npc_can_use( const Character &who, const tripoint_bub_ms &examp,
+                                     const map_data_common_t &data ) const
+{
+    return npc_usable && meets_condition( who, examp, data );
+}
+
+void eoc_examine_actor::call_with_context( Character &you, const tripoint_bub_ms &examp,
+        const map_data_common_t &data ) const
+{
+    if( !meets_condition( you, examp, data ) ) {
+        if( !condition_fail_msg.empty() ) {
+            you.add_msg_if_player( condition_fail_msg.translated() );
+        }
+        return;
+    }
+    dialogue d( get_talker_for( you ), nullptr );
+    set_context( d, examp, data );
     for( const effect_on_condition_id &eoc : eocs ) {
         eoc->activate( d );
     }
@@ -325,6 +423,12 @@ void eoc_examine_actor::load( const JsonObject &jo, const std::string &src )
     for( JsonValue jv : jo.get_array( "effect_on_conditions" ) ) {
         eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+        has_condition = true;
+    }
+    optional( jo, false, "condition_fail_msg", condition_fail_msg );
+    optional( jo, false, "npc_usable", npc_usable, true );
 }
 
 void eoc_examine_actor::finalize() const
@@ -339,6 +443,535 @@ void eoc_examine_actor::finalize() const
 std::unique_ptr<iexamine_actor> eoc_examine_actor::clone() const
 {
     return std::make_unique<eoc_examine_actor>( *this );
+}
+
+bool process_item_filter::matches( const item &it ) const
+{
+    if( fresh && it.rotten() ) {
+        return false;
+    }
+    if( bionic && !it.is_bionic() ) {
+        return false;
+    }
+    if( materials.empty() && flags.empty() && items.empty() ) {
+        return true;
+    }
+    if( !materials.empty() && it.made_of_any( materials ) ) {
+        return true;
+    }
+    if( std::any_of( flags.begin(), flags.end(), [&it]( const flag_id & f ) {
+    return it.has_flag( f );
+    } ) ) {
+        return true;
+    }
+    return std::find( items.begin(), items.end(), it.typeId() ) != items.end();
+}
+
+bool process_item_filter::empty() const
+{
+    return materials.empty() && flags.empty() && items.empty() && !fresh && !bionic;
+}
+
+void process_item_filter::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "materials", materials );
+    optional( jo, false, "flags", flags );
+    optional( jo, false, "items", items );
+    optional( jo, false, "fresh", fresh, false );
+    optional( jo, false, "bionic", bionic, false );
+}
+
+void process_item_filter::check( const std::string &owner ) const
+{
+    for( const material_id &mat : materials ) {
+        if( !mat.is_valid() ) {
+            debugmsg( "%s: process takes unknown material %s", owner, mat.str() );
+        }
+    }
+    for( const flag_id &flag : flags ) {
+        if( !flag.is_valid() ) {
+            debugmsg( "%s: process takes unknown item flag %s", owner, flag.str() );
+        }
+    }
+    for( const itype_id &type : items ) {
+        if( !type.is_valid() ) {
+            debugmsg( "%s: process takes unknown item %s", owner, type.str() );
+        }
+    }
+}
+
+void process_message::print() const
+{
+    if( !text.empty() ) {
+        add_msg( type, string_format( text.translated() ) );
+    }
+}
+
+void process_message::print( const std::string &arg ) const
+{
+    if( !text.empty() ) {
+        add_msg( type, string_format( text.translated(), arg ) );
+    }
+}
+
+void process_message::print( int arg ) const
+{
+    if( !text.empty() ) {
+        add_msg( type, string_format( text.translated(), arg ) );
+    }
+}
+
+void process_message::print( const std::string &arg1, const std::string &arg2 ) const
+{
+    if( !text.empty() ) {
+        add_msg( type, string_format( text.translated(), arg1, arg2 ) );
+    }
+}
+
+void process_message::deserialize( const JsonValue &jv )
+{
+    if( jv.test_object() ) {
+        JsonObject jo = jv.get_object();
+        if( jo.has_member( "text" ) ) {
+            mandatory( jo, false, "text", text );
+            if( jo.has_string( "type" ) ) {
+                type = io::string_to_enum<game_message_type>( jo.get_string( "type" ) );
+            }
+            return;
+        }
+    }
+    jv.read( text, true );
+}
+
+void process_time_message::print( const time_duration &left ) const
+{
+    if( !exact.empty() ) {
+        add_msg( string_format( exact.translated(), to_string( left ) ) );
+        return;
+    }
+    const int num_hours = to_hours<int>( left );
+    const int num_minutes = to_minutes<int>( left ) + 1;
+    if( num_minutes > 60 ) {
+        if( !hours.empty() ) {
+            add_msg( string_format( hours.translated( num_hours ), num_hours ) );
+        }
+    } else if( num_minutes > 30 ) {
+        if( !less_than_an_hour.empty() ) {
+            add_msg( string_format( less_than_an_hour.translated() ) );
+        }
+    } else if( !minutes.empty() ) {
+        add_msg( string_format( minutes.translated( num_minutes ), num_minutes ) );
+    }
+}
+
+void process_time_message::deserialize( const JsonValue &jv )
+{
+    if( !jv.test_object() ) {
+        jv.read( exact, true );
+        return;
+    }
+    JsonObject jo = jv.get_object();
+    optional( jo, false, "hours", hours );
+    optional( jo, false, "less_than_an_hour", less_than_an_hour );
+    optional( jo, false, "minutes", minutes );
+}
+
+// A message, or a list of messages.
+static void read_messages( const JsonObject &jo, std::string_view name,
+                           std::vector<process_message> &messages )
+{
+    messages.clear();
+    if( jo.has_array( name ) ) {
+        for( const JsonValue jv : jo.get_array( name ) ) {
+            process_message msg;
+            msg.deserialize( jv );
+            messages.push_back( msg );
+        }
+    } else if( jo.has_member( name ) ) {
+        process_message msg;
+        msg.deserialize( jo.get_member( name ) );
+        messages.push_back( msg );
+    }
+}
+
+static void read_process_eocs( const JsonObject &jo, const std::string_view src,
+                               std::vector<effect_on_condition_id> &eocs )
+{
+    eocs.clear();
+    for( JsonValue jv : jo.get_array( "effect_on_conditions" ) ) {
+        eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+}
+
+static void check_process_eocs( const std::string &owner,
+                                const std::vector<effect_on_condition_id> &eocs )
+{
+    for( const effect_on_condition_id &eoc : eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "%s: process runs unknown effect_on_condition %s", owner, eoc.str() );
+        }
+    }
+}
+
+static dialogue process_dialogue( Character &you, const tripoint_bub_ms &examp )
+{
+    map &here = get_map();
+    dialogue d( get_talker_for( you ), nullptr );
+    d.set_value( "this", here.furn( examp ).id().str() );
+    d.set_value( "pos", here.get_abs( examp ) );
+    return d;
+}
+
+dialogue process_start_examine_actor::make_dialogue( Character &you,
+        const tripoint_bub_ms &examp, const units::volume &total ) const
+{
+    dialogue d = process_dialogue( you, examp );
+    d.set_value( "volume", static_cast<double>( to_milliliter( total ) ) );
+    if( skill ) {
+        d.set_value( "skill_level", static_cast<double>( you.get_skill_level( *skill ) ) );
+    }
+    return d;
+}
+
+bool process_start_examine_actor::prep( Character &, const tripoint_bub_ms &examp ) const
+{
+    map &here = get_map();
+    bool present = false;
+    for( const item &it : here.i_at( examp ) ) {
+        if( !reject_if_contains.empty() && reject_if_contains.matches( it ) ) {
+            for( const process_message &msg : contains_message ) {
+                msg.print( it.tname( 1, false ) );
+            }
+            return false;
+        } else if( accepts.matches( it ) ) {
+            present = true;
+        } else {
+            reject_message.print( it.tname( 1, false ) );
+            return false;
+        }
+    }
+    if( !present ) {
+        empty_message.print();
+        return false;
+    }
+    if( requires_outside && !here.is_outside( examp ) ) {
+        outside_message.print();
+        return false;
+    }
+    return true;
+}
+
+bool process_start_examine_actor::begin( Character &you, const tripoint_bub_ms &examp,
+        bool ask ) const
+{
+    map &here = get_map();
+    units::volume total = 0_ml;
+    for( const item &it : here.i_at( examp ) ) {
+        total += it.volume();
+    }
+    dialogue d = make_dialogue( you, examp, total );
+
+    int charges = 0;
+    if( !intermediate.is_null() ) {
+        // whole percents, as the kilns always had
+        const int percent = static_cast<int>( yield_percent.evaluate( d ) );
+        charges = item::find_type( intermediate )->charges_per_volume( percent * total / 100 );
+        if( charges < 1 ) {
+            too_small_message.print();
+            return false;
+        }
+    }
+
+    std::optional<requirement_data> reqs;
+    if( requirements ) {
+        reqs = requirements->obj();
+        if( !reqs->can_make_with_inventory( &you, you.crafting_inventory(), is_crafting_component ) ) {
+            popup( "%s", reqs->list_missing() );
+            return false;
+        }
+    }
+
+    units::energy needed = 0_kJ;
+    if( energy ) {
+        needed = units::from_kilojoule( static_cast<std::int64_t>( energy->evaluate( d ) ) );
+        if( you.available_ups() < needed ) {
+            no_energy_message.print();
+            return false;
+        }
+    }
+
+    if( ask ) {
+        ready_message.print( format_volume( total ), volume_units_abbr() );
+        if( !query.empty() && !query_yn( query.translated() ) ) {
+            return false;
+        }
+    }
+
+    if( reqs ) {
+        for( const std::vector<item_comp> &comp : reqs->get_components() ) {
+            you.consume_items( comp, 1, is_crafting_component );
+        }
+        for( const std::vector<tool_comp> &tool : reqs->get_tools() ) {
+            you.consume_tools( tool );
+        }
+        you.invalidate_crafting_inventory();
+    }
+    if( energy ) {
+        you.consume_ups( needed );
+    }
+    if( !intermediate.is_null() ) {
+        here.i_clear( examp );
+    } else if( reset_age ) {
+        for( item &it : here.i_at( examp ) ) {
+            it.set_birthday( calendar::turn );
+        }
+    }
+    here.furn_set( examp, furn_set );
+    if( !intermediate.is_null() ) {
+        item result( intermediate, calendar::turn );
+        result.charges = charges;
+        here.add_item( examp, result );
+    }
+    success_message.print();
+
+    for( const effect_on_condition_id &eoc : eocs ) {
+        eoc->activate( d );
+    }
+    return true;
+}
+
+bool process_start_examine_actor::fire( Character &you, const tripoint_bub_ms &examp ) const
+{
+    if( !prep( you, examp ) ) {
+        return false;
+    }
+    return begin( you, examp, false );
+}
+
+void process_start_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) const
+{
+    if( !prep( you, examp ) ) {
+        return;
+    }
+    if( firestarter ) {
+        iexamine::fire_process( you, examp );
+        return;
+    }
+    begin( you, examp, true );
+}
+
+const process_start_examine_actor *process_start_examine_actor::firestarter_process(
+    const furn_t &furn )
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : furn.get_examine_actors() ) {
+        const process_start_examine_actor *process =
+            dynamic_cast<const process_start_examine_actor *>( act.get() );
+        if( process != nullptr && process->firestarter ) {
+            return process;
+        }
+    }
+    return nullptr;
+}
+
+void process_start_examine_actor::load( const JsonObject &jo, const std::string &src )
+{
+    optional( jo, false, "accepts", accepts );
+    if( jo.has_member( "reject_if_contains" ) ) {
+        optional( jo, false, "reject_if_contains", reject_if_contains );
+        if( reject_if_contains.materials.empty() && reject_if_contains.flags.empty() &&
+            reject_if_contains.items.empty() ) {
+            jo.throw_error_at( "reject_if_contains", "Needs materials, flags or items" );
+        }
+    }
+    read_messages( jo, "contains_message", contains_message );
+    optional( jo, false, "reject_message", reject_message, process_message( m_bad ) );
+    optional( jo, false, "empty_message", empty_message );
+    optional( jo, false, "requires_outside", requires_outside, false );
+    optional( jo, false, "outside_message", outside_message );
+    optional( jo, false, "skill", skill );
+    optional( jo, false, "intermediate", intermediate, itype_id::NULL_ID() );
+    if( !intermediate.is_null() ) {
+        mandatory( jo, false, "yield_percent", yield_percent );
+    } else if( jo.has_member( "yield_percent" ) ) {
+        jo.throw_error_at( "yield_percent", "A yield needs an \"intermediate\" item" );
+    }
+    optional( jo, false, "too_small_message", too_small_message );
+    optional( jo, false, "energy", energy );
+    optional( jo, false, "no_energy_message", no_energy_message );
+    optional( jo, false, "requirements", requirements );
+    optional( jo, false, "firestarter", firestarter, false );
+    optional( jo, false, "ready_message", ready_message );
+    optional( jo, false, "query", query );
+    optional( jo, false, "reset_age", reset_age, false );
+    optional( jo, false, "success_message", success_message );
+    mandatory( jo, false, "furn_set", furn_set );
+    read_process_eocs( jo, src, eocs );
+}
+
+void process_start_examine_actor::finalize() const
+{
+}
+
+void process_start_examine_actor::check( const std::string &owner ) const
+{
+    accepts.check( owner );
+    reject_if_contains.check( owner );
+    if( !furn_set.is_valid() ) {
+        debugmsg( "%s: process_start sets unknown furniture %s", owner, furn_set.str() );
+    }
+    if( !intermediate.is_null() && !intermediate.is_valid() ) {
+        debugmsg( "%s: process_start makes unknown item %s", owner, intermediate.str() );
+    }
+    if( skill && !skill->is_valid() ) {
+        debugmsg( "%s: process_start uses unknown skill %s", owner, skill->str() );
+    }
+    if( requirements && !requirements->is_valid() ) {
+        debugmsg( "%s: process_start needs unknown requirement %s", owner, requirements->str() );
+    }
+    check_process_eocs( owner, eocs );
+}
+
+std::unique_ptr<iexamine_actor> process_start_examine_actor::clone() const
+{
+    return std::make_unique<process_start_examine_actor>( *this );
+}
+
+// The stook's drying: each smokable item becomes its smoking result, as old as it was.
+static void dry_to_smoking_result( item &it )
+{
+    item result( it.get_comestible()->smoking_result, it.birthday() );
+    recipe rec;
+    result.inherit_flags( it, rec );
+    if( !result.has_flag( flag_NUTRIENT_OVERRIDE ) ) {
+        // If the item has "cooks_like" it will be replaced by that item as a component.
+        if( !it.get_comestible()->cooks_like.is_empty() ) {
+            // Set charges to 1 for stacking purposes.
+            it = item( it.get_comestible()->cooks_like, it.birthday(), 1 );
+        }
+        result.components.add( it );
+    }
+    it = result;
+}
+
+void process_finish_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) const
+{
+    map &here = get_map();
+    map_stack items = here.i_at( examp );
+    if( items.empty() ) {
+        empty_message.print();
+        here.furn_set( examp, furn_set );
+        return;
+    }
+    if( !accepts.empty() ) {
+        for( const item &it : items ) {
+            if( !accepts.matches( it ) ) {
+                reject_message.print( it.tname( 1, false ) );
+                return;
+            }
+        }
+    }
+    examine_message.print();
+
+    dialogue d = process_dialogue( you, examp );
+    const time_duration time_left = duration.evaluate( d ) - items.begin()->age();
+    if( time_left > 0_turns ) {
+        time_left_message.print( time_left );
+        return;
+    }
+
+    int made = 0;
+    if( !output.is_null() ) {
+        units::volume total = 0_ml;
+        for( map_stack::iterator it = items.begin(); it != items.end(); ) {
+            if( std::find( output_from.begin(), output_from.end(), it->typeId() ) != output_from.end() ) {
+                total += it->volume();
+                it = items.erase( it );
+            } else {
+                ++it;
+            }
+        }
+        item result( output, calendar::turn );
+        result.charges = item::find_type( output )->charges_per_volume( total );
+        made = result.charges;
+        here.add_item( examp, result );
+    }
+    if( convert_to_smoking_result ) {
+        for( item &it : items ) {
+            if( it.is_smokable() ) {
+                dry_to_smoking_result( it );
+                made++;
+            }
+        }
+    }
+    bool all_unpacked = false;
+    if( sterilize_cbms ) {
+        all_unpacked = std::all_of( items.begin(), items.end(), []( const item & it ) {
+            return it.is_bionic() && it.has_flag( flag_NO_PACKED );
+        } );
+        for( item &it : items ) {
+            if( !it.has_flag( flag_NO_PACKED ) ) {
+                it.unset_flag( flag_NO_STERILE );
+            }
+        }
+    }
+    here.furn_set( examp, furn_set );
+
+    if( !convert_to_smoking_result || made > 0 ) {
+        done_message.print( made );
+    }
+    if( all_unpacked ) {
+        add_msg( m_info,
+                 _( "CBMs in direct contact with the environment will almost immediately become contaminated." ) );
+    }
+    for( const effect_on_condition_id &eoc : eocs ) {
+        eoc->activate( d );
+    }
+}
+
+void process_finish_examine_actor::load( const JsonObject &jo, const std::string &src )
+{
+    mandatory( jo, false, "duration", duration );
+    mandatory( jo, false, "furn_set", furn_set );
+    optional( jo, false, "empty_message", empty_message );
+    optional( jo, false, "accepts", accepts );
+    optional( jo, false, "reject_message", reject_message, process_message( m_bad ) );
+    optional( jo, false, "examine_message", examine_message );
+    optional( jo, false, "time_left_message", time_left_message );
+    if( jo.has_object( "output" ) ) {
+        JsonObject out = jo.get_object( "output" );
+        mandatory( out, false, "item", output );
+        mandatory( out, false, "from", output_from );
+    }
+    optional( jo, false, "convert_to_smoking_result", convert_to_smoking_result, false );
+    optional( jo, false, "sterilize_cbms", sterilize_cbms, false );
+    optional( jo, false, "done_message", done_message );
+    read_process_eocs( jo, src, eocs );
+}
+
+void process_finish_examine_actor::finalize() const
+{
+}
+
+void process_finish_examine_actor::check( const std::string &owner ) const
+{
+    accepts.check( owner );
+    if( !furn_set.is_valid() ) {
+        debugmsg( "%s: process_finish sets unknown furniture %s", owner, furn_set.str() );
+    }
+    if( !output.is_null() && !output.is_valid() ) {
+        debugmsg( "%s: process_finish makes unknown item %s", owner, output.str() );
+    }
+    for( const itype_id &from : output_from ) {
+        if( !from.is_valid() ) {
+            debugmsg( "%s: process_finish uses up unknown item %s", owner, from.str() );
+        }
+    }
+    check_process_eocs( owner, eocs );
+}
+
+std::unique_ptr<iexamine_actor> process_finish_examine_actor::clone() const
+{
+    return std::make_unique<process_finish_examine_actor>( *this );
 }
 
 void mortar_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) const

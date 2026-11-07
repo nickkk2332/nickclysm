@@ -47,6 +47,9 @@ struct item_locator_hint {
     item_locator_hint() = default;
 };
 
+// Where an item is now, as a hint to find it by its uid later
+item_locator_hint hint_from_location( const item_location &loc );
+
 // Producer record.  Manager stamps the caller-supplied hint when scheduling.
 struct desired_wakeup {
     item_wakeup_kind kind;

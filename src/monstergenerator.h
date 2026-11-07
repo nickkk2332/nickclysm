@@ -4,7 +4,6 @@
 
 #include <map>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -41,6 +40,14 @@ struct species_type {
     enum_bitset<mon_trigger> fear;
     enum_bitset<mon_trigger> placate;
     field_type_str_id bleeds;
+    // MONAI-J07: "effect_immunities", effect -> chance in percent of resisting it
+    std::map<efftype_id, int> effect_immunities;
+    // MONAI-J07: "bleed_effect", what its monsters get instead of "bleed" (null for "bleed")
+    efftype_id bleed_effect = efftype_id::NULL_ID();
+    // MONDT-J11: the gibs field of its monsters that have no gib_field of their own
+    field_type_str_id gibs = field_type_str_id::NULL_ID();
+    // MONDT-J14: for its monsters, after their own (an id they have too is theirs)
+    std::vector<pet_interaction> pet_interactions;
     std::string get_footsteps() const {
         return footsteps.translated();
     }
@@ -78,7 +85,6 @@ class MonsterGenerator
 
         void check_monster_definitions() const;
 
-        std::optional<mon_action_death> get_death_function( const std::string &f ) const;
         /** The monster attack defined in JSON with this id, or nullptr if there is none or it is
          *  hardcoded (hardcoded attacks may expect the monster to have them) */
         const mtype_special_attack *find_json_attack( const std::string &id ) const;
@@ -119,7 +125,6 @@ class MonsterGenerator
         std::vector<mtype_id> hallucination_monsters;
 
         std::unordered_map<std::string, phase_id> phase_map;
-        std::map<std::string, mon_action_death> death_map;
         std::map<std::string, mon_action_defend> defense_map;
         std::map<std::string, mtype_special_attack> attack_map;
 };

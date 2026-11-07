@@ -1,6 +1,7 @@
 #include "regional_settings.h"
 
 #include <algorithm>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -11,6 +12,7 @@
 #include <variant>
 
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "mapdata.h"
@@ -21,10 +23,30 @@
 
 class mapgendata;
 
+static const mongroup_id GROUP_OCEAN_DEEP( "GROUP_OCEAN_DEEP" );
+static const mongroup_id GROUP_OCEAN_SHORE( "GROUP_OCEAN_SHORE" );
+static const mongroup_id GROUP_RIVER( "GROUP_RIVER" );
+static const mongroup_id GROUP_SUBWAY_CITY( "GROUP_SUBWAY_CITY" );
+static const mongroup_id GROUP_SWAMP( "GROUP_SWAMP" );
+static const mongroup_id GROUP_ZOMBIE_HORDE( "GROUP_ZOMBIE_HORDE" );
+
+static const oter_str_id oter_forest( "forest" );
+static const oter_str_id oter_forest_thick( "forest_thick" );
+static const oter_str_id oter_forest_water( "forest_water" );
 static const oter_str_id oter_lake_bed( "lake_bed" );
 static const oter_str_id oter_lake_shore( "lake_shore" );
 static const oter_str_id oter_lake_surface( "lake_surface" );
 static const oter_str_id oter_lake_water_cube( "lake_water_cube" );
+static const oter_str_id oter_ocean_bed( "ocean_bed" );
+static const oter_str_id oter_ocean_shore( "ocean_shore" );
+static const oter_str_id oter_ocean_surface( "ocean_surface" );
+static const oter_str_id oter_ocean_water_cube( "ocean_water_cube" );
+static const oter_str_id oter_ravine( "ravine" );
+static const oter_str_id oter_ravine_edge( "ravine_edge" );
+static const oter_str_id oter_ravine_floor_edge( "ravine_floor_edge" );
+static const oter_str_id oter_road_nesw_manhole( "road_nesw_manhole" );
+
+static const pp_generator_id pp_generator_riot_damage_road( "riot_damage_road" );
 
 static const weighted_string_id_reader<overmap_special_id, int> building_bin_reader( 1 );
 static const weighted_string_id_reader<furn_id, int> furn_reader( 1 );
@@ -450,7 +472,34 @@ void region_settings_forest::load( const JsonObject &jo, std::string_view )
 
     optional( jo, was_loaded, "forest_threshold_limit", max_forest, 0.395 );
     optional( jo, was_loaded, "forest_threshold_increase", forest_increase, { 0, 0, 0, 0 } );
+    optional( jo, was_loaded, "forest_ter", forest_ter, oter_forest );
+    optional( jo, was_loaded, "forest_thick_ter", forest_thick_ter, oter_forest_thick );
+    optional( jo, was_loaded, "swamp_ter", swamp_ter, oter_forest_water );
+    optional( jo, was_loaded, "noise", forest_noise, om_noise::om_noise_params::forest() );
+    optional( jo, was_loaded, "noise_detail", forest_detail_noise,
+              om_noise::om_noise_params::forest_detail() );
+    optional( jo, was_loaded, "floodplain_noise", floodplain_noise,
+              om_noise::om_noise_params::floodplain() );
 }
+
+region_settings_forest::region_settings_forest() :
+    forest_ter( oter_forest ),
+    forest_thick_ter( oter_forest_thick ),
+    swamp_ter( oter_forest_water )
+{}
+
+region_settings_ocean::region_settings_ocean() :
+    surface( oter_ocean_surface ),
+    shore( oter_ocean_shore ),
+    interior( oter_ocean_water_cube ),
+    bed( oter_ocean_bed )
+{}
+
+region_settings_ravine::region_settings_ravine() :
+    ravine_terrain( oter_ravine ),
+    ravine_edge_terrain( oter_ravine_edge ),
+    ravine_floor_edge_terrain( oter_ravine_floor_edge )
+{}
 
 void region_settings_ravine::load( const JsonObject &jo, std::string_view )
 {
@@ -460,6 +509,10 @@ void region_settings_ravine::load( const JsonObject &jo, std::string_view )
               ravine_range );
     optional( jo, was_loaded, "ravine_depth", ravine_depth );
     optional( jo, true, "ravine_bottom_terrain_id", ravine_bottom_terrain_str_id );
+    optional( jo, was_loaded, "ravine_terrain_id", ravine_terrain, oter_ravine );
+    optional( jo, was_loaded, "ravine_edge_terrain_id", ravine_edge_terrain, oter_ravine_edge );
+    optional( jo, was_loaded, "ravine_floor_edge_terrain_id", ravine_floor_edge_terrain,
+              oter_ravine_floor_edge );
 }
 
 void region_settings_overmap_connection::deserialize( const JsonObject &jo )
@@ -494,6 +547,8 @@ void region_settings_lake::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "shore_ter", shore, oter_lake_shore );
     optional( jo, was_loaded, "interior_ter", interior, oter_lake_water_cube );
     optional( jo, was_loaded, "bed_ter", bed, oter_lake_bed );
+    optional( jo, was_loaded, "mapgen_deep_water", mapgen_deep_water );
+    optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
 }
 
 void shore_extendable_overmap_terrain_alias::deserialize( const JsonObject &jo )
@@ -510,6 +565,10 @@ void region_settings_river::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "river_branch_chance", river_branch_chance );
     optional( jo, was_loaded, "river_branch_remerge_chance", river_branch_remerge_chance );
     optional( jo, was_loaded, "river_branch_scale_decrease", river_branch_scale_decrease );
+    optional( jo, was_loaded, "mapgen_deep_water", mapgen_deep_water );
+    optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
+    optional( jo, was_loaded, "mapgen_bank", mapgen_bank, ter_reader );
+    optional( jo, was_loaded, "mapgen_bank_detail", mapgen_bank_detail, ter_reader );
 }
 
 void region_settings_ocean::load( const JsonObject &jo, std::string_view )
@@ -522,6 +581,14 @@ void region_settings_ocean::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "ocean_start_west", ocean_start_west );
     optional( jo, was_loaded, "ocean_start_south", ocean_start_south );
     optional( jo, was_loaded, "sandy_beach_width", sandy_beach_width );
+    optional( jo, was_loaded, "mapgen_deep_water", mapgen_deep_water );
+    optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
+    optional( jo, was_loaded, "mapgen_surf", mapgen_surf );
+    optional( jo, was_loaded, "mapgen_beach", mapgen_beach );
+    optional( jo, was_loaded, "surface_ter", surface, oter_ocean_surface );
+    optional( jo, was_loaded, "shore_ter", shore, oter_ocean_shore );
+    optional( jo, was_loaded, "interior_ter", interior, oter_ocean_water_cube );
+    optional( jo, was_loaded, "bed_ter", bed, oter_ocean_bed );
 }
 
 void region_settings_highway::load( const JsonObject &jo, std::string_view )
@@ -582,6 +649,74 @@ void region_settings_city::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "houses", houses.buildings, building_bin_reader );
     optional( jo, was_loaded, "shops", shops.buildings, building_bin_reader );
     optional( jo, was_loaded, "parks", parks.buildings, building_bin_reader );
+    optional( jo, was_loaded, "road_post_process", road_post_process,
+              std::vector<pp_generator_id> { pp_generator_riot_damage_road } );
+    // City layout (OMAP-J04).  Absent fields keep the inherited value, or the default.
+    optional( jo, true, "empty_lot_chance", empty_lot_chance );
+    optional( jo, true, "min_size", min_size );
+    optional( jo, true, "max_size", max_size );
+    optional( jo, true, "size_variations", size_variations );
+    optional( jo, true, "max_spacing", max_spacing );
+    optional( jo, true, "block_width", block_width );
+    optional( jo, true, "street_shrink", street_shrink );
+    optional( jo, true, "extra_branch_chance", extra_branch_chance );
+    optional( jo, true, "megacity_size", megacity_size );
+    optional( jo, true, "megacity_seeds", megacity_seeds );
+    optional( jo, was_loaded, "manhole_chance", manhole_chance, 2 );
+    optional( jo, was_loaded, "manhole_terrain", manhole_terrain, oter_road_nesw_manhole );
+}
+
+void region_settings_city::size_variation::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "weight", weight, 1 );
+    optional( jo, false, "multiply", multiply, 1 );
+    optional( jo, false, "divide", divide, 1 );
+}
+
+const mongroup_id &region_settings_worldgen_monsters::city_horde() const
+{
+    return city_horde_group.is_empty() ? GROUP_ZOMBIE_HORDE : city_horde_group;
+}
+
+const mongroup_id &region_settings_worldgen_monsters::swamp() const
+{
+    return swamp_group.is_empty() ? GROUP_SWAMP : swamp_group;
+}
+
+const mongroup_id &region_settings_worldgen_monsters::river() const
+{
+    return river_group.is_empty() ? GROUP_RIVER : river_group;
+}
+
+const mongroup_id &region_settings_worldgen_monsters::ocean_deep() const
+{
+    return ocean_deep_group.is_empty() ? GROUP_OCEAN_DEEP : ocean_deep_group;
+}
+
+const mongroup_id &region_settings_worldgen_monsters::ocean_shore() const
+{
+    return ocean_shore_group.is_empty() ? GROUP_OCEAN_SHORE : ocean_shore_group;
+}
+
+const mongroup_id &region_settings_worldgen_monsters::subway_city() const
+{
+    return subway_city_group.is_empty() ? GROUP_SUBWAY_CITY : subway_city_group;
+}
+
+void region_settings_worldgen_monsters::deserialize( const JsonObject &jo )
+{
+    // Absent fields keep the inherited value, or the default.
+    optional( jo, true, "city_horde", city_horde_group );
+    optional( jo, true, "city_horde_pack_size", city_horde_pack_size );
+    optional( jo, true, "swamp", swamp_group );
+    optional( jo, true, "river", river_group );
+    optional( jo, true, "ocean_deep", ocean_deep_group );
+    optional( jo, true, "ocean_shore", ocean_shore_group );
+    optional( jo, true, "water_min_tiles", water_min_tiles );
+    optional( jo, true, "water_population_per_tile", water_population_per_tile );
+    optional( jo, true, "deep_ocean_threshold", deep_ocean_threshold );
+    optional( jo, true, "subway_city", subway_city_group );
+    optional( jo, true, "subway_z", subway_z );
 }
 
 void region_settings_map_extras::load( const JsonObject &jo, std::string_view )
@@ -634,17 +769,63 @@ void region_settings::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "place_railroads_before_roads", place_railroads_before_roads, false );
     optional( jo, was_loaded, "place_specials", place_specials, true );
     optional( jo, was_loaded, "neighbor_connections", neighbor_connections, true );
+    // OMAP-J04 and OMAP-J09.  Absent fields keep the inherited value, or the default.
+    optional( jo, true, "special_sector_size", special_sector_size );
+    optional( jo, true, "special_attempts_per_sector", special_attempts_per_sector );
+    optional( jo, true, "worldgen_monsters", worldgen_monsters );
 
     optional( jo, was_loaded, "npc_spawntime", npc_spawn_time, 4.0 );
+    optional( jo, was_loaded, "random_npcs", random_npcs );
 
     optional( jo, was_loaded, "max_urbanity", max_urban, 8 );
     optional( jo, was_loaded, "urbanity_increase", urban_increase, { 0, 0, 0, 0 } );
+}
+
+void region_settings_random_npcs::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "radius", radius, 90 );
+    if( radius < 0 ) {
+        jo.throw_error_at( "radius", "radius must not be negative" );
+    }
+    crowding_factor = static_cast<float>( jo.get_float( "crowding_factor", 0.8 ) );
+    if( crowding_factor < 0 ) {
+        jo.throw_error_at( "crowding_factor", "crowding_factor must not be negative" );
+    }
+    classes.clear();
+    if( jo.has_array( "classes" ) ) {
+        for( JsonArray entry : jo.get_array( "classes" ) ) {
+            classes.add( npc_class_id( entry.get_string( 0 ) ), entry.get_int( 1 ) );
+        }
+    }
+    optional( jo, false, "common_classes", common_classes, false );
+    spawn_eocs.clear();
+    if( jo.has_array( "spawn_eocs" ) ) {
+        for( JsonValue jv : jo.get_array( "spawn_eocs" ) ) {
+            spawn_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
+        }
+    }
+}
+
+void region_settings_random_npcs::check( const std::string &region ) const
+{
+    for( const std::pair<npc_class_id, int> &cls : classes ) {
+        if( !cls.first.is_valid() ) {
+            debugmsg( "region_settings %s: random_npcs class %s does not exist", region,
+                      cls.first.str() );
+        }
+    }
+    for( const effect_on_condition_id &eoc : spawn_eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "region_settings %s: random_npcs spawn_eoc %s does not exist", region, eoc.str() );
+        }
+    }
 }
 
 void region_settings::finalize()
 {
     // So the data definition goes from z = OVERMAP_HEIGHT to z = OVERMAP_DEPTH
     std::reverse( default_oter.begin(), default_oter.end() );
+    random_npcs.check( id.str() );
 }
 
 void region_settings::finalize_all()
@@ -672,6 +853,203 @@ void region_settings::finalize_all()
     if( !DEFAULT_REGION.is_valid() ) {
         debugmsg( "id: `default` region settings were not loaded or failed to load" );
     }
+}
+
+// OMAP-J05: bad ids in region settings used to show up only during worldgen, as debugmsgs or
+// crashes.  These run with the other consistency checks after loading.
+template<typename Id>
+static void check_region_id( const std::string_view owner, const std::string_view member,
+                             const Id &id )
+{
+    if( !id.is_valid() ) {
+        debugmsg( "%s: %s \"%s\" does not exist", owner, member, id.str() );
+    }
+}
+
+// The same, but an empty id is fine (the field wasn't given)
+template<typename Id>
+static void check_optional_region_id( const std::string_view owner, const std::string_view member,
+                                      const Id &id )
+{
+    if( !id.is_empty() ) {
+        check_region_id( owner, member, id );
+    }
+}
+
+void region_settings::check() const
+{
+    const std::string owner = "region_settings " + id.str();
+    for( const oter_str_id &oter : default_oter ) {
+        check_region_id( owner, "default_oter", oter );
+    }
+    if( city_spec ) {
+        check_region_id( owner, "cities", *city_spec );
+    }
+    check_region_id( owner, "forest_composition", forest_composition );
+    if( forest_trail ) {
+        check_region_id( owner, "forest_trails", *forest_trail );
+    }
+    check_region_id( owner, "weather", weather );
+    if( overmap_forest ) {
+        check_region_id( owner, "forests", *overmap_forest );
+    }
+    if( overmap_river ) {
+        check_region_id( owner, "rivers", *overmap_river );
+    }
+    if( overmap_lake ) {
+        check_region_id( owner, "lakes", *overmap_lake );
+    }
+    if( overmap_ocean ) {
+        check_region_id( owner, "ocean", *overmap_ocean );
+    }
+    if( overmap_highway ) {
+        check_region_id( owner, "highways", *overmap_highway );
+    }
+    if( overmap_ravine ) {
+        check_region_id( owner, "ravines", *overmap_ravine );
+    }
+    check_region_id( owner, "terrain_furniture", region_terrain_and_furniture );
+    check_region_id( owner, "map_extras", region_extras );
+
+    const region_settings_overmap_connection &con = overmap_connection;
+    check_optional_region_id( owner, "trail_connection", con.trail_connection );
+    check_optional_region_id( owner, "sewer_connection", con.sewer_connection );
+    check_optional_region_id( owner, "subway_connection", con.subway_connection );
+    check_optional_region_id( owner, "intra_city_road_connection", con.intra_city_road_connection );
+    check_optional_region_id( owner, "inter_city_road_connection", con.inter_city_road_connection );
+    // Only the railroads mod defines the vanilla rail connection, and turns railroads on.
+    if( place_railroads ) {
+        check_region_id( owner, "rail_connection", con.rail_connection );
+    }
+
+    for( const mongroup_id *group : {
+             &worldgen_monsters.city_horde(), &worldgen_monsters.swamp(), &worldgen_monsters.river(),
+             &worldgen_monsters.ocean_deep(), &worldgen_monsters.ocean_shore(),
+             &worldgen_monsters.subway_city()
+         } ) {
+        if( !group->is_null() ) {
+            check_region_id( owner, "worldgen_monsters", *group );
+        }
+    }
+    if( worldgen_monsters.water_population_per_tile[0] < 0 ||
+        worldgen_monsters.water_population_per_tile[1] < worldgen_monsters.water_population_per_tile[0] ) {
+        debugmsg( "%s: worldgen_monsters water_population_per_tile must be [ min, max ] with "
+                  "0 <= min <= max", owner );
+    }
+    if( worldgen_monsters.subway_z >= 0 || worldgen_monsters.subway_z < -OVERMAP_DEPTH ) {
+        debugmsg( "%s: worldgen_monsters subway_z (%d) must be an underground level, -1 to -%d", owner,
+                  worldgen_monsters.subway_z, OVERMAP_DEPTH );
+    }
+    if( special_sector_size < 1 || special_sector_size > std::min( OMAPX, OMAPY ) ) {
+        debugmsg( "%s: special_sector_size (%d) must be 1 to %d", owner, special_sector_size,
+                  std::min( OMAPX, OMAPY ) );
+    }
+    if( special_attempts_per_sector < 1 ) {
+        debugmsg( "%s: special_attempts_per_sector (%d) must be 1 or more", owner,
+                  special_attempts_per_sector );
+    }
+}
+
+void region_settings_city::check() const
+{
+    // The building bins' ids were checked when they were finalized.
+    if( city_size > 0 && houses.buildings.empty() ) {
+        debugmsg( "region_settings_city %s places cities (city_size %d) but has no houses", id.str(),
+                  city_size );
+    }
+}
+
+void region_settings_lake::check() const
+{
+    const std::string owner = "region_settings_lake " + id.str();
+    check_region_id( owner, "surface_ter", surface );
+    check_region_id( owner, "shore_ter", shore );
+    check_region_id( owner, "interior_ter", interior );
+    check_region_id( owner, "bed_ter", bed );
+    for( const oter_str_id &oter : shore_extendable_overmap_terrain ) {
+        check_region_id( owner, "shore_extendable_overmap_terrain", oter );
+    }
+    for( const shore_extendable_overmap_terrain_alias &alias :
+         shore_extendable_overmap_terrain_aliases ) {
+        check_region_id( owner, "shore_extendable_overmap_terrain_aliases", alias.alias );
+    }
+}
+
+void region_settings_ravine::check() const
+{
+    check_region_id( "region_settings_ravine " + id.str(), "ravine_bottom_terrain_id",
+                     ravine_bottom_terrain_str_id );
+}
+
+void region_settings_highway::check() const
+{
+    const std::string owner = "region_settings_highway " + id.str();
+    for( const oter_type_str_id *oter : {
+             &reserved_terrain_id, &reserved_terrain_water_id, &symbolic_ramp_up_id,
+             &symbolic_ramp_down_id, &symbolic_overpass_road_id, &fallback_supports
+         } ) {
+        check_optional_region_id( owner, "terrain", *oter );
+    }
+    for( const overmap_special_id *special : {
+             &segment_flat, &segment_ramp, &segment_road_bridge, &segment_bridge,
+             &segment_bridge_supports, &segment_overpass, &clockwise_slant, &counterclockwise_slant,
+             &fallback_onramp, &fallback_bend, &fallback_three_way_intersection,
+             &fallback_four_way_intersection
+         } ) {
+        check_optional_region_id( owner, "special", *special );
+    }
+}
+
+void region_settings_forest_mapgen::check() const
+{
+    for( const forest_biome_mapgen_id &biome : biomes ) {
+        check_region_id( "region_settings_forest_mapgen " + id.str(), "biomes", biome );
+    }
+}
+
+void forest_biome_mapgen::check() const
+{
+    const std::string owner = "forest_biome_mapgen " + id.str();
+    for( const oter_type_str_id &oter : terrains ) {
+        check_region_id( owner, "terrains", oter );
+    }
+    // Unknown components were reported when the biome was finalized.
+    check_optional_region_id( owner, "item_group", item_group );
+}
+
+void region_settings_map_extras::check() const
+{
+    for( const map_extra_collection_id &collection : extras ) {
+        check_region_id( "region_settings_map_extras " + id.str(), "extras", collection );
+    }
+}
+
+void map_extra_collection::check() const
+{
+    for( const std::pair<map_extra_id, int> &extra : values ) {
+        check_region_id( "map_extra_collection " + id.str(), "extras", extra.first );
+    }
+}
+
+void region_settings_terrain_furniture::check() const
+{
+    for( const region_terrain_furniture_id &tf : ter_furn ) {
+        check_region_id( "region_settings_terrain_furniture " + id.str(), "ter_furn", tf );
+    }
+}
+
+void region_settings::check_consistency()
+{
+    forest_biome_mapgen_factory.check();
+    map_extra_collection_factory.check();
+    region_settings_lake_factory.check();
+    region_settings_ravine_factory.check();
+    region_settings_highway_factory.check();
+    region_settings_forest_mapgen_factory.check();
+    region_settings_city_factory.check();
+    region_settings_map_extras_factory.check();
+    region_settings_terrain_furniture_factory.check();
+    region_settings_factory.check();
 }
 
 void groundcover_extra::finalize()   // FIXME: return bool for failure
@@ -761,7 +1139,7 @@ ter_furn_id forest_biome_mapgen::pick() const
     // If a given component does not roll as success, proceed to the next feature in sequence until
     // a feature is picked or none are picked, in which case an empty feature is returned.
     const ter_furn_id *result = nullptr;
-    for( const forest_biome_component_id &pr : biome_components ) {
+    for( const forest_biome_component_id &pr : components_in_sequence ) {
         if( one_in( pr->chance ) ) {
             result = pr->types.pick();
             break;
@@ -780,6 +1158,24 @@ void forest_biome_mapgen::finalize()
     for( auto &pr : terrain_dependent_furniture ) {
         pr.second.finalize();
     }
+    // The components are rolled in their "sequence" order, ties broken by id. The set they
+    // are loaded into is ordered by when each id was first read, so that set's order ignored
+    // "sequence" (OMAP-J03).
+    components_in_sequence.clear();
+    for( const forest_biome_component_id &component : biome_components ) {
+        if( !component.is_valid() ) {
+            debugmsg( "forest_biome_mapgen %s has an unknown component %s", id.str(), component.str() );
+            continue;
+        }
+        components_in_sequence.push_back( component );
+    }
+    std::sort( components_in_sequence.begin(), components_in_sequence.end(),
+    []( const forest_biome_component_id & lhs, const forest_biome_component_id & rhs ) {
+        if( lhs->sequence != rhs->sequence ) {
+            return lhs->sequence < rhs->sequence;
+        }
+        return lhs.str().compare( rhs.str() ) < 0;
+    } );
 }
 
 void region_settings_forest_mapgen::finalize()
@@ -808,9 +1204,53 @@ void region_settings_city::finalize()
                   city_spacing );
         city_size = std::clamp( city_spacing, 0, 8 );
     }
+    // City layout (OMAP-J04).  A city must fit in the middle of its overmap.
+    const int largest_size = std::min( OMAPX, OMAPY ) / 2 - 1;
+    if( min_size < 1 || min_size > largest_size ) {
+        debugmsg( "region_settings_city(%s) min_size(%d) is outside the bounds of 1 to %d", id.c_str(),
+                  min_size, largest_size );
+        min_size = std::clamp( min_size, 1, largest_size );
+    }
+    if( max_size < min_size || max_size > largest_size ) {
+        debugmsg( "region_settings_city(%s) max_size(%d) is outside the bounds of min_size(%d) to %d",
+                  id.c_str(), max_size, min_size, largest_size );
+        max_size = std::clamp( max_size, min_size, largest_size );
+    }
+    for( size_variation &variation : size_variations ) {
+        if( variation.divide < 1 || variation.multiply < 0 ) {
+            debugmsg( "region_settings_city(%s) has a size variation of %d / %d; it must multiply by 0 or "
+                      "more and divide by 1 or more", id.c_str(), variation.multiply, variation.divide );
+            variation.multiply = std::max( variation.multiply, 0 );
+            variation.divide = std::max( variation.divide, 1 );
+        }
+    }
+    const auto check_range = [this]( std::array<int, 2> &range, const char *name ) {
+        if( range[0] < 0 || range[1] < range[0] ) {
+            debugmsg( "region_settings_city(%s) %s is [ %d, %d ]; it must be [ min, max ] with "
+                      "0 <= min <= max", id.c_str(), name, range[0], range[1] );
+            range[0] = std::max( range[0], 0 );
+            range[1] = std::max( range[1], range[0] );
+        }
+    };
+    check_range( block_width, "block_width" );
+    check_range( street_shrink, "street_shrink" );
+    for( point &seed : megacity_seeds ) {
+        if( seed.x < 0 || seed.x >= OMAPX || seed.y < 0 || seed.y >= OMAPY ) {
+            debugmsg( "region_settings_city(%s) has a megacity seed at %s, off the overmap", id.c_str(),
+                      seed.to_string() );
+            seed.x = std::clamp( seed.x, 0, OMAPX - 1 );
+            seed.y = std::clamp( seed.y, 0, OMAPY - 1 );
+        }
+    }
     houses.finalize();
     shops.finalize();
     parks.finalize();
+    for( const pp_generator_id &gen : road_post_process ) {
+        if( !gen.is_valid() ) {
+            debugmsg( "region_settings_city(%s) road_post_process names the unknown "
+                      "pp_generator %s", id.c_str(), gen.c_str() );
+        }
+    }
 }
 
 //these could be defined in the future

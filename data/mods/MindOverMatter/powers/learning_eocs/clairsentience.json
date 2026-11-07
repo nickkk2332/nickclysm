@@ -227,7 +227,7 @@
               "and": [
                 { "math": [ "u_spell_level('clair_better_senses') >= 8" ] },
                 { "math": [ "u_spell_level('clair_danger_sense') >= 6" ] },
-                { "math": [ "u_spell_level('clair_aura_sight') >= 5" ] }
+                { "math": [ "u_spell_level('clair_see_auras') >= 5" ] }
               ]
             }
           ]
@@ -267,10 +267,7 @@
               "and": [
                 { "math": [ "u_spell_level('clair_danger_sense') >= 6" ] },
                 {
-                  "or": [
-                    { "math": [ "u_spell_level('clair_aura_sight') >= 6" ] },
-                    { "math": [ "u_spell_level('clair_night_vision') >= 10" ] }
-                  ]
+                  "or": [ { "math": [ "u_spell_level('clair_see_auras') >= 6" ] }, { "math": [ "u_spell_level('clair_night_vision') >= 10" ] } ]
                 }
               ]
             }
@@ -427,7 +424,7 @@
               "and": [
                 { "math": [ "u_spell_level('clair_voyance') >= 8" ] },
                 {
-                  "or": [ { "math": [ "u_spell_level('clair_danger_sense') >= 6" ] }, { "math": [ "u_spell_level('clair_aura_sight') >= 6" ] } ]
+                  "or": [ { "math": [ "u_spell_level('clair_danger_sense') >= 6" ] }, { "math": [ "u_spell_level('clair_see_auras') >= 6" ] } ]
                 }
               ]
             }
@@ -469,7 +466,7 @@
                   "or": [
                     { "math": [ "u_spell_level('clair_speed_reading') >= 8" ] },
                     { "math": [ "u_spell_level('clair_dodge_power') >= 5" ] },
-                    { "math": [ "u_spell_level('clair_aura_sight') >= 8" ] }
+                    { "math": [ "u_spell_level('clair_see_auras') >= 8" ] }
                   ]
                 }
               ]

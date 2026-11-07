@@ -7,9 +7,11 @@
 #include <list>
 #include <memory>
 #include <optional>
-#include <unordered_map>
 #include <ostream>
 #include <queue>
+#include <set>
+#include <string>
+#include <unordered_map>
 
 #include "avatar.h"
 #include "calendar.h"
@@ -26,9 +28,12 @@
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "generic_factory.h"
+#include "item_location.h"
 #include "math_parser_diag_value.h"
 #include "mod_tracker.h"
+#include "monster.h"
 #include "npc.h"
+#include "npctalk.h"
 #include "profession.h"
 #include "scenario.h"
 #include "string_formatter.h"
@@ -48,6 +53,7 @@ namespace io
         case eoc_type::NPC_DEATH: return "NPC_DEATH";
         case eoc_type::PREVENT_DEATH: return "PREVENT_DEATH";
         case eoc_type::EVENT: return "EVENT";
+        case eoc_type::PREVENT_MONSTER_DEATH: return "PREVENT_MONSTER_DEATH";
         case eoc_type::NUM_EOC_TYPES: break;
         }
         cata_fatal( "Invalid eoc_type" );
@@ -76,6 +82,85 @@ bool string_id<effect_on_condition>::is_valid() const
 
 static std::vector<std::pair<std::string, std::string>> pending_eoc_refs;
 static std::vector<std::function<void()>> pending_load_checks;
+// effect_on_condition_migration entries: what a saved queued or inactive EOC becomes; none: it
+// is dropped
+static std::map<effect_on_condition_id, std::optional<effect_on_condition_id>> eoc_migrations;
+
+void effect_on_conditions::load_migration( const JsonObject &jo )
+{
+    const effect_on_condition_id from( jo.get_string( "from" ) );
+    std::optional<effect_on_condition_id> to;
+    if( jo.has_member( "to" ) ) {
+        to = effect_on_condition_id( jo.get_string( "to" ) );
+    }
+    // A later migration of the same id replaces the earlier one
+    eoc_migrations.insert_or_assign( from, to );
+}
+
+std::optional<effect_on_condition_id> effect_on_conditions::migrate_saved(
+    const effect_on_condition_id &id )
+{
+    const auto it = eoc_migrations.find( id );
+    if( it == eoc_migrations.end() ) {
+        return id;
+    }
+    return it->second;
+}
+
+void effect_on_conditions::migrate_saved( std::vector<effect_on_condition_id> &eocs )
+{
+    if( eoc_migrations.empty() ) {
+        return;
+    }
+    std::vector<effect_on_condition_id> migrated;
+    migrated.reserve( eocs.size() );
+    for( const effect_on_condition_id &id : eocs ) {
+        if( std::optional<effect_on_condition_id> to = migrate_saved( id ) ) {
+            migrated.push_back( *to );
+        }
+    }
+    eocs = std::move( migrated );
+}
+
+namespace
+{
+// The EOCs that run on something the game looks up often, by what they run on: built from the
+// loaded EOCs when first needed, and again after EOCs are loaded or reset.
+struct eocs_by_trigger {
+    bool built = false;
+    // EVENT EOCs on a mod-defined event (EOC-J06), by its name
+    std::map<std::string, std::vector<effect_on_condition_id>> custom_events;
+    // EOC-J10
+    std::vector<effect_on_condition_id> prevent_monster_death;
+};
+
+eocs_by_trigger &eocs_by_trigger_cache()
+{
+    static eocs_by_trigger cache;
+    return cache;
+}
+
+void invalidate_eocs_by_trigger()
+{
+    eocs_by_trigger_cache() = eocs_by_trigger();
+}
+
+const eocs_by_trigger &get_eocs_by_trigger()
+{
+    eocs_by_trigger &cache = eocs_by_trigger_cache();
+    if( !cache.built ) {
+        for( const effect_on_condition &eoc : effect_on_conditions::get_all() ) {
+            if( eoc.type == eoc_type::EVENT && !eoc.custom_event.empty() ) {
+                cache.custom_events[eoc.custom_event].push_back( eoc.id );
+            } else if( eoc.type == eoc_type::PREVENT_MONSTER_DEATH ) {
+                cache.prevent_monster_death.push_back( eoc.id );
+            }
+        }
+        cache.built = true;
+    }
+    return cache;
+}
+} // namespace
 
 void effect_on_conditions::add_load_check( std::function<void()> check )
 {
@@ -84,6 +169,7 @@ void effect_on_conditions::add_load_check( std::function<void()> check )
 
 void effect_on_conditions::check_consistency()
 {
+    effect_on_condition_factory.check();
     for( const auto &[eoc_str, context] : pending_eoc_refs ) {
         effect_on_condition_id eid( eoc_str );
         if( !eid.is_valid() ) {
@@ -95,6 +181,12 @@ void effect_on_conditions::check_consistency()
         check();
     }
     pending_load_checks.clear();
+    for( const auto &[from, to] : eoc_migrations ) {
+        if( to && !to->is_valid() ) {
+            debugmsg( "effect_on_condition_migration from %s names an EOC that does not exist: %s",
+                      from.str(), to->str() );
+        }
+    }
 }
 
 void effect_on_condition::load( const JsonObject &jo, std::string_view src )
@@ -134,7 +226,20 @@ void effect_on_condition::load( const JsonObject &jo, std::string_view src )
     }
 
     if( type == eoc_type::EVENT ) {
-        mandatory( jo, was_loaded, "required_event", required_event );
+        // EOC-J06: a mod-defined event, which trigger_custom_event raises
+        if( jo.has_member( "custom_event" ) ) {
+            if( jo.has_member( "required_event" ) ) {
+                jo.throw_error( R"(An EVENT effect_on_condition takes "required_event" or )"
+                                R"("custom_event", not both.)" );
+            }
+            mandatory( jo, was_loaded, "custom_event", custom_event );
+            if( custom_event.empty() ) {
+                jo.throw_error_at( "custom_event", "custom_event can't be empty." );
+            }
+        } else if( !was_loaded || jo.has_member( "required_event" ) ) {
+            mandatory( jo, was_loaded, "required_event", required_event );
+            custom_event.clear();
+        }
     }
 }
 
@@ -150,6 +255,7 @@ effect_on_condition_id effect_on_conditions::load_inline_eoc( const JsonValue &j
         inline_eoc.load( jv.get_object(), src );
         mod_tracker::assign_src( inline_eoc, src );
         effect_on_condition_factory.insert( inline_eoc );
+        invalidate_eocs_by_trigger();
         return inline_eoc.id;
     } else {
         jv.throw_error( "effect_on_condition needs to be either a string or an effect_on_condition object." );
@@ -171,9 +277,23 @@ void effect_on_conditions::load_new_character( Character &you )
         you.queue_effects( scen->eoc() );
     }
 
+    // The profession's and the hobbies' EOCs; an NPC runs those of one with run_eocs_for_npcs
+    // (otherwise only the run_for_npcs ones) (PROG-J04)
+    const auto queue_background_eocs = [&you]( const profession & background ) {
+        if( you.is_avatar() || !background.eocs_run_for_npcs() ) {
+            you.queue_effects( background.get_eocs() );
+            return;
+        }
+        for( const effect_on_condition_id &eoc : background.get_eocs() ) {
+            you.queued_effect_on_conditions.push( queued_eoc{ eoc, calendar::turn_zero, {} } );
+        }
+    };
     const profession *prof = you.get_profession();
     if( prof ) {
-        you.queue_effects( prof->get_eocs() );
+        queue_background_eocs( *prof );
+    }
+    for( const profession *hobby : you.get_hobbies() ) {
+        queue_background_eocs( *hobby );
     }
 
     for( const effect_on_condition &eoc : get_all() ) {
@@ -192,9 +312,12 @@ static void process_new_eocs( queued_eocs &eoc_queue,
 {
     queued_eocs temp_queued_eocs;
     while( !eoc_queue.empty() ) {
-        // Check if EoC is moved from global to local, or vice versa
-        if( global_queue == eoc_queue.top().eoc->global ) {
-            if( eoc_queue.top().eoc.is_valid() ) {
+        // An EOC that is no longer loaded (its mod was removed) is dropped.  Check if EoC is moved
+        // from global to local, or vice versa.  One queued for a u kept by run_eocs' keep_talkers is
+        // on the game's queue either way.
+        if( eoc_queue.top().eoc.is_valid() && ( global_queue == eoc_queue.top().eoc->global ||
+                                                ( global_queue && !eoc_queue.top().alpha.empty() ) ) ) {
+            if( !eoc_queue.top().cancelled ) {
                 temp_queued_eocs.push( eoc_queue.top() );
             }
             new_eocs[eoc_queue.top().eoc] = false;
@@ -245,6 +368,22 @@ void effect_on_conditions::queue_effect_on_condition( time_duration duration,
 {
     queued_eoc new_eoc = queued_eoc{ eoc, calendar::turn + duration, context };
     if( eoc->global ) {
+        g->queued_global_effect_on_conditions.push( new_eoc );
+    } else if( eoc->type == eoc_type::ACTIVATION || eoc->type == eoc_type::RECURRING ) {
+        you.queued_effect_on_conditions.push( new_eoc );
+    } else {
+        debugmsg( "Invalid effect_on_condition and/or target.  EOC: %s", eoc->id.c_str() );
+    }
+}
+
+void effect_on_conditions::queue_effect_on_condition( time_duration duration,
+        effect_on_condition_id eoc, Character &you, global_variables::impl_t const &context,
+        const std::string &alpha, const std::string &beta )
+{
+    queued_eoc new_eoc = queued_eoc{ eoc, calendar::turn + duration, context };
+    new_eoc.alpha = alpha;
+    new_eoc.beta = beta;
+    if( eoc->global || !alpha.empty() ) {
         g->queued_global_effect_on_conditions.push( new_eoc );
     } else if( eoc->type == eoc_type::ACTIVATION || eoc->type == eoc_type::RECURRING ) {
         you.queued_effect_on_conditions.push( new_eoc );
@@ -333,7 +472,26 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
         const queued_eocs::storage_iter &it = due[i];
         queued_eoc &top = *it;
 
-        dialogue nested_d{ d };
+        if( top.cancelled ) {
+            queue->list.erase( it );
+            continue;
+        }
+        // The u and npc run_eocs' keep_talkers kept, found again: without the u it doesn't run;
+        // without the npc it runs with none, as without keep_talkers
+        std::list<item_location> kept_items;
+        std::optional<dialogue> kept_d;
+        if( !top.alpha.empty() || !top.beta.empty() ) {
+            std::unique_ptr<talker> alpha = top.alpha.empty() ? d.actor( false )->clone() :
+                                            find_talker_by_handle( top.alpha, kept_items );
+            if( !alpha ) {
+                queue->list.erase( it );
+                continue;
+            }
+            kept_d.emplace( std::move( alpha ), find_talker_by_handle( top.beta, kept_items ),
+                            d.get_conditionals(), d.get_context() );
+        }
+
+        dialogue nested_d{ kept_d ? *kept_d : d };
         for( const auto &val : top.context ) {
             nested_d.set_value( val.first, val.second );
         }
@@ -623,10 +781,21 @@ void effect_on_conditions::write_global_eocs_to_file( )
     }, "eocs test file" );
 }
 
+// The avatar's killer, if it is still in the game.
+static Creature *loaded_killer_of( avatar &player_character )
+{
+    Creature *klr = player_character.get_killer();
+    return !klr ? klr : g->get_creature_if( [klr]( const Creature & c ) {
+        return klr == &c;
+    } );
+}
+
 void effect_on_conditions::prevent_death()
 {
     avatar &player_character = get_avatar();
-    dialogue d( get_talker_for( player_character ), nullptr );
+    // EOC-J10: the killer is the beta, as for AVATAR_DEATH
+    Creature *klr = loaded_killer_of( player_character );
+    dialogue d( get_talker_for( player_character ), klr == nullptr ? nullptr : get_talker_for( klr ) );
     for( const effect_on_condition &eoc : get_all() ) {
         if( eoc.type == eoc_type::PREVENT_DEATH ) {
             eoc.activate( d );
@@ -641,17 +810,67 @@ void effect_on_conditions::prevent_death()
 void effect_on_conditions::avatar_death()
 {
     avatar &player_character = get_avatar();
-    Creature *klr = player_character.get_killer();
     // Make sure the creature still exists in game
-    klr = !klr ? klr : g->get_creature_if( [klr]( const Creature & c ) {
-        return klr == &c;
-    } );
+    Creature *klr = loaded_killer_of( player_character );
     dialogue d( get_talker_for( get_avatar() ), klr == nullptr ? nullptr : get_talker_for( klr ) );
     for( const effect_on_condition &eoc : get_all() ) {
         if( eoc.type == eoc_type::AVATAR_DEATH ) {
             eoc.activate( d );
         }
+        // as documented: until the player isn't dead, which the death switch can make so
+        if( !player_character.is_dead_state() ) {
+            break;
+        }
     }
+}
+
+bool effect_on_conditions::prevent_monster_death( monster &mon, Creature *killer )
+{
+    // a copy: the cache is rebuilt if EOCs are loaded
+    const std::vector<effect_on_condition_id> eocs = get_eocs_by_trigger().prevent_monster_death;
+    if( eocs.empty() ) {
+        return false;
+    }
+    // only a u_prevent_death from these EOCs counts
+    mon.death_prevented = false;
+    dialogue d( get_talker_for( static_cast<Creature &>( mon ) ),
+                killer == nullptr ? nullptr : get_talker_for( killer ) );
+    for( const effect_on_condition_id &eoc : eocs ) {
+        eoc->activate( d );
+        // as for PREVENT_DEATH: until one of them prevented it (or one killed it already)
+        if( mon.death_prevented || mon.death_finalized() ) {
+            break;
+        }
+    }
+    const bool prevented = mon.death_prevented && !mon.death_finalized();
+    mon.death_prevented = false;
+    return prevented;
+}
+
+const std::vector<effect_on_condition_id> &effect_on_conditions::custom_event_eocs(
+    const std::string &name )
+{
+    static const std::vector<effect_on_condition_id> none;
+    const std::map<std::string, std::vector<effect_on_condition_id>> &events =
+                get_eocs_by_trigger().custom_events;
+    const auto it = events.find( name );
+    return it == events.end() ? none : it->second;
+}
+
+bool effect_on_conditions::reactivate( const effect_on_condition_id &eoc, Character &you,
+                                       dialogue &d )
+{
+    std::vector<effect_on_condition_id> &inactive = eoc->global ?
+            g->inactive_global_effect_on_condition_vector : you.inactive_effect_on_condition_vector;
+    queued_eocs &queue = eoc->global ? g->queued_global_effect_on_conditions :
+                         you.queued_effect_on_conditions;
+    const auto it = std::find( inactive.begin(), inactive.end(), eoc );
+    if( it == inactive.end() ) {
+        return false;
+    }
+    inactive.erase( it );
+    queue.push( queued_eoc{ eoc, calendar::turn + next_recurrence( eoc, d ), {} } );
+    return true;
 }
 
 void effect_on_condition::finalize()
@@ -661,10 +880,22 @@ void effect_on_condition::finalize()
 void effect_on_conditions::finalize_all()
 {
     effect_on_condition_factory.finalize();
+    invalidate_eocs_by_trigger();
 }
 
 void effect_on_condition::check() const
 {
+    // EOC-J04: deactivate_condition is only tested when a RECURRING EOC without a false_effect
+    // fails its condition
+    if( has_deactivate_condition && type != eoc_type::RECURRING ) {
+        debugmsg( "effect_on_condition %s has a deactivate_condition, but it isn't RECURRING, so "
+                  "the deactivate_condition is never tested.  Remove it.", id.str() );
+    }
+    if( has_deactivate_condition && has_false_effect ) {
+        debugmsg( "effect_on_condition %s has both a deactivate_condition and a false_effect.  An "
+                  "EOC with a false_effect is never deactivated, so the deactivate_condition is "
+                  "never tested.", id.str() );
+    }
 }
 
 const std::vector<effect_on_condition> &effect_on_conditions::get_all()
@@ -677,11 +908,14 @@ void effect_on_conditions::reset()
     effect_on_condition_factory.reset();
     pending_eoc_refs.clear();
     pending_load_checks.clear();
+    invalidate_eocs_by_trigger();
+    eoc_migrations.clear();
 }
 
 void effect_on_conditions::load( const JsonObject &jo, const std::string &src )
 {
     effect_on_condition_factory.load( jo, src );
+    invalidate_eocs_by_trigger();
 }
 
 void eoc_events::clear()
@@ -709,7 +943,8 @@ void eoc_events::notify( const cata::event &e, std::unique_ptr<talker> alpha,
 
         //create a cache for the specific types of EOC's so they aren't constantly all itterated through
         for( const effect_on_condition &eoc : effect_on_conditions::get_all() ) {
-            if( eoc.type == eoc_type::EVENT ) {
+            // one on a mod-defined event has no required_event (EOC-J06)
+            if( eoc.type == eoc_type::EVENT && eoc.custom_event.empty() ) {
                 event_EOCs[eoc.required_event].emplace_back( eoc );
             }
         }

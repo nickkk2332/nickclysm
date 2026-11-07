@@ -1281,31 +1281,31 @@
     "responses": [
       {
         "text": "[Take the device] Will do, Rubik.",
-        "condition": { "math": [ "u_skill('social') < 3" ] },
+        "condition": { "math": [ "u_skill('speech') < 3" ] },
         "effect": { "u_spawn_item": "exodii_portable_tv" },
         "topic": "TALK_EXODII_MERCHANT_mission_4_accepted_0-2"
       },
       {
         "text": "[Take the device] Will do, Rubik.",
-        "condition": { "and": [ { "math": [ "u_skill('social') > 2" ] }, { "math": [ "u_skill('social') < 5" ] } ] },
+        "condition": { "and": [ { "math": [ "u_skill('speech') > 2" ] }, { "math": [ "u_skill('speech') < 5" ] } ] },
         "effect": { "u_spawn_item": "exodii_portable_tv" },
         "topic": "TALK_EXODII_MERCHANT_mission_4_accepted_3-4"
       },
       {
         "text": "[Take the device] Will do, Rubik.",
-        "condition": { "and": [ { "math": [ "u_skill('social') > 4" ] }, { "math": [ "u_skill('social') < 7" ] } ] },
+        "condition": { "and": [ { "math": [ "u_skill('speech') > 4" ] }, { "math": [ "u_skill('speech') < 7" ] } ] },
         "effect": { "u_spawn_item": "exodii_portable_tv" },
         "topic": "TALK_EXODII_MERCHANT_mission_4_accepted_5-6"
       },
       {
         "text": "[Take the device] Will do, Rubik.",
-        "condition": { "and": [ { "math": [ "u_skill('social') > 6" ] }, { "math": [ "u_skill('social') < 9" ] } ] },
+        "condition": { "and": [ { "math": [ "u_skill('speech') > 6" ] }, { "math": [ "u_skill('speech') < 9" ] } ] },
         "effect": { "u_spawn_item": "exodii_portable_tv" },
         "topic": "TALK_EXODII_MERCHANT_mission_4_accepted_7-8"
       },
       {
         "text": "[Take the device] Will do, Rubik.",
-        "condition": { "math": [ "u_skill('social') > 8" ] },
+        "condition": { "math": [ "u_skill('speech') > 8" ] },
         "effect": { "u_spawn_item": "exodii_portable_tv" },
         "topic": "TALK_EXODII_MERCHANT_mission_4_accepted_9-10"
       }

@@ -541,6 +541,7 @@
   {
     "type": "mutation",
     "id": "GLASSJAW",
+    "bodypart_hp_multiplier": [ [ "head", 0.8 ] ],
     "name": { "str": "Glass Jaw" },
     "description": "Your head can't take much abuse.  Its maximum HP is 20% lower than usual.  Your apparent fragility makes you less intimidating.",
     "category": [ "BIRD", "RAPTOR" ],
@@ -894,7 +895,8 @@
     "active": true,
     "starts_active": true,
     "vitamin_cost": 210,
-    "cancels": [ "ELFA_NV", "ELFA_FNV", "FEL_NV", "CEPH_VISION" ]
+    "cancels": [ "ELFA_NV", "ELFA_FNV", "FEL_NV", "CEPH_VISION" ],
+    "night_vision_range": 2
   },
   {
     "type": "mutation",
@@ -909,7 +911,8 @@
     "active": true,
     "starts_active": true,
     "vitamin_cost": 190,
-    "cancels": [ "ELFA_NV", "ELFA_FNV", "FEL_NV", "CEPH_VISION" ]
+    "cancels": [ "ELFA_NV", "ELFA_FNV", "FEL_NV", "CEPH_VISION" ],
+    "night_vision_range": 4.5
   },
   {
     "type": "mutation",
@@ -924,7 +927,8 @@
     "active": true,
     "starts_active": true,
     "vitamin_cost": 210,
-    "cancels": [ "ELFA_NV", "ELFA_FNV", "FEL_NV", "CEPH_VISION" ]
+    "cancels": [ "ELFA_NV", "ELFA_FNV", "FEL_NV", "CEPH_VISION" ],
+    "night_vision_range": 10
   },
   {
     "type": "mutation",
@@ -1028,7 +1032,8 @@
     "changes_to": [ "HEAVYSLEEPER2" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "enchantments": [ { "values": [ { "value": "WAKE_RESISTANCE", "add": 1 }, { "value": "WAKE_PAIN_THRESHOLD", "add": 2 } ] } ]
   },
   {
     "type": "mutation",
@@ -1038,7 +1043,16 @@
     "category": [ "BEAST", "LUPINE", "URSINE", "INTERSTICE" ],
     "prereqs": [ "HEAVYSLEEPER" ],
     "points": -2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "enchantments": [
+      {
+        "values": [
+          { "value": "WAKE_RESISTANCE", "add": 4 },
+          { "value": "WAKE_PAIN_THRESHOLD", "add": 5 },
+          { "value": "SLEEP_LIGHT_TOLERANCE", "multiply": 0.25 }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1174,7 +1188,10 @@
     "description": "You are badly allergic to wool, and cannot wear any clothing made of the substance.",
     "points": -1,
     "starting_trait": true,
-    "valid": true
+    "valid": true,
+    "unwearable_materials": [ "wool" ],
+    "unwearable_flags": [ "wooled" ],
+    "unwearable_message": "Can't wear that, it's made of wool!"
   },
   {
     "type": "mutation",
@@ -1382,6 +1399,7 @@
   {
     "type": "mutation",
     "id": "NAUSEA",
+    "builtin_activation": "vomit",
     "name": { "str": "Nausea" },
     "description": "You feel nauseated almost constantly, and are more liable to throw up from food poisoning, alcohol, etc.  You can, if desired, think yourself into vomiting, too.",
     "category": [
@@ -1409,6 +1427,7 @@
   {
     "type": "mutation",
     "id": "VOMITOUS",
+    "builtin_activation": "vomit",
     "name": { "str": "Vomitous" },
     "description": "You have a major digestive disorder.  Though it causes you to vomit frequently, you have found that you can trigger your vomit reflex on demand, too.",
     "category": [
@@ -1457,7 +1476,25 @@
     "cancels": [ "CANNIBAL", "STRICT_HUMANITARIAN", "VEGETARIAN" ],
     "points": -4,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "eat_condition": {
+      "condition": {
+        "not": {
+          "or": [
+            { "npc_has_flag": "ALLERGEN_MEAT" },
+            { "npc_has_flag": "ALLERGEN_EGG" },
+            { "npc_has_flag": "ALLERGEN_MILK" },
+            { "npc_has_flag": "ANIMAL_PRODUCT" },
+            { "npc_has_flag": "ALLERGEN_CHEESE" },
+            { "npc_has_flag": "URSINE_HONEY" }
+          ]
+        }
+      },
+      "fail_message": "You're still not going to eat animal products."
+    },
+    "unwearable_materials": [ "acidchitin", "bone", "chitin", "fur", "gutskin", "leather", "wool" ],
+    "unwearable_flags": [ "ANIMAL_PRODUCT" ],
+    "unwearable_message": "Can't wear that, it's made from an animal!"
   },
   {
     "type": "mutation",
@@ -1555,7 +1592,23 @@
     "cancels": [ "ANTIJUNK" ],
     "points": 1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "eat_eocs": [
+      {
+        "id": "EOC_PROJUNK_ATE_JUNK",
+        "condition": { "npc_has_flag": "ALLERGEN_JUNK" },
+        "effect": [
+          { "u_message": "Mmm, junk food.", "type": "good" },
+          {
+            "u_add_morale": "morale_sweettooth",
+            "bonus": 5,
+            "max_bonus": 30,
+            "duration": "30 minutes",
+            "decay_start": "24 minutes"
+          }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1569,7 +1622,27 @@
     "points": 2,
     "purifiable": false,
     "vitamin_cost": 160,
-    "flags": [ "SKIP_HEALTH" ]
+    "flags": [ "SKIP_HEALTH" ],
+    "eat_eocs": [
+      {
+        "id": "EOC_PROJUNK2_ATE_JUNK",
+        "condition": { "npc_has_flag": "ALLERGEN_JUNK" },
+        "effect": [
+          {
+            "if": { "x_in_y_chance": { "x": 1, "y": 100 } },
+            "then": { "u_message": "They may do what they must… you've already won.", "type": "good" },
+            "else": { "u_message": "When life's got you down, there's always sugar.", "type": "good" }
+          },
+          {
+            "u_add_morale": "morale_sweettooth",
+            "bonus": 10,
+            "max_bonus": 50,
+            "duration": "1 hours",
+            "decay_start": "50 minutes"
+          }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1586,7 +1659,8 @@
       {
         "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 1 }, { "value": "CONSUME_TIME_MOD", "multiply": -0.25 } ]
       }
-    ]
+    ],
+    "food_fun": { "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }
   },
   {
     "type": "mutation",
@@ -1611,7 +1685,35 @@
     "cancels": [ "GOURMAND" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "eat_condition": [
+      {
+        "condition": {
+          "or": [
+            { "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] },
+            { "npc_comestible_type": "MED" },
+            { "math": [ "n_food_fun() >= 0" ] },
+            { "u_has_effect": "hunger_near_starving" },
+            { "u_has_effect": "hunger_starving" },
+            { "u_has_effect": "hunger_famished" }
+          ]
+        },
+        "fail_message": "You deserve better food than this.",
+        "checked": "last"
+      },
+      {
+        "condition": {
+          "or": [
+            { "not": { "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] } },
+            { "npc_comestible_type": "MED" },
+            { "math": [ "n_food_fun() >= 0" ] },
+            { "math": [ "u_val('thirst') >= 240" ] }
+          ]
+        },
+        "fail_message": "You are not going to drink this.",
+        "checked": "last"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1633,7 +1735,16 @@
     "cancels": [ "ADDICTIVE" ],
     "points": 1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "enchantments": [
+      {
+        "values": [
+          { "value": "ADDICTION_STRENGTH", "multiply": -0.5 },
+          { "value": "ADDICTION_SATIATION", "multiply": 2 },
+          { "value": "ADDICTION_RECOVERY", "multiply": -0.5 }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1644,7 +1755,16 @@
     "cancels": [ "NONADDICTIVE" ],
     "points": -2,
     "starting_trait": true,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "enchantments": [
+      {
+        "values": [
+          { "value": "ADDICTION_STRENGTH", "multiply": 1 },
+          { "value": "ADDICTION_SATIATION", "multiply": -0.5 },
+          { "value": "ADDICTION_RECOVERY", "multiply": 0.666667 }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1656,7 +1776,9 @@
     "cancels": [ "LIGHTWEIGHT" ],
     "points": 1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "//": "DRUG_DURATION covers consume_drug use actions; alcohol and the hardcoded drugs still check the trait.",
+    "enchantments": [ { "values": [ { "value": "DRUG_DURATION", "multiply": -0.2 } ] } ]
   },
   {
     "type": "mutation",
@@ -1667,7 +1789,9 @@
     "cancels": [ "TOLERANCE" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "//": "DRUG_DURATION covers consume_drug use actions; alcohol and the hardcoded drugs still check the trait.",
+    "enchantments": [ { "values": [ { "value": "DRUG_DURATION", "multiply": 0.2 } ] } ]
   },
   {
     "type": "mutation",
@@ -1712,7 +1836,8 @@
     "points": -3,
     "starting_trait": true,
     "chargen_allow_npc": false,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "processed_eocs": [ "EOC_TRAIT_NARCOLEPTIC" ]
   },
   {
     "type": "mutation",
@@ -1788,7 +1913,8 @@
     "cancels": [ "GUNSHY" ],
     "points": -4,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "flags": [ "CANNOT_USE_RANGED" ]
   },
   {
     "type": "mutation",
@@ -1798,7 +1924,8 @@
     "cancels": [ "BRAWLER" ],
     "points": -3,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "flags": [ "CANNOT_USE_FIREARMS" ]
   },
   {
     "type": "mutation",
@@ -1849,7 +1976,9 @@
     "description": "You can't even think about putting filthy clothes on yourself, especially from zombies' corpses.",
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "unwearable_flags": [ "FILTHY" ],
+    "unwearable_message": "Can't wear that, it's filthy!"
   },
   {
     "type": "mutation",
@@ -1954,7 +2083,8 @@
     "description": "There's nothing quite like the smell of a good book!  Books are more fun (or less boring) for you!",
     "cancels": [ "ILLITERATE", "HATES_BOOKS" ],
     "points": 1,
-    "valid": false
+    "valid": false,
+    "flags": [ "LOVES_BOOKS" ]
   },
   {
     "type": "mutation",
@@ -1963,7 +2093,8 @@
     "description": "Reading is for nerds!  Boring books are more boring, and you can't have fun by reading books.",
     "cancels": [ "ILLITERATE", "LOVES_BOOKS" ],
     "points": -1,
-    "valid": false
+    "valid": false,
+    "flags": [ "HATES_BOOKS" ]
   },
   {
     "type": "mutation",
@@ -1996,7 +2127,8 @@
     "cancels": [ "FASTREADER", "SLOWREADER", "PROF_DICEMASTER", "LOVES_BOOKS", "HATES_BOOKS" ],
     "points": -6,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "flags": [ "ILLITERATE" ]
   },
   {
     "type": "mutation",
@@ -2059,7 +2191,8 @@
     "category": [ "MEDICAL", "ELFA" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "processed_eocs": [ "EOC_TRAIT_MOODSWINGS" ]
   },
   {
     "type": "mutation",
@@ -2827,7 +2960,7 @@
     "category": [ "TROGLOBITE", "CHIMERA", "GASTROPOD", "MOUSE" ],
     "points": 2,
     "vitamin_cost": 160,
-    "flags": [ "IMMUNE_SPOIL" ]
+    "flags": [ "IMMUNE_SPOIL", "SAPROVORE_DIET" ]
   },
   {
     "type": "mutation",
@@ -2866,7 +2999,7 @@
     "cancels": [ "VEGETARIAN", "HERBIVORE", "RUMINANT", "GRAZER" ],
     "points": 4,
     "vitamin_cost": 190,
-    "flags": [ "IMMUNE_SPOIL" ],
+    "flags": [ "IMMUNE_SPOIL", "EATDEAD_DIET" ],
     "vitamins_absorb_multi": [ [ "all", [ [ "mutant_toxin", 0.25 ] ] ] ]
   },
   {
@@ -2950,7 +3083,8 @@
     "changes_to": [ "SHOUT2" ],
     "points": -2,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 2 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 2 } ] } ],
+    "processed_eocs": [ "EOC_TRAIT_SHOUT1" ]
   },
   {
     "type": "mutation",
@@ -2962,7 +3096,8 @@
     "changes_to": [ "SHOUT3" ],
     "points": -3,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 5 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 1 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 5 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 1 } ] } ],
+    "processed_eocs": [ "EOC_TRAIT_SHOUT2" ]
   },
   {
     "type": "mutation",
@@ -2973,7 +3108,8 @@
     "prereqs": [ "SHOUT2" ],
     "points": -4,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 10 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 2 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 10 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 2 } ] } ],
+    "processed_eocs": [ "EOC_TRAIT_SHOUT3" ]
   },
   {
     "type": "mutation",
@@ -3702,6 +3838,7 @@
     "vitamin_cost": 400,
     "visibility": 10,
     "ugliness": 10,
+    "flags": [ "FLASH_RESIST_ERRATIC" ],
     "enchantments": [
       {
         "values": [ { "value": "HEARING_MULT", "multiply": { "math": [ "rng(-0.75, 1)" ] } }, { "value": "PERCEPTION", "add": -8 } ]
@@ -3724,7 +3861,7 @@
     "vitamin_cost": 400,
     "visibility": 10,
     "ugliness": 10,
-    "flags": [ "EYE_MEMBRANE" ],
+    "flags": [ "EYE_MEMBRANE", "FLASH_RESIST_RETRACTABLE" ],
     "enchantments": [ { "values": [ { "value": "PERCEPTION", "add": 5 } ] } ]
   },
   {
@@ -3972,6 +4109,7 @@
   {
     "type": "mutation",
     "id": "ACIDBLOOD",
+    "blood_type": "Acid",
     "name": { "str": "Acid Blood" },
     "description": "Your body has developed a wonderful defense mechanism.  Instead of normal blood, you bleed a strong molecular acid which will damage any creature foolish enough to harm you.",
     "category": [ "INSECT", "CHIMERA", "MEDICAL", "SLIME" ],
@@ -3993,7 +4131,8 @@
     "prereqs": [ "SMELLY2", "LEGS_BAT" ],
     "threshreq": [ "THRESH_BEAST", "THRESH_CATTLE", "THRESH_CHIROPTERAN" ],
     "points": 2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "monster_relations": [ { "species": "MAMMAL", "min_anger": 10, "anger": -20 } ]
   },
   {
     "type": "mutation",
@@ -4273,7 +4412,8 @@
     "cost": 0,
     "vitamin_cost": 160,
     "//": "Also allows you to break down normally indigestible triffid fiber 3x as quickly.",
-    "vitamin_rates": [ [ "triffid_fiber", 3600 ] ]
+    "vitamin_rates": [ [ "triffid_fiber", 3600 ] ],
+    "flags": [ "HERBIVORE_DIET" ]
   },
   {
     "type": "mutation",
@@ -4374,7 +4514,11 @@
     "active": true,
     "cost": 0,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 2 } ] } ]
+    "enchantments": [
+      {
+        "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 2 }, { "value": "SLEEP_LIGHT_TOLERANCE", "multiply": 3.75 } ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -4803,6 +4947,7 @@
   {
     "type": "mutation",
     "id": "BURROW",
+    "builtin_activation": "burrow",
     "name": { "str": "Burrowing" },
     "description": "Your dextrous paws and long teeth allow you to dig through dirt and rubble with ease.",
     "category": [ "RAT", "RABBIT" ],
@@ -4817,6 +4962,7 @@
   {
     "type": "mutation",
     "id": "BURROWLARGE",
+    "builtin_activation": "burrow",
     "name": { "str": "Burrowing" },
     "description": "Your tough paws allow you to dig through dirt and rubble with ease.",
     "category": [ "LUPINE", "URSINE" ],
@@ -4980,6 +5126,7 @@
   {
     "type": "mutation",
     "id": "ECHOLOCATION",
+    "builtin_activation": "echolocation",
     "name": { "str": "Echolocation" },
     "description": "You've learned how to hunt without sight.  Activate this mutation to make a quiet chirp that can reveal obstacles and enemies by its echo.",
     "category": [ "CHIROPTERAN" ],
@@ -5146,7 +5293,7 @@
     "vitamin_cost": 210,
     "visibility": 1,
     "enchantments": [
-      { "values": [ { "value": "PERCEPTION", "add": 2 } ] },
+      { "values": [ { "value": "PERCEPTION", "add": 2 }, { "value": "NIGHT_VIS", "add": 1 } ] },
       { "modified_bodyparts": [ { "lose": "eyes" }, { "gain": "eyes_avian" } ] }
     ]
   },
@@ -5242,6 +5389,7 @@
   {
     "type": "mutation",
     "id": "GASTROPOD_EXTREMITY2",
+    "builtin_activation": "long_pull",
     "name": { "str": "Rasping Tongue" },
     "description": "You've developed an extremely long and mobile tongue capped with teeth.  You may use it to attack your enemies and pull them towards you.",
     "category": [ "GASTROPOD" ],
@@ -5259,6 +5407,7 @@
   {
     "type": "mutation",
     "id": "GASTROPOD_EXTREMITY3",
+    "builtin_activation": "long_pull",
     "name": { "str": "Harpoon Tongue" },
     "description": "Your tongue has increased its length and mobility.  You may use it to pull your enemies towards you.",
     "category": [ "GASTROPOD" ],
@@ -5362,6 +5511,7 @@
   {
     "type": "mutation",
     "id": "SNAIL_TRAIL",
+    "builtin_activation": "sludge_trail",
     "name": { "str": "Snail Trail" },
     "description": "You've developed some ability to control your slime emissions.  As a result of this you can leave trails of slime anywhere you walk.",
     "category": [ "GASTROPOD" ],
@@ -5568,7 +5718,8 @@
     "prereqs": [ "SMELLY2" ],
     "threshreq": [ "THRESH_BATRACHIAN" ],
     "points": 2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "monster_relations": [ { "species": "AMPHIBIAN", "min_anger": 10, "anger": -20 } ]
   },
   {
     "type": "mutation",
@@ -5600,6 +5751,7 @@
   {
     "type": "mutation",
     "id": "LONG_TONGUE2",
+    "builtin_activation": "long_pull",
     "name": { "str": "Whipping Tongue" },
     "description": "You've developed an extremely long and mobile tongue.  You may use it to pull your enemies towards you.",
     "category": [ "BATRACHIAN" ],
@@ -6053,7 +6205,8 @@
     "prereqs": [ "SMELLY2" ],
     "threshreq": [ "THRESH_INSECT" ],
     "points": 2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "monster_relations": [ { "faction": [ "acid_ant", "ant", "bee", "wasp" ], "min_anger": 10, "anger": -20 } ]
   },
   {
     "type": "mutation",
@@ -6091,7 +6244,7 @@
     "visibility": 9,
     "ugliness": 4,
     "allow_soft_gear": true,
-    "restricts_gear": [ "head_crown" ],
+    "restricts_gear": [ "head" ],
     "enchantments": [
       {
         "condition": "ACTIVE",
@@ -6139,7 +6292,17 @@
     "visibility": 5,
     "ugliness": 7,
     "restricts_gear": [ "mouth" ],
-    "enchantments": [ { "condition": "ALWAYS", "modified_bodyparts": [ { "lose": "mouth" }, { "gain": "insect_proboscis" } ] } ]
+    "enchantments": [ { "condition": "ALWAYS", "modified_bodyparts": [ { "lose": "mouth" }, { "gain": "insect_proboscis" } ] } ],
+    "eat_condition": {
+      "condition": {
+        "or": [
+          { "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] },
+          { "npc_comestible_type": "MED" }
+        ]
+      },
+      "fail_message": "Ugh, you can't drink that!",
+      "checked": "before_diet"
+    }
   },
   {
     "type": "mutation",
@@ -6152,7 +6315,14 @@
     "points": 3,
     "vitamin_cost": 160,
     "visibility": 1,
-    "ugliness": 1
+    "ugliness": 1,
+    "retaliation": [
+      {
+        "effects": [ { "id": "stunned", "duration": "2 turns" }, { "id": "blind", "duration": "2 turns", "one_in": 3 } ],
+        "message": "Your hairs detach into %s!",
+        "npc_message": "%2$s gets a load of %1$s's hair stuck in!"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -6258,6 +6428,7 @@
   {
     "type": "mutation",
     "id": "WEB_WEAVER",
+    "builtin_activation": "web",
     "name": { "str": "Web Weaver" },
     "description": "You've developed the necessary anatomy and techniques to control your web-generation.  Activate this to start or stop weaving webs.",
     "category": [ "SPIDER" ],
@@ -6881,7 +7052,8 @@
       { "part": "hand_l", "neutral": 2, "good": 3 },
       { "part": "hand_r", "neutral": 2, "good": 3 },
       { "part": "torso", "neutral": 14, "good": 26 }
-    ]
+    ],
+    "drying_time_mult": 4.0
   },
   {
     "type": "mutation",
@@ -6976,6 +7148,7 @@
   {
     "type": "mutation",
     "id": "SLIMESPAWNER",
+    "builtin_activation": "slime_split",
     "name": { "str": "Omnicellular" },
     "description": "Your body is more or less one consistent whole: a single, giant, omni-cell that alters itself as needed.",
     "category": [ "SLIME" ],
@@ -7181,7 +7354,8 @@
     "points": 1,
     "starting_trait": true,
     "vitamin_cost": 60,
-    "social_modifiers": { "intimidate": 15 }
+    "social_modifiers": { "intimidate": 15 },
+    "monster_relations": [ { "morale": -10 } ]
   },
   {
     "type": "mutation",
@@ -7194,7 +7368,16 @@
     "vitamin_cost": 160,
     "visibility": 8,
     "ugliness": 4,
-    "enchantments": [ { "condition": { "not": "u_has_weapon" }, "melee_damage_bonus": [ { "type": "stab", "add": 2 } ] } ]
+    "enchantments": [ { "condition": { "not": "u_has_weapon" }, "melee_damage_bonus": [ { "type": "stab", "add": 2 } ] } ],
+    "retaliation": [
+      {
+        "damage_type": "cut",
+        "damage": [ 1, 4 ],
+        "unarmed_attacker_only": true,
+        "message": "Your thorns scrape %s in mid-attack!",
+        "npc_message": "%1$s's thorns scrape %2$s in mid-attack!"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -7262,7 +7445,8 @@
     "visibility": 10,
     "ugliness": -4,
     "social_modifiers": { "lie": 10 },
-    "enchantments": [ { "values": [ { "value": "SCENT_MASK", "add": -200 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SCENT_MASK", "add": -200 } ] } ],
+    "monster_relations": [ { "faction": "bee", "anger": -10 } ]
   },
   {
     "type": "mutation",
@@ -7546,6 +7730,7 @@
   {
     "type": "mutation",
     "id": "TREE_COMMUNION",
+    "builtin_activation": "tree_communion",
     "name": { "str": "Mycorrhizal Communion" },
     "description": "You have gained the ability to commune with trees and comprehend their ancient wisdom.  Activate next to a tree to gradually gain overmap vision through connected forests.",
     "category": [ "PLANT", "ELFA" ],
@@ -7587,7 +7772,7 @@
     "vitamin_cost": 160,
     "visibility": 5,
     "ugliness": 9,
-    "flags": [ "IMMUNE_SPOIL" ]
+    "flags": [ "IMMUNE_SPOIL", "SAPROPHAGE_DIET" ]
   },
   {
     "type": "mutation",

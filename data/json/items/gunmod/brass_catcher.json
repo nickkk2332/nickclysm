@@ -17,6 +17,8 @@
     "mod_targets": [ "shotgun", "smg", "rifle", "pistol", "launcher" ],
     "pocket_data": [ { "pocket_type": "CONTAINER", "rigid": true, "max_contains_volume": "249 ml", "max_contains_weight": "1 kg" } ],
     "flags": [ "BRASS_CATCHER" ],
+    "blacklist_gun_flags": [ "RELOAD_EJECT" ],
+    "blacklist_message": "cannot have a brass catcher",
     "min_skills": [ [ "weapon", 1 ] ]
   },
   {

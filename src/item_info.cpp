@@ -53,6 +53,7 @@
 #include "item_factory.h"
 #include "item_location.h"
 #include "item_pocket.h"
+#include "item_transformation.h"
 #include "item_uid.h"
 #include "iteminfo_query.h"
 #include "itype.h"
@@ -111,7 +112,6 @@ static const item_category_id item_category_container( "container" );
 
 static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_rad_badge( "rad_badge" );
-static const itype_id itype_rm13_armor( "rm13_armor" );
 
 static const json_character_flag json_flag_CANNIBAL( "CANNIBAL" );
 static const json_character_flag json_flag_CARNIVORE_DIET( "CARNIVORE_DIET" );
@@ -1512,6 +1512,38 @@ void item::gun_info( const item *mod, std::vector<iteminfo> &info, const iteminf
         }
     }
 
+    // Overheating guns: the numbers firing and cooling use, gunmods included
+    if( gun.overheat_threshold > 0.0 && parts->test( iteminfo_parts::GUN_HEAT ) ) {
+        double threshold_mod = 0.0;
+        double threshold_mult = 1.0;
+        double cooling_mod = 0.0;
+        double cooling_mult = 1.0;
+        double heat_mod = 0.0;
+        double heat_mult = 1.0;
+        for( const item *gmod : mod->gunmods() ) {
+            const islot_gunmod &gm = *gmod->type->gunmod;
+            threshold_mod += gm.overheat_threshold_modifier;
+            threshold_mult *= gm.overheat_threshold_multiplier;
+            cooling_mod += gm.cooling_value_modifier;
+            cooling_mult *= gm.cooling_value_multiplier;
+            heat_mod += gm.heat_per_shot_modifier;
+            heat_mult *= gm.heat_per_shot_multiplier;
+        }
+        insert_separation_line( info );
+        info.emplace_back( "GUN", _( "Heat per shot: " ), "",
+                           iteminfo::is_decimal | iteminfo::lower_is_better,
+                           std::max( gun.heat_per_shot * heat_mult + heat_mod, 0.0 ) );
+        info.emplace_back( "GUN", _( "Cooling per turn: " ), "", iteminfo::is_decimal,
+                           std::max( gun.cooling_value * cooling_mult + cooling_mod, 0.5 ) );
+        info.emplace_back( "GUN", _( "Overheat threshold: " ), "", iteminfo::is_decimal,
+                           std::max( gun.overheat_threshold * threshold_mult + threshold_mod, 5.0 ) );
+        const double heat = mod->get_var( "gun_heat", 0.0 );
+        if( heat > 0.0 ) {
+            info.emplace_back( "GUN", _( "Current heat: " ), "",
+                               iteminfo::is_decimal | iteminfo::lower_is_better, heat );
+        }
+    }
+
     if( !magazine_integral() && parts->test( iteminfo_parts::GUN_ALLOWED_MAGAZINES ) ) {
         insert_separation_line( info );
         if( uses_magazine() ) {
@@ -1671,6 +1703,91 @@ void item::gunmod_info( std::vector<iteminfo> &info, const iteminfo_query *parts
         info.emplace_back( "GUNMOD", _( "Minimum strength required modifier: " ),
                            mod.min_str_required_mod );
     }
+    if( parts->test( iteminfo_parts::GUNMOD_FIRE_MODES ) ) {
+        if( !mod.mode_modifier.empty() ) {
+            std::vector<std::string> modes;
+            modes.reserve( mod.mode_modifier.size() );
+            for( const std::pair<const gun_mode_id, gun_modifier_data> &m : mod.mode_modifier ) {
+                modes.emplace_back( string_format( "%s (%i)", m.second.tname(), m.second.qty() ) );
+            }
+            info.emplace_back( "GUNMOD", _( "Adds firing modes: " ) + enumerate_as_string( modes ) );
+        }
+        if( !mod.hide_modes.empty() ) {
+            std::vector<std::string> modes;
+            modes.reserve( mod.hide_modes.size() );
+            for( const gun_mode_id &m : mod.hide_modes ) {
+                modes.emplace_back( m.str() );
+            }
+            info.emplace_back( "GUNMOD", _( "Removes firing modes: " ) + enumerate_as_string( modes ) );
+        }
+    }
+    if( parts->test( iteminfo_parts::GUNMOD_AMMO_TO_FIRE ) ) {
+        if( mod.ammo_to_fire_modifier != 0 ) {
+            info.emplace_back( "GUNMOD", _( "Ammunition per shot modifier: " ), "",
+                               iteminfo::lower_is_better | iteminfo::show_plus, mod.ammo_to_fire_modifier );
+        }
+        if( mod.ammo_to_fire_multiplier != 1.0f ) {
+            info.emplace_back( "GUNMOD", _( "Ammunition per shot multiplier: " ), "",
+                               iteminfo::lower_is_better | iteminfo::is_decimal, mod.ammo_to_fire_multiplier );
+        }
+    }
+    if( parts->test( iteminfo_parts::GUNMOD_ENERGY_DRAIN ) ) {
+        if( mod.energy_drain_modifier != 0_kJ ) {
+            info.emplace_back( "GUNMOD", _( "Energy per shot modifier: " ),
+                               string_format( "<stat>%s%s</stat>", mod.energy_drain_modifier > 0_kJ ? "+" : "",
+                                              units::display( mod.energy_drain_modifier ) ) );
+        }
+        if( mod.energy_drain_multiplier != 1.0f ) {
+            info.emplace_back( "GUNMOD", _( "Energy per shot multiplier: " ), "",
+                               iteminfo::lower_is_better | iteminfo::is_decimal, mod.energy_drain_multiplier );
+        }
+    }
+    if( parts->test( iteminfo_parts::GUNMOD_HEAT ) ) {
+        if( mod.heat_per_shot_modifier != 0.0 ) {
+            info.emplace_back( "GUNMOD", _( "Heat per shot modifier: " ), "",
+                               iteminfo::lower_is_better | iteminfo::is_decimal | iteminfo::show_plus,
+                               mod.heat_per_shot_modifier );
+        }
+        if( mod.heat_per_shot_multiplier != 1.0f ) {
+            info.emplace_back( "GUNMOD", _( "Heat per shot multiplier: " ), "",
+                               iteminfo::lower_is_better | iteminfo::is_decimal, mod.heat_per_shot_multiplier );
+        }
+        if( mod.cooling_value_modifier != 0.0 ) {
+            info.emplace_back( "GUNMOD", _( "Cooling modifier: " ), "",
+                               iteminfo::is_decimal | iteminfo::show_plus, mod.cooling_value_modifier );
+        }
+        if( mod.cooling_value_multiplier != 1.0f ) {
+            info.emplace_back( "GUNMOD", _( "Cooling multiplier: " ), "", iteminfo::is_decimal,
+                               mod.cooling_value_multiplier );
+        }
+        if( mod.overheat_threshold_modifier != 0.0 ) {
+            info.emplace_back( "GUNMOD", _( "Overheat threshold modifier: " ), "",
+                               iteminfo::is_decimal | iteminfo::show_plus, mod.overheat_threshold_modifier );
+        }
+        if( mod.overheat_threshold_multiplier != 1.0f ) {
+            info.emplace_back( "GUNMOD", _( "Overheat threshold multiplier: " ), "", iteminfo::is_decimal,
+                               mod.overheat_threshold_multiplier );
+        }
+    }
+    if( mod.shot_spread_multiplier_modifier != 0.0f &&
+        parts->test( iteminfo_parts::GUNMOD_SHOT_SPREAD ) ) {
+        // Added to the gun's shot spread multiplier, which starts at 1
+        info.emplace_back( "GUNMOD", _( "Shot spread multiplier: " ), "",
+                           iteminfo::lower_is_better | iteminfo::is_decimal | iteminfo::show_plus,
+                           mod.shot_spread_multiplier_modifier );
+    }
+    if( mod.barrel_length > 0_mm && parts->test( iteminfo_parts::GUNMOD_BARREL_LENGTH ) ) {
+        info.emplace_back( "GUNMOD", string_format( _( "Barrel length: <info>%d %s</info>" ),
+                           convert_length( mod.barrel_length ), length_units( mod.barrel_length ) ) );
+    }
+    if( mod.is_bayonet && parts->test( iteminfo_parts::GUNMOD_BAYONET ) ) {
+        info.emplace_back( "GUNMOD",
+                           _( "When attached, the gun's melee attacks use this mod's damage if it is higher." ) );
+    }
+    if( parts->test( iteminfo_parts::GUNMOD_INSTALL_TIME ) ) {
+        info.emplace_back( "GUNMOD", string_format( _( "Install time: <info>%s</info>" ),
+                           to_string( mod.install_time ) ) );
+    }
     if( !mod.add_mod.empty() && parts->test( iteminfo_parts::GUNMOD_ADD_MOD ) ) {
         insert_separation_line( info );
 
@@ -1705,7 +1822,7 @@ void item::gunmod_info( std::vector<iteminfo> &info, const iteminfo_query *parts
     }
 
     if( !mod.blacklist_slot.empty() && parts->test( iteminfo_parts::GUNMOD_BLACKLIST_SLOT ) ) {
-        std::string mod_black_str = _( "<bold>Incompatible with gunmods: </bold> " );
+        std::string mod_black_str = _( "<bold>Incompatible with slots: </bold> " );
 
         int iternum = 0;
         for( const gunmod_location &black : mod.blacklist_slot ) {
@@ -1719,7 +1836,7 @@ void item::gunmod_info( std::vector<iteminfo> &info, const iteminfo_query *parts
         info.emplace_back( "GUNMOD", mod_black_str );
     }
     if( !mod.blacklist_mod.empty() && parts->test( iteminfo_parts::GUNMOD_BLACKLIST_MOD ) ) {
-        std::string mod_black_str = _( "<bold>Incompatible with slots: </bold> " );
+        std::string mod_black_str = _( "<bold>Incompatible with gunmods: </bold> " );
 
         int iternum = 0;
         for( const itype_id &black : mod.blacklist_mod ) {
@@ -2004,7 +2121,8 @@ void item::armor_protection_info( std::vector<iteminfo> &info, const iteminfo_qu
         if( !printed_any ) {
             info.emplace_back( bp_cat, string_format( "%s%s", space, _( "Negligible Protection" ) ) );
         }
-        if( type->can_use( "GASMASK" ) || type->can_use( "PAPR_MASK_ACTIVATE" ) ) {
+        // Gas masks, PAPRs and the like: what a fitted filter gives
+        if( get_base_env_resist_w_filter() > 0 ) {
             info.emplace_back( "ARMOR", string_format( "<bold>%s</bold>:",
                                _( "Protection when active" ) ) );
             info.emplace_back( bp_cat, space + _( "Acid: " ), "",
@@ -2124,6 +2242,31 @@ bool operator<( const armor_encumb_data &lhs, const armor_encumb_data &rhs )
     return lhs.encumb < rhs.encumb;
 }
 } // namespace
+
+// What the armor turns into when activated, for its "When active" info: its "active_form", or
+// for power armor the target of its transform use action or else an existing "<id>_on" item.
+// Null when it has none (or is that form already).
+static itype_id armor_active_form( const item &it )
+{
+    itype_id form = itype_id::NULL_ID();
+    const islot_armor *armor = it.find_armor_data();
+    if( armor != nullptr && !armor->active_form.is_empty() ) {
+        form = armor->active_form;
+    } else if( it.is_power_armor() ) {
+        const use_function *use = it.type->get_use( "transform" );
+        const iuse_transform *actor = use != nullptr ?
+                                      dynamic_cast<const iuse_transform *>( use->get_actor_ptr() ) : nullptr;
+        if( actor != nullptr && !actor->transform.target.is_empty() ) {
+            form = actor->transform.target;
+        } else {
+            form = itype_id( it.typeId().str() + "_on" );
+        }
+    }
+    if( form.is_null() || form == it.typeId() || !form.is_valid() ) {
+        return itype_id::NULL_ID();
+    }
+    return form;
+}
 
 void item::armor_info( std::vector<iteminfo> &info, const iteminfo_query *parts, int batch,
                        bool debug ) const
@@ -2386,8 +2529,8 @@ void item::armor_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
     insert_separation_line( info );
 
     if( covers_anything ) {
-
-        if( is_power_armor() || type->get_id() == itype_rm13_armor ) {
+        const itype_id active_form = armor_active_form( *this );
+        if( !active_form.is_null() ) {
             item tmp = *this;
 
             //no need to clutter the ui with inactive versions when the armor is already active
@@ -2403,7 +2546,7 @@ void item::armor_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
 
                 insert_separation_line( info );
                 info.emplace_back( "ARMOR", _( "<bold>When active</bold>:" ) );
-                tmp = tmp.convert( itype_id( tmp.typeId().str() + "_on" ) );
+                tmp = tmp.convert( active_form );
             }
 
             bool print_prot = true;
@@ -2712,7 +2855,7 @@ void item::book_info( std::vector<iteminfo> &info, const iteminfo_query *parts, 
                                   "read</info>.",
                                   "A chapter of this book takes <num> <info>minutes to "
                                   "read</info>.", to_minutes<int>( book.time ) );
-            if( type->use_methods.count( "MA_MANUAL" ) ) {
+            if( type->can_use( "MA_MANUAL" ) ) {
                 fmt = n_gettext(
                           "<info>A training session</info> with this book takes "
                           "<num> <info>minute</info>.",

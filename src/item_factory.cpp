@@ -2,8 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -25,6 +29,7 @@
 #include "cata_utility.h"
 #include "catacharset.h"
 #include "color.h"
+#include "condition.h"
 #include "coords_fwd.h"
 #include "damage.h"
 #include "debug.h"
@@ -39,6 +44,7 @@
 #include "flexbuffer_json.h"
 #include "game_constants.h"
 #include "generic_factory.h"
+#include "init.h"
 #include "input.h"
 #include "item.h"
 #include "item_contents.h"
@@ -47,6 +53,7 @@
 #include "item_transformation.h"
 #include "itype.h"
 #include "iuse_actor.h"
+#include "lightmap.h"
 #include "mapdata.h"
 #include "material.h"
 #include "math_defines.h"
@@ -72,6 +79,7 @@
 #include "vitamin.h"
 #include "weighted_list.h"
 
+struct const_dialogue;
 template <typename T> struct enum_traits;
 
 // Reader for item qualities that accepts both legacy array ["CUT", 1] and
@@ -1101,8 +1109,10 @@ void Item_factory::finalize_pre( itype &obj )
         obj.book->martial_art = matype_id( "style_" + obj.get_id().str().substr( 7 ) );
     }
 
-    if( obj.can_use( "link_up" ) ) {
-        obj.ammo_scale.emplace( "link_up", 0 );
+    for( const std::pair<const std::string, use_function> &use : obj.use_methods ) {
+        if( use.second.get_type() == "link_up" ) {
+            obj.ammo_scale.emplace( use.first, 0 );
+        }
     }
 
     if( obj.longest_side == -1_mm ) {
@@ -1115,13 +1125,14 @@ void Item_factory::finalize_pre( itype &obj )
 void Item_factory::register_cached_uses( const itype &obj )
 {
     for( const auto &e : obj.use_methods ) {
+        const std::string use_type = e.second.get_type();
         // can this item function as a repair tool?
-        if( repair_actions.count( e.first ) ) {
+        if( repair_actions.count( use_type ) ) {
             repair_tools.insert( obj.id );
         }
 
         // can this item be used to repair complex firearms?
-        if( e.first == "GUN_REPAIR" ) {
+        if( use_type == "GUN_REPAIR" ) {
             gun_tools.insert( obj.id );
         }
     }
@@ -2144,6 +2155,34 @@ class iuse_function_wrapper : public iuse_actor
         void load( const JsonObject &, const std::string & ) override {}
 };
 
+// A C++ function that takes JSON parameters: an object-form use action of it can set those it
+// declares, and they are passed to it on each use.
+class iuse_function_wrapper_with_params : public iuse_actor
+{
+    private:
+        use_function_pointer_with_params cpp_function;
+        std::vector<iuse_params::param> declared;
+        iuse_params params;
+    public:
+        iuse_function_wrapper_with_params( const std::string &type,
+                                           const use_function_pointer_with_params f,
+                                           const std::vector<iuse_params::param> &declared_params )
+            : iuse_actor( type ), cpp_function( f ), declared( declared_params ) { }
+
+        ~iuse_function_wrapper_with_params() override = default;
+        std::optional<int> use( Character *p, item &it, map */*here*/,
+                                const tripoint_bub_ms &pos ) const override {
+            return cpp_function( p, &it, pos, params );
+        }
+        std::unique_ptr<iuse_actor> clone() const override {
+            return std::make_unique<iuse_function_wrapper_with_params>( *this );
+        }
+
+        void load( const JsonObject &jo, const std::string & ) override {
+            params.load( jo, declared );
+        }
+};
+
 class iuse_function_wrapper_with_info : public iuse_function_wrapper
 {
     private:
@@ -2182,6 +2221,56 @@ void Item_factory::add_iuse( const std::string &type, const use_function_pointer
         use_function( std::make_unique<iuse_function_wrapper_with_info>( type, f, info ) );
 }
 
+void Item_factory::add_iuse_with_params( const std::string &type,
+        const use_function_pointer_with_params f, const std::vector<iuse_params::param> &declared )
+{
+    iuse_function_list[ type ] =
+        use_function( std::make_unique<iuse_function_wrapper_with_params>( type, f, declared ) );
+}
+
+void iuse_params::load( const JsonObject &jo, const std::vector<param> &declared )
+{
+    numbers.clear();
+    strings.clear();
+    for( const param &p : declared ) {
+        if( !jo.has_member( p.name ) ) {
+            continue;
+        }
+        switch( p.type ) {
+            case kind::integer:
+                numbers[p.name] = jo.get_int( p.name );
+                break;
+            case kind::duration: {
+                time_duration dur = 0_turns;
+                mandatory( jo, false, p.name, dur );
+                numbers[p.name] = to_turns<int64_t>( dur );
+                break;
+            }
+            case kind::string:
+                strings[p.name] = jo.get_string( p.name );
+                break;
+        }
+    }
+}
+
+int iuse_params::get_int( const std::string &name, int def ) const
+{
+    const auto iter = numbers.find( name );
+    return iter == numbers.end() ? def : static_cast<int>( iter->second );
+}
+
+time_duration iuse_params::get_duration( const std::string &name, const time_duration &def ) const
+{
+    const auto iter = numbers.find( name );
+    return iter == numbers.end() ? def : time_duration::from_turns( iter->second );
+}
+
+std::string iuse_params::get_string( const std::string &name, const std::string &def ) const
+{
+    const auto iter = strings.find( name );
+    return iter == strings.end() ? def : iter->second;
+}
+
 void Item_factory::add_actor( std::unique_ptr<iuse_actor> ptr )
 {
     std::string type = ptr->type;
@@ -2200,10 +2289,19 @@ use_function Item_factory::usage_from_string( const std::string &type )
     return use_function();
 }
 
-// Helper to safely look up and store iuse actions.
+// Helper to safely look up and store iuse actions. An action the item already has, by id or
+// by type, keeps its own data: one with an "id" isn't joined by a default one of its type.
 void Item_factory::emplace_usage( std::map<std::string, use_function> &container,
                                   const std::string &iuse_id )
 {
+    if( container.count( iuse_id ) != 0 ) {
+        return;
+    }
+    for( const std::pair<const std::string, use_function> &use : container ) {
+        if( use.second.get_actor_ptr() != nullptr && use.second.get_actor_ptr()->type == iuse_id ) {
+            return;
+        }
+    }
     use_function use_func = usage_from_string( iuse_id );
     if( use_func ) {
         container.emplace( iuse_id, use_func );
@@ -2224,8 +2322,24 @@ use_function Item_factory::read_use_function( const JsonObject &jo,
     use_function method = usage_from_string( type );
 
     if( method ) {
+        // The use action's key among the item's use actions, and its ammo_scale's key.
+        std::string id = type;
+        if( jo.has_member( "id" ) ) {
+            id = jo.get_string( "id" );
+            if( id.empty() ) {
+                jo.throw_error_at( "id", "a use action's id can't be empty" );
+            }
+            // Code that looks a use action up by its type would find this one by its id instead.
+            if( id != type && has_iuse( id ) ) {
+                jo.throw_error_at( "id", string_format(
+                                       "\"%s\" is the name of a use action type, so a use action of type "
+                                       "\"%s\" can't have it as its id", id, type ) );
+            }
+        }
+        method.get_actor_ptr()->id = id;
+        optional( jo, false, "menu_text", method.get_actor_ptr()->menu_text );
         if( jo.has_int( "ammo_scale" ) ) {
-            ammo_scale.emplace( type, static_cast<int>( jo.get_float( "ammo_scale" ) ) );
+            ammo_scale.emplace( id, static_cast<int>( jo.get_float( "ammo_scale" ) ) );
         }
     }
     return method;
@@ -2245,7 +2359,7 @@ static std::pair<std::string, use_function> use_function_reader_helper(
             return std::make_pair( type, use_function() );
         }
         method.get_actor_ptr()->load( use_obj, std::string( src ) );
-        return std::make_pair( type, method );
+        return std::make_pair( method.get_actor_ptr()->id, method );
     } else if( val.test_array() ) {
         JsonArray use_arr = val.get_array();
         std::string type = use_arr.get_string( 0 );
@@ -2261,6 +2375,28 @@ static std::pair<std::string, use_function> use_function_reader_helper(
     return std::make_pair( "", use_function() );
 }
 
+// The key of the use action a "delete" entry names: a string is the action's id (its type when
+// it has no "id"); the array and object forms name the action they would load as. Nothing else
+// of them is read.
+static std::string use_function_key_to_delete( const JsonValue &val )
+{
+    if( val.test_string() ) {
+        return val.get_string();
+    } else if( val.test_array() ) {
+        return val.get_array().get_string( 0 );
+    } else if( val.test_object() ) {
+        JsonObject use_obj = val.get_object();
+        use_obj.allow_omitted_members();
+        if( use_obj.has_member( "id" ) ) {
+            return use_obj.get_string( "id" );
+        }
+        const std::string type = use_obj.get_string( "type" );
+        return type == "repair_item" ? use_obj.get_string( "item_action_type" ) : type;
+    }
+    val.throw_error( "use_function_reader element must be string, array, or object" );
+    return std::string();
+}
+
 //reads use_function as either an object, array, or string into a map
 namespace
 {
@@ -2273,6 +2409,15 @@ class use_function_reader_map : public generic_typed_reader<use_function_reader_
             ammo_scale( ammo_scale ), src( src ) {};
         std::pair<std::string, use_function> get_next( const JsonValue &val ) const {
             return use_function_reader_helper( ammo_scale, src, val );
+        }
+        // "delete" removes a use action by its id, with its ammo_scale, without loading it.
+        template<typename C>
+        void erase_next( const JsonValue &val, C &container ) const {
+            const std::string key = use_function_key_to_delete( val );
+            if( container.erase( key ) == 0 ) {
+                val.throw_error( string_format( "no use action with the id \"%s\" to delete", key ) );
+            }
+            ammo_scale.erase( key );
         }
 };
 } // namespace
@@ -2340,7 +2485,7 @@ void Item_factory::init()
     add_iuse( "EYEDROPS", &iuse::eyedrops );
     add_iuse( "FILL_PIT", &iuse::fill_pit );
     add_iuse( "FIRECRACKER_PACK_ACT", &iuse::firecracker_pack_act );
-    add_iuse( "FISH_ROD", &iuse::fishing_rod );
+    add_iuse_with_params( "FISH_ROD", &iuse::fishing_rod, { { "duration", iuse_params::kind::duration } } );
     add_iuse( "FISH_TRAP", &iuse::fish_trap );
     add_iuse( "FISH_TRAP_TICK", &iuse::fish_trap_tick );
     add_iuse( "FITNESS_CHECK", &iuse::fitness_check );
@@ -2379,7 +2524,7 @@ void Item_factory::init()
     add_iuse( "MEASURE_RESONANCE", &iuse::measure_resonance );
     add_iuse( "CHANGE_OUTFIT", &iuse::change_outfit );
     add_iuse( "PLAY_GAME", &iuse::play_game );
-    add_iuse( "MAKEMOUND", &iuse::makemound );
+    add_iuse_with_params( "MAKEMOUND", &iuse::makemound, { { "moves", iuse_params::kind::integer } } );
     add_iuse( "DIG_CHANNEL", &iuse::dig_channel );
     add_iuse( "MA_MANUAL", &iuse::ma_manual );
     add_iuse( "MANAGE_EXOSUIT", &iuse::manage_exosuit );
@@ -2471,6 +2616,7 @@ void Item_factory::init()
     add_actor( std::make_unique<fireweapon_off_actor>() );
     add_actor( std::make_unique<fireweapon_on_actor>() );
     add_actor( std::make_unique<heal_actor>() );
+    add_actor( std::make_unique<smoke_actor>() );
     add_actor( std::make_unique<holster_actor>() );
     add_actor( std::make_unique<inscribe_actor>() );
     add_actor( std::make_unique<iuse_transform>() );
@@ -2502,6 +2648,7 @@ void Item_factory::init()
     add_actor( std::make_unique<cast_spell_actor>() );
     add_actor( std::make_unique<weigh_self_actor>() );
     add_actor( std::make_unique<sew_advanced_actor>() );
+    add_actor( std::make_unique<wash_actor>() );
     add_actor( std::make_unique<effect_on_conditions_actor>() );
     // An empty dummy group, it will not spawn anything. However, it makes that item group
     // id valid, so it can be used all over the place without need to explicitly check for it.
@@ -2599,6 +2746,10 @@ void Item_factory::check_definitions() const
 
         if( !type->picture_id.is_empty() && !type->picture_id.is_valid() ) {
             msg +=  "item has unknown ascii_picture.";
+        }
+
+        if( type->disassembly_sub ) {
+            msg += type->disassembly_sub->check();
         }
 
         for( const pocket_data &data : type->pockets ) {
@@ -2720,6 +2871,9 @@ void Item_factory::check_definitions() const
         }
 
         if( type->armor ) {
+            if( !type->armor->active_form.is_empty() && !has_template( type->armor->active_form ) ) {
+                msg += string_format( "invalid active_form %s\n", type->armor->active_form.str() );
+            }
             cata::flat_set<bodypart_str_id> observed_bps;
             for( const armor_portion_data &portion : type->armor->data ) {
                 if( portion.covers.has_value() ) {
@@ -2883,6 +3037,11 @@ void Item_factory::check_definitions() const
                 msg += string_format( "unknown technique %s\n", _a.c_str() );
             }
         }
+        for( const std::pair<const damage_type_id, float> &eff : type->block.effectiveness ) {
+            if( !eff.first.is_valid() ) {
+                msg += string_format( "unknown damage type %s in block effectiveness\n", eff.first.c_str() );
+            }
+        }
         if( !type->snippet_category.empty() ) {
             if( !SNIPPET.has_category( type->snippet_category ) ) {
                 msg += string_format( "item %s: snippet category %s without any snippets\n", type->id.c_str(),
@@ -2918,6 +3077,10 @@ void Item_factory::check_definitions() const
             if( !e.is_valid() ) {
                 msg += string_format( "item %s has unknown emit source %s\n", type->id.c_str(), e.c_str() );
             }
+        }
+
+        if( type->degrade_mult_ && *type->degrade_mult_ > 0.0f && type->count_by_charges() ) {
+            msg += "degradation_multiplier does nothing: items counted by charges can't be damaged\n";
         }
 
         for( const auto &f : type->faults ) {
@@ -3274,6 +3437,15 @@ void Item_factory::check_definitions() const
                                   type->transform_into.value().target.c_str() );
         }
 
+        if( type->smoke ) {
+            if( !type->smoke->puff_effect.is_null() && !type->smoke->puff_effect.is_valid() ) {
+                msg += string_format( "invalid smoke puff_effect %s\n", type->smoke->puff_effect.str() );
+            }
+            if( !type->has_flag( flag_LITCIG ) ) {
+                msg += "smoke is only used by an item with the LITCIG flag\n";
+            }
+        }
+
         if( msg.empty() ) {
             continue;
         }
@@ -3309,6 +3481,8 @@ const itype *Item_factory::add_runtime( const itype_id &id, translation name,
     // Clear armor_containers cache. It is probably not needed (added runtime will not be a container),
     // but as this almost never hapens and the cost is next to none, we can afford to be correct.
     armor_containers.clear();
+    // the id is defined now, which a sprite lookup that follows looks_like can see
+    DynamicDataLoader::get_instance().data_changed();
     return def;
 }
 
@@ -3451,6 +3625,32 @@ void islot_milling::deserialize( const JsonObject &jo )
 {
     optional( jo, was_loaded, "into", into_ );
     optional( jo, was_loaded, "recipe", recipe_ );
+}
+
+void item_block_data::deserialize( const JsonObject &jo )
+{
+    if( jo.has_member( "bonus" ) ) {
+        bonus = jo.get_int( "bonus" );
+        if( *bonus < 0 ) {
+            jo.throw_error_at( "bonus", "block bonus can't be negative" );
+        }
+    }
+    if( jo.has_member( "elemental_mult" ) ) {
+        elemental_mult = jo.get_float( "elemental_mult" );
+        if( *elemental_mult < 0.0f ) {
+            jo.throw_error_at( "elemental_mult", "elemental_mult can't be negative" );
+        }
+    }
+    if( jo.has_member( "effectiveness" ) ) {
+        effectiveness.clear();
+        for( JsonMember jm : jo.get_object( "effectiveness" ) ) {
+            const float value = jm.get_float();
+            if( value < 0.0f ) {
+                jm.throw_error( "block effectiveness can't be negative" );
+            }
+            effectiveness[damage_type_id( jm.name() )] = value;
+        }
+    }
 }
 
 void memory_card_info::deserialize( const JsonObject &jo )
@@ -3673,10 +3873,19 @@ void islot_gun::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "reload", reload_time, not_negative, 100 );
     optional( jo, was_loaded, "reload_noise", reload_noise, to_translation( "click." ) );
     optional( jo, was_loaded, "reload_noise_volume", reload_noise_volume, not_negative );
+    // CMBT-J09
+    if( jo.has_object( "fire_sound" ) ) {
+        fire_sound.emplace();
+        fire_sound->load( jo.get_object( "fire_sound" ) );
+    }
+    if( jo.has_member( "cycle_time" ) ) {
+        cycle_time = std::max( 0, jo.get_int( "cycle_time" ) );
+    }
     optional( jo, was_loaded, "barrel_volume", barrel_volume, units_bound_reader<units::volume> {0_ml} );
     optional( jo, was_loaded, "barrel_length", barrel_length, units_bound_reader<units::length> {0_mm} );
     optional( jo, was_loaded, "built_in_mods", built_in_mods, auto_flags_reader<itype_id> {} );
     optional( jo, was_loaded, "default_mods", default_mods, auto_flags_reader<itype_id> {} );
+    optional( jo, was_loaded, "required_mod_targets", required_mod_targets, auto_flags_reader<> {} );
     optional( jo, was_loaded, "energy_drain", energy_drain, units_bound_reader<units::energy> {0_kJ} );
     optional( jo, was_loaded, "blackpowder_tolerance", blackpowder_tolerance, not_negative, 8 );
     optional( jo, was_loaded, "min_cycle_recoil", min_cycle_recoil, not_negative );
@@ -3886,6 +4095,7 @@ void islot_armor::deserialize( const JsonObject &jo )
 
     optional( jo, was_loaded, "warmth", warmth, 0 );
     optional( jo, was_loaded, "non_functional", non_functional, itype_id() );
+    optional( jo, was_loaded, "active_form", active_form, itype_id() );
     optional( jo, was_loaded, "damage_verb", damage_verb );
     optional( jo, was_loaded, "power_armor", power_armor, false );
     optional( jo, was_loaded, "max_energy_shield_hp", max_energy_shield_hp, 0 );
@@ -4006,6 +4216,29 @@ class vitamins_reader : public generic_typed_reader<vitamins_reader>
 };
 } // namespace
 
+void comestible_npc_use::deserialize( const JsonObject &jo )
+{
+    if( jo.has_member( "pain" ) ) {
+        pain = jo.get_int( "pain" );
+    }
+    optional( jo, false, "min_pain", min_pain, 0 );
+    optional( jo, false, "max_pain", max_pain, INT_MAX );
+    optional( jo, false, "preference", preference, 1 );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+        has_condition = true;
+    }
+    if( !pain && !has_condition ) {
+        jo.throw_error( "npc_use needs a pain (for a painkiller) or a condition (when to take it)" );
+    }
+    if( preference < 1 ) {
+        jo.throw_error_at( "preference", "preference must be 1 or more" );
+    }
+    if( min_pain > max_pain ) {
+        jo.throw_error_at( "min_pain", "min_pain is above max_pain" );
+    }
+}
+
 void islot_comestible::deserialize( const JsonObject &jo )
 {
     std::string src = "dda";
@@ -4039,10 +4272,37 @@ void islot_comestible::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "addiction_type", addictions,
               weighted_string_id_reader<addiction_id, int> {default_addict_potential} );
 
-    for( JsonValue jv : jo.get_array( "consumption_effect_on_conditions" ) ) {
-        consumption_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    // the list replaces the one copy-from inherited; "extend" adds to it and "delete" removes ids
+    if( jo.has_array( "consumption_effect_on_conditions" ) ) {
+        consumption_eocs.clear();
+        for( JsonValue jv : jo.get_array( "consumption_effect_on_conditions" ) ) {
+            consumption_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        if( del.has_array( "consumption_effect_on_conditions" ) ) {
+            for( const std::string &doomed : del.get_string_array( "consumption_effect_on_conditions" ) ) {
+                consumption_eocs.erase( std::remove( consumption_eocs.begin(), consumption_eocs.end(),
+                                                     effect_on_condition_id( doomed ) ), consumption_eocs.end() );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        if( ext.has_array( "consumption_effect_on_conditions" ) ) {
+            for( JsonValue jv : ext.get_array( "consumption_effect_on_conditions" ) ) {
+                consumption_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+            }
+        }
     }
     optional( jo, was_loaded, "rot_spawn", rot_spawn );
+    if( jo.has_object( "npc_use" ) ) {
+        npc_use.emplace();
+        npc_use->deserialize( jo.get_object( "npc_use" ) );
+    }
 
     if( smoking_result != itype_id::NULL_ID() && comesttype == "INVALID" ) {
         jo.throw_error( "comestible_type INVALID cannot have smoking_result" );
@@ -4148,6 +4408,12 @@ void islot_gunmod::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "is_visible_when_installed", is_visible_when_installed );
     optional( jo, was_loaded, "blacklist_mod", blacklist_mod, auto_flags_reader<itype_id> {} );
     optional( jo, was_loaded, "blacklist_slot", blacklist_slot, auto_flags_reader<gunmod_location> {} );
+    optional( jo, was_loaded, "blacklist_gun_flags", blacklist_gun_flags, auto_flags_reader<flag_id> {} );
+    optional( jo, was_loaded, "blacklist_message", blacklist_message );
+    optional( jo, was_loaded, "installable", installable, true );
+    if( jo.has_member( "requires_unloaded" ) ) {
+        requires_unloaded = jo.get_bool( "requires_unloaded" );
+    }
     optional( jo, was_loaded, "barrel_length", barrel_length );
     optional( jo, was_loaded, "add_mod", add_mod, weighted_string_id_reader<gunmod_location, int> {1} );
 }
@@ -4251,7 +4517,7 @@ void hflesh_to_flesh( itype &item_template )
 
 void Item_factory::npc_implied_flags( itype &item_template )
 {
-    if( item_template.use_methods.count( "explosion" ) > 0 ) {
+    if( item_template.can_use( "explosion" ) ) {
         item_template.item_tags.insert( flag_DANGEROUS );
     }
 
@@ -4724,6 +4990,18 @@ static void replace_materials( const JsonObject &jo, itype &def )
     }
 }
 
+void itype_smoke_data::load( const JsonObject &jo, std::string_view src )
+{
+    optional( jo, false, "puff_effect", puff_effect, efftype_id::NULL_ID() );
+    optional( jo, false, "puff_duration", puff_duration, 15_seconds );
+    for( JsonValue jv : jo.get_array( "puff_eocs" ) ) {
+        puff_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+    for( JsonValue jv : jo.get_array( "burn_out_eocs" ) ) {
+        burn_out_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+}
+
 void itype::load( const JsonObject &jo, std::string_view src )
 {
     units_bound_reader<units::mass> not_negative_mass{ 0_milligram };
@@ -4747,6 +5025,12 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "stackable", stackable_ );
     optional( jo, was_loaded, "integral_volume", integral_volume, not_negative_volume, -1_ml );
     optional( jo, was_loaded, "light", light_emission, 0 );
+    if( jo.has_array( "light_color" ) ) {
+        JsonArray jarr = jo.get_array( "light_color" );
+        light_color.r = jarr.get_int( 0 ) / 255.0f;
+        light_color.g = jarr.get_int( 1 ) / 255.0f;
+        light_color.b = jarr.get_int( 2 ) / 255.0f;
+    }
     optional( jo, was_loaded, "integral_longest_side", integral_longest_side, not_negative_length,
               -1_mm );
     optional( jo, was_loaded, "variant_type", variant_kind, itype_variant_kind::generic );
@@ -4773,6 +5057,12 @@ void itype::load( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "repairs_like", repairs_like );
 
+    if( jo.has_object( "disassembly_substitute" ) ) {
+        std::shared_ptr<disassembly_substitute> sub = std::make_shared<disassembly_substitute>();
+        sub->load( jo.get_object( "disassembly_substitute" ) );
+        disassembly_sub = std::move( sub );
+    }
+
     optional( jo, true, "weapon_category", weapon_category, auto_flags_reader<weapon_category_id> {} );
 
     optional( jo, was_loaded, "melee_damage", melee );
@@ -4780,16 +5070,19 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "explosion", explosion );
     using_legacy_to_hit = false; //required for inherited but undefined "to_hit" field
     optional( jo, was_loaded, "to_hit", m_to_hit, melee_accuracy_reader{ *this }, -2 );
-    float degrade_mult = 1.0f;
-    optional( jo, false, "degradation_multiplier", degrade_mult, 1.0f );
-    // TODO: remove condition once degradation is ready to be applied to all items
-    if( count_by_charges() || category_force != item_category_veh_parts ) {
-        degrade_mult = 0.0f;
+    if( jo.has_member( "degradation_multiplier" ) ) {
+        degrade_mult_ = static_cast<float>( jo.get_float( "degradation_multiplier" ) );
     }
+    // Without an explicit (or inherited) multiplier only vehicle parts degrade for now.
+    // TODO: default to 1.0 for all items once degradation is ready to be applied to them
+    // Items counted by charges have no damage, so nothing to degrade.
+    float degrade_mult = count_by_charges() ? 0.0f : degrade_mult_.value_or(
+                             category_force == item_category_veh_parts ? 1.0f : 0.0f );
     if( ( degrade_mult * itype::damage_max_ ) <= 0.5f ) {
         degrade_increments_ = 0;
     } else {
-        float adjusted_inc = std::max( degrade_increments_ / degrade_mult, 1.0f );
+        // derived from the base each time, so a child's multiplier doesn't stack on its parent's
+        float adjusted_inc = std::max( base_degrade_increments_ / degrade_mult, 1.0f );
         degrade_increments_ = std::isnan( adjusted_inc ) ? 0 : std::round( adjusted_inc );
     }
 
@@ -4834,8 +5127,9 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "flags", item_tags, auto_flags_reader<flag_id> {} );
     optional( jo, was_loaded, "source_monster", source_monster, mtype_id::NULL_ID() );
 
-    if( jo.has_array( "faults" ) ) {
-        for( JsonObject jo_f : jo.get_array( "faults" ) ) {
+    // "faults" replaces the list copy-from inherited, "extend" adds to it and "delete" removes from it
+    const auto read_fault_entries = [this]( const JsonArray & entries ) {
+        for( JsonObject jo_f : entries ) {
             if( jo_f.has_string( "fault" ) ) {
                 const int fault_weight = jo_f.has_float( "weight" ) ? jo_f.get_float( "weight" ) : 100;
                 faults.add( fault_id( jo_f.get_string( "fault" ) ), fault_weight );
@@ -4849,6 +5143,44 @@ void itype::load( const JsonObject &jo, std::string_view src )
                 jo_f.throw_error( R"("faults" should specify either a "fault" or a "fault_group")" );
             }
         }
+    };
+    if( jo.has_array( "faults" ) ) {
+        faults.clear();
+        fault_groups.clear();
+        read_fault_entries( jo.get_array( "faults" ) );
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        if( del.has_array( "faults" ) ) {
+            // a fault id, or { "fault": id } or { "fault_group": id } like the entries
+            for( const JsonValue entry : del.get_array( "faults" ) ) {
+                if( entry.test_string() ) {
+                    faults.remove( fault_id( entry.get_string() ) );
+                    continue;
+                }
+                JsonObject jo_f = entry.get_object();
+                jo_f.allow_omitted_members();
+                if( jo_f.has_string( "fault" ) ) {
+                    faults.remove( fault_id( jo_f.get_string( "fault" ) ) );
+                } else if( jo_f.has_string( "fault_group" ) ) {
+                    const std::string group = jo_f.get_string( "fault_group" );
+                    fault_groups.erase( std::remove_if( fault_groups.begin(), fault_groups.end(),
+                    [&group]( const std::tuple<int, int, float, std::string> &g ) {
+                        return std::get<3>( g ) == group;
+                    } ), fault_groups.end() );
+                } else {
+                    jo_f.throw_error( R"("faults" should specify either a "fault" or a "fault_group")" );
+                }
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        if( ext.has_array( "faults" ) ) {
+            read_fault_entries( ext.get_array( "faults" ) );
+        }
     }
 
     optional( jo, was_loaded, "qualities", qualities, item_quality_reader {} );
@@ -4859,6 +5191,7 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "max_worn", max_worn, MAX_WORN_PER_TYPE );
 
     optional( jo, was_loaded, "techniques", techniques, auto_flags_reader<matec_id> {} );
+    optional( jo, was_loaded, "block", block );
 
     optional( jo, was_loaded, "countdown_interval", countdown_interval );
 
@@ -4873,6 +5206,12 @@ void itype::load( const JsonObject &jo, std::string_view src )
     if( jo.has_member( "revert_to" ) && jo.has_member( "transform_into" ) ) {
         jo.throw_error_at( "transform_into",
                            "Item specified both transform_into and revert_to: they're mutually exclusive" );
+    }
+
+    // replaces an inherited block whole
+    if( jo.has_member( "smoke" ) ) {
+        smoke = cata::make_value<itype_smoke_data>();
+        smoke->load( jo.get_object( "smoke" ), src );
     }
 
     //First, check for copy-from
@@ -5094,6 +5433,7 @@ void Item_factory::reset()
 
 void Item_factory::clear()
 {
+    heal_actor::clear_curable_effects();
     m_template_groups.clear();
     armor_containers.clear();
 
@@ -5255,10 +5595,16 @@ void Item_factory::add_entry( Item_group &ig, const JsonObject &obj,
                                              ig.with_magazine, context, event );
         jarr = obj.get_array( "distribution" );
     }
+    // the entry spawns only while this is true (checked at spawn time, the avatar is u)
+    std::function<bool( const_dialogue const & )> condition;
+    if( obj.has_member( "condition" ) ) {
+        read_condition( obj, "condition", condition, false );
+    }
     if( gptr ) {
         for( const JsonObject job2 : jarr ) {
             add_entry( *gptr, job2, subcontext );
         }
+        gptr->condition = condition;
         ig.add_entry( std::move( gptr ) );
         return;
     }
@@ -5275,6 +5621,7 @@ void Item_factory::add_entry( Item_group &ig, const JsonObject &obj,
     if( !sptr ) {
         return;
     }
+    sptr->condition = condition;
 
     if( obj.has_member( "artifact" ) ) {
         sptr->artifact = cata::make_value<Item_spawn_data::relic_generator>();
@@ -5418,6 +5765,26 @@ void Item_factory::load_item_group( const JsonObject &jsobj, const item_group_id
     Item_group *ig = make_group_or_throw( group_id, isd, type, jsobj.get_int( "ammo", 0 ),
                                           jsobj.get_int( "magazine", 0 ), context );
 
+    // With copy-from, "delete" removes the entries (not nested ones) that spawn these items or
+    // groups, before "extend" adds new ones
+    if( jsobj.has_member( "copy-from" ) && jsobj.has_object( "delete" ) ) {
+        const JsonObject del = jsobj.get_object( "delete" );
+        for( const std::string_view member : {
+                 "items", "groups"
+             } ) {
+            if( !del.has_array( member ) ) {
+                continue;
+            }
+            const Single_item_creator::Type entry_type = member == "items" ?
+                    Single_item_creator::S_ITEM : Single_item_creator::S_ITEM_GROUP;
+            for( const std::string &doomed : del.get_string_array( member ) ) {
+                if( !ig->remove_entries( doomed, entry_type ) ) {
+                    del.throw_error_at( member, string_format( "item group %s has no entry for %s to delete",
+                                        group_id.str(), doomed ) );
+                }
+            }
+        }
+    }
     // If it extends, read from the extends block (and extend our itemgroup)
     // Otherwise, read from the object into the fresh itemgroup
     // And don't read if it has copy-from because it will not handle that correctly.

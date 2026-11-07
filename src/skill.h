@@ -3,14 +3,20 @@
 #define CATA_SRC_SKILL_H
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "bonuses.h"
 #include "calendar.h"
+#include "dialogue_helpers.h"
 #include "game_constants.h"
 #include "translation.h"
 #include "type_id.h"
@@ -33,7 +39,6 @@ struct time_info_t {
 class Skill
 {
         friend class string_id<Skill>;
-        skill_id _ident;
 
         translation _name;
         translation _description;
@@ -54,9 +59,45 @@ class Skill
         bool consumes_focus = true;
         std::set<std::string> _requires_all_traits;
         std::set<std::string> _requires_any_traits;
+        // How long an NPC lesson takes and what it costs, when JSON says (u is the student, npc
+        // the teacher); otherwise the built-in formulas
+        std::optional<duration_or_var> _training_time;
+        std::optional<dbl_or_var> _training_cost;
+        // Practice, books and character creation stop here (MAX_SKILL at most)
+        int _max_level = MAX_SKILL;
+        // How this skill progresses (PROG-J08); the defaults are the built-in rules
+        float _training_multiplier = 1.0f;
+        float _catchup_multiplier = 1.0f;
+        float _book_learning_multiplier = 1.0f;
+        bool _rusts = true;
+        time_duration _rust_grace_period = 24_hours;
+        float _rust_multiplier = 1.0f;
+        float _rust_max_levels = 3.0f;
+        // Crafting with this as the primary skill (UIINV-J04): uncorrected farsightedness takes
+        // this much off the effective skill, and the crafting stat adds stat / divisor.
+        float _vision_penalty = 0.0f;
+        scaling_stat _crafting_stat = STAT_INT;
+        float _crafting_stat_divisor = 4.0f;
+        // When the definition this skill holds was loaded: `skills` keeps that order, so a
+        // redefinition moves the skill to the end as it always did.
+        uint64_t _load_order = 0;
+
+        // Rebuilds `skills` and `contextual_skills` from the skill factory.
+        static void update_skill_lists();
     public:
+        skill_id id;
+        bool was_loaded = false;
+        std::vector<std::pair<skill_id, mod_id>> src;
+
+        // The skills that aren't contextual, in load order (see _load_order).
         static std::vector<Skill> skills;
-        static void load_skill( const JsonObject &jsobj );
+        /** Loads one "skill" object through the skill factory. */
+        static void load_skill( const JsonObject &jsobj, const std::string &src_name );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jsobj, std::string_view src );
+        /** Loads the skills whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
         // For loading old saves that still have integer-based ids.
         static skill_id from_legacy_int( int legacy_id );
         static skill_id random_skill();
@@ -76,7 +117,7 @@ class Skill
                const std::set<std::string> &tags, skill_displayType_id display_type );
 
         const skill_id &ident() const {
-            return _ident;
+            return id;
         }
         std::string name() const {
             return _name.translated();
@@ -109,12 +150,62 @@ class Skill
         bool is_teachable() const {
             return _teachable;
         }
+        const std::optional<duration_or_var> &training_time() const {
+            return _training_time;
+        }
+        const std::optional<dbl_or_var> &training_cost() const {
+            return _training_cost;
+        }
+        /** The highest level practice, books and character creation can take this skill to */
+        int max_level() const {
+            return _max_level;
+        }
+        /** Multiplies the experience practice gives (Character::practice) */
+        float training_multiplier() const {
+            return _training_multiplier;
+        }
+        /** Multiplies how fast practice catches up to theoretical knowledge */
+        float catchup_multiplier() const {
+            return _catchup_multiplier;
+        }
+        /** Multiplies the theoretical experience books give */
+        float book_learning_multiplier() const {
+            return _book_learning_multiplier;
+        }
+        /** Whether the skill rusts at all */
+        bool rusts() const {
+            return _rusts;
+        }
+        /** How long without practice before rust starts */
+        time_duration rust_grace_period() const {
+            return _rust_grace_period;
+        }
+        /** Multiplies the rust amount */
+        float rust_multiplier() const {
+            return _rust_multiplier;
+        }
+        /** Rust stops once this many levels' worth of experience has rusted away */
+        float rust_max_levels() const {
+            return _rust_max_levels;
+        }
+        /** Taken off the effective skill of a farsighted crafter without glasses */
+        float vision_penalty() const {
+            return _vision_penalty;
+        }
+        /** The stat that adds to the effective skill when crafting */
+        scaling_stat crafting_stat() const {
+            return _crafting_stat;
+        }
+        /** The crafting stat adds stat / this */
+        float crafting_stat_divisor() const {
+            return _crafting_stat_divisor;
+        }
 
         bool operator==( const Skill &b ) const {
-            return this->_ident == b._ident;
+            return this->id == b.id;
         }
         bool operator< ( const Skill &b ) const {
-            return this->_ident < b._ident;    // Only here for the benefit of std::map<Skill,T>
+            return this->id < b.id;    // Only here for the benefit of std::map<Skill,T>
         }
 
         bool operator!=( const Skill &b ) const {
@@ -186,6 +277,13 @@ class SkillLevel
         int rustAccumulator() const {
             return _rustAccumulator;
         }
+        time_point lastPracticed() const {
+            return _lastPracticed;
+        }
+        // Sets when the skill was last practiced, which delays rust (EOCs, PROG-J06)
+        void set_last_practiced( const time_point &when ) {
+            _lastPracticed = when;
+        }
         int exercise( bool raw = false ) const {
             return raw ? _exercise : _exercise / ( 100 * ( level() + 1 ) * ( level() + 1 ) );
         }
@@ -198,12 +296,18 @@ class SkillLevel
                     bool allow_multilevel = false );
         void knowledge_train( int amount, int npc_knowledge = 0 );
         bool isRusty() const;
-        bool rust( int rust_resist, float rust_multiplier = 1 );
+        // The grace period and the cap (in levels of experience) are the skill's (PROG-J08)
+        bool rust( int rust_resist, float rust_multiplier = 1,
+                   const time_duration &grace_period = 24_hours, float max_levels = 3.0f );
         void practice();
         bool can_train() const;
         void set_exercise( int value, bool raw = false );
+        // Sets the theoretical experience toward the next knowledge level (EOCs, PROG-J06)
+        void set_knowledge_exercise( int value, bool raw = false );
 
-        void readBook( int minimumGain, int maximumGain, int maximumLevel = -1 );
+        // multiplier: the skill's book_learning_multiplier (PROG-J08)
+        void readBook( int minimumGain, int maximumGain, int maximumLevel = -1,
+                       float multiplier = 1.0f );
 
         bool operator==( const SkillLevel &b ) const {
             return this->level() == b.level() && this->_exercise == b._exercise;

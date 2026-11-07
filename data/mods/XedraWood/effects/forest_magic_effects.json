@@ -15,7 +15,7 @@
         ]
       },
       {
-        "condition": { "math": [ "u_spell_level('effect_forest_traverse_the_wilds') > 7" ] },
+        "condition": { "math": [ "u_spell_level('forest_traverse_the_wilds') > 7" ] },
         "values": [ { "value": "PHASE_DISTANCE", "add": 2 } ]
       }
     ]

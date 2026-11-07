@@ -730,6 +730,8 @@ class game
         int64_t assign_item_uid();
         int64_t assign_monster_uid();
         void reserve_monster_uid( int64_t uid );
+        int64_t assign_vehicle_uid();
+        void reserve_vehicle_uid( int64_t uid );
         execution_manager &executions();
         ability_manager &abilities();
         // Keeps the uids assign_item_uid hands out above one in use, e.g. read from a save
@@ -1316,6 +1318,7 @@ class game
         int next_mission_id = 0; // NOLINT(cata-serialize)
         int64_t next_item_uid = 1; // NOLINT(cata-serialize)
         int64_t next_monster_uid = 1; // NOLINT(cata-serialize)
+        int64_t next_vehicle_uid = 1; // NOLINT(cata-serialize)
 
         std::chrono::seconds time_played_at_last_load; // NOLINT(cata-serialize)
         // NOLINTNEXTLINE(cata-serialize)
@@ -1461,6 +1464,10 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
 // the exit_eoc of the OMT left and then the entry_eoc of the OMT entered. Does nothing while an
 // avatar_move_scope is open: the move that opened it reports the change once, when it ends.
 void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos );
+
+// For a new game: sends avatar_enters_omt for the avatar's OMT and runs that OMT's entry_eoc
+// once, with the context of an OMT change from nowhere (left_oter_id is empty).
+void avatar_starts_in_omt();
 
 // Open while a move of the avatar is under way (a step, stairs, a teleport, vehicle travel).
 // An OMT change made by a move nested inside it, such as a teleport trap stepped on, is left to

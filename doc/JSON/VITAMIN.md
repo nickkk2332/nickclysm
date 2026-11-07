@@ -22,6 +22,7 @@
     - [`disease`](#disease)
     - [`disease_excess`](#disease_excess)
     - [`decays_into`](#decays_into)
+    - [Copying and changing vitamins](#copying-and-changing-vitamins)
   - [flags](#flags)
       - [opiate MME conversion chart](#opiate-mme-conversion-chart)
 
@@ -84,7 +85,7 @@ The id of an effect that is triggered by a excess of this vitamin.
 The smallest amount of this vitamin that the player can have.
 
 ### `max`
-The highest amount of this vitamin that the avatar can have.
+The highest amount of this vitamin that the avatar can have.  It can't be below `min`; both are checked when the game loads.
 
 ### `weight_per_unit`
 Allows specifying this vitamin in foods in terms of the amount of that vitamin in that food by weight.
@@ -106,6 +107,8 @@ What the thresholds of excess of this vitamin are.
 Each pair in the list determines the start and end points of that tier of excess.
 Each tier of excess corresponds to the intensity level of the effect defined in `excess`.
 
+A tier of `disease` or `disease_excess` whose range lies wholly outside [`min`, `max`] can never be reached (the level stays between them), and is reported when the game loads.
+
 
 ### `decays_into`
 Whenever this vitamin is naturally metabolized, it can adjust the levels of other vitamins in the body.
@@ -113,6 +116,14 @@ Each pair in the list contains a vitamin ID and a number, with the number repres
 In the provided example, each unit of iron will decay into two units of calcium; four units of iron decays into eight units of calcium, and so on.
 Negative values can be used to purge existing vitamins from the body, instead of adding them.
 This only happens with natural decay, as determined by `rate`; other sources of vitamin removal won't cause this to trigger.
+An unknown vitamin, or the vitamin itself, is reported when the game loads.
+
+### Copying and changing vitamins
+A vitamin can `copy-from` another vitamin (or an `abstract` one).  A later mod changes a vitamin by copying it under the same id: it keeps every member it doesn't name.  `flags` takes `extend` and `delete`; `disease`, `disease_excess` and `decays_into`, when given, replace the copied ones.  A second definition of an id without `copy-from` replaces the first one entirely, and two definitions of one id in the same mod are an error.
+
+```jsonc
+{ "type": "vitamin", "id": "iron", "copy-from": "iron", "max": 4000, "extend": { "flags": [ "NO_DISPLAY" ] } }
+```
 
 ## flags
 

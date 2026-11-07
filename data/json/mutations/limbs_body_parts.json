@@ -547,6 +547,7 @@
     "squeamish_penalty": 6,
     "drench_capacity": 700,
     "techniques": [ "TECH_GASTROPOD_TONGUE" ],
+    "flags": [ "LIMB_UPPER" ],
     "sub_parts": [ "gastropod_tongue_lips", "gastropod_tongue_nose", "gastropod_tongue_cheeks", "gastropod_tongue_chin" ],
     "unarmed_damage": [ { "damage_type": "stab", "amount": 15 } ]
   },
@@ -564,6 +565,7 @@
     "side": "both",
     "squeamish_penalty": 3,
     "drench_capacity": 900,
+    "flags": [ "LIMB_UPPER" ],
     "sub_parts": [ "insect_proboscis_base", "insect_proboscis_labium", "insect_proboscis_cheeks", "insect_proboscis_bottom" ]
   },
   {
@@ -1008,6 +1010,7 @@
     "bionic_slots": 0,
     "smash_message": "You smash the %s with your tarsus.",
     "smash_efficiency": 2,
+    "flags": [  ],
     "sub_parts": [ "insect_tarsomere_l", "insect_segment_l", "insect_terminus_l" ]
   },
   {
@@ -1207,7 +1210,7 @@
     "limb_types": "hand",
     "side": "left",
     "feels_discomfort": false,
-    "techniques": [ "TECH_SLIME_COMPLETE_PUNCH" ],
+    "techniques": [ "TECH_SLIME_PUNCH" ],
     "hot_morale_mod": 0.5,
     "cold_morale_mod": 0.5,
     "fire_warmth_bonus": 5,
@@ -1497,6 +1500,7 @@
     "squeamish_penalty": 0,
     "drench_capacity": 1500,
     "bionic_slots": 0,
+    "flags": [  ],
     "sub_parts": [ "hand_slime_wrist_l", "hand_slime_palm_l", "hand_slime_back_l", "hand_slime_fingers_l" ],
     "unarmed_damage": [ { "damage_type": "bash", "amount": -2 }, { "damage_type": "acid", "amount": 4 } ],
     "similar_bodypart": "hand_slime_l"
@@ -2321,6 +2325,7 @@
     ],
     "bionic_slots": 2,
     "temp_mod": [ 200, 450 ],
+    "flags": [ "LIMB_LOWER" ],
     "sub_parts": [ "hoof_sole_l", "hoof_wall_l", "hoof_fetlock_l" ],
     "unarmed_damage": [ { "damage_type": "bash", "amount": 8 } ],
     "armor": { "bash": 5, "cut": 3, "stab": 2, "acid": 4 }
@@ -2349,6 +2354,7 @@
     ],
     "bionic_slots": 2,
     "temp_mod": [ 200, 450 ],
+    "flags": [ "LIMB_LOWER" ],
     "sub_parts": [ "hoof_sole_r", "hoof_wall_r", "hoof_fetlock_r" ],
     "unarmed_damage": [ { "damage_type": "bash", "amount": 8 } ],
     "armor": { "bash": 5, "cut": 3, "stab": 2, "acid": 4 }

@@ -10,6 +10,11 @@
     "//": "It can hear you"
   },
   {
+    "id": "HORDE_ROAMER",
+    "type": "monster_flag",
+    "//": "With HEARS: joins the moving hordes of the overmap while it is off the map"
+  },
+  {
     "id": "GOODHEARING",
     "type": "monster_flag",
     "//": "Pursues sounds more than most monsters"
@@ -113,6 +118,11 @@
     "id": "DIGS",
     "type": "monster_flag",
     "//": "Digs through the ground"
+  },
+  {
+    "id": "DIMENSIONAL_ANCHOR",
+    "type": "monster_flag",
+    "//": "Can't be teleported, and a teleport onto it fails"
   },
   {
     "id": "CAN_DIG",

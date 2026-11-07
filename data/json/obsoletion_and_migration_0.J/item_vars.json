@@ -1,0 +1,110 @@
+[
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_PREFER_UP",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_PREFER_DOWN",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_PREFER_RIGHT",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_PREFER_LEFT",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_SPOT_X",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_SPOT_Y",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_POWER",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Searchlight monster setting, not kept on the item",
+    "from": "SL_DIR",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Stored translated gerund, replaced by the inscription tool type",
+    "from": "item_label_type",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Stored translated gerund, replaced by the inscription tool type",
+    "from": "item_note_type",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_acid",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_fire",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_bash",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_cut",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_bullet",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_encumbrance",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_warmth",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "//": "Clothing mod value, now worked out from the item's flags",
+    "from": "clothing_mod_invalid",
+    "scope": [ "item" ]
+  }
+]

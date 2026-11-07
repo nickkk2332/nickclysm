@@ -17,5 +17,11 @@ def parse_gun(json, origin):
     write_text(json.get("reload_noise"), origin,
                comment=f"Reload noise of gun '{name}'")
 
+    fire_sound = json.get("fire_sound", {})
+    write_text(fire_sound.get("message"), origin,
+               comment=f"Sound of firing gun '{name}'")
+    write_text(fire_sound.get("burst_message"), origin,
+               comment=f"Sound of a burst from gun '{name}'")
+
     for loc in json.get("valid_mod_locations", []):
         write_text(loc[0], origin, comment="Location of gun mod")

@@ -17,13 +17,10 @@
 #include "weighted_list.h"
 
 class JsonObject;
-class VehicleGroup;
 class VehicleSpawn;
 class map;
 
 using vspawn_id = string_id<VehicleSpawn>;
-
-extern std::unordered_map<vgroup_id, VehicleGroup> vgroups;
 
 /**
  * This class is used to group vehicles together into groups in much the same way as
@@ -34,17 +31,32 @@ class VehicleGroup
     public:
         VehicleGroup() = default;
 
+        vgroup_id id;
+        bool was_loaded = false;
+
         void add_vehicle( const vproto_id &type, const int &probability ) {
             vehicles.add( type, probability );
         }
 
-        const vproto_id &pick() const {
-            return *vehicles.pick();
+        /**
+         * A vehicle of the group, by weight; the null id for a group with nothing to pick (no
+         * vehicles, or none of any weight), which callers skip (VINT-B09).
+         */
+        vproto_id pick() const {
+            const vproto_id *picked = vehicles.pick();
+            return picked == nullptr ? vproto_id::NULL_ID() : *picked;
         }
 
         std::vector<vproto_id> all_possible_results() const;
 
-        static void load( const JsonObject &jo );
+        /** Loads one "vehicle_group" object through the group factory. */
+        static void load_all( const JsonObject &jo, const std::string &src );
+        /** Called by the factory: a definition, or a redefinition that adds to the group. */
+        void load( const JsonObject &jo, std::string_view src );
+        /** Adds `type` to the group `group`, making the group if there is none (for prototypes). */
+        static void add_to_group( const vgroup_id &group, const vproto_id &type, int probability );
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
         static void reset();
 
     private:

@@ -74,7 +74,7 @@ Field                 | Meaning
 `"consumes_food"`     | bool, optional, defaults to false. Controls whether characters eating from the fac_food_supply actually removes food from it. Note that eating is controlled by the external optional "NO_NPC_FOOD". consumes_food only controls whether the eaten food is removed from storage (whether the amount of food available goes down!)
 `"wealth"`            | integer, number of post-apocalyptic currency in cents that that faction has to purchase stuff. Serves as an upper limit on the amount of items restocked by an NPC of this faction with a defined shopkeeper_item_group (see NPCs.md)
 `"currency"`          | string, the item `"id"` of the faction's preferred currency.  Faction shopkeeps will trade faction current at 100% value, for both selling and buying.
-`"price_rules"`       | array, allows defining `premium`, `markup`, `price` and/or `fixed_adj` for an `item`/`category`/`group`.<br/><br/>`premium` is a price multiplier that applies to both sides.<br/> `markup` is only used when an NPC is selling to the avatar and defaults to `1`.<br/>`price` replaces the item's `price_postapoc`.<br/>`fixed_adj` is used instead of adjustment based on social skill and intelligence stat and can be used to define secondary currencies.<br/><br/>Lower entries override higher ones. For conditionals, the avatar is used as alpha and the evaluating npc as beta
+`"price_rules"`       | array, allows defining `premium`, `markup`, `price` and/or `fixed_adj` for an `item`/`category`/`group`.<br/><br/>`premium` is a price multiplier that applies to both sides.<br/> `markup` is only used when an NPC is selling to the avatar and defaults to `1`.<br/>`price` replaces the item's `price_postapoc`.<br/>`fixed_adj` is used instead of adjustment based on social skill and intelligence stat and can be used to define secondary currencies.<br/><br/>`premium`, `markup` and `fixed_adj` can be numbers or math (`{ "math": [ "1 + n_npc_trust() / 10" ] }`), evaluated like the condition, with the item in context variables (see [Shopkeeper consumption rates](NPCs.md#shopkeeper-consumption-rates)).<br/><br/>Lower entries override higher ones. For conditionals, the avatar is used as alpha and the evaluating npc as beta.  An `item`, `category` or `group` that doesn't exist is a load error.  The `avatar_trades` event (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)) follows every finished trade
 `"relations"`         | dictionary, a description of how the faction sees other factions.  See below
 `"mon_faction"`       | string, optional.  The monster faction `"name"` of the monster faction that this faction counts as.  Defaults to "human" if unspecified.
 `"lone_wolf_faction"` | bool, optional. This is a proto/micro faction template that is used to generate 1-person factions for dynamically spawned NPCs, defaults to "false" if unspecified.
@@ -87,7 +87,11 @@ Field                 | Meaning
 
 A later mod's definition of a faction id replaces the earlier one completely.  Two definitions of one id from the same mod are an error.
 
-With `"copy-from"`, a faction starts from another faction and changes only the fields it gives.  The parent must be defined earlier (in the same mod or a mod loaded before).  The fields a full definition must give become optional, numbers take `relative` and `proportional`, and `price_rules` takes `extend` and `delete`:
+With `"copy-from"`, a faction starts from another faction and changes only the fields it gives.  The parent may be defined anywhere, also later or in a mod loaded after (the copy waits for it), and it may be an `"abstract"` faction: a template only for copying, which is never a faction in the game.  The fields a full definition must give become optional, numbers take `relative` and `proportional`, and the lists take `extend` and `delete`:
+
+- `price_rules`: `extend` adds rules; `delete` takes rules and removes the one for the same `item`, `category` or `group`.
+- `epilogues`: `extend` adds epilogues; `delete` takes snippet ids and removes every epilogue with that id.
+- `relations`: `extend` takes an object like `relations` and adds or replaces the relation to each faction it lists, as `relations` itself does on a copy; `delete` takes faction ids and removes the relation to each.
 
 ```jsonc
   {
@@ -96,7 +100,8 @@ With `"copy-from"`, a faction starts from another faction and changes only the f
     "copy-from": "free_merchants",           // a mod changing the vanilla faction
     "currency": "my_mod_coin",               // adds its 100% price rule; the old currency's rule stays
     "relative": { "likes_u": -10 },
-    "extend": { "price_rules": [ { "category": "guns", "markup": 2.0 } ] }
+    "extend": { "price_rules": [ { "category": "guns", "markup": 2.0 } ] },
+    "delete": { "relations": [ "hells_raiders" ], "epilogues": [ "epilogue_faction_free_merchants_thrive" ] }
   }
 ```
 

@@ -20,8 +20,10 @@
 #include "cata_variant.h"
 #include "character.h"
 #include "color.h"
+#include "condition.h"
 #include "crafting_gui.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enum_traits.h"
 #include "flag.h"
@@ -49,6 +51,7 @@
 #include "skill.h"
 #include "string_formatter.h"
 #include "string_id_utils.h"
+#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translations.h"
 #include "type_id.h"
@@ -64,6 +67,7 @@ static const morale_type morale_fun_craft( "morale_fun_craft" );
 static const morale_type morale_shitty_craft( "morale_shitty_craft" );
 
 static const std::string flag_FULL_MAGAZINE( "FULL_MAGAZINE" );
+static const std::string flag_NO_NPC_CRAFT( "NO_NPC_CRAFT" );
 
 namespace
 {
@@ -313,7 +317,7 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
     if( type == "uncraft" ) {
         // Nothing is crafted from an uncraft recipe.
         for( const char *member : {
-                 "result_eocs", "result_item_eocs"
+                 "result_eocs", "result_item_eocs", "start_eocs", "fail_eocs"
              } ) {
             if( jo.has_member( member ) ) {
                 jo.throw_error_at( member, string_format( "%s never run on disassembly; "
@@ -337,6 +341,18 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         disassembly_eocs.clear();
         for( JsonValue jv : jo.get_array( "disassembly_eocs" ) ) {
             disassembly_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_member( "start_eocs" ) ) {
+        start_eocs.clear();
+        for( JsonValue jv : jo.get_array( "start_eocs" ) ) {
+            start_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_member( "fail_eocs" ) ) {
+        fail_eocs.clear();
+        for( JsonValue jv : jo.get_array( "fail_eocs" ) ) {
+            fail_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
         }
     }
     if( abstract ) {
@@ -424,6 +440,19 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
                                     "step recipes must not have root-level '%s'", field ) );
             }
         }
+        // nor add them to the root by extending what they inherit (CRAFT-J01)
+        if( jo.has_object( "extend" ) ) {
+            JsonObject jext = jo.get_object( "extend" );
+            jext.allow_omitted_members();
+            for( const char *field : {
+                     "tools", "qualities"
+                 } ) {
+                if( jext.has_member( field ) ) {
+                    jo.throw_error_at( "extend", string_format(
+                                           "step recipes must not extend root-level '%s'", field ) );
+                }
+            }
+        }
     }
 
     // Clear state for finalize rebuild.
@@ -494,6 +523,14 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         }
     }
 
+    // UIINV-J03: hiding a recipe whose condition (CRAFT-J06, below) fails, and the share of the
+    // difficulty theoretical knowledge must reach
+    optional( jo, was_loaded, "hide_if_condition_fails", hide_if_condition_fails_, false );
+    optional( jo, was_loaded, "knowledge_ratio", knowledge_ratio_, 0.8f );
+    if( knowledge_ratio_ < 0.0f || knowledge_ratio_ > 1.0f ) {
+        jo.throw_error_at( "knowledge_ratio", "must be from 0 to 1" );
+    }
+
     if( jo.has_member( "character_requirements" ) ) {
         character_requirements_.clear();
         const JsonObject requirements = jo.get_object( "character_requirements" );
@@ -508,6 +545,13 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
             }
         }
     }
+
+    // CRAFT-J06: game state a recipe needs, with the crafter as alpha; replaces an inherited one
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition_, false );
+        has_condition_ = true;
+    }
+    optional( jo, was_loaded, "condition_fail_message", condition_fail_message_ );
 
     if( !effectively_step_recipe ) {
         jo.read( "proficiencies", proficiencies );
@@ -572,18 +616,12 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "using", reqs_external,
               weighted_string_id_reader<requirement_id, int> { 1 } );
 
-    bool inherited_tools = false;
-    bool inherited_qualities = false;
-    bool inherited_components = false;
-
+    // A copy starts from its parent's inline components, tools and qualities (CRAFT-J01);
+    // a step recipe that gives its own steps has already dropped them
+    requirement_data inherited_reqs;
     if( !reqs_internal.empty() ) {
-        requirement_data r_data = reqs_internal.front().first.obj();
-        inherited_tools = !r_data.get_tools().empty();
-        inherited_qualities = !r_data.get_qualities().empty();
-        inherited_components = !r_data.get_components().empty();
+        inherited_reqs = reqs_internal.front().first.obj();
     }
-
-    // inline requirements are always replaced (cannot be inherited)
     reqs_internal.clear();
 
     // These cannot be inherited
@@ -601,9 +639,15 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
             mandatory( jo, was_loaded, "reversible", reversible );
         } else if( jo.has_object( "reversible" ) ) {
             reversible = true;
-            // Convert duration to time in moves
-            uncraft_time = to_moves<int>( read_from_json_string<time_duration>
-                                          ( jo.get_object( "reversible" ).get_member( "time" ), time_duration::units ) );
+            const JsonObject jrev = jo.get_object( "reversible" );
+            if( jrev.has_member( "time" ) ) {
+                // Convert duration to time in moves
+                uncraft_time = to_moves<int>( read_from_json_string<time_duration>
+                                              ( jrev.get_member( "time" ), time_duration::units ) );
+            }
+            // CRAFT-J05: this one gives the disassembly when several reversible recipes
+            // make the same result
+            optional( jrev, false, "primary", uncraft_primary, false );
         }
 
         if( jo.has_member( "byproducts" ) ) {
@@ -713,18 +757,9 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         jo.throw_error_at( "type", "unknown recipe type" );
     }
 
-    // Inline requirements are read whole and not inherited, so extend and delete can't apply
-    // to them; say so instead of dropping them
-    for( const char *member : {
-             "components", "tools", "qualities"
-         } ) {
-        warn_disabled_feature( jo, "extend", member, "restate the whole list instead" );
-        warn_disabled_feature( jo, "delete", member, "restate the whole list instead" );
-    }
+    // Inherited unless given, and a copy takes "extend" and "delete" for each of them
     const requirement_id req_id( "inline_" + type + "_" + id.str() );
-    // Step recipes legitimately have root-level components; suppress abstract
-    // debugmsg for them (tools/qualities are already caught by field validation).
-    requirement_data::load_requirement( jo, req_id, false, abstract && !effectively_step_recipe );
+    requirement_data::load_inline_requirement( jo, req_id, inherited_reqs, was_loaded );
     reqs_internal.emplace_back( req_id, 1 );
 
     // Parse recipe steps
@@ -732,35 +767,19 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         int step_index = 0;
         for( JsonObject step_jo : jo.get_array( "steps" ) ) {
             recipe_step step;
-            step.load( step_jo, id.str(), step_index++ );
+            step.load( step_jo, id.str(), step_index++, src );
             steps_.emplace_back( std::move( step ) );
         }
         if( steps_.empty() ) {
             jo.throw_error( "steps array must not be empty" );
         }
     }
-
-    if( !effectively_step_recipe ) {
-        if( inherited_tools && !jo.has_member( "tools" ) ) {
-            debugmsg( "Recipe %s inherits from recipe that has tools, but does not have any of its own.  "
-                      "This is probably an error.", id.str() );
-        }
-
-        if( inherited_qualities && !jo.has_member( "qualities" ) ) {
-            debugmsg( "Recipe %s inherits from recipe that has qualities, but does not have any of its own.  "
-                      "This is probably an error.", id.str() );
-        }
-    }
-    if( inherited_components && !jo.has_member( "components" ) ) {
-        debugmsg( "Recipe %s inherits from recipe that has components, but does not have any of its own.  "
-                  "This is probably an error.", id.str() );
-    }
 }
 
-void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, int step_index )
+void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, int step_index,
+                        const std::string_view src )
 {
-    jo.allow_omitted_members();
-
+    // CRAFT-B02: every member is read, so a typo ("max_tme") is a load error
     mandatory( jo, false, "name", name );
     mandatory( jo, false, "time", time, time_duration_as_moves_reader{} );
     if( time <= 0 ) {
@@ -788,7 +807,7 @@ void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, in
     // Load inline tools/qualities for this step
     const requirement_id step_req_id( "inline_recipe_" + recipe_name + "_step_"
                                       + std::to_string( step_index ) );
-    requirement_data::load_requirement( jo, step_req_id, false, false );
+    requirement_data::load_requirement( jo, step_req_id );
     reqs_internal.emplace_back( step_req_id, 1 );
 
     if( jo.has_member( "attention" ) ) {
@@ -821,6 +840,22 @@ void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, in
         grace_period = d;
     }
     optional( jo, false, "unattend_message", unattend_message );
+
+    if( jo.has_member( "on_ruin" ) ) {
+        if( !max_time.has_value() ) {
+            jo.throw_error_at( "on_ruin", "on_ruin requires max_time" );
+        }
+        const JsonObject ruin = jo.get_object( "on_ruin" );
+        optional( ruin, false, "result", ruin_result, itype_id::NULL_ID() );
+        optional( ruin, false, "count", ruin_count, 1 );
+        if( ruin_count < 1 ) {
+            ruin.throw_error_at( "count", "count must be at least 1" );
+        }
+        optional( ruin, false, "message", ruin_message );
+        for( const JsonValue jv : ruin.get_array( "eocs" ) ) {
+            ruin_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
 }
 
 static cata::value_ptr<parameterized_build_reqs> calculate_all_blueprint_reqs(
@@ -1858,12 +1893,35 @@ bool recipe::character_meets_requirements( const Character &character ) const
             return false;
         }
     }
-    return true;
+    return meets_condition( character );
+}
+
+int recipe::required_knowledge_level( const Character &crafter ) const
+{
+    return static_cast<int>( get_difficulty( crafter ) * knowledge_ratio_ );
 }
 
 bool recipe::has_character_requirements() const
 {
-    return !character_requirements_.empty();
+    return !character_requirements_.empty() || has_condition_;
+}
+
+bool recipe::meets_condition( const Character &crafter ) const
+{
+    if( !has_condition_ ) {
+        return true;
+    }
+    const_dialogue d( get_const_talker_for( crafter ), nullptr );
+    d.set_value( "recipe_id", id.str() );
+    return condition_( d );
+}
+
+std::string recipe::condition_fail_text() const
+{
+    if( !condition_fail_message_.empty() ) {
+        return condition_fail_message_.translated();
+    }
+    return _( "The conditions for this recipe are not met." );
 }
 
 const std::map<scaling_stat, int> &recipe::get_character_requirements() const
@@ -2063,8 +2121,13 @@ void recipe::apply_positive_morale_mods( Character &guy ) const
     }
 }
 
-bool recipe::npc_can_craft( std::string & ) const
+bool recipe::npc_can_craft( std::string &reason ) const
 {
+    // UIINV-J03: NPCs can't craft it, followers or not ("condition" can say more)
+    if( has_flag( flag_NO_NPC_CRAFT ) ) {
+        reason = _( "NPCs can't craft this." );
+        return false;
+    }
     return true;
 }
 

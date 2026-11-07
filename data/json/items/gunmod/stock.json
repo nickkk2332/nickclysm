@@ -283,6 +283,8 @@
     "color": "dark_gray",
     "location": "stock accessory",
     "mod_targets": [ "rifle" ],
+    "blacklist_mod": [ "stock_none" ],
+    "blacklist_message": "doesn't have a stock to attach this mod",
     "dispersion_modifier": -1,
     "handling_modifier": 2,
     "min_skills": [ [ "weapon", 2 ] ],
@@ -306,6 +308,8 @@
     "color": "dark_gray",
     "location": "stock accessory",
     "mod_targets": [ "smg", "rifle", "shotgun", "launcher", "crossbow" ],
+    "blacklist_mod": [ "stock_none" ],
+    "blacklist_message": "doesn't have a stock to attach this mod",
     "install_time": "10 m",
     "dispersion_modifier": -15,
     "min_skills": [ [ "weapon", 1 ] ]

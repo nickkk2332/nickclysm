@@ -2687,6 +2687,13 @@ void options_manager::add_options_graphics()
            ); // populate the options dynamically
 
         get_option( "OVERMAP_TILES" ).setPrerequisite( "USE_OVERMAP_TILES" );
+
+        add( "TILE_LOOKUP_CACHE", page_id, to_translation( "Experimental: cache sprite lookups" ),
+             to_translation( "If true, the tiles renderer remembers which sprite each thing it draws resolved to (looks_like, variants, seasons, field intensities, the pieces of walls and other multitiles), so redraws skip repeating the lookups.  Experimental: it should draw exactly what it draws when false; if anything looks different, turn it off.  Takes effect at once." ),
+             false, COPT_CURSES_HIDE
+           );
+
+        get_option( "TILE_LOOKUP_CACHE" ).setPrerequisite( "USE_TILES" );
     } );
 
     add_empty_line();
@@ -4500,12 +4507,16 @@ void options_manager::update_options_cache()
     if( ::has_option( "COMBAT_SPEED_MODIFIER" ) ) {
         combat_speed_modifier = ::get_option<float>( "COMBAT_SPEED_MODIFIER" );
     }
+    if( ::has_option( "SOUND_ATTENUATION_PERCENT" ) ) {
+        sound_attenuation_percent = ::get_option<int>( "SOUND_ATTENUATION_PERCENT" );
+    }
     prevent_occlusion = ::get_option<int>( "PREVENT_OCCLUSION" );
     prevent_occlusion_retract = ::get_option<bool>( "PREVENT_OCCLUSION_RETRACT" );
     prevent_occlusion_transp = ::get_option<bool>( "PREVENT_OCCLUSION_TRANSP" );
     prevent_occlusion_min_dist = ::get_option<float>( "PREVENT_OCCLUSION_MIN_DIST" );
     prevent_occlusion_max_dist = ::get_option<float>( "PREVENT_OCCLUSION_MAX_DIST" );
     show_creature_overlay_icons = ::get_option<bool>( "CREATURE_OVERLAY_ICONS" );
+    tile_lookup_cache = ::get_option<bool>( "TILE_LOOKUP_CACHE" );
 
     // if the tilesets are identical don't duplicate
     use_far_tiles = ::get_option<bool>( "USE_DISTANT_TILES" ) ||

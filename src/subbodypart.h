@@ -86,6 +86,10 @@ struct sub_body_part_type {
     static void finalize_all();
 
     void finalize();
+
+    // Reports ids that don't exist (CHAR-J05)
+    static void check_consistency();
+    void check() const;
 };
 
 #endif // CATA_SRC_SUBBODYPART_H

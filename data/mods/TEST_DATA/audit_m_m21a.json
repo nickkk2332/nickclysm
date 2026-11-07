@@ -1,0 +1,78 @@
+[
+  {
+    "type": "npc_class",
+    "id": "audit_m21a_parent",
+    "//": "NPC-B11: a class others copy from.  Never spawns.",
+    "name": { "str": "audit copied class" },
+    "job_description": "I'm here to be copied.",
+    "common": false,
+    "bonus_str": 7,
+    "bonus_per": { "constant": -2 },
+    "bonus_bravery": 3,
+    "spells": [ { "id": "test_spell_pew", "level": 3 }, { "id": "test_spell_random_damage", "level": 2 } ],
+    "bionics": [ { "id": "bio_flashlight", "chance": 40 } ]
+  },
+  {
+    "type": "npc_class",
+    "id": "audit_m21a_child",
+    "//": "NPC-B11: gives only bonus_dex, so it keeps the copied bonuses.",
+    "copy-from": "audit_m21a_parent",
+    "bonus_dex": 1
+  },
+  {
+    "type": "npc_class",
+    "id": "audit_m21a_child_edit",
+    "//": "NPC-B11: changes a copied bonus and spell level, and deletes a copied spell and bionic.",
+    "copy-from": "audit_m21a_parent",
+    "bonus_str": 2,
+    "spells": [ { "id": "test_spell_pew", "level": 5 } ],
+    "delete": { "spells": [ "test_spell_random_damage" ], "bionics": [ "bio_flashlight" ] }
+  },
+  {
+    "id": "audit_m21a_hot_potato",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "//": "NPC-B07: an explosive with a small blast radius that an NPC throws away at once.  Never active, so it never goes off.",
+    "category": "weapons",
+    "name": { "str": "test hot potato" },
+    "description": "A test explosive.  Better throw it!",
+    "material": [ "steel" ],
+    "weight": "400 g",
+    "volume": "250 ml",
+    "symbol": "*",
+    "color": "green",
+    "countdown_action": { "type": "explosion", "explosion": { "power": 4, "distance_factor": 0.5 } },
+    "countdown_interval": "5 seconds",
+    "flags": [ "DANGEROUS" ]
+  },
+  {
+    "id": "audit_m21a_trinket_cheap",
+    "type": "ITEM",
+    "//": "NPC-B10: worth picking up, but not much.",
+    "category": "other",
+    "name": { "str": "cheap test trinket" },
+    "description": "A trinket for find_item tests.",
+    "material": [ "plastic" ],
+    "weight": "10 g",
+    "volume": "10 ml",
+    "price": "1 USD",
+    "price_postapoc": "1 USD",
+    "symbol": "*",
+    "color": "light_gray"
+  },
+  {
+    "id": "audit_m21a_trinket_dear",
+    "type": "ITEM",
+    "//": "NPC-B10: worth much more than the cheap one.",
+    "category": "other",
+    "name": { "str": "dear test trinket" },
+    "description": "A trinket for find_item tests.",
+    "material": [ "plastic" ],
+    "weight": "10 g",
+    "volume": "10 ml",
+    "price": "50 USD",
+    "price_postapoc": "50 USD",
+    "symbol": "*",
+    "color": "yellow"
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "test_m18c_gun",
+    "//": "CMBT-J09: a gun with its own fire sound and action cycle time",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "name": { "str": "test m18c gun", "//~": "NO_I18N" },
+    "description": { "str": "A gun for CMBT-J09 tests.", "//~": "NO_I18N" },
+    "weight": "600 g",
+    "volume": "500 ml",
+    "material": [ "steel" ],
+    "symbol": "(",
+    "color": "dark_gray",
+    "ammo": [ "test_cmbt_round" ],
+    "ranged_damage": { "damage_type": "bullet", "amount": 0 },
+    "dispersion": 15,
+    "durability": 8,
+    "loudness": 10,
+    "skill": "pistol",
+    "fire_sound": { "volume": 33, "message": "Zap!", "burst_message": "Zap-zap!" },
+    "cycle_time": 50,
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "test_cmbt_round": 6 } } ],
+    "melee_damage": { "bash": 4 }
+  },
+  {
+    "id": "mon_test_m18c_emp_bot",
+    "//": "CMBT-J11: a robot every EMP blast switches off",
+    "type": "MONSTER",
+    "copy-from": "mon_manhack",
+    "name": { "str": "test m18c EMP bot", "//~": "NO_I18N" },
+    "broken_itype": "broken_manhack",
+    "emp_deactivate_one_in": 1
+  },
+  {
+    "id": "mon_test_m18c_hardened_bot",
+    "//": "CMBT-J11: a robot no EMP blast switches off, tough enough to live through being fried",
+    "type": "MONSTER",
+    "copy-from": "mon_manhack",
+    "name": { "str": "test m18c hardened bot", "//~": "NO_I18N" },
+    "broken_itype": "broken_manhack",
+    "hp": 500,
+    "emp_deactivate_one_in": 0
+  }
+]

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <exception>
+#include <initializer_list>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -14,9 +15,11 @@
 #include "calendar.h"
 #include "character.h"
 #include "color.h"
+#include "creature.h"
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "enums.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
@@ -51,7 +54,12 @@ static const furn_str_id furn_f_null( "f_null" );
 
 static const item_group_id Item_spawn_data_EMPTY_GROUP( "EMPTY_GROUP" );
 
+static const itype_id itype_butchery_tree_pseudo( "butchery_tree_pseudo" );
+
 static const skill_id skill_survival( "survival" );
+
+static const ter_str_id ter_t_dirt( "t_dirt" );
+static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 
 namespace mapdata
 {
@@ -338,6 +346,8 @@ std::string enum_to_string<ter_furn_flag>( ter_furn_flag data )
         case ter_furn_flag::TFLAG_ONE_DIMENSIONAL_X: return "ONE_DIMENSIONAL_X";
         case ter_furn_flag::TFLAG_ONE_DIMENSIONAL_Y: return "ONE_DIMENSIONAL_Y";
         case ter_furn_flag::TFLAG_ONE_DIMENSIONAL_Z: return "ONE_DIMENSIONAL_Z";
+        case ter_furn_flag::TFLAG_RAIL_DIAGONAL: return "RAIL_DIAGONAL";
+        case ter_furn_flag::TFLAG_RAIL_STRAIGHT: return "RAIL_STRAIGHT";
 
         // *INDENT-ON*
         case ter_furn_flag::NUM_TFLAG_FLAGS:
@@ -584,6 +594,7 @@ bool furn_workbench_info::load( const JsonObject &jsobj, std::string_view member
     optional( j, false, "multiplier", multiplier, 1.0f );
     optional( j, false, "mass", allowed_mass, units::mass::max() );
     optional( j, false, "volume", allowed_volume, units::volume::max() );
+    optional( j, false, "recipe_filter", recipe_filter );
 
     return true;
 }
@@ -686,8 +697,15 @@ std::string map_data_common_t::name() const
 
 bool map_data_common_t::can_examine( const tripoint_bub_ms &examp ) const
 {
-    if( !examine_actor.empty() ) {
-        return true;
+    return can_examine( examp, get_player_character() );
+}
+
+bool map_data_common_t::can_examine( const tripoint_bub_ms &examp, const Character &who ) const
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
+        if( act->can_examine( who, examp, *this ) ) {
+            return true;
+        }
     }
 
     for( const iexamine_functions &func : examine_func ) {
@@ -725,6 +743,17 @@ std::vector<cata::clone_ptr<iexamine_actor>> map_data_common_t::get_examine() co
     return examine_actor;
 }
 
+const iexamine_actor *map_data_common_t::npc_examine_actor( const Character &who,
+        const tripoint_bub_ms &examp ) const
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
+        if( act->npc_can_use( who, examp, *this ) ) {
+            return act.get();
+        }
+    }
+    return nullptr;
+}
+
 void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) const
 {
     if( examine_actor.empty() && examine_func.empty() ) {
@@ -741,12 +770,13 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
         return;
     }
 
-    // if NPC, pick the very first option
+    // if NPC, pick the first examine actor it may use (an EOC actor can say no with its
+    // "condition" or "npc_usable"), else the first examine action
     // TODO, but i have no idea how to approach it for generic use cases
     if( you.is_npc() ) {
-        if( examine_actor.size() > 0 ) {
-            examine_actor.front()->call_with_context( you, examp, *this );
-        } else {
+        if( const iexamine_actor *act = npc_examine_actor( you, examp ) ) {
+            act->call_with_context( you, examp, *this );
+        } else if( !examine_func.empty() ) {
             examine_func.front().examine( you, examp );
         }
         return;
@@ -763,6 +793,7 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
 
     for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
         uilist_entry e( act->get_name() );
+        e.enabled = act->can_examine( you, examp, *this );
         selector.addentry( e );
     }
 
@@ -1210,12 +1241,29 @@ void init_mapdata()
     add_actor( std::make_unique<cardreader_examine_actor>() );
     add_actor( std::make_unique<eoc_examine_actor>() );
     add_actor( std::make_unique<mortar_examine_actor>() );
+    add_actor( std::make_unique<process_start_examine_actor>() );
+    add_actor( std::make_unique<process_finish_examine_actor>() );
 }
 
 // The tool activity blocks of terrain and furniture, see load_tool_activity
-static constexpr std::array<std::string_view, 4> tool_activities = {
-    "oxytorch", "boltcut", "hacksaw", "prying"
+static constexpr std::array<std::string_view, 5> tool_activities = {
+    "oxytorch", "boltcut", "hacksaw", "prying", "chop"
 };
+
+std::optional<creature_size> map_data_common_t::max_fitting_size() const
+{
+    std::optional<creature_size> ret = max_creature_size;
+    if( has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) && ( !ret || *ret > creature_size::medium ) ) {
+        ret = creature_size::medium;
+    }
+    return ret;
+}
+
+bool map_data_common_t::fits_creature_size( creature_size size ) const
+{
+    const std::optional<creature_size> fit = max_fitting_size();
+    return !fit || size <= *fit;
+}
 
 void map_data_common_t::load( const JsonObject &jo, const std::string &src )
 {
@@ -1227,6 +1275,18 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     }
     optional( jo, was_loaded, "looks_like", looks_like );
     optional( jo, was_loaded, "comfort", comfort, 0 );
+    optional( jo, was_loaded, "sound_attenuation", sound_attenuation,
+              numeric_bound_reader<int> { 0, 1000 }, 0 );
+    if( jo.has_member( "max_creature_size" ) ) {
+        const std::string size_name = jo.get_string( "max_creature_size" );
+        const auto size_found = Creature::size_map.find( size_name );
+        if( size_found == Creature::size_map.end() ) {
+            jo.throw_error_at( "max_creature_size",
+                               string_format( "Invalid creature size \"%s\": use TINY, SMALL, MEDIUM, LARGE or HUGE",
+                                              size_name ) );
+        }
+        max_creature_size = size_found->second;
+    }
 
     if( jo.has_member( "connect_groups" ) ) {
         connect_groups.reset();
@@ -1243,6 +1303,32 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "coverage", coverage );
     optional( jo, was_loaded, "curtain_transform", curtain_transform );
     optional( jo, was_loaded, "emissions", emissions );
+    // CRAFT-J08
+    if( jo.has_member( "crafting_pseudo_items" ) ) {
+        crafting_pseudo_items.clear();
+        for( const std::string pseudo : jo.get_array( "crafting_pseudo_items" ) ) {
+            crafting_pseudo_items.emplace_back( pseudo );
+        }
+        crafting_pseudo_items_set = true;
+    }
+    // MAP-J04
+    if( jo.has_member( "item_temperature" ) ) {
+        const std::string temperature = jo.get_string( "item_temperature" );
+        if( temperature == "normal" ) {
+            item_temperature.reset();
+        } else if( temperature == "root_cellar" ) {
+            item_temperature = temperature_flag::ROOT_CELLAR;
+        } else if( temperature == "fridge" ) {
+            item_temperature = temperature_flag::FRIDGE;
+        } else if( temperature == "freezer" ) {
+            item_temperature = temperature_flag::FREEZER;
+        } else if( temperature == "heater" ) {
+            item_temperature = temperature_flag::HEATER;
+        } else {
+            jo.throw_error_at( "item_temperature",
+                               R"(item_temperature must be "normal", "root_cellar", "fridge", "freezer" or "heater")" );
+        }
+    }
 
     if( jo.has_array( "harvest_by_season" ) ) {
         for( JsonObject harvest_jo : jo.get_array( "harvest_by_season" ) ) {
@@ -1353,6 +1439,22 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     floor_bedding_warmth = units::from_legacy_bodypart_temp_delta( legacy_floor_bedding_warmth );
 
     optional( jo, was_loaded, "lockpick_message", lockpick_message, translation() );
+    // ACT-J07: an int, or [ min, max ] to roll between
+    if( jo.has_int( "lockpick_difficulty" ) ) {
+        const int difficulty = jo.get_int( "lockpick_difficulty" );
+        lockpick_difficulty = std::make_pair( difficulty, difficulty );
+    } else if( jo.has_array( "lockpick_difficulty" ) ) {
+        const JsonArray ja = jo.get_array( "lockpick_difficulty" );
+        if( ja.size() != 2 ) {
+            ja.throw_error( "lockpick_difficulty must be an int or [ min, max ]" );
+        }
+        lockpick_difficulty = std::make_pair( ja.get_int( 0 ), ja.get_int( 1 ) );
+        if( lockpick_difficulty->first > lockpick_difficulty->second ) {
+            ja.throw_error( "lockpick_difficulty: min is more than max" );
+        }
+    } else if( jo.has_member( "lockpick_difficulty" ) ) {
+        jo.throw_error_at( "lockpick_difficulty", "lockpick_difficulty must be an int or [ min, max ]" );
+    }
     optional( jo, was_loaded, "light_emitted", light_emitted );
     if( jo.has_array( "light_color" ) ) {
         JsonArray jarr = jo.get_array( "light_color" );
@@ -1402,9 +1504,48 @@ bool map_data_common_t::is_terrain() const
     return false;
 }
 
+const std::vector<itype_id> &map_data_common_t::crafting_pseudo_tools() const
+{
+    // a tree lends its trunk to hang a carcass from unless its JSON says otherwise
+    static const std::vector<itype_id> tree = { itype_butchery_tree_pseudo };
+    if( !crafting_pseudo_items_set && is_terrain() && has_flag( ter_furn_flag::TFLAG_TREE ) ) {
+        return tree;
+    }
+    return crafting_pseudo_items;
+}
+
+static void check_crafting_pseudo_items( const map_data_common_t &data, const std::string &id )
+{
+    for( const itype_id &pseudo : data.crafting_pseudo_items ) {
+        if( !pseudo.is_valid() ) {
+            debugmsg( "%s has unknown crafting_pseudo_items entry %s", id, pseudo.str() );
+        }
+    }
+}
+
 bool ter_t::is_terrain() const
 {
     return true;
+}
+
+bool ter_t::can_chop() const
+{
+    return chop && chop->valid();
+}
+
+ter_str_id ter_t::till_result() const
+{
+    return till ? till->result : ter_t_dirtmound;
+}
+
+int ter_t::till_moves() const
+{
+    return till ? to_moves<int>( till->time ) : 18000;
+}
+
+ter_str_id ter_t::planted_terrain() const
+{
+    return plant_result.is_empty() ? ter_t_dirt : plant_result;
 }
 
 bool ter_t::is_null() const
@@ -1433,7 +1574,54 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
 
     optional( jo, was_loaded, "roof", roof, ter_str_id::NULL_ID() );
 
+    // MAP-J04
+    if( jo.has_object( "produces_liquid" ) ) {
+        const JsonObject jp = jo.get_object( "produces_liquid" );
+        ter_liquid_production production;
+        mandatory( jp, false, "item", production.item );
+        mandatory( jp, false, "amount", production.amount );
+        const JsonArray active = jp.get_array( "active" );
+        if( active.size() != 2 ) {
+            jp.throw_error_at( "active", "active must be [ start, end ], in seasons from the start of spring" );
+        }
+        production.start = active.get_float( 0 );
+        production.end = active.get_float( 1 );
+        optional( jp, false, "poison_chance", production.poison_chance, 0 );
+        if( production.amount <= 0 ) {
+            jp.throw_error_at( "amount", "amount must be more than 0" );
+        }
+        if( production.start < 0.0 || production.start >= 4.0 || production.end < 0.0 ||
+            production.end > 4.0 || production.start == production.end ) {
+            jp.throw_error_at( "active",
+                               "active must be two different times of year from 0 (spring) to 4 (the next spring)" );
+        }
+        if( production.poison_chance < 0 ) {
+            jp.throw_error_at( "poison_chance", "poison_chance must be 0 or more" );
+        }
+        produces_liquid = production;
+    }
+    optional( jo, was_loaded, "rad_scorch", rad_scorch );
+    // MAP-J05
+    if( jo.has_object( "felled" ) ) {
+        const JsonObject jf = jo.get_object( "felled" );
+        optional( jf, false, "trunk", felled_trunk );
+        optional( jf, false, "stump", felled_stump );
+    }
+    optional( jo, was_loaded, "churned_into", churned_into );
+    // ACT-J10
+    load_tool_activity( jo, "chop", was_loaded, chop );
+    if( jo.has_object( "till" ) ) {
+        const JsonObject jt = jo.get_object( "till" );
+        ter_till_info info;
+        mandatory( jt, false, "result", info.result );
+        optional( jt, false, "time", info.time, time_duration::from_moves( 18000 ) );
+        optional( jt, false, "message", info.message );
+        till = info;
+    }
+    optional( jo, was_loaded, "plant_result", plant_result );
+
     optional( jo, was_loaded, "lockpick_result", lockpick_result, ter_str_id::NULL_ID() );
+    optional( jo, was_loaded, "lockpick_jam_result", lockpick_jam_result );
 
     // Phase-change fields
     if( jo.has_array( "phase_targets" ) ) {
@@ -1569,6 +1757,10 @@ bool ter_t::is_smashable() const
 void ter_t::check() const
 {
     map_data_common_t::check();
+    check_crafting_pseudo_items( *this, id.str() );
+    for( const cata::clone_ptr<iexamine_actor> &actor : examine_actor ) {
+        actor->check( id.str() );
+    }
     if( bash ) {
         bash->check( id.c_str() );
     }
@@ -1592,6 +1784,47 @@ void ter_t::check() const
 
     if( !transforms_into.is_valid() ) {
         debugmsg( "invalid transforms_into %s for %s", transforms_into.c_str(), id.c_str() );
+    }
+
+    // MAP-J04, MAP-J05
+    if( produces_liquid && !produces_liquid->item.is_valid() ) {
+        debugmsg( "ter %s: produces_liquid item %s doesn't exist", id.c_str(),
+                  produces_liquid->item.c_str() );
+    }
+    for( const std::pair<const ter_str_id *, const char *> &result : {
+             std::make_pair( &rad_scorch, "rad_scorch" ), std::make_pair( &felled_trunk, "felled trunk" ),
+             std::make_pair( &felled_stump, "felled stump" ), std::make_pair( &churned_into, "churned_into" )
+         } ) {
+        if( !result.first->is_empty() && !result.first->is_valid() ) {
+            debugmsg( "ter %s: %s terrain %s doesn't exist", id.c_str(), result.second,
+                      result.first->c_str() );
+        }
+    }
+    if( ( !felled_trunk.is_empty() || !felled_stump.is_empty() ) &&
+        !has_flag( ter_furn_flag::TFLAG_TREE ) ) {
+        debugmsg( "ter %s has felled terrain but isn't a TREE", id.c_str() );
+    }
+    // ACT-J10
+    if( can_chop() && !chop->result().is_valid() ) {
+        debugmsg( "ter %s: chop result %s doesn't exist", id.c_str(), chop->result().c_str() );
+    }
+    if( can_chop() ) {
+        for( const activity_byproduct &byproduct : chop->byproducts() ) {
+            if( !byproduct.item.is_valid() ) {
+                debugmsg( "ter %s: chop byproduct %s doesn't exist", id.c_str(), byproduct.item.c_str() );
+            }
+        }
+    }
+    if( till && !till->result.is_valid() ) {
+        debugmsg( "ter %s: till result %s doesn't exist", id.c_str(), till->result.c_str() );
+    }
+    if( !plant_result.is_empty() && !plant_result.is_valid() ) {
+        debugmsg( "ter %s: plant_result %s doesn't exist", id.c_str(), plant_result.c_str() );
+    }
+    // ACT-J07
+    if( !lockpick_jam_result.is_empty() && !lockpick_jam_result.is_valid() ) {
+        debugmsg( "ter %s: lockpick_jam_result terrain %s doesn't exist", id.c_str(),
+                  lockpick_jam_result.c_str() );
     }
 
     // Validate open/close transforms
@@ -1670,6 +1903,10 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
 
     optional( jo, was_loaded, "lockpick_result", lockpick_result, string_id_reader<furn_t> {},
               furn_str_id::NULL_ID() );
+    optional( jo, was_loaded, "lockpick_jam_result", lockpick_jam_result,
+              string_id_reader<furn_t> {}, furn_str_id() );
+    optional( jo, was_loaded, "hack_result", hack_result, string_id_reader<furn_t> {},
+              furn_str_id() );
 
     load_tool_activity( jo, "oxytorch", was_loaded, oxytorch );
     load_tool_activity( jo, "boltcut", was_loaded, boltcut );
@@ -1702,6 +1939,21 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
     if( jo.has_float( "surgery_skill_multiplier" ) ) {
         surgery_skill_multiplier = cata::make_value<float>( jo.get_float( "surgery_skill_multiplier" ) );
     }
+    // ACT-J11
+    if( jo.has_object( "smoker" ) ) {
+        const JsonObject js = jo.get_object( "smoker" );
+        furn_smoker_info info;
+        optional( js, false, "lit", info.lit );
+        optional( js, false, "unlit", info.unlit );
+        optional( js, false, "capacity", info.capacity, volume_reader(), units::from_liter( 20 ) );
+        if( info.lit.is_empty() == info.unlit.is_empty() ) {
+            js.throw_error( "a smoker has either lit (an unlit rack) or unlit (a lit rack)" );
+        }
+        if( info.capacity <= 0_ml ) {
+            js.throw_error_at( "capacity", "capacity must be more than 0" );
+        }
+        smoker = cata::make_value<furn_smoker_info>( info );
+    }
 }
 
 bool furn_t::is_smashable() const
@@ -1712,6 +1964,10 @@ bool furn_t::is_smashable() const
 void furn_t::check() const
 {
     map_data_common_t::check();
+    check_crafting_pseudo_items( *this, id.str() );
+    for( const cata::clone_ptr<iexamine_actor> &actor : examine_actor ) {
+        actor->check( id.str() );
+    }
     if( bash ) {
         bash->check( id.c_str() );
     }
@@ -1748,6 +2004,28 @@ void furn_t::check() const
     }
     if( plant && !plant->base.is_valid() ) {
         debugmsg( "Invalid furniture %s for plant base in furn %s", plant->base.c_str(), id.c_str() );
+    }
+    // ACT-J11
+    if( smoker ) {
+        const furn_str_id &other = smoker->lit.is_empty() ? smoker->unlit : smoker->lit;
+        if( !other.is_valid() ) {
+            debugmsg( "furn %s: smoker furniture %s doesn't exist", id.c_str(), other.c_str() );
+        } else if( !other->smoker ) {
+            debugmsg( "furn %s: smoker furniture %s has no \"smoker\" object", id.c_str(), other.c_str() );
+        }
+    }
+    if( has_examine( iexamine::smoker_options ) && !smoker ) {
+        debugmsg( "furn %s has examine action smoker_options but no \"smoker\" object", id.c_str() );
+    }
+    // ACT-J06, ACT-J07
+    for( const std::pair<const furn_str_id *, const char *> &result : {
+             std::make_pair( &lockpick_jam_result, "lockpick_jam_result" ),
+             std::make_pair( &hack_result, "hack_result" )
+         } ) {
+        if( !result.first->is_empty() && !result.first->is_valid() ) {
+            debugmsg( "furn %s: %s furniture %s doesn't exist", id.c_str(), result.second,
+                      result.first->c_str() );
+        }
     }
 }
 

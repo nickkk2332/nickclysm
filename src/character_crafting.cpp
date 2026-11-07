@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -10,6 +11,8 @@
 #include "calendar.h"
 #include "coordinates.h"
 #include "character.h"
+#include "event.h"
+#include "event_bus.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_location.h"
@@ -33,12 +36,18 @@ bool Character::knows_recipe( const recipe *rec ) const
     return get_learned_recipes().contains( rec );
 }
 
-void Character::learn_recipe( const recipe *const rec, bool override_never_learn )
+void Character::learn_recipe( const recipe *const rec, bool override_never_learn,
+                              const std::string &how )
 {
     if( rec->never_learn && !override_never_learn ) {
         return;
     }
+    const bool newly_learned = !how.empty() && !knows_recipe( rec );
     learned_recipes->include( rec );
+    if( newly_learned ) {
+        get_event_bus().send<event_type::character_learns_recipe>( getID(), rec->ident().str(),
+                how );
+    }
 }
 
 void Character::forget_recipe( const recipe *const rec )
@@ -179,8 +188,8 @@ recipe_subset Character::get_available_recipes( const temp_crafting_inventory &c
             res.include( get_recipes_from_books( guy->crafting_inventory( tripoint_bub_ms::zero, -1 ) ) );
             // Being told what to do
             res.include_if( guy->get_learned_recipes(), [ this ]( const recipe & r ) {
-                return get_knowledge_level( r.skill_used ) >= static_cast<int>( r.get_difficulty(
-                            *this ) * 0.8f ); // Skilled enough to understand
+                // Skilled enough to understand
+                return get_knowledge_level( r.skill_used ) >= r.required_knowledge_level( *this );
             } );
         }
     }

@@ -1,0 +1,115 @@
+[
+  {
+    "type": "effect_type",
+    "id": "audit_m03a_hooked",
+    "name": [ "Audit Hooked" ],
+    "desc": [ "EVT-J04: runs EOCs when gained, changed and lost." ],
+    "max_intensity": 5,
+    "apply_eocs": [ "EOC_audit_m03a_applied" ],
+    "intensity_change_eocs": [
+      {
+        "id": "EOC_audit_m03a_intensity_changed",
+        "effect": [
+          { "math": [ "u_audit_m03a_changed += 1" ] },
+          { "math": [ "u_audit_m03a_new = _intensity" ] },
+          { "math": [ "u_audit_m03a_old = _old_intensity" ] }
+        ]
+      }
+    ],
+    "remove_eocs": [ "EOC_audit_m03a_removed" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_m03a_decaying",
+    "copy-from": "audit_m03a_hooked",
+    "name": [ "Audit Decaying" ],
+    "desc": [ "EVT-J04: inherits the intensity EOCs, drops the apply EOCs, and decays every turn." ],
+    "int_decay_tick": 1,
+    "delete": { "apply_eocs": [ "EOC_audit_m03a_applied" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m03a_applied",
+    "effect": [
+      { "math": [ "u_audit_m03a_applied += 1" ] },
+      { "math": [ "u_audit_m03a_new = _intensity" ] },
+      { "math": [ "u_audit_m03a_old = _old_intensity" ] },
+      {
+        "if": { "compare_string": [ "torso", { "context_val": "bodypart" } ] },
+        "then": { "math": [ "u_audit_m03a_on_torso += 1" ] }
+      },
+      {
+        "if": { "compare_string": [ "audit_m03a_hooked", { "context_val": "effect" } ] },
+        "then": { "math": [ "u_audit_m03a_named += 1" ] }
+      },
+      { "if": "has_beta", "then": { "math": [ "n_audit_m03a_caused += 1" ] } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m03a_removed",
+    "effect": [
+      { "math": [ "u_audit_m03a_removed += 1" ] },
+      { "math": [ "u_audit_m03a_new = _intensity" ] },
+      { "math": [ "u_audit_m03a_old = _old_intensity" ] },
+      { "if": "has_beta", "then": { "math": [ "n_audit_m03a_caused += 1" ] } }
+    ]
+  },
+  {
+    "id": "audit_m03a_given",
+    "type": "achievement",
+    "name": "Audit EVT-J05 given",
+    "manually_given": true,
+    "requirements": [  ]
+  },
+  {
+    "id": "audit_m03a_untracked",
+    "type": "achievement",
+    "name": "Audit EVT-J05 untracked",
+    "manually_given": true,
+    "requirements": [  ]
+  },
+  {
+    "id": "audit_m03a_conduct",
+    "type": "conduct",
+    "name": "Audit EVT-J05 conduct",
+    "requirements": [  ]
+  },
+  {
+    "id": "audit_m03a_late",
+    "type": "achievement",
+    "name": "Audit EVT-J05 late",
+    "allow_late_tracking": true,
+    "requirements": [ { "event_statistic": "num_avatar_zombie_kills", "is": ">=", "target": 1 } ]
+  },
+  {
+    "id": "audit_m03a_unlocker",
+    "type": "achievement",
+    "name": "Audit EVT-J05 unlocker",
+    "manually_given": true,
+    "unlocks_all_content": true,
+    "hidden_by": [ "audit_m03a_unlocker" ],
+    "requirements": [  ]
+  },
+  {
+    "id": "audit_m03a_late_score",
+    "type": "score",
+    "allow_late_tracking": true,
+    "statistic": "num_avatar_zombie_kills"
+  },
+  {
+    "id": "audit_m03a_score",
+    "type": "score",
+    "statistic": "num_avatar_zombie_kills"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m03a_give",
+    "effect": [ { "give_achievement": { "global_val": "audit_m03a_target" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_m03a_fail",
+    "effect": [ { "fail_conduct": { "global_val": "audit_m03a_target" } } ]
+  }
+]

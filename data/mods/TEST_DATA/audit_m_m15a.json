@@ -1,0 +1,120 @@
+[
+  {
+    "type": "json_flag",
+    "id": "AUDIT_M15A_A",
+    "//": "HLTH-J04: one of two whitelist_flags."
+  },
+  {
+    "type": "json_flag",
+    "id": "AUDIT_M15A_B",
+    "//": "HLTH-J04: the other whitelist_flags entry."
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_m15a_flag_b",
+    "name": [ "Audit M15A Flag B" ],
+    "desc": [ "HLTH-J04: gives AUDIT_M15A_B." ],
+    "flags": [ "AUDIT_M15A_B" ]
+  },
+  {
+    "id": "audit_m15a_heals",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a healing wound" },
+    "description": "HLTH-J04: heals in 3 seconds.",
+    "//": "No body part carries MEND_ALL, so hits never roll for it; tests add it directly.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "healing_time": [ "3 seconds", "3 seconds" ]
+  },
+  {
+    "id": "audit_m15a_worsens",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a worsening wound" },
+    "description": "HLTH-J04: becomes audit_m15a_worse after 5 seconds.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "healing_time": [ "10 days", "10 days" ],
+    "progress_timer": { "id": "audit_m15a_worse", "time": [ "5 seconds", "5 seconds" ], "message": "The wound on your %s got worse." }
+  },
+  {
+    "id": "audit_m15a_worse",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a worse wound" },
+    "description": "HLTH-J04: what audit_m15a_worsens becomes.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "healing_time": [ "10 days", "10 days" ]
+  },
+  {
+    "id": "audit_m15a_slow",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a slow wound" },
+    "description": "HLTH-J10: heals in 100 seconds, with 4 pain.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "healing_time": [ "100 seconds", "100 seconds" ],
+    "pain": [ 4, 4 ]
+  },
+  {
+    "id": "audit_m15a_bleeds",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a bleeding wound" },
+    "description": "HLTH-J04: bleeds, though it drains no blood.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "bleeding": true
+  },
+  {
+    "id": "audit_m15a_dry",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a dry wound" },
+    "description": "HLTH-J04: drains blood, but doesn't count as bleeding.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "bleeding": false,
+    "mod_values": [ { "type": "VITAMIN", "vitamin_id": "blood", "rate": "1 hours", "amount": -1 } ]
+  },
+  {
+    "id": "audit_m15a_whitelisted",
+    "type": "wound",
+    "name": { "str_sp": "audit m15a whitelisted wound" },
+    "description": "HLTH-J04: only a character with AUDIT_M15A_A or AUDIT_M15A_B can get it.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "whitelist_flags": [ "AUDIT_M15A_A", "AUDIT_M15A_B" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_m15a_ticking",
+    "name": [ "Audit M15A Ticking" ],
+    "desc": [ "HLTH-J07: counts its ticks every 3 turns." ],
+    "tick_eocs": [
+      {
+        "id": "EOC_audit_m15a_tick",
+        "effect": [ { "math": [ "u_audit_m15a_ticks += 1" ] }, { "math": [ "u_audit_m15a_tick_intensity = _intensity" ] } ]
+      }
+    ],
+    "tick_eocs_interval": "3 turns"
+  },
+  {
+    "type": "morale_type",
+    "id": "audit_m15a_perm",
+    "text": "HLTH-J08: can be permanent",
+    "permanent": true
+  },
+  {
+    "type": "morale_type",
+    "id": "audit_m15a_temp",
+    "text": "HLTH-J08: can't be permanent"
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_m15a_symptom",
+    "name": [ "Audit M15A Symptom" ],
+    "desc": [ "HLTH-J09: what audit_m15a_disease gives." ],
+    "max_intensity": 3
+  },
+  {
+    "type": "disease_type",
+    "id": "audit_m15a_disease",
+    "min_duration": "1 h",
+    "max_duration": "1 h",
+    "min_intensity": 2,
+    "max_intensity": 2,
+    "affected_bodyparts": [ "torso" ],
+    "symptoms": "audit_m15a_symptom"
+  }
+]

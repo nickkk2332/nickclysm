@@ -18,12 +18,15 @@
 #include "coordinates.h"
 #include "cuboid_rectangle.h"
 #include "game.h"
+#include "global_vars.h"
 #include "map_scale_constants.h"
 #include "memory_fast.h"
 #include "point.h"
 #include "translation.h"
 #include "translation_cache.h"
 #include "type_id.h"
+
+struct diag_value;
 
 namespace catacurses
 {
@@ -33,11 +36,11 @@ class window;
 class JsonObject;
 class JsonOut;
 class JsonValue;
+class const_talker;
 class input_context;
 class item;
 class map;
 class talker;
-class const_talker;
 struct construction;
 
 inline const faction_id your_fac( "your_followers" );
@@ -68,6 +71,9 @@ class zone_type
 
         bool can_be_personal = false;
         bool hidden = false;
+        // ACT-J12: zones of this type are where fetching for zone jobs, and NPC traders, take
+        // items from; by default the types whose id starts with LOOT
+        bool loot_source = false;
 
         static void load_zones( const JsonObject &jo, const std::string &src );
         static void finalize_all();
@@ -157,6 +163,11 @@ class plot_options : public zone_options, public mark_option
         itype_id get_fertilizer() const {
             return fertilizer;
         }
+        // as picked in the zone menu: the plot is marked with what the seed grows
+        void set_seed( const itype_id &new_seed );
+        void set_fertilizer( const itype_id &new_fertilizer ) {
+            fertilizer = new_fertilizer;
+        }
 
         bool has_options() const override {
             return true;
@@ -202,6 +213,8 @@ class blueprint_options : public zone_options, public mark_option
         construction_id get_index() const {
             return index;
         }
+        // as picked in the zone menu: builds up to the last construction of its group
+        void set_construction( const construction_id &con );
 
         bool has_options() const override {
             return true;
@@ -226,7 +239,7 @@ class blueprint_options : public zone_options, public mark_option
 class ignorable_options : public zone_options
 {
     private:
-        bool ignore_contents;
+        bool ignore_contents = false;
 
         enum query_ignorable_result {
             canceled,
@@ -239,6 +252,9 @@ class ignorable_options : public zone_options
     public:
         bool get_ignore_contents() const {
             return ignore_contents;
+        }
+        void set_ignore_contents( bool ignore ) {
+            ignore_contents = ignore;
         }
         bool has_options() const override {
             return true;
@@ -297,11 +313,11 @@ class unload_options : public zone_options, public mark_option
     private:
         // what to unload
         std::string mark;
-        bool mods;
-        bool molle;
-        bool sparse_only;
+        bool mods = false;
+        bool molle = false;
+        bool sparse_only = false;
         int sparse_threshold = 20;
-        bool always_unload;
+        bool always_unload = false;
 
         enum query_unload_result {
             canceled,
@@ -335,6 +351,11 @@ class unload_options : public zone_options, public mark_option
         bool unload_always() const {
             return always_unload;
         }
+
+        // set from a mapgen zone's "options" (ACT-J05); unset values stay as they are
+        void set_unload( std::optional<bool> new_mods, std::optional<bool> new_molle,
+                         std::optional<bool> new_sparse_only, std::optional<int> new_sparse_threshold,
+                         std::optional<bool> new_always_unload );
 
         void set_mark( std::string const &nmark ) {
             mark = nmark;
@@ -412,6 +433,8 @@ class zone_data
         tripoint_abs_ms cached_shift;
         shared_ptr_fast<zone_options> options;
         bool is_displayed;
+        // MATH-J08: EOC variables of the zone, set through the zone talker
+        global_variables::impl_t values;
 
     public:
         zone_data() {
@@ -579,6 +602,9 @@ class zone_data
             }
             return inclusive_cuboid<tripoint_abs_ms>( start, end ).contains( p );
         }
+        void set_value( const std::string &key, diag_value value );
+        void remove_value( const std::string &key );
+        diag_value const *maybe_get_value( const std::string &key ) const;
         void serialize( JsonOut &json ) const;
         void deserialize( const JsonObject &data );
 };
@@ -625,6 +651,8 @@ class zone_manager
 
         const std::function<bool( const item & )> &cached_item_filter(
             const std::string &filter ) const;
+        // num_personal_zones from the zones held
+        void recount_personal_zones();
     public:
         zone_manager();
         ~zone_manager() = default;
@@ -639,6 +667,9 @@ class zone_manager
         }
 
         void clear();
+        // copies the zone types loaded now; zone_type::finalize_all and reset call it, as the
+        // types change with the world's mods
+        void reload_types();
 
         // For addition of regular and vehicle zones
         void add( const std::string &name, const zone_type_id &type, const faction_id &faction,
@@ -713,6 +744,8 @@ class zone_manager
         std::optional<zone_type_id> query_type( bool personal = false ) const;
         void swap( zone_data &a, zone_data &b );
         void rotate_zones( map &target_map, int turns );
+        // as rotate_zones, for map::mirror
+        void mirror_zones( map &target_map, bool mirror_horizontal, bool mirror_vertical );
         // list of tripoints of zones that are loot zones only
         std::unordered_set<tripoint_bub_ms> get_point_set_loot(
             const tripoint_abs_ms &where, int radius, const faction_id &fac = your_fac ) const;
@@ -759,10 +792,38 @@ class zone_manager_ui
                                              bool show_all_zones, const input_context &ctxt, int width );
 };
 
+/**
+ * The zone options a mapgen "zones" entry sets with its "options" object (ACT-J05). Each value
+ * applies to the zone types that have that option; the load check rejects the others.
+ */
+struct zone_options_preset {
+    // FARM_PLOT
+    std::optional<itype_id> seed;
+    std::optional<itype_id> fertilizer;
+    // CONSTRUCTION_BLUEPRINT
+    std::optional<construction_str_id> construction;
+    // AUTO_EAT, AUTO_DRINK, DISASSEMBLE, SOURCE_FIREWOOD
+    std::optional<bool> ignore_contents;
+    // UNLOAD_ALL
+    std::optional<bool> mods;
+    std::optional<bool> molle;
+    std::optional<bool> sparse_only;
+    std::optional<int> sparse_threshold;
+    std::optional<bool> always_unload;
+
+    bool empty() const;
+    void deserialize( const JsonObject &jo );
+    // what is wrong with this preset for a zone of `type`, empty if nothing
+    std::string check( const zone_type_id &type ) const;
+    // sets the options of a zone of `type`, made by zone_options::create( type )
+    void apply( const zone_type_id &type, zone_options &options ) const;
+};
+
 void mapgen_place_zone( tripoint_abs_ms const &start, tripoint_abs_ms const &end,
                         zone_type_id const &type,
                         faction_id const &fac = your_fac, std::string const &name = {},
-                        std::string const &filter = {}, map *pmap = nullptr );
+                        std::string const &filter = {}, map *pmap = nullptr,
+                        const zone_options_preset *preset = nullptr );
 std::unique_ptr<talker> get_talker_for( zone_data &me );
 std::unique_ptr<const_talker> get_talker_for( const zone_data &me );
 std::unique_ptr<talker> get_talker_for( zone_data *me );

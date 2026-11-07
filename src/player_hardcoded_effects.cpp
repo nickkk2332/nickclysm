@@ -73,7 +73,6 @@ static const efftype_id effect_attention( "attention" );
 static const efftype_id effect_bite( "bite" );
 static const efftype_id effect_bleed( "bleed" );
 static const efftype_id effect_blind( "blind" );
-static const efftype_id effect_bloodworms( "bloodworms" );
 static const efftype_id effect_boomered( "boomered" );
 static const efftype_id effect_brainworms( "brainworms" );
 static const efftype_id effect_cold( "cold" );
@@ -96,7 +95,6 @@ static const efftype_id effect_meth( "meth" );
 static const efftype_id effect_motor_seizure( "motor_seizure" );
 static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_onfire( "onfire" );
-static const efftype_id effect_paincysts( "paincysts" );
 static const efftype_id effect_panacea( "panacea" );
 static const efftype_id effect_rat( "rat" );
 static const efftype_id effect_recover( "recover" );
@@ -106,7 +104,6 @@ static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_slept_through_alarm( "slept_through_alarm" );
 static const efftype_id effect_strong_antibiotic( "strong_antibiotic" );
 static const efftype_id effect_stunned( "stunned" );
-static const efftype_id effect_tapeworm( "tapeworm" );
 static const efftype_id effect_teleglow( "teleglow" );
 static const efftype_id effect_tetanus( "tetanus" );
 static const efftype_id effect_tindrift( "tindrift" );
@@ -139,15 +136,10 @@ static const proficiency_id proficiency_prof_wound_care_expert( "prof_wound_care
 
 static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
 static const trait_id trait_CHLOROMORPH( "CHLOROMORPH" );
-static const trait_id trait_HEAVYSLEEPER( "HEAVYSLEEPER" );
-static const trait_id trait_HEAVYSLEEPER2( "HEAVYSLEEPER2" );
-static const trait_id trait_HIBERNATE( "HIBERNATE" );
 static const trait_id trait_INFRESIST( "INFRESIST" );
 static const trait_id trait_M_IMMUNE( "M_IMMUNE" );
 static const trait_id trait_M_SKIN3( "M_SKIN3" );
 static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
-static const trait_id trait_UNDINE_SLEEP_WATER( "UNDINE_SLEEP_WATER" );
-static const trait_id trait_WATERSLEEP( "WATERSLEEP" );
 
 static const vitamin_id vitamin_blood( "blood" );
 static const vitamin_id vitamin_calcium( "calcium" );
@@ -992,8 +984,9 @@ static void eff_fun_sleep( Character &u, effect &it )
     }
 
     // TODO: Move this to update_needs when NPCs can mutate
+    // (Aqueous Repose's less sleep in water is in update_needs, HLTH-J12.)
     if( calendar::once_every( 10_minutes ) && ( u.has_trait( trait_CHLOROMORPH ) ||
-            u.has_trait( trait_M_SKIN3 ) || u.has_trait( trait_WATERSLEEP ) ) &&
+            u.has_trait( trait_M_SKIN3 ) ) &&
         here.is_outside( u.pos_bub() ) ) {
         if( u.has_trait( trait_CHLOROMORPH ) ) {
             // Hunger and thirst fall before your Chloromorphic physiology!
@@ -1024,9 +1017,6 @@ static void eff_fun_sleep( Character &u, effect &it )
                     u.spores(); // spawn some P O O F Y   B O I S
                 }
             }
-        }
-        if( u.has_trait( trait_WATERSLEEP ) || u.has_trait( trait_UNDINE_SLEEP_WATER ) ) {
-            u.mod_sleepiness( -3 ); // Fish sleep less in water
         }
     }
 
@@ -1079,26 +1069,10 @@ static void eff_fun_sleep( Character &u, effect &it )
         !u.has_active_mutation( trait_CHLOROMORPH ) && !u.has_bionic( bio_sleep_shutdown ) ) {
         // People who can see while sleeping are acclimated to the light.
         if( !u.has_flag( json_flag_SEESLEEP ) ) {
-            if( u.has_trait( trait_HEAVYSLEEPER2 ) && !u.has_trait( trait_HIBERNATE ) ) {
-                // So you can too sleep through noon
-                if( ( tirednessVal * 1.25 ) < here.ambient_light_at( u.pos_bub() ) && ( u.get_sleepiness() < 10 ||
-                        one_in( u.get_sleepiness() / 2 ) ) ) {
-                    u.add_msg_if_player( _( "It's too bright to sleep." ) );
-                    // Set ourselves up for removal
-                    it.set_duration( 0_turns );
-                    woke_up = true;
-                }
-                // Ursine hibernators would likely do so indoors.  Plants, though, might be in the sun.
-            } else if( u.has_trait( trait_HIBERNATE ) ) {
-                if( ( tirednessVal * 5 ) < here.ambient_light_at( u.pos_bub() ) && ( u.get_sleepiness() < 10 ||
-                        one_in( u.get_sleepiness() / 2 ) ) ) {
-                    u.add_msg_if_player( _( "It's too bright to sleep." ) );
-                    // Set ourselves up for removal
-                    it.set_duration( 0_turns );
-                    woke_up = true;
-                }
-            } else if( tirednessVal < here.ambient_light_at( u.pos_bub() ) && ( u.get_sleepiness() < 10 ||
-                       one_in( u.get_sleepiness() / 2 ) ) ) {
+            // HLTH-J12: SLEEP_LIGHT_TOLERANCE scales the roll; Very Heavy Sleepers sleep through
+            // noon (1.25), and Hibernation (5) lets ursine sleepers sleep through almost anything.
+            if( tirednessVal * u.sleep_light_tolerance() < here.ambient_light_at( u.pos_bub() ) &&
+                ( u.get_sleepiness() < 10 || one_in( u.get_sleepiness() / 2 ) ) ) {
                 u.add_msg_if_player( _( "It's too bright to sleep." ) );
                 // Set ourselves up for removal
                 it.set_duration( 0_turns );
@@ -1154,6 +1128,8 @@ static void eff_fun_sleep( Character &u, effect &it )
     // A bit of a hack: check if we are about to wake up for any reason, including regular
     // timing out of sleep
     if( it.get_duration() == 1_turns || woke_up ) {
+        // light, cold, heat or a hostile seen is "other"; sleep that ran its course "rested"
+        const wake_up_cause_scope cause( woke_up ? nullptr : "rested" );
         u.wake_up();
     }
 }
@@ -1300,9 +1276,8 @@ void Character::hardcoded_effects( effect &it )
             }
         }
     } else if( id == effect_brainworms ) {
-        if( one_in( 1536 ) ) {
-            add_msg_if_player( m_bad, _( "Your head aches faintly." ) );
-        }
+        // HLTH-J13: its flavour message, like the whole of tapeworm, bloodworms and paincysts, is
+        // the effect's JSON periodic_messages now.
         if( one_in( 6144 ) ) {
             mod_daily_health( -10, -100 );
             apply_damage( nullptr, bodypart_id( "head" ), rng( 0, 1 ) );
@@ -1319,22 +1294,8 @@ void Character::hardcoded_effects( effect &it )
                 schedule_effect( effect_blind, rng( 5_turns, 20_turns ) );
             }
         }
-    } else if( id == effect_tapeworm ) {
-        if( one_in( 3072 ) ) {
-            add_msg_if_player( m_bad, _( "Your bowels ache." ) );
-        }
-    } else if( id == effect_bloodworms ) {
-        if( one_in( 3072 ) ) {
-            add_msg_if_player( m_bad, _( "Your veins itch." ) );
-        }
-    } else if( id == effect_paincysts ) {
-        if( one_in( 3072 ) ) {
-            add_msg_if_player( m_bad, _( "Your muscles feel like they're knotted and tired." ) );
-        }
     } else if( id == effect_tetanus ) {
-        if( one_in( 1536 ) ) {
-            add_msg_if_player( m_bad, _( "Your muscles are tight and sore." ) );
-        }
+        // (its "tight and sore" message is the effect's JSON periodic_messages, HLTH-J13)
         // to do: make muscle spasms not as dangerous if you have bionic limbs
         if( !has_effect( effect_valium ) ) {
             add_miss_reason( _( "Your muscles are locking up and you can't fight effectively." ), 4 );
@@ -1522,8 +1483,8 @@ void Character::hardcoded_effects( effect &it )
             const bool asleep = has_effect( effect_sleep );
             if( has_flag( json_flag_ALARMCLOCK ) ) {
                 if( dur == 1_turns ) {
-                    // Normal alarm is volume 12, tested against (2/3/6)d15 for
-                    // normal/HEAVYSLEEPER/HEAVYSLEEPER2.
+                    // Normal alarm is volume 12, tested against wake_dice() d15: 2, 3 for
+                    // Heavy Sleeper, 6 for Very Heavy Sleeper (WAKE_RESISTANCE, HLTH-J12).
                     //
                     // It's much harder to ignore an alarm inside your own skull,
                     // so this uses an effective volume of 20.
@@ -1531,15 +1492,10 @@ void Character::hardcoded_effects( effect &it )
                     if( !asleep ) {
                         add_msg_if_player( _( "Your internal chronometer went off and you haven't slept a wink." ) );
                         activity.set_to_null();
-                    } else if( ( !( has_trait( trait_HEAVYSLEEPER ) ||
-                                    has_trait( trait_HEAVYSLEEPER2 ) ||
-                                    has_bionic( bio_sleep_shutdown ) ) &&
-                                 dice( 2, 15 ) < volume ) ||
-                               ( has_trait( trait_HEAVYSLEEPER ) && dice( 3, 15 ) < volume ) ||
-                               ( has_trait( trait_HEAVYSLEEPER2 ) && dice( 6, 15 ) < volume ) ||
-                               has_bionic( bio_sleep_shutdown ) ) {
+                    } else if( has_bionic( bio_sleep_shutdown ) || dice( wake_dice(), 15 ) < volume ) {
                         // Secure the flag before wake_up() clears the effect
                         bool slept_through = has_effect( effect_slept_through_alarm );
+                        const wake_up_cause_scope cause( "alarm" );
                         wake_up();
                         if( slept_through ) {
                             add_msg_if_player( _( "Your internal chronometer finally wakes you up." ) );
