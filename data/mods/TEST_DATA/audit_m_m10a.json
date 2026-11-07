@@ -186,6 +186,7 @@
   },
   {
     "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
     "id": "audit_m10a_snack_plain",
     "//": "ITEM-J03: an empty list removes the inherited EOCs",
     "copy-from": "audit_m10a_snack",
@@ -194,6 +195,7 @@
   },
   {
     "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
     "id": "audit_m10a_snack_more",
     "//": "ITEM-J03: extend adds an EOC",
     "copy-from": "audit_m10a_snack",
@@ -202,6 +204,7 @@
   },
   {
     "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
     "id": "audit_m10a_snack_other",
     "//": "ITEM-J03: delete removes an inherited EOC",
     "copy-from": "audit_m10a_snack_more",

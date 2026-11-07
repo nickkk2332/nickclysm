@@ -81,7 +81,8 @@
     "name": { "str": "m19a biosignature test" },
     "description": "MONAI-B05: drops a test_m19a_dropping every day and has one special attack.",
     "biosignature": { "biosig_item": "test_m19a_dropping", "biosig_timer": 1 },
-    "special_attacks": [ { "id": "TEST_COOLDOWN", "cooldown": 20 } ]
+    "//2": "TEST_COOLDOWN inline: monster_attacks.json loads after this file",
+    "special_attacks": [ { "type": "monster_attack", "attack_type": "melee", "id": "TEST_COOLDOWN", "cooldown": 20 } ]
   },
   {
     "type": "MONSTER",

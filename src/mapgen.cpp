@@ -3917,9 +3917,10 @@ class jmapgen_eoc : public jmapgen_piece
                 // Each tile of a multi-tile mapgen sets up the same JSON: an inline EOC is
                 // added once (a second definition from the same source is an error)
                 JsonObject jeoc = jv.get_object();
+                // only its id is read here; load_inline_eoc reads the rest
+                jeoc.allow_omitted_members();
                 const effect_on_condition_id id( jeoc.get_string( "id" ) );
                 if( id.is_valid() ) {
-                    jeoc.allow_omitted_members();
                     eoc = id;
                     return;
                 }

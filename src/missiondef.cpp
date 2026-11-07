@@ -242,7 +242,7 @@ void mission_type::check() const
     };
     check_item( container_id, "required_container" );
     check_item( empty_container, "empty_container" );
-    if( !group_id.is_null() && !item_group::group_is_defined( group_id ) ) {
+    if( !group_id.is_empty() && !group_id.is_null() && !item_group::group_is_defined( group_id ) ) {
         debugmsg( "Mission %s has undefined item_group %s", id.str(), group_id.str() );
     }
     if( !monster_type.is_null() && !monster_type.is_valid() ) {
