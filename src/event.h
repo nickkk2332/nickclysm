@@ -176,6 +176,7 @@ enum class event_type : int {
     character_gains_wound,
     character_wound_progresses,
     character_loses_wound,
+    loses_skill_level,
     num_event_types // last
 };
 
@@ -243,7 +244,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 152,
+static_assert( static_cast<int>( event_type::num_event_types ) == 153,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -893,12 +894,14 @@ struct event_spec<event_type::gains_proficiency> {
     };
 };
 
+// "type" is "practical" or "theoretical" (PROG-J06)
 template<>
 struct event_spec<event_type::gains_skill_level> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "character", cata_variant_type::character_id },
             { "skill", cata_variant_type::skill_id },
             { "new_level", cata_variant_type::int_ },
+            { "type", cata_variant_type::string },
         }
     };
 };
@@ -1408,6 +1411,18 @@ struct event_spec<event_type::character_loses_wound> {
             { "bodypart", cata_variant_type::body_part },
             { "wound", cata_variant_type::string },
             { "healed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// a character's skill level went down (rust); "type" is "practical" (PROG-J06)
+template<>
+struct event_spec<event_type::loses_skill_level> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "skill", cata_variant_type::skill_id },
+            { "new_level", cata_variant_type::int_ },
+            { "type", cata_variant_type::string },
         }
     };
 };

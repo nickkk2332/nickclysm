@@ -21,6 +21,8 @@
 #include "debug.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "flag.h"
 #include "item.h"
 #include "itype.h"
@@ -261,6 +263,9 @@ void Character::do_skill_rust()
             // Like any skill at MAX_SKILL, one at its own cap doesn't rust
             continue;
         }
+        if( !aSkill.rusts() ) {
+            continue;
+        }
 
         if( aSkill.is_combat_skill() &&
             ( ( has_flag( json_flag_PRED2 ) && calendar::once_every( 8_hours ) ) ||
@@ -286,8 +291,14 @@ void Character::do_skill_rust()
         const int rust_resist = enchantment_cache->get_value_add( enchant_vals::mod::SKILL_RUST_RESIST );
         const float rust_resist_mult = 1.0f + enchantment_cache->get_value_multiply(
                                            enchant_vals::mod::SKILL_RUST_RESIST );
-        if( skill_level_obj.rust( rust_resist, rust_resist_mult ) ) {
+        const int old_level = skill_level_obj.level();
+        if( skill_level_obj.rust( rust_resist, rust_resist_mult * aSkill.rust_multiplier(),
+                                  aSkill.rust_grace_period(), aSkill.rust_max_levels() ) ) {
             mod_power_level( -bio_memory->power_trigger );
+        }
+        if( skill_level_obj.level() < old_level ) {
+            get_event_bus().send<event_type::loses_skill_level>( getID(), pair.first,
+                    skill_level_obj.level(), "practical" );
         }
     }
 }

@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_SCENARIO_H
 #define CATA_SRC_SCENARIO_H
 
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -65,6 +66,8 @@ class scenario
 
         std::set<trait_id> _allowed_traits;
         std::set<trait_id> _forced_traits;
+        // The variant a forced trait is given with, if any (PROG-J05)
+        std::map<trait_id, std::string> _forced_trait_variants;
         std::set<trait_id> _forbidden_traits;
         std::vector<start_location_id> _allowed_locs;
         point_rel_om origin_offset = point_rel_om::zero;
@@ -87,6 +90,16 @@ class scenario
 
         time_point _default_start_of_cataclysm;
         time_point _default_start_of_game;
+        // The parts of the start dates as JSON gives them, so a copy changes only the parts it
+        // names (PROG-J07)
+        struct start_date {
+            int hour = 0;
+            int day = 1;
+            season_type season = SPRING;
+            int year = 1;
+        };
+        start_date _cataclysm_date;
+        start_date _game_date;
 
         time_point _start_of_cataclysm;
         time_point _start_of_game;
@@ -151,6 +164,8 @@ class scenario
 
         bool traitquery( const trait_id &trait ) const;
         std::set<trait_id> get_locked_traits() const;
+        /** The variant a forced trait is given with ("" for its default) */
+        std::string forced_trait_variant( const trait_id &trait ) const;
         bool is_locked_trait( const trait_id &trait ) const;
         bool is_forbidden_trait( const trait_id &trait ) const;
 

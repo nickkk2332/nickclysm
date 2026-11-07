@@ -276,9 +276,23 @@ void effect_on_conditions::load_new_character( Character &you )
         you.queue_effects( scen->eoc() );
     }
 
+    // The profession's and the hobbies' EOCs; an NPC runs those of one with run_eocs_for_npcs
+    // (otherwise only the run_for_npcs ones) (PROG-J04)
+    const auto queue_background_eocs = [&you]( const profession & background ) {
+        if( you.is_avatar() || !background.eocs_run_for_npcs() ) {
+            you.queue_effects( background.get_eocs() );
+            return;
+        }
+        for( const effect_on_condition_id &eoc : background.get_eocs() ) {
+            you.queued_effect_on_conditions.push( queued_eoc{ eoc, calendar::turn_zero, {} } );
+        }
+    };
     const profession *prof = you.get_profession();
     if( prof ) {
-        you.queue_effects( prof->get_eocs() );
+        queue_background_eocs( *prof );
+    }
+    for( const profession *hobby : you.get_hobbies() ) {
+        queue_background_eocs( *hobby );
     }
 
     for( const effect_on_condition &eoc : get_all() ) {

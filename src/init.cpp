@@ -888,7 +888,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "terrain", json_inheritance::copy_from },
         { "test_data", json_inheritance::none },
         { "tool_quality", json_inheritance::copy_from },
-        { "trait_group", json_inheritance::none },
+        { "trait_group", json_inheritance::merges },
         { "trap", json_inheritance::copy_from },
         { "trap_migration", json_inheritance::none },
         { "uncraft", json_inheritance::copy_from },

@@ -899,13 +899,23 @@ void memorial_logger::notify( const cata::event &e )
                 int new_level = e.get<int>( "new_level" );
                 if( new_level % 4 == 0 ) {
                     skill_id skill = e.get<skill_id>( "skill" );
-                    add( pgettext( "memorial_male",
-                                   //~ %d is skill level %s is skill name
-                                   "Reached skill level %1$d in %2$s." ),
-                         pgettext( "memorial_female",
-                                   //~ %d is skill level %s is skill name
-                                   "Reached skill level %1$d in %2$s." ),
-                         new_level, skill->name() );
+                    if( e.get<cata_variant_type::string>( "type" ) == "theoretical" ) {
+                        add( pgettext( "memorial_male",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached theoretical knowledge level %1$d in %2$s." ),
+                             pgettext( "memorial_female",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached theoretical knowledge level %1$d in %2$s." ),
+                             new_level, skill->name() );
+                    } else {
+                        add( pgettext( "memorial_male",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached skill level %1$d in %2$s." ),
+                             pgettext( "memorial_female",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached skill level %1$d in %2$s." ),
+                             new_level, skill->name() );
+                    }
                 }
             }
             break;
@@ -1209,6 +1219,7 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_gains_wound:
         case event_type::character_wound_progresses:
         case event_type::character_loses_wound:
+        case event_type::loses_skill_level:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

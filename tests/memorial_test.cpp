@@ -249,7 +249,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Gained the proficiency 'Wound Care'.", ch, prof );
 
     check_memorial<event_type::gains_skill_level>(
-        m,  "Reached skill level 8 in vehicles.", ch, skill_driving, 8 );
+        m,  "Reached skill level 8 in vehicles.", ch, skill_driving, 8, "practical" );
 
     check_memorial<event_type::game_avatar_death>(
         m,  u_name + " was killed.\nLast words: last_words", ch, u_name, false, "last_words" );

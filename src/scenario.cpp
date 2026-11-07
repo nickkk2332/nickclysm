@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <initializer_list>
+#include <iterator>
+#include <map>
 #include <ostream>
 #include <unordered_set>
 
@@ -19,6 +21,7 @@
 #include "profession.h"
 #include "rng.h"
 #include "start_location.h"
+#include "string_formatter.h"
 #include "translations.h"
 
 namespace
@@ -41,6 +44,39 @@ bool string_id<scenario>::is_valid() const
 }
 
 static scen_blacklist sc_blacklist;
+
+namespace
+{
+// A forced trait is a trait id or { "trait": id, "variant": variant id } (PROG-J05)
+class forced_trait_reader : public generic_typed_reader<forced_trait_reader>
+{
+    public:
+        explicit forced_trait_reader( std::map<trait_id, std::string> *variants ) :
+            variants( variants ) {}
+        trait_id get_next( const JsonValue &jv ) const {
+            trait_and_var tv;
+            tv.deserialize( jv );
+            if( !tv.variant.empty() ) {
+                ( *variants )[tv.trait] = tv.variant;
+            }
+            return tv.trait;
+        }
+    private:
+        std::map<trait_id, std::string> *variants;
+};
+
+// What "extend" and "delete" can change in a scenario; anything else in them did nothing
+// (PROG-J05)
+const std::set<std::string> &scenario_changeable_members()
+{
+    static const std::set<std::string> members = {
+        "add_professions", "allowed_locs", "blacklist_professions", "eoc", "flags",
+        "forbidden_traits", "forced_traits", "hobbies", "missions", "professions",
+        "surround_groups", "traits"
+    };
+    return members;
+}
+} // namespace
 
 scenario::scenario()
 // NOLINTNEXTLINE(cata-static-string_id-constants)
@@ -90,8 +126,30 @@ void scenario::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "hobbies", hobby_exclusion );
     optional( jo, was_loaded, "whitelist_hobbies", hobbies_whitelist, true );
 
+    for( const char *change : {
+             "extend", "delete"
+         } ) {
+        if( jo.has_object( change ) ) {
+            JsonObject changes = jo.get_object( change );
+            changes.allow_omitted_members();
+            for( const JsonMember member : changes ) {
+                if( scenario_changeable_members().count( member.name() ) == 0 ) {
+                    changes.throw_error_at( member.name(), string_format(
+                                                "\"%s\" doesn't take \"%s\" in a scenario", member.name(), change ) );
+                }
+            }
+        }
+    }
+
     optional( jo, was_loaded, "traits", _allowed_traits, string_id_reader<::mutation_branch> {} );
-    optional( jo, was_loaded, "forced_traits", _forced_traits, string_id_reader<::mutation_branch> {} );
+    if( jo.has_member( "forced_traits" ) ) {
+        _forced_trait_variants.clear();
+    }
+    optional( jo, was_loaded, "forced_traits", _forced_traits,
+              forced_trait_reader( &_forced_trait_variants ) );
+    for( auto it = _forced_trait_variants.begin(); it != _forced_trait_variants.end(); ) {
+        it = _forced_traits.count( it->first ) ? std::next( it ) : _forced_trait_variants.erase( it );
+    }
     optional( jo, was_loaded, "forbidden_traits", _forbidden_traits,
               string_id_reader<::mutation_branch> {} );
     optional( jo, was_loaded, "allowed_locs", _allowed_locs, string_id_reader<::start_location> {} );
@@ -118,55 +176,75 @@ void scenario::load( const JsonObject &jo, std::string_view )
 
     optional( jo, was_loaded, "origin_offset", origin_offset, point_rel_om::zero );
 
+    // A copy keeps the parts of the dates it doesn't name, and can change the others (PROG-J07)
     if( !was_loaded ) {
-
-        int _start_of_cataclysm_hour = 0;
         // The cataclysm started 5 days before game start
-        int _start_of_cataclysm_day = ( 1 + get_option<int>( "SEASON_LENGTH" ) / 3 * 2 ) - 5;
-        season_type _start_of_cataclysm_season = SPRING;
-        int _start_of_cataclysm_year = 1;
-        if( jo.has_member( "start_of_cataclysm" ) ) {
-            JsonObject jocid = jo.get_member( "start_of_cataclysm" );
-            optional( jocid, was_loaded, "hour", _start_of_cataclysm_hour );
-            optional( jocid, was_loaded, "day", _start_of_cataclysm_day );
-            optional( jocid, was_loaded, "season", _start_of_cataclysm_season );
-            optional( jocid, was_loaded, "year", _start_of_cataclysm_year );
-        }
-        _default_start_of_cataclysm = calendar::turn_zero +
-                                      1_hours * _start_of_cataclysm_hour +
-                                      1_days * ( _start_of_cataclysm_day - 1 ) +
-                                      1_days * get_option<int>( "SEASON_LENGTH" ) * _start_of_cataclysm_season +
-                                      calendar::year_length() * ( _start_of_cataclysm_year - 1 )
-                                      ;
-
-        int _start_of_game_hour = 8;
-        int _start_of_game_day = 1 + get_option<int>( "SEASON_LENGTH" ) / 3 * 2;
-        season_type _start_of_game_season = SPRING;
-        int _start_of_game_year = 1;
-        if( jo.has_member( "start_of_game" ) ) {
-            JsonObject jocid = jo.get_member( "start_of_game" );
-            optional( jocid, was_loaded, "hour", _start_of_game_hour );
-            optional( jocid, was_loaded, "day", _start_of_game_day );
-            optional( jocid, was_loaded, "season", _start_of_game_season );
-            optional( jocid, was_loaded, "year", _start_of_game_year );
-        }
-        _default_start_of_game = calendar::turn_zero +
-                                 1_hours * _start_of_game_hour +
-                                 1_days * ( _start_of_game_day - 1 ) +
-                                 1_days * get_option<int>( "SEASON_LENGTH" ) * _start_of_game_season +
-                                 calendar::year_length() * ( _start_of_game_year - 1 )
-                                 ;
-
-        reset_calendar();
+        _cataclysm_date = start_date{ 0, ( 1 + get_option<int>( "SEASON_LENGTH" ) / 3 * 2 ) - 5, SPRING, 1 };
+        _game_date = start_date{ 8, 1 + get_option<int>( "SEASON_LENGTH" ) / 3 * 2, SPRING, 1 };
     }
+    const auto read_date = [&jo]( const std::string_view member, start_date & date ) {
+        if( jo.has_member( member ) ) {
+            JsonObject jocid = jo.get_member( member );
+            optional( jocid, true, "hour", date.hour );
+            optional( jocid, true, "day", date.day );
+            optional( jocid, true, "season", date.season );
+            optional( jocid, true, "year", date.year );
+        }
+    };
+    read_date( "start_of_cataclysm", _cataclysm_date );
+    read_date( "start_of_game", _game_date );
+    const auto date_time = []( const start_date & date ) {
+        return calendar::turn_zero +
+               1_hours * date.hour +
+               1_days * ( date.day - 1 ) +
+               1_days * get_option<int>( "SEASON_LENGTH" ) * date.season +
+               calendar::year_length() * ( date.year - 1 );
+    };
+    _default_start_of_cataclysm = date_time( _cataclysm_date );
+    _default_start_of_game = date_time( _game_date );
+    reset_calendar();
 
     if( jo.has_string( "vehicle" ) ) {
         _starting_vehicle = vproto_id( jo.get_string( "vehicle" ) );
     }
 
-    for( JsonArray ja : jo.get_array( "surround_groups" ) ) {
-        _surround_groups.emplace_back( mongroup_id( ja.get_string( 0 ) ),
-                                       static_cast<float>( ja.get_float( 1 ) ) );
+    // Given, the list replaces a copied one; "extend" adds to it and "delete" removes groups
+    // (PROG-J07)
+    const auto add_groups = [this]( const JsonArray & groups ) {
+        for( JsonArray ja : groups ) {
+            _surround_groups.emplace_back( mongroup_id( ja.get_string( 0 ) ),
+                                           static_cast<float>( ja.get_float( 1 ) ) );
+        }
+    };
+    if( jo.has_member( "surround_groups" ) ) {
+        _surround_groups.clear();
+        add_groups( jo.get_array( "surround_groups" ) );
+    }
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "surround_groups", "no copy-from" );
+        warn_disabled_feature( jo, "delete", "surround_groups", "no copy-from" );
+    } else {
+        if( jo.has_object( "delete" ) ) {
+            JsonObject del = jo.get_object( "delete" );
+            del.allow_omitted_members();
+            for( JsonValue jv : del.get_array( "surround_groups" ) ) {
+                // a group id, or [ id, weight ]
+                const mongroup_id group( jv.test_array() ? jv.get_array().get_string( 0 ) : jv.get_string() );
+                const auto removed = std::remove_if( _surround_groups.begin(), _surround_groups.end(),
+                [&group]( const std::pair<mongroup_id, float> &entry ) {
+                    return entry.first == group;
+                } );
+                if( removed == _surround_groups.end() ) {
+                    jv.throw_error( string_format( "no surround group %s to delete", group.str() ) );
+                }
+                _surround_groups.erase( removed, _surround_groups.end() );
+            }
+        }
+        if( jo.has_object( "extend" ) ) {
+            JsonObject ext = jo.get_object( "extend" );
+            ext.allow_omitted_members();
+            add_groups( ext.get_array( "surround_groups" ) );
+        }
     }
 
     if( jo.has_object( "starting_npc" ) ) {
@@ -326,6 +404,12 @@ void scenario::check() const
     check_traits( _allowed_traits, id );
     check_traits( _forced_traits, id );
     check_traits( _forbidden_traits, id );
+    for( const std::pair<const trait_id, std::string> &tv : _forced_trait_variants ) {
+        if( tv.first.is_valid() && tv.first->variant( tv.second ) == nullptr ) {
+            debugmsg( "scenario %s forces trait %s with variant %s, which it doesn't have", id.str(),
+                      tv.first.str(), tv.second );
+        }
+    }
 
     if( !_map_extra.is_valid() )  {
         debugmsg( "there is no map extra with id %s", _map_extra.str() );
@@ -712,6 +796,12 @@ bool scenario::traitquery( const trait_id &trait ) const
 std::set<trait_id> scenario::get_locked_traits() const
 {
     return _forced_traits;
+}
+
+std::string scenario::forced_trait_variant( const trait_id &trait ) const
+{
+    const auto it = _forced_trait_variants.find( trait );
+    return it == _forced_trait_variants.end() ? std::string() : it->second;
 }
 
 bool scenario::is_locked_trait( const trait_id &trait ) const
