@@ -1917,6 +1917,11 @@
     "type": "json_flag"
   },
   {
+    "id": "NO_MACHINE_HARVEST",
+    "type": "json_flag",
+    "//": "VINT-J05: a vehicle reaper leaves plants grown from this seed alone."
+  },
+  {
     "id": "NO_PACKED",
     "type": "json_flag"
   },

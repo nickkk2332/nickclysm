@@ -164,6 +164,7 @@ static const furn_str_id furn_f_kiln_portable_empty( "f_kiln_portable_empty" );
 static const furn_str_id furn_f_kiln_portable_full( "f_kiln_portable_full" );
 static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
 static const furn_str_id furn_f_metal_smoking_rack_active( "f_metal_smoking_rack_active" );
+static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
 static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
 static const furn_str_id furn_f_smoking_rack_active( "f_smoking_rack_active" );
@@ -278,6 +279,8 @@ static const ter_str_id ter_t_floor_red( "t_floor_red" );
 static const ter_str_id ter_t_fungus( "t_fungus" );
 static const ter_str_id ter_t_gas_pump( "t_gas_pump" );
 static const ter_str_id ter_t_gas_pump_a( "t_gas_pump_a" );
+static const ter_str_id ter_t_greenhouse( "t_greenhouse" );
+static const ter_str_id ter_t_greenhouse_tilled( "t_greenhouse_tilled" );
 static const ter_str_id ter_t_marloss( "t_marloss" );
 static const ter_str_id ter_t_marloss_tree( "t_marloss_tree" );
 static const ter_str_id ter_t_orifice( "t_orifice" );
@@ -2689,6 +2692,24 @@ void iexamine::plant_seed( Character &you, const tripoint_bub_ms &examp, const i
 {
     plant_seed_activity_actor actor( get_map().get_abs( examp ), seed_id, 30_seconds );
     you.assign_activity( actor );
+}
+
+void iexamine::set_seeded_terrain( map &here, const tripoint_bub_ms &examp,
+                                   const itype_id &seed_id )
+{
+    // planting by hand (plant_seed_activity_actor) and with a vehicle planter (VINT-J05)
+    if( here.has_flag_furn( seed_id->seed->required_terrain_flag, examp ) &&
+        here.furn( examp )->plant != nullptr ) {
+        here.furn_set( examp, here.furn( examp )->plant->transform );
+    } else if( seed_id->seed->required_terrain_flag == ter_furn_flag::TFLAG_PLANTABLE ) {
+        if( here.ter( examp ).id() == ter_t_greenhouse_tilled ) {
+            here.set( examp, ter_t_greenhouse, furn_f_plant_seed );
+        } else {
+            here.set( examp, ter_t_dirt, furn_f_plant_seed );
+        }
+    } else {
+        here.furn_set( examp, furn_f_plant_seed );
+    }
 }
 
 /**

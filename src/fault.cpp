@@ -12,6 +12,7 @@
 #include "item.h"
 #include "requirements.h"
 #include "rng.h"
+#include "sounds.h"
 
 namespace io
 {
@@ -242,6 +243,61 @@ int fault::vehicle_move_penalty_mod() const
     return vehicle_move_penalty_mod_;
 }
 
+double fault::engine_power_mult() const
+{
+    if( engine_power_mult_ ) {
+        return *engine_power_mult_;
+    }
+    return has_flag( "REDUCE_ENG_POWER" ) ? 0.6 : 1.0;
+}
+
+double fault::fuel_consumption_mult() const
+{
+    if( fuel_consumption_mult_ ) {
+        return *fuel_consumption_mult_;
+    }
+    return has_flag( "DOUBLE_FUEL_CONSUMPTION" ) ? 2.0 : 1.0;
+}
+
+double fault::exhaust_mult() const
+{
+    return exhaust_mult_;
+}
+
+float fault::steering_mult() const
+{
+    return steering_mult_;
+}
+
+const fault_runover *fault::runover() const
+{
+    return runover_ ? &*runover_ : nullptr;
+}
+
+const fault_while_moving *fault::while_moving() const
+{
+    return while_moving_ ? &*while_moving_ : nullptr;
+}
+
+void fault_runover::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "weight", weight, 0 );
+    optional( jo, false, "message", message );
+    for( const JsonObject jog : jo.get_array( "escalates_to" ) ) {
+        escalates_to.add( fault_id( jog.get_string( "fault" ) ), jog.get_int( "weight", 100 ) );
+    }
+}
+
+void fault_while_moving::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "sound", sound );
+    optional( jo, false, "sound_volume", sound_volume, 0 );
+    sound_type = jo.get_enum_value<sounds::sound_t>( "sound_type", sounds::sound_t::sensory );
+    optional( jo, false, "escalates_to", escalates_to, fault_id::NULL_ID() );
+    optional( jo, false, "damages_part", damages_part, false );
+    optional( jo, false, "message", message );
+}
+
 double fault::encumb_mod_mult() const
 {
     return encumbrance_mod_mult_;
@@ -294,6 +350,12 @@ void fault::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "contact_area_mod", contact_area_mod_, 1.f );
     optional( jo, was_loaded, "rolling_resistance_mod", rolling_resistance_mod_, 1.f );
     optional( jo, was_loaded, "vehicle_move_penalty_mod", vehicle_move_penalty_mod_, 0 );
+    optional( jo, was_loaded, "engine_power_mult", engine_power_mult_ );
+    optional( jo, was_loaded, "fuel_consumption_mult", fuel_consumption_mult_ );
+    optional( jo, was_loaded, "exhaust_mult", exhaust_mult_, 1.0 );
+    optional( jo, was_loaded, "steering_mult", steering_mult_, 1.f );
+    optional( jo, was_loaded, "runover", runover_ );
+    optional( jo, was_loaded, "while_moving", while_moving_ );
 
     if( jo.has_array( "melee_damage_mod" ) ) {
         for( JsonObject jo_f : jo.get_array( "melee_damage_mod" ) ) {
@@ -321,6 +383,29 @@ void fault::check() const
     }
     if( description_.empty() ) {
         debugmsg( "fault '%s' has empty description", id.str() );
+    }
+    if( engine_power_mult() < 0.0 || fuel_consumption_mult() < 0.0 || exhaust_mult_ < 0.0 ||
+        steering_mult_ < 0.f ) {
+        debugmsg( "fault '%s' has a negative vehicle multiplier", id.str() );
+    }
+    if( runover_ ) {
+        if( runover_->weight < 0 ) {
+            debugmsg( "fault '%s' has a negative runover weight", id.str() );
+        }
+        for( const std::pair<fault_id, int> &next : runover_->escalates_to ) {
+            if( !next.first.is_valid() ) {
+                debugmsg( "fault '%s' runover escalates to unknown fault '%s'", id.str(), next.first.str() );
+            }
+        }
+    }
+    if( while_moving_ ) {
+        if( !while_moving_->escalates_to.is_null() && !while_moving_->escalates_to.is_valid() ) {
+            debugmsg( "fault '%s' while_moving escalates to unknown fault '%s'", id.str(),
+                      while_moving_->escalates_to.str() );
+        }
+        if( !while_moving_->escalates_to.is_null() && while_moving_->damages_part ) {
+            debugmsg( "fault '%s' while_moving has both escalates_to and damages_part", id.str() );
+        }
     }
 }
 

@@ -9,6 +9,8 @@
 #include <list>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -63,6 +65,9 @@ generic_factory<vpart_info> vpart_info_factory( "vehicle_part", "id" );
 } // namespace
 
 static const ammotype ammo_battery( "battery" );
+
+static const damage_type_id damage_bash( "bash" );
+static const damage_type_id damage_cut( "cut" );
 
 static const itype_id fuel_type_animal( "animal" );
 static const itype_id fuel_type_battery( "battery" );
@@ -284,6 +289,7 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "location", location );
     optional( jo, was_loaded, "durability", durability, 0 );
     optional( jo, was_loaded, "damage_modifier", dmg_mod, 100 );
+    optional( jo, was_loaded, "collision_damage", collision_damage );
     optional( jo, was_loaded, "energy_consumption", energy_consumption, 0_W );
     optional( jo, was_loaded, "power", power, 0_W );
     optional( jo, was_loaded, "epower", epower, 0_W );
@@ -294,6 +300,10 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "folded_volume", folded_volume, std::nullopt );
     optional( jo, was_loaded, "size", size, 0_ml );
     optional( jo, was_loaded, "bonus", bonus, 0 );
+    optional( jo, was_loaded, "funnel_radius", funnel_radius, std::nullopt );
+    optional( jo, was_loaded, "muffle_factor", muffle_factor, std::nullopt );
+    optional( jo, was_loaded, "seatbelt_strength", seatbelt_strength, std::nullopt );
+    optional( jo, was_loaded, "shock_absorption", shock_absorption, std::nullopt );
     if( jo.has_array( "light_color" ) ) {
         JsonArray jarr = jo.get_array( "light_color" );
         light_color.r = jarr.get_int( 0 ) / 255.0f;
@@ -340,16 +350,47 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
             cycle.eoc_on_finish = effect_on_conditions::load_inline_eoc( jc.get_member( "eoc_on_finish" ),
                                   src );
         }
+        // VINT-J08
+        if( jc.has_member( "item_condition" ) ) {
+            read_condition( jc, "item_condition", cycle.item_condition, true );
+        }
+        optional( jc, false, "item_condition_message", cycle.item_condition_message );
         if( cycle.duration <= 0_turns ) {
             jc.throw_error_at( "duration", "duration must be more than 0" );
         }
         processing_cycle = cycle;
     }
 
+    // VINT-B07: inline enchantments are named after the part's id, not its (translated, often
+    // empty, inherited) name, so ids neither collide nor change with the language. A part's
+    // "enchantments" replaces the ones it copied; "extend" adds to them and "delete" removes
+    // the named ones.
     int enchant_num = 0;
-    for( JsonValue jv : jo.get_array( "enchantments" ) ) {
-        std::string enchant_name = "INLINE_ENCH_" + name_ + "_" + std::to_string( enchant_num++ );
-        enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+    const auto read_enchantments = [&]( const JsonArray & ja ) {
+        for( JsonValue jv : ja ) {
+            std::string enchant_name = "INLINE_ENCH_vpart_" + id.str() + "_" +
+                                       std::to_string( enchant_num++ );
+            enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+        }
+    };
+    if( jo.has_array( "enchantments" ) ) {
+        enchantments.clear();
+        read_enchantments( jo.get_array( "enchantments" ) );
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const std::string &doomed : del.get_string_array( "enchantments" ) ) {
+            enchantments.erase( std::remove( enchantments.begin(), enchantments.end(),
+                                             enchantment_id( doomed ) ), enchantments.end() );
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        // numbered after the part's own list, so an extend doesn't reuse its ids
+        enchant_num = std::max( enchant_num, static_cast<int>( enchantments.size() ) );
+        read_enchantments( ext.get_array( "enchantments" ) );
     }
 
     if( jo.has_array( "variants" ) ) {
@@ -396,8 +437,10 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
 
     optional( jo, was_loaded, "qualities", qualities, weighted_string_id_reader<quality_id, int> {std::nullopt} );
 
-    JsonArray tools = jo.get_array( "pseudo_tools" );
-    if( !tools.empty() ) {
+    // a part's "pseudo_tools" replaces the ones it copied, and "pseudo_tools": [] clears them
+    // (VINT-B08)
+    if( jo.has_array( "pseudo_tools" ) ) {
+        JsonArray tools = jo.get_array( "pseudo_tools" );
         pseudo_tools.clear();
         while( tools.has_more() ) {
             const JsonObject tooldef = tools.next_object();
@@ -457,6 +500,30 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
             transform_terrain_info.emplace();
         }
         mandatory( jo, was_loaded, "transform_terrain", transform_terrain_info );
+    }
+
+    // VINT-J05: "reaper": { "plant_yield": [ 1, 4 ], "seed_yield": [ 1, 3 ] }
+    if( jo.has_object( "reaper" ) ) {
+        const JsonObject jr = jo.get_object( "reaper" );
+        const auto read_bounds = [&jr]( const std::string & key, std::pair<int, int> &bounds ) {
+            if( !jr.has_array( key ) ) {
+                return false;
+            }
+            const JsonArray ja = jr.get_array( key );
+            if( ja.size() != 2 ) {
+                ja.throw_error( "should be [ least, most ]" );
+            }
+            bounds = std::make_pair( ja.get_int( 0 ), ja.get_int( 1 ) );
+            if( bounds.first < 0 || bounds.first > bounds.second ) {
+                ja.throw_error( "should be [ least, most ], with 0 <= least <= most" );
+            }
+            return true;
+        };
+        std::pair<int, int> plant_yield;
+        if( read_bounds( "plant_yield", plant_yield ) ) {
+            reaper_plant_yield = plant_yield;
+        }
+        read_bounds( "seed_yield", reaper_seed_yield );
     }
 }
 
@@ -1087,6 +1154,22 @@ void vpart_info::check() const
                       id.c_str() );
         }
     }
+    if( collision_damage ) {
+        for( const damage_unit &du : *collision_damage ) {
+            if( !du.type.is_valid() ) {
+                debugmsg( "Invalid collision_damage type \"%s\" for vehicle part %s", du.type.c_str(),
+                          id.c_str() );
+            }
+        }
+    }
+    if( ( funnel_radius && *funnel_radius < 0_mm ) || ( seatbelt_strength && *seatbelt_strength < 0 ) ||
+        ( shock_absorption && *shock_absorption < 0 ) ) {
+        debugmsg( "vehicle part %s has a negative funnel_radius, seatbelt_strength or shock_absorption",
+                  id.str() );
+    }
+    if( muffle_factor && ( *muffle_factor < 0.0 || *muffle_factor > 1.0 ) ) {
+        debugmsg( "vehicle part %s has a muffle_factor outside 0 to 1", id.str() );
+    }
     if( has_flag( "EOC_ACTIVATION" ) != activatable_eoc.has_value() ) {
         debugmsg( "vehicle part %s must have both the EOC_ACTIVATION flag and an activatable_eoc, "
                   "or neither", id.str() );
@@ -1271,6 +1354,36 @@ requirement_data vpart_info::repair_requirements() const
 bool vpart_info::is_repairable() const
 {
     return !has_flag( "NO_REPAIR" ) && !repair_requirements().is_empty();
+}
+
+const damage_instance &vpart_info::get_collision_damage() const
+{
+    if( collision_damage ) {
+        return *collision_damage;
+    }
+    static const damage_instance sharp( damage_cut, 1.0f );
+    static const damage_instance blunt( damage_bash, 1.0f );
+    return has_flag( "SHARP" ) ? sharp : blunt;
+}
+
+int vpart_info::get_funnel_radius_mm() const
+{
+    return funnel_radius ? units::to_millimeter( *funnel_radius ) : bonus;
+}
+
+double vpart_info::get_muffle_factor() const
+{
+    return muffle_factor ? *muffle_factor : bonus / 100.0;
+}
+
+int vpart_info::get_seatbelt_strength() const
+{
+    return seatbelt_strength ? *seatbelt_strength : bonus;
+}
+
+int vpart_info::get_shock_absorption() const
+{
+    return shock_absorption ? *shock_absorption : bonus;
 }
 
 static time_duration scale_time( const std::map<skill_id, int> &sk, time_duration mv,
@@ -1519,12 +1632,43 @@ void vehicle_prototype::zone_def::deserialize( const JsonObject &jo )
 
 void vehicle_prototype::load( const JsonObject &jo, std::string_view src )
 {
-    VehicleGroup::add_to_group( vgroup_id( id.str() ), id, 100 );
+    // every prototype is a group of its own id; an abstract one, which can't be spawned, isn't
+    // (VINT-B09)
+    if( !jo.has_string( "abstract" ) ) {
+        VehicleGroup::add_to_group( vgroup_id( id.str() ), id, 100 );
+    }
     optional( jo, was_loaded, "name", name );
 
     if( jo.has_member( "blueprint" ) ) {
         // currently unused, read to suppress unvisited members warning
         jo.get_array( "blueprint" );
+    }
+
+    // VINT-B08: "delete": { "parts": [ { "x": 0, "y": 1, "part": "stereo" } ] } removes the
+    // copied parts of that id (and variant, if one is given) on that tile, before this
+    // definition's "parts" are appended
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( JsonObject doomed : del.get_array( "parts" ) ) {
+            point_rel_ms pos;
+            mandatory( doomed, false, "x", pos.x() );
+            mandatory( doomed, false, "y", pos.y() );
+            std::string part_str;
+            mandatory( doomed, false, "part", part_str );
+            const size_t sep = part_str.find( vehicles::variant_separator );
+            const vpart_id doomed_id( part_str.substr( 0, sep ) );
+            const std::optional<std::string> doomed_variant = sep == std::string::npos ?
+                    std::nullopt : std::optional<std::string>( part_str.substr( sep + 1 ) );
+            const auto matches = [&]( const part_def & pt ) {
+                return pt.pos == pos && pt.part == doomed_id &&
+                       ( !doomed_variant || pt.variant == *doomed_variant );
+            };
+            if( std::none_of( parts.begin(), parts.end(), matches ) ) {
+                doomed.throw_error( "the vehicle has no such part to delete" );
+            }
+            parts.erase( std::remove_if( parts.begin(), parts.end(), matches ), parts.end() );
+        }
     }
 
     std::vector<part_def> tmp;
@@ -1537,8 +1681,21 @@ void vehicle_prototype::load( const JsonObject &jo, std::string_view src )
         parts.insert( parts.end(), tmp.begin(), tmp.end() );
     }
 
-    optional( jo, was_loaded, "items", item_spawns );
+    // "items" is appended to the copied ones, as "parts" is and VEHICLES_JSON.md says; it
+    // replaced them, so cars lost their parent's car_misc, car_kit and spare tire (VINT-B08)
+    if( jo.has_array( "items" ) ) {
+        std::vector<vehicle_item_spawn> own_items;
+        mandatory( jo, false, "items", own_items );
+        item_spawns.insert( item_spawns.end(), own_items.begin(), own_items.end() );
+    }
+    // "zones" is appended to the copied ones too. Without a "zones" list of its own, "extend"
+    // adds zones and "delete" removes equal ones.
+    std::vector<zone_def> copied_zones;
+    if( was_loaded && jo.has_array( "zones" ) ) {
+        copied_zones = zone_defs;
+    }
     optional( jo, was_loaded, "zones", zone_defs, json_read_reader<zone_def> {} );
+    zone_defs.insert( zone_defs.begin(), copied_zones.begin(), copied_zones.end() );
     optional( jo, was_loaded, "chat_topics", chat_topics );
     // VEH-J10
     optional( jo, was_loaded, "variables", variables );

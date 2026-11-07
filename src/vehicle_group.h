@@ -38,8 +38,13 @@ class VehicleGroup
             vehicles.add( type, probability );
         }
 
-        const vproto_id &pick() const {
-            return *vehicles.pick();
+        /**
+         * A vehicle of the group, by weight; the null id for a group with nothing to pick (no
+         * vehicles, or none of any weight), which callers skip (VINT-B09).
+         */
+        vproto_id pick() const {
+            const vproto_id *picked = vehicles.pick();
+            return picked == nullptr ? vproto_id::NULL_ID() : *picked;
         }
 
         std::vector<vproto_id> all_possible_results() const;

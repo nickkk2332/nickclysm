@@ -758,6 +758,8 @@ Can also be used as `pre_flags` for `construction`.
 - ```PLANT``` A 'furniture' that grows and fruits.
 - ```PLOWABLE``` Terrain can be plowed.
 - ```RAIL``` This is a railroad, railroad vehicles can use it to move.
+- ```RAIL_DIAGONAL``` A `RAIL` tile whose track runs diagonally.  Rail vehicles turning onto a straight course count it as a wrong tile (more than 2 of the 3 tiles ahead of a wheel and the turn is refused).  A rail with neither this nor `RAIL_STRAIGHT` (a ramp) suits both directions.
+- ```RAIL_STRAIGHT``` A `RAIL` tile whose track runs straight (north-south or east-west).  Rail vehicles turning onto a diagonal course count it as a wrong tile (more than 1 of the 3 tiles ahead of a wheel and the turn is refused).
 - ```RAMP_DOWN``` The end of a ramp that leads down, walking into this moves you one z-level down.  Overrides `WALL`, while still displaying the tile as Impassable.
 - ```RAMP_END``` Technical flag for proper work of ramps mechanics.
 - ```RAMP_UP``` The end of a ramp that leads up, walking into this moves you one z-level up.  Overrides `WALL`, while still displaying the tile as Impassable.
@@ -913,6 +915,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```NO_ACTIVE_SUFFIX``` The item's name doesn't get " (active)" while it is active (for an active form whose name already says so).  Items whose id ends in `_on` never get it either.
 - ```NO_CAMP_FARMING``` A seed that camp companions won't plant or harvest (the camp's Plant Fields and Harvest Fields missions skip it).  Vanilla Marloss and fungal seeds have it.
 - ```NO_CLEAN``` this item is impossible to clean.
+- ```NO_MACHINE_HARVEST``` A seed whose crop a vehicle `REAPER` leaves alone (the fungal and Marloss seeds), to be harvested by hand.
 - ```NO_PACKED``` This item is not protected against contamination and won't stay sterile.  Only applies to CBMs.
 - ```NO_REPAIR``` Prevents repairing of this item even if otherwise suitable tools exist.
 - ```NO_SALVAGE``` Item cannot be broken down through a salvage process.  Best used when something should not be able to be broken down (i.e. base components like leather patches).
@@ -1793,7 +1796,7 @@ Note: Vehicle parts requiring other parts is defined by setting a `requires_flag
 
 Note: Parts that can be switched on and off from the vehicle's electronics menu get that switch from their flag: a flag whose definition has a `vehicle_toggle` field (i.e. the `CONE_LIGHT` flag contains `"vehicle_toggle": { "name": "headlights", "hotkey": "TOGGLE_HEADLIGHT" }`). All parts with the flag switch together. See [Vehicle toggles](JSON_INFO.md#vehicle-toggles) for adding one in a mod.
 
-- ```ADVANCED_PLANTER``` This planter doesn't spill seeds and avoids damaging itself on non-diggable surfaces.
+- ```ADVANCED_PLANTER``` This planter avoids damaging itself where it can't sow.
 - ```AIRCRAFT_REPAIRABLE_NOPROF``` Allows the player to safely remove part from an aircraft without any proficiency.
 - ```AISLE_LIGHT``` This part lightens up surroundings.
 - ```AISLE``` Player can move over this part with less speed penalty than normal.
@@ -1870,9 +1873,9 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```NEEDS_WHEEL_MOUNT_MEDIUM``` Can only be installed on a part with `WHEEL_MOUNT_MEDIUM` flag.
 - ```NEEDS_WINDOW``` Can only be installed on a part with `WINDOW` flag.
 - ```NO_INSTALL_HIDDEN``` Part can't be installed by player and hidden in install menu (e.g. power cords, inflatable boat parts, summoned vehicle parts).
-- ```NO_INSTALL_PLAYER``` Part can't be installed by player but visible in install menu (e.g. helicopter rotors).
+- ```NO_INSTALL_PLAYER``` Part can't be installed by player but visible in install menu (e.g. helicopter rotors).  A broken one can't be replaced by players either.
 - ```NO_LEAK``` Causes a boat hull to float even when damaged.
-- ```NO_MODIFY_VEHICLE``` Installing a part with this flag on a vehicle will mean that it can no longer be modified.  Parts with this flag should not be installable by players.
+- ```NO_MODIFY_VEHICLE``` Installing a part with this flag on a vehicle will mean that it can no longer be modified: players can't install, replace, repair or remove its parts, nor NPCs repair them, except `SIMPLE_PART` ones (and `SMASH_REMOVE` ones can still be smashed off).  Parts with this flag should not be installable by players.
 - ```NO_REPAIR``` Cannot be repaired.
 - ```NO_UNINSTALL``` Cannot be uninstalled.
 - ```OBSTACLE``` Cannot walk through part, unless the part is also `OPENABLE`.
@@ -1884,12 +1887,12 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```OPENCLOSE_INSIDE```  Can be opened or closed, but only from inside the vehicle.
 - ```OVER``` Can be mounted over other parts.
 - ```PERPETUAL``` If paired with REACTOR, part produces electrical power without consuming fuel.
-- ```PLANTER``` Plants seeds into tilled dirt, spilling them when the terrain underneath is unsuitable.  It is damaged by running it over non-`DIGGABLE` surfaces.
+- ```PLANTER``` Sows the first seed in its cargo that can be sown on the tile underneath, as by hand: on terrain with the seed's `required_terrain_flag` (`PLANTABLE` by default: upturned dirt, a tilled greenhouse) and no furniture, or in furniture with that flag and `plant_data` (a planter box).  Seeds that can't be sown there stay in it.  Unless it is an `ADVANCED_PLANTER`, it is damaged where it can't sow on ground that is neither `PLOWABLE` nor `PLANTABLE`.
 - ```PLOW``` Tills the soil underneath the part while active.  Takes damage from unsuitable terrain at a level proportional to the speed of the vehicle.
 - ```POWER_TRANSFER``` Transmits power to and from an attached thingy (probably a vehicle).
 - ```PROTRUSION``` Part sticks out so no other parts can be installed over it.
 - ```REACTOR``` When enabled, part consumes fuel to generate epower (see the REACTOR fields in [JSON_INFO.md](JSON_INFO.md); `power` is the kJ of battery charge per unit of fuel and must be positive unless the part is `PERPETUAL`).
-- ```REAPER``` Cuts down mature crops, depositing them on the square.
+- ```REAPER``` Harvests crops that are ready (furniture with `GROWTH_HARVEST`, in a field or a planter box, as by hand) and clears overgrown ones (`GROWTH_OVERGROWN`), depositing the harvest on the square (or in its cargo, if it is `CARGO`), and leaves the furniture the crop grew in (its `plant_data` `base`).  Crops from `NO_MACHINE_HARVEST` seeds are left alone.  How much it yields is set by its `reaper` field (see JSON_INFO.md).
 - ```RECHARGE``` Recharge items with the same flag (currently only the rechargeable battery mod).
 - ```REMOTE_CONTROLS``` Once installed, allows using vehicle through remote controls.
 - ```RESIST_RUNOVER_DAMAGE``` For wheels, doubles effective hardness when calculating chance to be damaged when running over items. Only useful on WHEEL parts.
@@ -1936,9 +1939,9 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```BAD_COLD_START``` The engine starts as if the temperature was 20 F colder.  Does not stack with multiples of itself.
 - ```BAD_FUEL_PUMP``` Prevents engine from starting and makes it stutter.
 - ```BAD_STARTER``` Prevents engine from starting and makes click noise.
-- ```DOUBLE_FUEL_CONSUMPTION``` Doubles fuel consumption of the engine.  Does not stack with multiples of itself.
+- ```DOUBLE_FUEL_CONSUMPTION``` Doubles fuel consumption of the engine: a fault with it and no `fuel_consumption_mult` counts as `"fuel_consumption_mult": 2`.  Use `fuel_consumption_mult` for other amounts.
 - ```ENG_BACKFIRE``` Causes the engine to backfire as if it had zero hp.
 - ```EXTRA_EXHAUST``` Makes the engine emit more exhaust smoke.  Does not stack with multiples of itself.
 - ```IMMOBILIZER``` Prevents engine from starting and makes it beep.
 - ```NO_ALTERNATOR_CHARGE``` The alternator connected to this engine does not work.
-- ```REDUCE_ENG_POWER``` Multiplies engine power by 0.6.  Does not stack with multiples of itself.
+- ```REDUCE_ENG_POWER``` Multiplies engine power by 0.6: a fault with it and no `engine_power_mult` counts as `"engine_power_mult": 0.6`.  Use `engine_power_mult` for other amounts.

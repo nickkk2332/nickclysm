@@ -71,6 +71,13 @@ struct itype;
 struct vehicle_part;
 template <typename E> struct enum_traits;
 
+namespace cata
+{
+class event;
+} // namespace cata
+// An event or EOC run about a vehicle waiting for vehicle::process_queued_events() (vehicle.cpp)
+struct queued_vehicle_event;
+
 void handbrake( map &here );
 
 void practice_athletic_proficiency( Character &p );
@@ -381,6 +388,11 @@ struct vehicle_part {
 
         /** Does this vehicle part have a fault with this flag */
         bool has_fault_flag( const std::string &searched_flag ) const;
+
+        /** Products of the numeric vehicle fields of this part's faults (1 without faults) */
+        double fault_engine_power_mult() const;
+        double fault_fuel_consumption_mult() const;
+        double fault_exhaust_mult() const;
 
         bool has_fault( const fault_id &fault ) const;
 
@@ -1755,6 +1767,9 @@ class vehicle
         // their safe power.
         units::power total_power( map &here, bool fueled = true, bool safe = false ) const;
 
+        // Acceleration in vmiph per second of @p watts_per_kg of engine power at @p cmps
+        // (cm/s); only the result is truncated
+        static int accel_from_power_ratio( double watts_per_kg, int cmps );
         // Get ground acceleration gained by combined power of all engines. If fueled == true,
         // then only engines which the vehicle has fuel for are included
         int ground_acceleration( map &here, bool fueled = true, int at_vel_in_vmi = -1 ) const;
@@ -1806,6 +1821,19 @@ class vehicle
 
         // Loop through engines and generate noise and smoke for each one
         void noise_and_smoke( map &here, int load, time_duration time = 1_turns );
+
+        /** Sends @p e now with this vehicle as alpha talker and no beta */
+        void send_event( const cata::event &e );
+        /**
+         * Holds @p e, with this vehicle as alpha and @p beta (if any) as beta talker, until
+         * process_queued_events(): for the events raised in damage and collision code, whose
+         * EOCs could otherwise install or remove parts while that code goes through them
+         */
+        void queue_event( const cata::event &e, std::unique_ptr<talker> beta = nullptr );
+        /** As queue_event, for anything else that runs EOCs on this vehicle (a trap's) */
+        void queue_action( const std::function<void( vehicle & )> &action );
+        /** Sends the events queued so far; idle() does, once the vehicles have moved */
+        void process_queued_events();
 
         // Actively moving vehicle with impaired wheels
         void check_flats_do_rim_damage_or_sounds( map &here );
@@ -2001,6 +2029,9 @@ class vehicle
         // Calculates damage on the wheel from running over item and adds damage levels and messages to the vector if needed.
         void damage_wheel_on_item( vehicle_part *vp_wheel, const item &it,
                                    std::vector<std::string> *messages ) const;
+        // Applies the next fault of the wheel's "runover" fault chain (see doc/JSON/JSON_INFO.md
+        // on faults); its message goes to @p messages. False if nothing changed.
+        static bool apply_runover_faults( vehicle_part &wheel, std::vector<std::string> *messages );
 
         // Process the trap beneath
         void handle_trap( map *here, const tripoint_bub_ms &p, vehicle_part &vp_wheel );
@@ -2291,7 +2322,10 @@ class vehicle
         void operate_planter( map &here );
         void autopilot_patrol_check( map &here );
         void toggle_autopilot( map &here );
+        // Autopilot patrol / follow: a stopped vehicle's engines are started as the player
+        // starts them, through the start activity and its checks (VINT-B03)
         void enable_patrol( map &here );
+        void enable_follow( map &here );
         void toggle_tracking();
         void display_effects();
         //scoop operation,pickups, battery drain, etc.
@@ -2671,6 +2705,8 @@ class vehicle
 
         // current noise of vehicle (engine working, etc.)
         unsigned char vehicle_noise = 0;
+        // VEH-J03: see queue_event(); not saved, as they are sent within the turn
+        std::vector<std::shared_ptr<const queued_vehicle_event>> queued_events; // NOLINT(cata-serialize)
 
         // return vehicle part index and muffle value
         std::pair<int, double> get_exhaust_part() const;
@@ -2777,6 +2813,8 @@ namespace processing_cycles
 {
 // whether the part's cycle is running
 bool running( const vehicle_part &vp );
+// whether every item the part holds meets its cycle's item_condition (true without one)
+bool items_meet_condition( vehicle &veh, int part );
 // the avatar turns the part on (running its start EOC, which may refuse) or, if it runs, off
 void toggle( vehicle &veh, int part );
 // what the part holds is processed once its cycle's time is up; called as its items are

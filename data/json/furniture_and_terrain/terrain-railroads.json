@@ -60,7 +60,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_h",
@@ -92,7 +92,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_v",
@@ -132,7 +132,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_d",
@@ -164,7 +164,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_DIAGONAL", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_d1",
@@ -196,7 +196,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_DIAGONAL", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_d2",
@@ -228,7 +228,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_DIAGONAL", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_tie",
@@ -364,7 +364,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_h_on_tie",
@@ -406,7 +406,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_v_on_tie",
@@ -438,7 +438,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_d_on_tie",
@@ -470,7 +470,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_DIAGONAL", "TRANSPARENT" ]
   },
   {
     "id": "t_buffer_stop",
@@ -645,7 +645,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_small_d",
@@ -682,7 +682,7 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT" ]
+    "flags": [ "RAIL", "RAIL_DIAGONAL", "TRANSPARENT" ]
   },
   {
     "id": "t_railroad_track_recessed",
@@ -715,6 +715,6 @@
     },
     "connect_groups": "RAIL",
     "connects_to": "RAIL",
-    "flags": [ "RAIL", "TRANSPARENT", "NOCOLLIDE" ]
+    "flags": [ "RAIL", "RAIL_STRAIGHT", "TRANSPARENT", "NOCOLLIDE" ]
   }
 ]

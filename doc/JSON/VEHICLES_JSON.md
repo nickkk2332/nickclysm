@@ -25,6 +25,20 @@ Vehicle prototypes are used to spawn stock vehicles. After a vehicle has been sp
 
 `copy-from` may be used in a limited form to copy fields from a "parent" definition; first the copy-from data is applied and then the parts, items and zones fields are appended on top of the `copy-from` data.
 
+A copy can also take copied entries away, before its own are appended:
+```jsonc
+"delete": {
+  "parts": [ { "x": 0, "y": 1, "part": "stereo" } ], // every copied part of that id on that tile
+                                                     // ("stereo#variant" only that variant); a
+                                                     // part the vehicle doesn't have is an error
+  "zones": [ { "x": 0, "y": 0, "type": "LOOT_UNSORTED" } ] // an equal copied zone (type, name,
+                                                     // filter and tile), when the copy has no
+                                                     // "zones" list of its own
+},
+"extend": { "zones": [ { "x": 0, "y": 1, "type": "LOOT_FOOD" } ] }
+```
+Copied items can't be taken away one by one.
+
 ## Vehicle prototypes
 
 ```jsonc

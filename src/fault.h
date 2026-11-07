@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -24,6 +25,41 @@ class item;
 struct const_dialogue;
 template <typename T> class generic_factory;
 template <typename E> struct enum_traits;
+
+namespace sounds
+{
+enum class sound_t : int;
+} // namespace sounds
+
+/**
+ * How a fault takes part in the damage a wheel takes from running over sharp items or a
+ * trap with vehicle_data "runover_faults" (VEH-J05).
+ */
+struct fault_runover {
+    // Weight to be the first such fault a wheel gets; 0: only reached by escalation
+    int weight = 0;
+    // Shown to the driver when running something over applies this fault
+    translation message;
+    // What running something over again does to a wheel with this fault; empty: nothing more
+    weighted_int_list<fault_id> escalates_to;
+
+    void deserialize( const JsonObject &jo );
+};
+
+/** What a wheel with a fault does each turn its vehicle drives on (VEH-J05) */
+struct fault_while_moving {
+    translation sound;
+    int sound_volume = 0;
+    sounds::sound_t sound_type{};
+    // One in (wheel durability) chance per turn to become this fault (it replaces this one)
+    fault_id escalates_to = fault_id::NULL_ID();
+    // Or, without escalates_to, the same chance to take one level of damage
+    bool damages_part = false;
+    // Shown when the part is damaged; %s is the part name
+    translation message;
+
+    void deserialize( const JsonObject &jo );
+};
 
 namespace faults
 {
@@ -122,6 +158,16 @@ class fault
         float contact_area_mod() const;
         float rolling_resistance_mod() const;
         int vehicle_move_penalty_mod() const;
+        // Multipliers for a vehicle part with this fault (VEH-J04). An unset engine power or
+        // fuel multiplier falls back on the legacy flags REDUCE_ENG_POWER (0.6) and
+        // DOUBLE_FUEL_CONSUMPTION (2), so old faults keep working
+        double engine_power_mult() const;
+        double fuel_consumption_mult() const;
+        double exhaust_mult() const;
+        float steering_mult() const;
+        // Wheel damage from running things over and while driving; null if not set
+        const fault_runover *runover() const;
+        const fault_while_moving *while_moving() const;
         bool has_flag( const std::string &flag ) const;
         const std::set<fault_id> &get_block_faults() const;
 
@@ -150,6 +196,12 @@ class fault
         float contact_area_mod_ = 1.f;
         float rolling_resistance_mod_ = 1.f;
         int vehicle_move_penalty_mod_ = 1.f;
+        std::optional<double> engine_power_mult_;
+        std::optional<double> fuel_consumption_mult_;
+        double exhaust_mult_ = 1.0;
+        float steering_mult_ = 1.f;
+        std::optional<fault_runover> runover_;
+        std::optional<fault_while_moving> while_moving_;
         std::vector<std::tuple<int, float, damage_type_id>> melee_damage_mod_;
         std::vector<std::tuple<int, float, damage_type_id>> armor_mod_;
         int encumbrance_mod_flat_ = 0;

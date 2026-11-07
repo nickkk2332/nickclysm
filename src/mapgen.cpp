@@ -3162,13 +3162,18 @@ class jmapgen_vehicle : public jmapgen_piece_with_has_vehicle_collision
             if( chosen_id.is_null() ) {
                 return;
             }
+            // the null id for a group with nothing to pick (VINT-B09)
+            const vproto_id picked = chosen_id->pick();
+            if( picked.is_null() ) {
+                return;
+            }
             tripoint_bub_ms const dst( x.get(), y.get(), dat.zlevel() + z.get() );
             // A turned nested chunk turns its vehicles with it (MGEN-B08)
             units::angle facing = random_entry( rotation );
             if( dat.nest_rotation() != 0 ) {
                 facing = normalize( facing + dat.nest_rotation() * 90_degrees );
             }
-            vehicle *veh = dat.m.add_vehicle( chosen_id->pick(), dst, facing,
+            vehicle *veh = dat.m.add_vehicle( picked, dst, facing,
                                               fuel, static_cast<veh_spawn_status>( status ) );
             if( veh && !faction.empty() ) {
                 veh->set_owner( faction_id( faction ) );

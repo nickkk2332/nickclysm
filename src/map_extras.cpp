@@ -351,6 +351,10 @@ static bool mx_helicopter( map &m, const tripoint_abs_sm &abs_sub )
     units::angle dir1 = random_direction();
 
     vproto_id crashed_hull = VehicleGroup_crashed_helicopters->pick();
+    if( crashed_hull.is_null() ) {
+        // a group with nothing to pick (VINT-B09), already reported when the game data loaded
+        return false;
+    }
 
     tripoint_bub_ms wreckage_pos;
     {

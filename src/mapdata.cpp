@@ -341,6 +341,8 @@ std::string enum_to_string<ter_furn_flag>( ter_furn_flag data )
         case ter_furn_flag::TFLAG_ONE_DIMENSIONAL_X: return "ONE_DIMENSIONAL_X";
         case ter_furn_flag::TFLAG_ONE_DIMENSIONAL_Y: return "ONE_DIMENSIONAL_Y";
         case ter_furn_flag::TFLAG_ONE_DIMENSIONAL_Z: return "ONE_DIMENSIONAL_Z";
+        case ter_furn_flag::TFLAG_RAIL_DIAGONAL: return "RAIL_DIAGONAL";
+        case ter_furn_flag::TFLAG_RAIL_STRAIGHT: return "RAIL_STRAIGHT";
 
         // *INDENT-ON*
         case ter_furn_flag::NUM_TFLAG_FLAGS:

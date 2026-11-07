@@ -187,6 +187,16 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::monster_sheared: return "monster_sheared";
         case event_type::character_mounts_monster: return "character_mounts_monster";
         case event_type::avatar_trades: return "avatar_trades";
+        case event_type::vehicle_collides: return "vehicle_collides";
+        case event_type::vehicle_part_destroyed: return "vehicle_part_destroyed";
+        case event_type::vehicle_engine_stalls: return "vehicle_engine_stalls";
+        case event_type::vehicle_part_installed: return "vehicle_part_installed";
+        case event_type::vehicle_part_removed: return "vehicle_part_removed";
+        case event_type::vehicle_part_repaired: return "vehicle_part_repaired";
+        case event_type::vehicle_engine_started: return "vehicle_engine_started";
+        case event_type::vehicle_engine_stopped: return "vehicle_engine_stopped";
+        case event_type::vehicle_part_toggled: return "vehicle_part_toggled";
+        case event_type::appliance_placed: return "appliance_placed";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -209,7 +219,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 171,
+static_assert( static_cast<int>( event_type::num_event_types ) == 181,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -334,6 +344,15 @@ DEFINE_EVENT_FIELDS( monster_milked )
 DEFINE_EVENT_FIELDS( monster_sheared )
 DEFINE_EVENT_FIELDS( character_mounts_monster )
 DEFINE_EVENT_FIELDS( avatar_trades )
+DEFINE_EVENT_FIELDS( vehicle_collides )
+DEFINE_EVENT_FIELDS( vehicle_part_destroyed )
+DEFINE_EVENT_FIELDS( vehicle_engine_stalls )
+DEFINE_EVENT_FIELDS( vehicle_part_installed )
+DEFINE_EVENT_FIELDS( vehicle_part_removed )
+DEFINE_EVENT_FIELDS( vehicle_part_repaired )
+DEFINE_EVENT_FIELDS( vehicle_engine_started )
+DEFINE_EVENT_FIELDS( vehicle_part_toggled )
+DEFINE_EVENT_FIELDS( appliance_placed )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

@@ -195,6 +195,17 @@ enum class event_type : int {
     monster_sheared,
     character_mounts_monster,
     avatar_trades,
+    vehicle_collides,
+    vehicle_part_destroyed,
+    vehicle_engine_stalls,
+    // VINT-J06: vehicle work by a character, with the vehicle as beta talker
+    vehicle_part_installed,
+    vehicle_part_removed,
+    vehicle_part_repaired,
+    vehicle_engine_started,
+    vehicle_engine_stopped,
+    vehicle_part_toggled,
+    appliance_placed,
     num_event_types // last
 };
 
@@ -262,7 +273,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 171,
+static_assert( static_cast<int>( event_type::num_event_types ) == 181,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -881,10 +892,12 @@ struct event_spec<event_type::fails_to_remove_cbm> {
 template<>
 struct event_spec<event_type::falls_asleep_from_exhaustion> : event_spec_character {};
 
+// the vehicle is alpha (VEH-J03); "fuel" is what the tank held
 template<>
 struct event_spec<event_type::fuel_tank_explodes> {
-    static constexpr std::array<event_field, 1> fields = {{
+    static constexpr std::array<event_field, 2> fields = {{
             { "vehicle_name", cata_variant_type::string },
+            { "fuel", cata_variant_type::itype_id },
         }
     };
 };
@@ -1366,6 +1379,18 @@ struct event_spec<event_type::monster_melee_attacks_character> {
             { "hits", cata_variant_type::bool_ },
             { "damage", cata_variant_type::int_ },
             { "killed", cata_variant_type::bool_ },
+// VEH-J03: a moving vehicle hit something; alpha is the vehicle, beta the creature it hit (none
+// for terrain and vehicles). collision_type is body, terrain, other (an obstacle that does not
+// break) or vehicle; velocity_delta (mph * 100) is the speed it lost, damage its part's damage.
+// Sent by vehicle::process_queued_events(), like vehicle_part_destroyed and fuel_tank_explodes
+template<>
+struct event_spec<event_type::vehicle_collides> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "collision_type", cata_variant_type::string },
+            { "target_name", cata_variant_type::string },
+            { "vpart_id", cata_variant_type::string },
+            { "velocity_delta", cata_variant_type::int_ },
+            { "damage", cata_variant_type::int_ },
         }
     };
 };
@@ -1376,6 +1401,12 @@ struct event_spec<event_type::omt_generated> {
     static constexpr std::array<event_field, 2> fields = {{
             { "location", cata_variant_type::tripoint },
             { "oter_id", cata_variant_type::oter_id },
+// VEH-J03: damage broke a part of a vehicle on the main map; alpha is the vehicle
+template<>
+struct event_spec<event_type::vehicle_part_destroyed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "vpart_id", cata_variant_type::string },
+            { "damage_type", cata_variant_type::damage_type_id },
         }
     };
 };
@@ -1387,6 +1418,13 @@ struct event_spec<event_type::monster_upgrades> {
     static constexpr std::array<event_field, 2> fields = {{
             { "old_type", cata_variant_type::mtype_id },
             { "new_type", cata_variant_type::mtype_id },
+// VEH-J03: a running vehicle's engines stopped on their own; alpha is the vehicle. reason is
+// no_power (no engine has fuel or power left), no_battery (no charge for the ignition) or
+// reactor (its reactors ran out of fuel)
+template<>
+struct event_spec<event_type::vehicle_engine_stalls> {
+    static constexpr std::array<event_field, 1> fields = {{
+            { "reason", cata_variant_type::string },
         }
     };
 };
@@ -1443,6 +1481,14 @@ struct event_spec<event_type::character_gains_wound> {
             { "character", cata_variant_type::character_id },
             { "bodypart", cata_variant_type::body_part },
             { "wound", cata_variant_type::string },
+// VINT-J06: a character finished installing a part on a vehicle (the vehicle activity, not an
+// EOC); its EOCs get the character as alpha and the vehicle as beta. vpart_id: the part's id
+template<>
+struct event_spec<event_type::vehicle_part_installed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
         }
     };
 };
@@ -1488,6 +1534,14 @@ struct event_spec<event_type::character_armor_transformed> {
             { "character", cata_variant_type::character_id },
             { "itype", cata_variant_type::itype_id },
             { "new_itype", cata_variant_type::itype_id },
+// VINT-J06: a character removed a part from a vehicle (also an appliance taken down); the
+// vehicle is the beta talker, unless the removal took its last part
+template<>
+struct event_spec<event_type::vehicle_part_removed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
         }
     };
 };
@@ -1511,6 +1565,15 @@ struct event_spec<event_type::character_activates_item> {
             { "itype", cata_variant_type::itype_id },
             { "method", cata_variant_type::string },
             { "charges", cata_variant_type::int_ },
+// VINT-J06: a character repaired a vehicle part, or replaced a broken one (replaced); the
+// vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_part_repaired> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+            { "replaced", cata_variant_type::bool_ },
         }
     };
 };
@@ -1534,6 +1597,12 @@ struct event_spec<event_type::activates_mutation> {
     static constexpr std::array<event_field, 2> fields = {{
             { "character", cata_variant_type::character_id },
             { "trait", cata_variant_type::trait_id },
+// VINT-J06: a character started a vehicle's engines (some of them started); the vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_engine_started> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vehicle_name", cata_variant_type::string },
         }
     };
 };
@@ -1561,6 +1630,20 @@ struct event_spec<event_type::character_loses_wound> {
             { "bodypart", cata_variant_type::body_part },
             { "wound", cata_variant_type::string },
             { "healed", cata_variant_type::bool_ },
+// VINT-J06: a running vehicle's engines were switched off (vehicle::stop_engines; a stall is
+// vehicle_engine_stalls); alpha is the vehicle, as for a stall
+template<>
+struct event_spec<event_type::vehicle_engine_stopped> : event_spec_empty {};
+
+// VINT-J06: a character switched a vehicle part on or off from the vehicle's electronics menu
+// (once per part switched); the vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_part_toggled> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+            { "enabled", cata_variant_type::bool_ },
         }
     };
 };
@@ -1647,6 +1730,12 @@ struct event_spec<event_type::avatar_trades> {
             { "faction", cata_variant_type::faction_id },
             { "value_given", cata_variant_type::int_ },
             { "value_received", cata_variant_type::int_ },
+// VINT-J06: a character placed an appliance (or wiring); the new appliance is the beta talker
+template<>
+struct event_spec<event_type::appliance_placed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
         }
     };
 };
