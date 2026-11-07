@@ -756,7 +756,11 @@ class inventory_selector
                             item_category const *children_category = nullptr,
                             item_location const &topmost_parent = {}, int indent = 0, bool add_efiles = false );
 
-        bool drag_drop_item( item *sourceItem, item *destItem );
+        /**
+         * Asks which pocket of @p dest to drag @p source into, and starts the move there
+         * (drag_drop_start_move). True if it started.
+         */
+        bool drag_drop_item( item_location source, item_location dest );
 
         inventory_input get_input();
         inventory_input process_input( const std::string &action, int ch );
@@ -1316,6 +1320,18 @@ bool is_worn_ablative( item_location const &container, item_location const &chil
  */
 ret_val<void> drag_drop_parents_can_contain( const item_location &src,
         const item_location &dest );
+
+/**
+ * The move of an inventory drag and drop, without its menus: @p who starts putting @p src into
+ * the pocket @p pocket_index of @p dest (as item::get_container_pockets lists them) through an
+ * insert activity, as AIM moves items into a container. The move takes the activity's time, and
+ * the activity puts the item, the whole stack, in that pocket when it finishes. This checks that
+ * the pocket can hold it; the drag and drop's other checks (the item isn't @p dest and doesn't
+ * hold it, can be taken off, fits the containers around @p dest) come before it.
+ * @returns why it can't start, with nothing started then
+ */
+ret_val<void> drag_drop_start_move( Character &who, const item_location &src,
+                                    const item_location &dest, int pocket_index );
 
 struct inventory_selector_save_state {
     public:

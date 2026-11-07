@@ -1,0 +1,175 @@
+[
+  {
+    "//": "USE-J02 fixture: a spell the test staff casts, counted on the caster.",
+    "type": "SPELL",
+    "id": "test_usej02_fire_spell",
+    "name": { "str": "Test USE-J02 Fire Spell", "//~": "NO_I18N" },
+    "description": { "str": "Counts its casts on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_USEJ02_FIRE",
+    "shape": "blast",
+    "flags": [ "NO_HANDS", "NO_LEGS", "NO_FAIL", "SILENT" ],
+    "base_casting_time": 100
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_USEJ02_FIRE",
+    "effect": [ { "math": [ "u_usej02_fire += 1" ] } ]
+  },
+  {
+    "//": "USE-J02 fixture: the test staff's other spell.",
+    "type": "SPELL",
+    "id": "test_usej02_heal_spell",
+    "name": { "str": "Test USE-J02 Heal Spell", "//~": "NO_I18N" },
+    "description": { "str": "Counts its casts on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_USEJ02_HEAL",
+    "shape": "blast",
+    "flags": [ "NO_HANDS", "NO_LEGS", "NO_FAIL", "SILENT" ],
+    "base_casting_time": 100
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_USEJ02_HEAL",
+    "effect": [ { "math": [ "u_usej02_heal += 1" ] } ]
+  },
+  {
+    "//": "USE-J02 fixture: the EOC of both effect_on_conditions actions of the test staff.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_USEJ02_MARK",
+    "effect": [
+      { "copy_var": { "context_val": "method" }, "target_var": { "global_val": "usej02_method" } },
+      { "math": [ "usej02_marks += 1" ] }
+    ]
+  },
+  {
+    "//": "USE-J02 fixture: uses the item (npc) by the use action named by the global usej02_activate.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_USEJ02_ACTIVATE",
+    "effect": [ { "u_activate": { "global_val": "usej02_activate" } } ]
+  },
+  {
+    "//": "USE-J02 fixture: two cast_spell and two effect_on_conditions use actions, told apart by id.",
+    "id": "test_usej02_staff",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "test two-spell staff", "str_pl": "test two-spell staves", "//~": "NO_I18N" },
+    "description": { "str": "Has two use actions of each of two types.", "//~": "NO_I18N" },
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "/",
+    "color": "blue",
+    "charges_per_use": 1,
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "match": 20 } } ],
+    "use_action": [
+      {
+        "type": "cast_spell",
+        "id": "usej02_cast_fire",
+        "menu_text": "Cast test fire",
+        "spell_id": "test_usej02_fire_spell",
+        "level": 1,
+        "no_fail": true,
+        "ammo_scale": 1
+      },
+      {
+        "type": "cast_spell",
+        "id": "usej02_cast_heal",
+        "menu_text": "Cast test heal",
+        "spell_id": "test_usej02_heal_spell",
+        "level": 1,
+        "no_fail": true,
+        "ammo_scale": 4
+      },
+      {
+        "type": "effect_on_conditions",
+        "id": "usej02_mark_a",
+        "menu_text": "Mark A",
+        "ammo_scale": 2,
+        "effect_on_conditions": [ "EOC_TEST_USEJ02_MARK" ]
+      },
+      {
+        "type": "effect_on_conditions",
+        "id": "usej02_mark_b",
+        "menu_text": "Mark B",
+        "consume": true,
+        "effect_on_conditions": [ "EOC_TEST_USEJ02_MARK" ]
+      }
+    ],
+    "flags": [ "NO_RELOAD", "NO_UNLOAD" ]
+  },
+  {
+    "//": "USE-J02 fixture: the test staff with one action deleted by its id, one by an object naming its id, and one added.",
+    "id": "test_usej02_staff_child",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "copy-from": "test_usej02_staff",
+    "name": { "str": "test fire staff", "str_pl": "test fire staves", "//~": "NO_I18N" },
+    "delete": { "use_action": [ "usej02_cast_heal", { "type": "effect_on_conditions", "id": "usej02_mark_b" } ] },
+    "extend": {
+      "use_action": [
+        {
+          "type": "cast_spell",
+          "id": "usej02_cast_third",
+          "menu_text": "Cast test third",
+          "spell_id": "test_usej02_heal_spell",
+          "level": 1,
+          "no_fail": true,
+          "ammo_scale": 3
+        }
+      ]
+    }
+  },
+  {
+    "//": "USE-J02 fixture: low and high transform modes, each spending its own ammo_scale.",
+    "id": "test_usej02_dial",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "test two-mode dial", "//~": "NO_I18N" },
+    "description": { "str": "Turns to low or high.", "//~": "NO_I18N" },
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": ",",
+    "color": "blue",
+    "charges_per_use": 1,
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "match": 20 } } ],
+    "use_action": [
+      {
+        "type": "transform",
+        "id": "usej02_low",
+        "menu_text": "Set low",
+        "msg": "You set the %s to low.",
+        "target": "test_usej02_dial_low",
+        "ammo_scale": 1
+      },
+      {
+        "type": "transform",
+        "id": "usej02_high",
+        "menu_text": "Set high",
+        "msg": "You set the %s to high.",
+        "target": "test_usej02_dial_high",
+        "ammo_scale": 3
+      }
+    ],
+    "flags": [ "NO_RELOAD", "NO_UNLOAD" ]
+  },
+  {
+    "id": "test_usej02_dial_low",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "copy-from": "test_usej02_dial",
+    "name": { "str": "test dial (low)", "str_pl": "test dials (low)", "//~": "NO_I18N" },
+    "use_action": [  ]
+  },
+  {
+    "id": "test_usej02_dial_high",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "copy-from": "test_usej02_dial",
+    "name": { "str": "test dial (high)", "str_pl": "test dials (high)", "//~": "NO_I18N" },
+    "use_action": [  ]
+  }
+]

@@ -75,6 +75,25 @@
 
 static const efftype_id effect_riding( "riding" );
 
+static const faction_mission_id faction_mission_camp_clearcut( "camp_clearcut" );
+static const faction_mission_id faction_mission_camp_collect_firewood( "camp_collect_firewood" );
+static const faction_mission_id faction_mission_camp_combat_patrol( "camp_combat_patrol" );
+static const faction_mission_id faction_mission_camp_cut_logs( "camp_cut_logs" );
+static const faction_mission_id faction_mission_camp_foraging( "camp_foraging" );
+static const faction_mission_id faction_mission_camp_gathering( "camp_gathering" );
+static const faction_mission_id faction_mission_camp_harvest( "camp_harvest" );
+static const faction_mission_id faction_mission_camp_hunting( "camp_hunting" );
+static const faction_mission_id faction_mission_camp_menial( "camp_menial" );
+static const faction_mission_id faction_mission_camp_plant( "camp_plant" );
+static const faction_mission_id faction_mission_camp_plow( "camp_plow" );
+static const faction_mission_id faction_mission_camp_recruiting( "camp_recruiting" );
+static const faction_mission_id faction_mission_camp_relay_hide_site( "camp_relay_hide_site" );
+static const faction_mission_id faction_mission_camp_scouting( "camp_scouting" );
+static const faction_mission_id faction_mission_camp_setup_hide_site( "camp_setup_hide_site" );
+static const faction_mission_id faction_mission_camp_survey_expansion( "camp_survey_expansion" );
+static const faction_mission_id faction_mission_camp_survey_field( "camp_survey_field" );
+static const faction_mission_id faction_mission_camp_trapping( "camp_trapping" );
+
 static const furn_str_id furn_f_plant_harvest( "f_plant_harvest" );
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 
@@ -225,6 +244,7 @@ std::string enum_to_string<mission_kind>( mission_kind data )
         case mission_kind::Camp_Plow: return "Camp_Plow";
         case mission_kind::Camp_Plant: return "Camp_Plant";
         case mission_kind::Camp_Harvest: return "Camp_Harvest";
+        case mission_kind::Camp_Generic: return "Camp_Generic";
         // *INDENT-ON*
         case mission_kind::last_mission_kind:
             break;
@@ -234,7 +254,7 @@ std::string enum_to_string<mission_kind>( mission_kind data )
 
 } // namespace io
 
-static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
+static const std::array < miss_data, last_mission_kind > miss_info = { {
         {
             //  No_Mission
             "",
@@ -268,7 +288,7 @@ static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
             "Caravan_Commune_Center_Job",
             no_translation( "" )
         },
-        //  Faction camp missions
+        //  Faction camp missions.  Those from JSON have their texts in their faction_mission
         {
             "Camp_Distribute_Food",
             no_translation( "" )
@@ -315,51 +335,51 @@ static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
         },
         {
             "Camp_Gather_Materials",
-            to_translation( "Searching for materials to upgrade the camp.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Collect_Firewood",
-            to_translation( "Searching for firewood.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Menial",
-            to_translation( "Performing menial labor…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Survey_Field",
-            to_translation( "Surveying for suitable fields…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Survey_Expansion",
-            to_translation( "Surveying for expansion…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Cut_Logs",
-            to_translation( "Cutting logs in the woods…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Clearcut",
-            to_translation( "Clearing a forest…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Setup_Hide_Site",
-            to_translation( "Setting up a hide site…\n" )
+            no_translation( "" )
         },
         {
             "Camp_Relay_Hide_Site",
-            to_translation( "Transferring gear to a hide site…\n" )
+            no_translation( "" )
         },
         {
             "Camp Foraging",
-            to_translation( "Foraging for edible plants.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Trapping",
-            to_translation( "Trapping Small Game.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Hunting",
-            to_translation( "Hunting large animals.\n" )
+            no_translation( "" )
         },
         {
             "Camp_OM_Fortifications",
@@ -367,27 +387,32 @@ static const std::array < miss_data, Camp_Harvest + 1 > miss_info = { {
         },
         {
             "Camp_Recruiting",
-            to_translation( "Searching for recruits.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Scouting",
-            to_translation( "Scouting the region.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Combat Patrol",
-            to_translation( "Patrolling the region.\n" )
+            no_translation( "" )
         },
         {
             "Camp_Plow",
-            to_translation( "Working to plow your fields!\n" )
+            no_translation( "" )
         },
         {
             "Camp_Plant",
-            to_translation( "Working to plant your fields!\n" )
+            no_translation( "" )
         },
         {
             "Camp_Harvest",
-            to_translation( "Working to harvest your fields!\n" )
+            no_translation( "" )
+        },
+        {
+            //  a camp mission from JSON; its texts are in its faction_mission
+            "Camp_Generic",
+            no_translation( "" )
         }
     }
 };
@@ -397,12 +422,59 @@ std::string action_of( mission_kind kind )
     return miss_info[kind].action.translated();
 }
 
+std::string action_of( const mission_id &miss_id )
+{
+    faction_mission_id type = miss_id.type;
+    if( type.is_empty() ) {
+        type = legacy_camp_mission( miss_id.id );
+    }
+    if( type.is_valid() ) {
+        return type->progress_text() + "\n";
+    }
+    return action_of( miss_id.id );
+}
+
+mission_id::mission_id( mission_kind kind, std::string params, mapgen_arguments args,
+                        std::optional<point_rel_omt> direction, faction_mission_id camp_mission ) :
+    id( kind ), parameters( std::move( params ) ), mapgen_args( std::move( args ) ),
+    dir( direction ), type( std::move( camp_mission ) )
+{
+}
+
 bool is_equal( const mission_id &first, const mission_id &second )
 {
     return first.id == second.id &&
+           first.type == second.type &&
            first.parameters == second.parameters &&
            first.mapgen_args == second.mapgen_args &&
            first.dir == second.dir;
+}
+
+faction_mission_id legacy_camp_mission( const mission_kind kind )
+{
+    // the vanilla camp missions that ran on their mission_kind alone
+    static const std::map<mission_kind, faction_mission_id> legacy = {
+        { Camp_Gather_Materials, faction_mission_camp_gathering },
+        { Camp_Collect_Firewood, faction_mission_camp_collect_firewood },
+        { Camp_Menial, faction_mission_camp_menial },
+        { Camp_Survey_Field, faction_mission_camp_survey_field },
+        { Camp_Survey_Expansion, faction_mission_camp_survey_expansion },
+        { Camp_Cut_Logs, faction_mission_camp_cut_logs },
+        { Camp_Clearcut, faction_mission_camp_clearcut },
+        { Camp_Setup_Hide_Site, faction_mission_camp_setup_hide_site },
+        { Camp_Relay_Hide_Site, faction_mission_camp_relay_hide_site },
+        { Camp_Foraging, faction_mission_camp_foraging },
+        { Camp_Trapping, faction_mission_camp_trapping },
+        { Camp_Hunting, faction_mission_camp_hunting },
+        { Camp_Recruiting, faction_mission_camp_recruiting },
+        { Camp_Scouting, faction_mission_camp_scouting },
+        { Camp_Combat_Patrol, faction_mission_camp_combat_patrol },
+        { Camp_Plow, faction_mission_camp_plow },
+        { Camp_Plant, faction_mission_camp_plant },
+        { Camp_Harvest, faction_mission_camp_harvest },
+    };
+    const auto found = legacy.find( kind );
+    return found == legacy.end() ? faction_mission_id() : found->second;
 }
 
 void reset_miss_id( mission_id &miss_id )
@@ -417,18 +489,31 @@ void mission_id::serialize( JsonOut &jsout ) const
     jsout.member( "parameters", parameters );
     jsout.member( "mapgen_args", mapgen_args );
     jsout.member( "dir", dir );
+    if( !type.is_empty() ) {
+        jsout.member( "camp_mission", type );
+    }
     jsout.end_object();
 }
 
 void mission_id::deserialize( const JsonValue &val )
 {
-    *this = { No_Mission, "", {}, std::nullopt };
+    *this = {};
     if( val.test_object() ) {
         JsonObject obj = val.get_object();
         obj.read( "id", id );
         obj.read( "parameters", parameters );
         obj.read( "mapgen_args", mapgen_args );
         obj.read( "dir", dir );
+        obj.read( "camp_mission", type );
+        if( type.is_empty() ) {
+            // saved before camp missions had ids
+            type = legacy_camp_mission( id );
+        }
+        // the camp mission's JSON says what runs it now; a mission whose JSON is gone keeps its
+        // kind, and emergency recall brings its companion back
+        if( type.is_valid() ) {
+            id = type->behavior;
+        }
     } else {
         debugmsg( "Mission id in JSON should be an object" );
     }
@@ -1202,7 +1287,8 @@ npc_ptr talk_function::individual_mission( const tripoint_abs_omt &omt_pos,
     popup( "%s %s", comp->get_name(), desc );
     comp->set_companion_mission( omt_pos, role_id, miss_id );
     get_event_bus().send<event_type::companion_mission_started>( comp->getID(),
-            io::enum_to_string( miss_id.id ), project_to<coords::ms>( omt_pos ).raw() );
+            io::enum_to_string( miss_id.id ), project_to<coords::ms>( omt_pos ).raw(),
+            miss_id.type.str() );
     if( group ) {
         comp->companion_mission_time = calendar::before_time_starts;
     } else {
@@ -2364,7 +2450,7 @@ void talk_function::send_companion_mission_finished( const npc &comp,
     const npc_companion_mission mission = comp.get_companion_mission();
     get_event_bus().send<event_type::companion_mission_finished>( comp.getID(),
             io::enum_to_string( mission.miss_id.id ),
-            project_to<coords::ms>( mission.position ).raw(), outcome );
+            project_to<coords::ms>( mission.position ).raw(), outcome, mission.miss_id.type.str() );
 }
 
 bool talk_function::companion_mission_death( npc &comp )
@@ -2679,7 +2765,8 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
         }
 
         if( by_mission ) {
-            if( c_mission.miss_id.id != miss_id.id || c_mission.miss_id.dir != miss_id.dir ) {
+            if( c_mission.miss_id.id != miss_id.id || c_mission.miss_id.dir != miss_id.dir ||
+                c_mission.miss_id.type != miss_id.type ) {
                 continue;
             }
             if( !ignore_parameters && c_mission.miss_id.parameters != miss_id.parameters ) {

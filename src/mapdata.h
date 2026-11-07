@@ -575,6 +575,9 @@ struct map_data_common_t {
         bool has_examine( const std::string &action ) const;
         void set_examine( const iexamine_functions &func );
         std::vector<cata::clone_ptr<iexamine_actor>> get_examine() const;
+        const std::vector<cata::clone_ptr<iexamine_actor>> &get_examine_actors() const {
+            return examine_actor;
+        }
         void examine( Character &, const tripoint_bub_ms & ) const;
 
         int light_emitted = 0;
@@ -589,6 +592,8 @@ struct map_data_common_t {
         int comfort = 0;
         //flat damage reduction (increase if negative) on fall (some logic may apply)
         int fall_damage_reduction = 0;
+        // Volume a sound loses passing through this tile, on top of its distance
+        int sound_attenuation = 0;
         // Maximal volume of items that can be stored in/on this furniture/terrain
         units::volume max_volume = DEFAULT_TILE_VOLUME;
 

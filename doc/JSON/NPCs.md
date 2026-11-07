@@ -100,21 +100,25 @@ Format:
     "goto": 0.65,                               // walking where it was ordered to
     "camp_work": 0.4,
     "return_to_camp": 0.5,
-    "free_time": 0.35
+    "free_time": 0.35,
+    "embark": 0.6,                              // boarding the avatar's parked vehicle
+    "embark_seated": 0.15                       // once on a belted seat or bed in it
   },
   "starvation_hunger": 300,                     // hunger from which an NPC burning stored calories counts as starving
   "camp_meal_kcal": 500,                        // the least a camp serves a merely hungry NPC
+  "cold_body_temperature": "31 C",              // a body part this cold or colder needs warming
   "sleep": {
     "settle_interval": "3 minutes",             // a settling NPC tries to fall asleep this often
     "settle_timeout": "30 minutes",             // and gives the spot up after this long
     "stall_wakes": 3,                           // woken this often
     "stall_window": "30 minutes",               // within this long, its sleep stalls
-    "stall_duration": "30 minutes"              // and steps aside for other work this long
+    "stall_duration": "30 minutes",             // and steps aside for other work this long
+    "restless_window": "30 minutes"             // noise wakes within this long of the last hold sleep back
   }
 }
 ```
 
-Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. The set of needs is fixed: a mod can't add one here.
+Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. `needs` tunes the four built-in needs; a mod adds needs of its own with [`npc_need`](NPC_BEHAVIOR.md#custom-needs).
 
 ### Shopkeeper NPC configuration
 `npc_class` supports several properties for configuring the behavior of NPCs that behave as shopkeepers:
@@ -241,6 +245,7 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `mission`     | _(mandatory)_ Based on the enum in `npc.h`. The important ones are `NULL`, `SHOPKEEP`, `GUARD`, and `GUARD_PATROL`.
 | `chat`        | _(mandatory)_ Covered in the dialogue examples below.
 | `faction`     | Set faction NPC belongs to (see [FACTIONS.md](FACTIONS.md)).
+| `mission_offered` | A mission id, or an array of them: the missions the NPC offers when it is spawned (see [MISSIONS_JSON.md](MISSIONS_JSON.md)).
 | `death_eocs`  | String `effect_on_condition` ids and/or inline `effect_on_condition`s (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)). When the npc dies all of these `eoc`s are run with the victim as u and the killer as npc. This includes a companion that dies on a camp mission or NPC job away from the player; it has no killer then.
 | `age`         | Set age of NPC.
 | `height`      | Set height of NPC. (in cm)
@@ -250,14 +255,15 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `per`         | Set perception of NPC.
 | `personality` | Set personality of NPC. For example, positive value of `aggression` means NPC is aggressive, negative value means NPC is defensive.
 
-A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` (defined earlier, in the same mod or a mod loaded before) and changes only the fields it gives; `attitude` and `chat` are then optional, and a given `mission_offered` or `death_eocs` replaces the parent's list:
+A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` and changes only the fields it gives; `attitude` and `chat` are then optional.  The parent may be defined anywhere, also later or in a mod loaded after (the copy waits for it), and it may be an `"abstract"` npc: a template only for copying, which is never spawned.  A given `mission_offered` or `death_eocs` replaces the parent's list; `extend` adds to it and `delete` takes the mission ids or EOC ids to remove:
 
 ```jsonc
 {
   "type": "npc",
   "id": "thug",
   "copy-from": "thug",          // a mod changing the vanilla thug
-  "name_suffix": "Thug"
+  "name_suffix": "Thug",
+  "extend": { "death_eocs": [ "EOC_MY_MOD_THUG_DIES" ] }   // the thug's death_eocs and this one
 }
 ```
 
@@ -499,9 +505,9 @@ For mod usage to insert dialogue above the `TALK_DONE` and `TALK_NONE` lines. De
 ```
 
 #### `id`
-The topic id can be one of the built-in topics or a new id. However, if several talk topics *in json* have the same id, the last topic definition will override the previous ones.
+The topic id can be one of the built-in topics or a new id. If several talk topics *in json* have the same id, they are merged in load order: each definition adds its `responses`, `repeat_responses` and `speaker_effect`, and the `dynamic_line`, `portrait_override` and `replace_built_in_responses` it has replace the earlier ones.
 
-The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once.
+The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line`, the `portrait_override` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once (see [Changing the responses of an earlier definition](#changing-the-responses-of-an-earlier-definition) to remove or replace them).
 
 This example adds the "I'm going now!" response to all the listed topics.
 ```jsonc
@@ -528,7 +534,7 @@ This example adds the "I'm going now!" response to all the listed topics.
   }
 ```
 
-Portrait_override will force the dialogue window to display the given portrait ID while on that topic, overriding any portrait that may normally be displayed.
+Portrait_override will force the dialogue window to display the given portrait ID while on that topic, overriding any portrait that may normally be displayed.  A later definition of the same topic that has no `portrait_override` keeps the portrait an earlier one gave.
 
 #### `dynamic_line`
 The `dynamic_line` is the line spoken by the NPC.  It is optional.  If it is not defined and the topic has the same id as a built-in topic, the `dynamic_line` from that built-in topic will be used.  Otherwise the NPC will say nothing.  [See the chapter about Dynamic Lines below](#dynamic-lines) for more details.
@@ -543,6 +549,21 @@ The `responses` entry is an array with possible responses.  It must not be empty
 
 #### `replace_built_in_responses`
 `replace_built_in_responses` is an optional boolean that defines whether to dismiss the built-in responses for that topic (default is `false`). If there are no built-in responses, this won't do anything. If `true`, the built-in responses are ignored and only those from this definition in the current json are used. If `false`, the responses from the current json are used along with the built-in responses (if any).
+
+#### Changing the responses of an earlier definition
+Each definition of a topic adds its `responses` to those of the earlier definitions (from vanilla or an earlier mod).  Two optional members change that:
+
+* `"replace_responses": true` drops every response the earlier definitions gave, so the topic has only the `responses` of this definition.  It doesn't touch `repeat_responses`, `speaker_effect` or the built-in responses (see `replace_built_in_responses`).
+* `"delete": { "responses": [ ... ] }` removes earlier responses before this definition's are added.  Each entry selects responses by `"text"` (the response's `text`, or the `true` text of a `truefalsetext`, compared as written in the JSON, with its `ctxt` if it has one), by `"topic"` (the topic the response leads to), or by both.  Every response that matches is removed, and an entry that matches none is an error.
+
+```jsonc
+  {
+    "type": "talk_topic",
+    "id": "TALK_REFUGEE_Draco_1a",
+    "delete": { "responses": [ { "text": "Have you seen anything that could help me?" }, { "topic": "TALK_DONE" } ] },
+    "responses": [ { "text": "I have to go.", "topic": "TALK_DONE" } ]
+  }
+```
 
 ---
 
@@ -1355,6 +1376,7 @@ Mutator Name | Required Keys | Description
 `"valid_technique`" | `blacklist`: array of String or [variable object](#variable-object). <br/> `crit`: bool <br/> `dodge_counter`: bool <br/> `block_counter`: bool <br/> `grab_counter`: bool | Returns a random valid technique for the alpha talker to use against the beta talker with the provided specifications.
 `"u_/npc_loc_relative"` | `target`: String or [variable object](#variable-object). | target should be a string like "(x,y,z)" where x,y,z are coordinates relative to the player. Returns the abs_ms coordinates as a string (ready to store as a location variable), in the form "(x,y,z)" of the provided point relative to the alpha/beta talker respectively. So `"target":"(0,1,0)"` would return the point south of the talker.
 `"topic_item"` | | Returns current topic_item as a string. See [Repeat Responses](#repeat-responses)
+`"u_/npc_vehicle_type"` | | Returns the [vehicle prototype](VEHICLES_JSON.md) id the alpha/beta talker was spawned from (`none` for a vehicle built in the game or split off another), or an empty string when the talker isn't a vehicle. See also the `u_vehicle_type` condition.
 
 ### Math
 A `math` object lets you evaluate math expressions and assign them to dialogue variables or compare them for conditions. It takes the form
@@ -1475,6 +1497,10 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | consumption_count_total    |  ✅   |   ❌  | u, n  | Return total number of items eaten within a time window, regardless of type.<br/><br/>Optional kwargs:<br/>`hours`: `d` - Time window in hours (default 48).<br/><br/>Example:<br/>`"condition": { "math": [ "u_consumption_count_total('hours': 6) >= 1"] }`|
 | coverage(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return the characters total coverage of a body part.<br/>Argument is bodypart ID. <br/>For items, returns typical coverage of the item. <br/><br/>Example:<br/>`"condition": { "math": [ "u_coverage('torso') > 0"] }`|
 | distance(`s`/`v`,`s`/`v`)    |  ✅   |   ❌  | g  | Return distance between two targets.<br/>Arguments are location variables or special strings (`u`, `npc`). `u` means your location. `npc` means NPC's location.<br/><br/>Example:<br/>`"condition": { "math": [ "distance('u', loc) <= 50"] }`|
+| omt_distance(`s`/`v`,`s`/`v`)    |  ✅   |   ❌  | g  | Return the distance between two targets in overmap tiles (24 map squares each), on the overmap.<br/>Arguments are as for `distance()`: location variables, or `u` / `npc`.<br/><br/>Example:<br/>`"condition": { "math": [ "omt_distance('u', u_home) > 10"] }`|
+| horde_size(`s`/`v`)    |  ✅   |   ❌  | g  | Return the number of monsters in overmap hordes at the overmap tile of a location (see `spawn_overmap_horde` and `signal_hordes`). Only monsters stored on the overmap count: those on the loaded map are counted by `monsters_nearby()`.<br/>Argument is a location variable, or `u` / `npc`.<br/><br/>Optional kwargs:<br/>`radius`: `d`/`v` - default 0; also count the overmap tiles within this many overmap tiles, on the same z-level.<br/><br/>Example:<br/>`"condition": { "math": [ "horde_size('u', 'radius': 3) >= 20"] }`|
+| city_distance(`s`/`v`)    |  ✅   |   ❌  | g  | Return the distance in overmap tiles from a location to the center of the closest city, picked as the `closest_city` effect picks it, or -1 if there is none.<br/>Argument is a location variable, or `u` / `npc`.<br/><br/>Optional kwargs, the filters of `closest_city`:<br/>`known`: `d`/`v` - default 1 (true): only cities you know; 0 for any city<br/>`min_size`, `max_size`: `d`/`v` - only cities of at least / at most this size (`max_size` below 0, the default, is no limit)<br/>`max_distance`: `d`/`v` - only cities whose center is at most this many overmap tiles away (below 0, the default, is no limit)<br/>`name`: `s`/`v` - only the city with this name<br/><br/>Example:<br/>`"condition": { "math": [ "city_distance('u', 'known': 0, 'min_size': 8) < 30"] }`|
+| city_size(`s`/`v`)    |  ✅   |   ❌  | g  | Return the size of the closest city (as `city_distance()` picks it, with the same kwargs), or 0 if there is none. Inside a city that is usually the city you are in.<br/><br/>Example:<br/>`{ "math": [ "town_size = city_size('u', 'known': 0)" ] }`|
 | light_level(`v`)    |  ✅   |   ❌  | g | Return the value of light level the specific tile has. <br/>Argument is location variable. <br/>Return values are:<br/>`0` = DARK<br/>`1` = LOW (Hard to see)<br/>`3` = BRIGHT_ONLY (bright but indistinct(i do not know what it means))<br/>`4` = BRIGHT (only for light sources)<br/>`5` = MEMORIZED (Not a light level but behaves similarly)<br/>`6` = BLANK (blank space, not an actual light level) <br/><br/>Example:<br/>`"condition": { "math": [ "light_level(_pos) == 3" ] }`|
 | effect_intensity(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the characters intensity of effect; -1 when it doesn't have the effect.<br/>Argument is effect ID.<br/><br/>A set value is clamped to the effect's `max_intensity`, and below 1 removes the effect. The intensity of an effect with `int_dur_factor` follows its duration, so setting it sets the shortest duration that gives that intensity. Setting it on an effect the creature doesn't have does nothing (use `effect_duration()` or `u_add_effect` to add one). Only a creature's effects can be set.<br/><br/>Optional kwargs:<br/>`bodypart`: `s`/`v` - Specify the bodypart to get/set intensity of effect. An effect with `main_parts_only` is read and set on the main part, as `u_add_effect` puts it there (a hand's on its arm).<br/><br/> Example:<br/>`"condition": { "math": [ "u_effect_intensity('bite', 'bodypart': 'torso') > 1"] }`<br/>`{ "math": [ "u_effect_intensity('drunk') = 2" ] }`|
 | effect_duration(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the characters duration of effect; -1 when it doesn't have the effect.<br/>Argument is effect ID.<br/><br/>Setting it on an effect the creature doesn't have adds the effect. Setting 0 or less removes it, as `u_lose_effect` does (without a `bodypart`, on every body part). Only a creature's effects can be set.<br/><br/>Optional kwargs:<br/>`bodypart`: `s`/`v` - Specify the bodypart to get/set duration of effect. An effect with `main_parts_only` is read and set on the main part, as `u_add_effect` puts it there (a hand's on its arm).<br/>`unit`: `s`/`v` - Specify the unit of the duration. Omitting will use seconds.<br/><br/> Example:<br/>`"condition": { "math": [ "u_effect_duration('bite', 'bodypart': 'torso') > 1"] }`<br/>`{ "math": [ "_thing = u_effect_duration('yrax_overcharged', 'bodypart': 'torso', 'unit': 'hours')" ] }`<br/>`{ "math": [ "u_effect_duration('bite', 'bodypart': 'torso', 'unit': 'minutes') += 10" ] }`|
@@ -1492,6 +1518,14 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | sum_traits_of_category(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return sum of all positive, negative, or all mutation in a mutation tree (not one character has). Argument is category id.<br/><br/>Optional kwargs:<br/> `type`: `s`/`v` - should it be only positive (points >= 0), only negative(points <= 0), or all traits altogether; possible values are `POSITIVE`, `NEGATIVE` and `ALL`(default).<br/><br/> Example:<br/>`"condition": { "math": [ "u_sum_traits_of_category('RAT') < u_sum_traits_of_category('RAT', 'type': 'POSITIVE')" ] }`|
 | u_sum_traits_of_category_char_has(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return sum of all positive, negative, or all mutation in a mutation tree talker has at this moment. Argument is category id.<br/><br/>Optional kwargs:<br/> `type`: `s`/`v` - should it be only positive (points >= 0), only negative(points <= 0), or all traits altogether; possible values are `POSITIVE`, `NEGATIVE` and `ALL`(default).<br/><br/> Example:<br/>`"condition": { "math": [ "u_sum_traits_of_category_char_has('RAT') < u_sum_traits_of_category_char_has('RAT', 'type': 'POSITIVE')" ] }`|
 | has_active_trait(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return 1 if the character has the trait and it is switched on (an active trait that was activated), 0 otherwise; the math form of the `u_has_active_trait` condition. Argument is trait ID; an unknown one is an error. 0 for a talker that isn't a character.<br/><br/> Example:<br/>`"condition": { "math": [ "u_has_active_trait('SHELL2') == 0" ] }`|
+| bionic_count(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return how many of the bionic the character has installed; `'ANY'` counts every bionic. Argument is bionic ID; an unknown one is an error. 0 for a talker that isn't a character.<br/><br/>Example:<br/>`"condition": { "math": [ "u_bionic_count('bio_power_storage') >= 2" ] }`|
+| has_active_bionic(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return 1 if the character has the bionic installed and working: powered, not shorting out, and not held off by its fuel threshold; the math form of the `u_has_active_bionic` condition. Argument is bionic ID.<br/><br/>Example:<br/>`"condition": { "math": [ "u_has_active_bionic('bio_night_vision')" ] }`|
+| bionic_charge(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the turns left on the bionic's charge timer (a bionic with a `time` that is running); 0 when it isn't running or isn't installed. Uses the first installed copy; setting it on a bionic that isn't installed does nothing.<br/><br/>Example:<br/>`{ "math": [ "u_bionic_charge('bio_ads') = 0" ] }`|
+| bionic_incapacitated(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the turns until the bionic stops shorting out (as after an EMP). Setting it above 0 switches the bionic off, without paying its cost.<br/><br/>Example:<br/>`{ "math": [ "u_bionic_incapacitated('bio_flashlight') = 30" ] }`|
+| bionic_safe_fuel(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set a power source's fuel threshold: the fraction of bionic power (0 to 1) below which it burns fuel, or -1 when it burns regardless. 0 when the bionic isn't installed.<br/><br/>Example:<br/>`{ "math": [ "u_bionic_safe_fuel('bio_fuel_wood') = 0.5" ] }`|
+| bionic_cost(`s`/`v`)    |  ✅   |   ❌  | global  | Return a cost from the bionic's definition, in millijoules.<br/><br/>Optional kwargs:<br/>`type`: `s`/`v` - `'activate'` (`act_cost`, the default), `'deactivate'` (`deact_cost`), `'react'` (`react_cost`, paid each time it recharges) or `'trigger'` (`trigger_cost`).<br/><br/>Example:<br/>`"condition": { "math": [ "u_bionic_power() >= bionic_cost('bio_teleport')" ] }`|
+| bionic_power()    |  ✅   |   ✅  | u, n  | Return or set the character's stored bionic power, in millijoules. A set value is kept within 0 and `bionic_power_max()`.<br/><br/>Example:<br/>`{ "math": [ "u_bionic_power() += 50000" ] }`|
+| bionic_power_max()    |  ✅   |   ❌  | u, n  | Return the character's bionic power capacity, in millijoules.<br/><br/>Example:<br/>`"condition": { "math": [ "u_bionic_power() < u_bionic_power_max() / 4" ] }`|
 | mutation_category_level(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return how strong the character is in a mutation category, the value the game uses to decide whether the category's threshold can be breached and which mutation dreams come. It grows with every trait of the category the character has, more for a trait further up its tree, and by 10 for the threshold. Argument is category ID; an unknown one is an error. 0 for a talker that isn't a character.<br/><br/> Example:<br/>`"condition": { "math": [ "u_mutation_category_level('ALPHA') > 20" ] }`|
 | mutation_instability(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return the character's genetic instability when mutating towards a category, which makes a bad mutation more likely. Each mutation of some category they gained (not starting traits, thresholds or mutations with negative points) counts its height (how many steps up its tree it is), doubled if it isn't in the category unless they have Robust Genetics; then the `MUT_INSTABILITY_MOD` enchantment applies. Argument is category ID; an unknown one is an error. 0 for a talker that isn't a character.<br/><br/> Example:<br/>`"condition": { "math": [ "u_mutation_instability('ALPHA') < 5" ] }`|
 | trait_cooldown(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the turns until an active trait next pays its cost (its `time` timer); 0 when it is due, or the character doesn't have the trait. A set value is at least 0; setting it for a trait the character doesn't have does nothing. Argument is trait ID; an unknown one is an error. Reads 0 for a talker that isn't a character, and setting it there is an error.<br/><br/> Example:<br/>`{ "math": [ "u_trait_cooldown('SHELL2') = 0" ] }`|
@@ -1525,6 +1559,12 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | spell_difficulty(`s`/`v`)    |  ✅  |   ❌   | u,n | Returns the difficulty of the given spell id, modified by temporary difficulty modifiers if the character knows the spell; otherwise just the base difficulty calculations. It can't be set: for a temporary change, use `spellcasting_adjustment('difficulty')`.  Optional kwargs:<br/>`baseline`: `false` or `true`.  If `true`, temporary difficulty modifiers are ignored.  <br/> Example:<br/>`"math": [ "_difficulty = u_spell_difficulty('test_spell_id', 'baseline': true)"] }`|
 | skill_exp(`s`/`v`)    |  ✅  |   ✅   | u, n  | Return or set skill experience<br/> Argument is skill ID. <br/><br/> Optional kwargs:<br/>`format`: `s`/`v` - must be `percentage` or `raw`.<br/><br/>Example:<br/>`{ "math": [ "u_skill_exp('driving', 'format': crt_format)--"] }`|
 | spell_exp(`s`/`v`)    |  ✅  |   ✅   | u, n  | Return or set spell xp<br/> Example:<br/>`"condition": { "math": [ "u_spell_exp('SPELL_ID') >= 5"] }`|
+| spell_exp_to_next_level(`s`/`v`)    |  ✅  |   ❌   | u, n  | Return the XP the character still needs for the spell's next level; -1 if it doesn't know the spell, as `spell_exp()` reads.<br/><br/>Example:<br/>`"condition": { "math": [ "u_spell_exp_to_next_level('magic_missile') < 100" ] }`|
+| spell_fail(`s`/`v`)    |  ✅  |   ❌   | u, n  | Return the chance, from 0 to 1, that the character's next cast of the spell fails, with its encumbrance, focus and `FAIL` enchantments. A spell it doesn't know is read at level 0. Optional kwargs:<br/>`baseline`: `true` reads the spell without temporary level adjustments.<br/><br/>Example:<br/>`"condition": { "math": [ "u_spell_fail('magic_missile') > 0.5" ] }`|
+| spell_casting_exp(`s`/`v`)    |  ✅  |   ❌   | u, n  | Return the XP a successful cast of the spell gives the character now, with its `EXP` enchantments. Kwargs as `spell_fail()`.|
+| spell_sound(`s`/`v`)    |  ✅  |   ❌   | u, n  | Return how loud the character's cast of the spell is, with its `SOUND` enchantments. Kwargs as `spell_fail()`.|
+| spell_energy_cost(`s`/`v`)    |  ✅  |   ❌   | u, n  | Return the energy the character's cast of the spell costs, in the spell's energy units, with encumbrance and `COST` enchantments. Kwargs as `spell_fail()`.|
+| spell_cast_time(`s`/`v`)    |  ✅  |   ❌   | u, n  | Return the character's casting time for the spell, in moves, with encumbrance and `CAST_TIME` enchantments. Kwargs as `spell_fail()`.<br/><br/>To change any of these, use an enchantment's `spell_values` or `spellcasting_adjustment`.|
 | spell_exp_for_level(`s`/`v`, `d`/`v`)    |  ✅  |   ❌   | g  | Return the amount of XP necessary for a spell level for the given spell. Arguments are spell id and desired level.  <br/> Example:<br/>`"math": [ "spell_exp_for_level('SPELL_ID', u_spell_level('SPELL_ID') ) * 5"] }`|
 | special_cooldown(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return how many turns a monster's special attack needs before it is ready (0: ready), or -1 if the talker isn't a monster or doesn't have it. Argument is the name of the special attack, as in the monster's `special_attacks`.<br/>Assigning sets that cooldown (clamped to 0 or more); it does nothing for a talker that isn't a monster or doesn't have the attack. See also `u_has_special_attack` and `u_set_special_enabled`.<br/><br/>Example:<br/>`{ "math": [ "u_special_cooldown('SHRIEK') = 0" ] }`|
 | spell_count()    |  ✅   |   ❌  | u, n  | Return number of spells the character knows.<br/><br/> Optional kwargs:<br/>`school`: `s/v` - return number of spells known of that school.<br/><br/> Example:<br/>`"condition": { "math": [ "u_spell_count('school': 'MAGUS') >= 10"] }`|
@@ -1541,7 +1581,7 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | npc_anger()    |  ✅   |  ✅   | u, n  | Return NPC anger toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_anger() > 2" ] }`|
 | npc_fear()    |  ✅   |  ✅   | u, n  | Return NPC fear toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_fear() < 2" ] }`|
 | npc_danger()    |  ✅   |  ❌   | u, n  | Return the danger the NPC's AI rates around it, as the behavior predicate `npc_in_danger` reads it (above 0 is danger); 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_danger() > 5" ] }`|
-| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep` or `regulate_temperature`; another name written out is a load error. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
+| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep`, `regulate_temperature` or the id of an [`npc_need`](NPC_BEHAVIOR.md#custom-needs), whose urgency it gives as its own `urgency` does, clamped to 0 to 1; another name written out is an error once the game data has loaded. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
 | npc_panic()    |  ✅   |  ❌   | u, n  | Return how panicked the NPC is in a fight: it rises as it judges the fight lost, and the NPC runs, without regard for cover once it's high; 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_panic() > 10" ] }`|
 | npc_personality(`s`/`v`)    |  ✅   |  ✅   | u, n  | Return or set a personality trait of the NPC, -10 to 10: `aggression`, `bravery`, `collector` or `altruism`; another name written out is a load error. A value set is clamped to -10 to 10. 0 for a talker that isn't an NPC, which setting leaves alone. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_personality('bravery') += 2" ] }`|
 | npc_goal_turns()    |  ✅   |  ❌   | u, n  | Return the turns since the NPC's current goal started; 0 when it has none, or isn't an NPC. Callable without a prefix for u. See [JSON goals](NPC_BEHAVIOR.md#reading-goals-from-eocs). <br/><br/>Example:<br/> `{ "math": [ "npc_goal_turns() > 100" ] }`|
@@ -1583,9 +1623,9 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | vehicle_max_speed() |  ✅  |  ❌  | u, n | Return the vehicle's top speed with its current engines and fuel, in miles per hour. Talker must be a vehicle. |
 | vehicle_power() |  ✅  |  ❌  | u, n | Return the combined power of the vehicle's switched-on engines that have fuel, less what the alternators take, in watts. Talker must be a vehicle. |
 | vehicle_locked() |  ✅  |  ✅  | u, n | Return 1 if the vehicle is locked (it has to be hotwired), 0 otherwise. Can be set. Talker must be a vehicle.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_locked() = 0" ] }` |
-| vehicle_part_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many working parts with a vehicle part flag the vehicle has. Broken parts and parts of a racked vehicle are not counted. Argument is the flag; an unknown flag is an error. Talker must be a vehicle.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_count('WHEEL') < 4" ] }` |
-| vehicle_part_broken_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many broken parts with a vehicle part flag the vehicle has. Argument is the flag. Talker must be a vehicle.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_broken_count('ENGINE') > 0" ] }` |
-| vehicle_part_hp(`s`/`v`) |  ✅  |  ❌  | u, n | Return the health of the vehicle's parts with a vehicle part flag, in percent (100 is undamaged, 0 is broken). Argument is the flag. Returns 0 when the vehicle has no such part. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`aggregate`: `s`/`v` - how the parts are combined: `min` (default), `max` or `average`.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_hp('WHEEL') < 50" ] }`<br/>`{ "math": [ "u_vehicle_part_hp('ENGINE', 'aggregate': 'average') > 90" ] }` |
+| vehicle_part_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many working parts with a vehicle part flag the vehicle has. Broken parts and parts of a racked vehicle are not counted. Argument is the flag; an unknown flag is an error. The flag can be left out, to count every part, or to count by part id alone. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`part`: `s`/`v` - only parts of this vehicle part id; an unknown id is an error.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_count('WHEEL') < 4" ] }`<br/>`{ "math": [ "u_vehicle_part_count('part': 'wheel_wide') == 4" ] }` |
+| vehicle_part_broken_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many broken parts with a vehicle part flag the vehicle has. Argument is the flag; it can be left out, as for `vehicle_part_count()`. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`part`: `s`/`v` - only parts of this vehicle part id.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_broken_count('ENGINE') > 0" ] }` |
+| vehicle_part_hp(`s`/`v`) |  ✅  |  ❌  | u, n | Return the health of the vehicle's parts with a vehicle part flag, in percent (100 is undamaged, 0 is broken) or in hit points. Argument is the flag; it can be left out, as for `vehicle_part_count()`. Parts of a racked vehicle are not counted. Returns 0 when the vehicle has no such part. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`aggregate`: `s`/`v` - how the parts are combined: `min` (default), `max` or `average`.<br/>`format`: `s`/`v` - `percent` (default) or `hp`, the part's hit points (its durability when undamaged).<br/>`part`: `s`/`v` - only parts of this vehicle part id.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_hp('WHEEL') < 50" ] }`<br/>`{ "math": [ "u_vehicle_part_hp('ENGINE', 'aggregate': 'average') > 90" ] }`<br/>`{ "math": [ "u_vehicle_part_hp('part': 'frame', 'format': 'hp') < 100" ] }` |
 
 #### List of Character and item aspects
 These can be read or written to with `val()`. Weight and volume are not aspects: use the `weight()` and `volume()` functions.

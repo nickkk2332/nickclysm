@@ -36,8 +36,6 @@ static const efftype_id effect_no_ammo( "no_ammo" );
 
 static const flag_id json_flag_GIBBED( "GIBBED" );
 
-static const harvest_drop_type_id harvest_drop_bone( "bone" );
-static const harvest_drop_type_id harvest_drop_flesh( "flesh" );
 
 static const species_id species_ZOMBIE( "ZOMBIE" );
 
@@ -162,8 +160,8 @@ item_location mdeath::splatter( map *here, monster &z )
         float overflow_ratio = overflow_damage / max_hp + 1.0f;
         int gib_distance = std::round( rng( 2, 4 ) );
         for( const harvest_entry &entry : *z.type->harvest ) {
-            // only flesh and bones survive.
-            if( entry.type == harvest_drop_flesh || entry.type == harvest_drop_bone ) {
+            // only drop types that survive it, like flesh and bones
+            if( entry.drop_type().survives_splatter() ) {
                 // the larger the overflow damage, the less you get
                 const int chunk_amt =
                     entry.mass_ratio / overflow_ratio / 10 *

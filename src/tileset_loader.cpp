@@ -521,6 +521,9 @@ atlas_upload_interrupt tileset_cache::loader::load( const std::string &tileset_i
         ts.set_default_item_highlight_index( std::nullopt );
     }
 
+    // tile_ids is final now: invalid tiles are gone and nothing more is added
+    ts.link_multitile_subtiles();
+
     ts.tileset_id = tileset_id;
 
     // set up layering data

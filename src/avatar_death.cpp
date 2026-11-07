@@ -91,12 +91,23 @@ bool avatar::finalize_death( Creature *source )
     effect_on_conditions::prevent_death();
     if( is_dead_state() ) {
         get_event_bus().send<event_type::character_dies>( getID() );
+        // the body keeps this if the player leaves it below, so it doesn't send it again as an NPC
+        death_event_sent = true;
     }
     if( is_dead_state() ) {
         validate_source();
+        // the follower death switch (an AVATAR_DEATH EOC's take_control) may move the player into
+        // another body here; then this avatar is no longer dead, and its old body dies as an NPC
+        death_switch_open_ = true;
+        const on_out_of_scope close_switch( [this]() {
+            death_switch_open_ = false;
+        } );
         effect_on_conditions::avatar_death();
     }
     if( !is_dead_state() ) {
+        // revived, or in another body now (the one left behind keeps its flag): the avatar's
+        // next death is reported again
+        death_event_sent = false;
         death_committed_ = false;
         clear_killer();
         recalc_sight_limits();

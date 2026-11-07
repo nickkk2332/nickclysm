@@ -860,12 +860,35 @@ class vpart_display
  *   If you can't understand why installation fails, try to assemble your
  *   vehicle in game first.
  */
+// A vehicle's identity, for the handles EOCs keep in variables (see u_set_talker). It is kept
+// when the vehicle moves, and saved and loaded with it; a copy of a vehicle is a new vehicle and
+// gets a new one. It is given out on first use, so a vehicle nothing asked about saves none.
+class vehicle_uid
+{
+    public:
+        vehicle_uid() = default;
+        vehicle_uid( const vehicle_uid & );
+        vehicle_uid &operator=( const vehicle_uid & );
+        vehicle_uid( vehicle_uid && ) noexcept;
+        vehicle_uid &operator=( vehicle_uid && ) noexcept;
+        // Gives the vehicle its uid if it has none yet
+        int64_t get() const;
+        // 0 if the vehicle has none yet
+        int64_t peek() const {
+            return value;
+        }
+        void load( int64_t saved );
+    private:
+        mutable int64_t value = 0;
+};
+
 class vehicle
 {
     private:
         // TODO: Get rid of untyped overload.
         // Miscellaneous key/value pairs.
         global_variables::impl_t values;
+        vehicle_uid persistent_uid;
         bool has_structural_part( const point &dp ) const;
         bool has_structural_part( const point_rel_ms &dp ) const;
         bool is_structural_part_removed() const;
@@ -879,6 +902,10 @@ class vehicle
         // @returns damage still left to apply
         int damage_direct( map &here, vehicle_part &vp, int dmg,
                            const damage_type_id &type = damage_type_id( "pure" ) );
+        // Gives back up to hp of the part's durability, as far as its wear (degradation)
+        // allows, without the repair menu's requirements. A broken part works again, in place.
+        // @returns whether the part's damage went down
+        bool restore_part_hp( map &here, vehicle_part &vp, int hp );
     private:
         // Removes the part, breaks it into pieces and possibly removes parts attached to it
         int break_off( map &here, vehicle_part &vp, int dmg );
@@ -989,6 +1016,14 @@ class vehicle
         // and prototype's fuel/ammo will be spawned in init_state / place_spawn_items
         explicit vehicle( const vproto_id &proto_id );
         vehicle( const vehicle & ) = delete;
+        /** This vehicle's identity, given out the first time it is asked for */
+        int64_t persistent_id() const {
+            return persistent_uid.get();
+        }
+        /** This vehicle's identity, or 0 if nothing has asked for it yet */
+        int64_t assigned_persistent_id() const {
+            return persistent_uid.peek();
+        }
         ~vehicle();
         vehicle &operator=( vehicle && ) = default;
 

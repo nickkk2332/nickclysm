@@ -312,7 +312,7 @@ bool talker_character_const::has_recipe( const recipe_id &recipe_to_check ) cons
 
 void talker_character::learn_recipe( const recipe_id &recipe_to_learn )
 {
-    me_chr->learn_recipe( &*recipe_to_learn );
+    me_chr->learn_recipe( &*recipe_to_learn, false, "eoc" );
 }
 
 void talker_character::forget_recipe( const recipe_id &recipe_to_forget )

@@ -651,6 +651,10 @@ void effect_on_conditions::avatar_death()
         if( eoc.type == eoc_type::AVATAR_DEATH ) {
             eoc.activate( d );
         }
+        // as documented: until the player isn't dead, which the death switch can make so
+        if( !player_character.is_dead_state() ) {
+            break;
+        }
     }
 }
 

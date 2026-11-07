@@ -614,6 +614,14 @@ double effect_type::get_mod_value( const std::string &type, mod_action action,
     return ret;
 }
 
+bool effect_type::has_mod_value( const std::string &type, mod_action action,
+                                 uint8_t reduction_level ) const
+{
+    const auto it = mod_data.find( type );
+    return it != mod_data.cend() &&
+           it->second.count( get_effect_modifier_key( action, reduction_level ) ) > 0;
+}
+
 void effect_type::check_consistency()
 {
     for( deferred_effect_type &waiting : deferred_effect_types ) {
@@ -660,6 +668,23 @@ void effect_type::verify() const
             debugmsg( "effect_type %s has unknown enchantment %s", id.str(), ench.str() );
         }
     }
+    // HLTH-J02: these lists were never checked, and shipped data had ids in them that pointed
+    // at nothing, so the resistance or removal silently never happened
+    for( const trait_id &trait : resist_traits ) {
+        if( !trait.is_valid() ) {
+            debugmsg( "effect_type %s has unknown trait %s in resist_traits", id.str(), trait.str() );
+        }
+    }
+    const auto check_effects = [this]( const std::vector<efftype_id> &list, const char *member ) {
+        for( const efftype_id &other : list ) {
+            if( !other.is_valid() ) {
+                debugmsg( "effect_type %s has unknown effect %s in %s", id.str(), other.str(), member );
+            }
+        }
+    };
+    check_effects( resist_effects, "resist_effects" );
+    check_effects( removes_effects, "removes_effects" );
+    check_effects( blocks_effects, "blocks_effects" );
 }
 
 bool effect_type::has_flag( const flag_id &flag ) const
@@ -1513,11 +1538,33 @@ bool effect::get_sizing( const std::string &arg ) const
     return false;
 }
 
+// The "top" of an effect's chance to apply arg, or nullopt for never. A chance the effect gives
+// works as written: one that comes to 0 or less never fires (vanilla writes -1 for that), and a
+// positive one is at least 1, where it used to truncate to 0 and so fire every time. Only a
+// chance the effect leaves out is 0: every time, for a nonzero value.
+static std::optional<int> effect_chance_top( const effect_type &type, const std::string &arg,
+        bool reduced, int intensity )
+{
+    if( !type.has_mod_value( arg, mod_action::CHANCE_TOP, reduced ) ) {
+        return 0;
+    }
+    const double top = type.get_mod_value( arg, mod_action::CHANCE_TOP, reduced, intensity );
+    if( top <= 0 ) {
+        return std::nullopt;
+    }
+    return std::max( 1, static_cast<int>( top ) );
+}
+
 double effect::get_percentage( const std::string &arg, int val, bool reduced ) const
 {
     // Like every other scaling mod, chances stop scaling at max_effective_intensity.
     const int eff_intensity = get_effective_intensity();
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
+    const std::optional<int> chance_top = effect_chance_top( *eff_type, arg, reduced,
+                                          eff_intensity );
+    if( !chance_top ) {
+        return 0;
+    }
+    const int top = *chance_top;
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1536,11 +1583,12 @@ double effect::get_percentage( const std::string &arg, int val, bool reduced ) c
     // Start with 100%
     double ret = 100;
 
-    // If bot is zero the formula is one_in(top), else the formula is x_in_y(top, bot)
+    // If bot is zero the formula is one_in(top), else the formula is x_in_y(top, bot);
+    // with no chance at all (top 0) it is every time
     if( bot ) {
         // Cast to double here to allow for partial percentages
         ret *= static_cast<double>( top ) / static_cast<double>( bot );
-    } else {
+    } else if( top > 0 ) {
         // Cast to double here to allow for partial percentages
         ret /= static_cast<double>( top );
     }
@@ -1556,7 +1604,12 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
 {
     // Like every other scaling mod, chances stop scaling at max_effective_intensity.
     const int eff_intensity = get_effective_intensity();
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
+    const std::optional<int> chance_top = effect_chance_top( *eff_type, arg, reduced,
+                                          eff_intensity );
+    if( !chance_top ) {
+        return false;
+    }
+    const int top = *chance_top;
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1581,10 +1634,10 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
     }
 
     // If bot value is zero the formula is x_in_y(1, top) i.e. one_in(top),
-    // else the formula is x_in_y(top, bot).
+    // else the formula is x_in_y(top, bot); with no chance at all (top 0) it is every time.
     // mod multiplies the overall percentage chances
     if( !bot ) {
-        return x_in_y( mod, top );
+        return top > 0 ? x_in_y( mod, top ) : mod > 0;
     } else {
         return x_in_y( top * mod, bot );
     }
