@@ -314,14 +314,19 @@ void Skill::load( const JsonObject &jsobj, std::string_view )
             }
         };
         const std::string stat = jsobj.get_string( "crafting_stat" );
-        const auto *const found = std::find_if( crafting_stats.begin(), crafting_stats.end(),
-        [&stat]( const std::pair<std::string_view, scaling_stat> &entry ) {
-            return entry.first == stat;
-        } );
-        if( found == crafting_stats.end() ) {
+        // A loop, not std::find_if: MSVC's array iterator isn't a pointer, so the
+        // `const auto *` clang-tidy asks for doesn't compile there.
+        bool known = false;
+        for( const std::pair<std::string_view, scaling_stat> &entry : crafting_stats ) {
+            if( entry.first == stat ) {
+                _crafting_stat = entry.second;
+                known = true;
+                break;
+            }
+        }
+        if( !known ) {
             jsobj.throw_error_at( "crafting_stat", R"(must be "str", "dex", "int" or "per")" );
         }
-        _crafting_stat = found->second;
     } else if( !was_loaded ) {
         _crafting_stat = STAT_INT;
     }
