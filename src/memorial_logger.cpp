@@ -1224,6 +1224,12 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::deactivates_bionic:
         case event_type::activates_mutation:
         case event_type::deactivates_mutation:
+        case event_type::character_dodges:
+        case event_type::character_blocks:
+        case event_type::character_melee_hits:
+        case event_type::character_fires_gun:
+        case event_type::monster_melee_attacks_character:
+        case event_type::monster_melee_attacks_monster:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

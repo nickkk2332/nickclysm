@@ -2,6 +2,7 @@
 
 #include <imgui/imgui.h>
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <iterator>
 #include <map>
@@ -241,15 +242,16 @@ class ma_weapon_damage_reader : public generic_typed_reader<ma_weapon_damage_rea
 tech_effect_data load_tech_effect_data( const JsonObject &e )
 {
     tech_effect_data ted;
-    // TODO: update to use optional()?
-    // Also duration as time unit instead of int?
-    ted.id = efftype_id( e.get_string( "id" ) );
-    ted.duration = e.get_int( "duration", 0 );
-    ted.permanent = e.get_bool( "permanent", false );
-    ted.on_damage = e.get_bool( "on_damage", true );
-    ted.chance = e.get_int( "chance", 100 );
-    ted.message = e.get_string( "message", "" );
-    ted.intensity = e.get_int( "intensity", 0 );
+    mandatory( e, false, "id", ted.id );
+    // A duration string ("40 s"), or a number of turns as before
+    time_duration duration = 0_turns;
+    optional( e, false, "duration", duration, 0_turns );
+    ted.duration = to_turns<int>( duration );
+    optional( e, false, "permanent", ted.permanent, false );
+    optional( e, false, "on_damage", ted.on_damage, true );
+    optional( e, false, "chance", ted.chance, 100 );
+    optional( e, false, "message", ted.message, "" );
+    optional( e, false, "intensity", ted.intensity, 0 );
     if( ted.intensity < 0 ) {
         e.throw_error_at( "intensity", "tech effect intensity can't be negative" );
     }
@@ -293,7 +295,35 @@ class tech_effect_reader : public generic_typed_reader<tech_effect_reader>
             } );
         }
 };
+
+// A list of EOCs: ids or inline EOCs.  Replaced when given; under copy-from, "extend" adds to
+// the parent's list and "delete" (by id) removes from it.
+class ma_eoc_reader : public generic_typed_reader<ma_eoc_reader>
+{
+    public:
+        explicit ma_eoc_reader( const std::string_view source ) : src( source ) {}
+        effect_on_condition_id get_next( const JsonValue &jv ) const {
+            return effect_on_conditions::load_inline_eoc( jv, src );
+        }
+        template<typename C>
+        void erase_next( const JsonValue &jv, C &container ) const {
+            const effect_on_condition_id eoc( jv.get_string() );
+            const auto found = std::find( container.begin(), container.end(), eoc );
+            if( found == container.end() ) {
+                jv.throw_error( string_format( "no EOC %s to delete", eoc.str() ) );
+            }
+            container.erase( found );
+        }
+    private:
+        std::string src;
+};
 } // namespace
+
+// The shapes of an area technique ("aoe"); empty for a technique that strikes its target alone
+static bool is_valid_aoe( const std::string_view aoe )
+{
+    return aoe.empty() || aoe == "wide" || aoe == "impale" || aoe == "spin";
+}
 
 void ma_requirements::load( const JsonObject &jo, std::string_view )
 {
@@ -367,15 +397,15 @@ void ma_technique::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "controlled_knockback", controlled_knockback, false );
 
     optional( jo, was_loaded, "aoe", aoe, "" );
+    if( jo.has_member( "aoe" ) && !is_valid_aoe( aoe ) ) {
+        jo.throw_error_at( "aoe", string_format(
+                               R"(unknown aoe "%s": use "wide", "impale" or "spin")", aoe ) );
+    }
     optional( jo, was_loaded, "flags", flags, auto_flags_reader<> {} );
     optional( jo, was_loaded, "tech_effects", tech_effects, tech_effect_reader{} );
 
-    for( JsonValue jv : jo.get_array( "eocs" ) ) {
-        eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "post_hit_eocs" ) ) {
-        post_hit_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
+    optional( jo, was_loaded, "eocs", eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "post_hit_eocs", post_hit_eocs, ma_eoc_reader( src ) );
 
     if( jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", condition, false );
@@ -419,10 +449,20 @@ void ma_technique::verify_ma_techniques()
 
 void ma_technique::check() const
 {
+    for( const effect_on_condition_id &eoc : eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "MA technique %s has unknown eocs entry %s", id.c_str(), eoc.c_str() );
+        }
+    }
     for( const effect_on_condition_id &eoc : post_hit_eocs ) {
         if( !eoc.is_valid() ) {
             debugmsg( "MA technique %s has unknown post_hit_eocs entry %s", id.c_str(),
                       eoc.c_str() );
+        }
+    }
+    for( const attack_vector_id &vector : attack_vectors ) {
+        if( !vector.is_valid() ) {
+            debugmsg( "MA technique %s has unknown attack vector %s", id.c_str(), vector.c_str() );
         }
     }
     for( const tech_effect_data &eff : tech_effects ) {
@@ -493,6 +533,12 @@ void ma_buff::load( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "flags", flags );
 
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+        has_condition = true;
+    }
+    optional( jo, was_loaded, "condition_desc", condition_desc );
+
     reqs.load( jo, src );
     bonuses.load( jo );
 }
@@ -529,14 +575,18 @@ namespace
 class ma_buff_reader : public generic_typed_reader<ma_buff_reader>
 {
     public:
+        // An inline buff is the style's: it gets the style's source (its mod)
+        explicit ma_buff_reader( const std::string_view source ) : src( source ) {}
         mabuff_id get_next( const JsonValue &jin ) const {
             if( jin.test_string() ) {
                 return mabuff_id( jin.get_string() );
             }
             JsonObject jsobj = jin.get_object();
-            ma_buffs.load( jsobj, "" );
+            ma_buffs.load( jsobj, src );
             return mabuff_id( jsobj.get_string( "id" ) );
         }
+    private:
+        std::string src;
 };
 } // namespace
 
@@ -545,11 +595,7 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     mandatory( jo, was_loaded, "name", name );
     mandatory( jo, was_loaded, "description", description );
     mandatory( jo, was_loaded, "initiate", initiate );
-    for( JsonArray skillArray : jo.get_array( "autolearn" ) ) {
-        std::string skill_name = skillArray.get_string( 0 );
-        int skill_level = skillArray.get_int( 1 );
-        autolearn_skills.emplace_back( skill_name, skill_level );
-    }
+    optional( jo, was_loaded, "autolearn", autolearn_skills, pair_reader<std::string, int> {} );
     optional( jo, was_loaded, "priority", priority, 0 );
     optional( jo, was_loaded, "primary_skill", primary_skill, skill_unarmed );
     optional( jo, was_loaded, "learn_difficulty", learn_difficulty );
@@ -557,59 +603,33 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "training_time", training_time );
     optional( jo, was_loaded, "training_cost", training_cost );
 
-    optional( jo, was_loaded, "static_buffs", static_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onmove_buffs", onmove_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onpause_buffs", onpause_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onhit_buffs", onhit_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onattack_buffs", onattack_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "ondodge_buffs", ondodge_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onblock_buffs", onblock_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "ongethit_buffs", ongethit_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onmiss_buffs", onmiss_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "oncrit_buffs", oncrit_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "onkill_buffs", onkill_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "ongrab_buffs", ongrab_buffs, ma_buff_reader{} );
-    optional( jo, was_loaded, "ongrabbed_buffs", ongrabbed_buffs, ma_buff_reader{} );
+    optional( jo, was_loaded, "static_buffs", static_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onmove_buffs", onmove_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onpause_buffs", onpause_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onhit_buffs", onhit_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onattack_buffs", onattack_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "ondodge_buffs", ondodge_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onblock_buffs", onblock_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "ongethit_buffs", ongethit_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onmiss_buffs", onmiss_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "oncrit_buffs", oncrit_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "onkill_buffs", onkill_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "ongrab_buffs", ongrab_buffs, ma_buff_reader( src ) );
+    optional( jo, was_loaded, "ongrabbed_buffs", ongrabbed_buffs, ma_buff_reader( src ) );
 
-    for( JsonValue jv : jo.get_array( "static_eocs" ) ) {
-        static_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onmove_eocs" ) ) {
-        onmove_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onpause_eocs" ) ) {
-        onpause_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onhit_eocs" ) ) {
-        onhit_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onattack_eocs" ) ) {
-        onattack_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "ondodge_eocs" ) ) {
-        ondodge_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onblock_eocs" ) ) {
-        onblock_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "ongethit_eocs" ) ) {
-        ongethit_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onmiss_eocs" ) ) {
-        onmiss_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "oncrit_eocs" ) ) {
-        oncrit_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "onkill_eocs" ) ) {
-        onkill_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "ongrab_eocs" ) ) {
-        ongrab_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-    for( JsonValue jv : jo.get_array( "ongrabbed_eocs" ) ) {
-        ongrabbed_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
+    optional( jo, was_loaded, "static_eocs", static_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onmove_eocs", onmove_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onpause_eocs", onpause_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onhit_eocs", onhit_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onattack_eocs", onattack_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "ondodge_eocs", ondodge_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onblock_eocs", onblock_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "ongethit_eocs", ongethit_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onmiss_eocs", onmiss_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "oncrit_eocs", oncrit_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "onkill_eocs", onkill_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "ongrab_eocs", ongrab_eocs, ma_eoc_reader( src ) );
+    optional( jo, was_loaded, "ongrabbed_eocs", ongrabbed_eocs, ma_eoc_reader( src ) );
 
     optional( jo, was_loaded, "techniques", techniques, string_id_reader<::ma_technique> {} );
     optional( jo, was_loaded, "weapons", weapons, string_id_reader<::itype> {} );
@@ -1285,7 +1305,14 @@ void ma_buff::apply_buff( Character &u ) const
 
 bool ma_buff::is_valid_character( const Character &u ) const
 {
-    return reqs.is_valid_character( u );
+    if( !reqs.is_valid_character( u ) ) {
+        return false;
+    }
+    if( has_condition ) {
+        const const_dialogue d( get_const_talker_for( u ), nullptr );
+        return condition( d );
+    }
+    return true;
 }
 
 void ma_buff::apply_character( Character &u ) const
@@ -1377,6 +1404,10 @@ std::string ma_buff::get_description( bool passive ) const
     }
 
     dump += reqs.get_description( true );
+
+    if( !condition_desc.empty() ) {
+        dump += _( condition_desc ) + std::string( "\n" );
+    }
 
     if( max_stacks > 1 ) {
         dump += string_format( _( "* Will <info>stack</info> up to <stat>%d</stat> times" ),
@@ -1815,6 +1846,29 @@ void martialart::check() const
     if( grapple_weapons.any && ( !grapple_weapons.categories.empty() ||
                                  !grapple_weapons.items.empty() ) ) {
         debugmsg( "grapple_weapons of style %s sets \"any\", so its lists do nothing", id.str() );
+    }
+    const std::array<std::pair<const char *, const std::vector<effect_on_condition_id> *>, 13>
+    eoc_lists = { {
+            { "static_eocs", &static_eocs }, { "onmove_eocs", &onmove_eocs },
+            { "onpause_eocs", &onpause_eocs }, { "onhit_eocs", &onhit_eocs },
+            { "onattack_eocs", &onattack_eocs }, { "ondodge_eocs", &ondodge_eocs },
+            { "onblock_eocs", &onblock_eocs }, { "ongethit_eocs", &ongethit_eocs },
+            { "onmiss_eocs", &onmiss_eocs }, { "oncrit_eocs", &oncrit_eocs },
+            { "onkill_eocs", &onkill_eocs }, { "ongrab_eocs", &ongrab_eocs },
+            { "ongrabbed_eocs", &ongrabbed_eocs }
+        }
+    };
+    for( const auto &list : eoc_lists ) {
+        for( const effect_on_condition_id &eoc : *list.second ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "Unknown EOC %s in %s of style %s", eoc.str(), list.first, id.str() );
+            }
+        }
+    }
+    for( const std::pair<std::string, int> &skill : autolearn_skills ) {
+        if( !skill_id( skill.first ).is_valid() ) {
+            debugmsg( "Unknown skill %s in autolearn of style %s", skill.first, id.str() );
+        }
     }
 }
 

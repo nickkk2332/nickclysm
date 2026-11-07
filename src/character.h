@@ -3491,6 +3491,15 @@ class Character : public Creature, public visitable
                                   const Target_attributes &attributes = Target_attributes() ) const;
 
         /**
+         * Why this character won't or can't fire the gun (a message for the avatar), or an empty
+         * string when nothing stops it.  The CANNOT_USE_RANGED and, for a firearm,
+         * CANNOT_USE_FIREARMS character flags stop any gun; for a gun held in the hands (not a
+         * mounted turret or a mutation's or bionic's natural weapon) TEMPORARY_SHAPESHIFT_NO_HANDS
+         * and, for a firearm, HANDS_CANNOT_USE_FIREARMS do too.
+         */
+        std::string ranged_ban_reason( const item &gun, bool held ) const;
+
+        /**
          *  Fires a gun or auxiliary gunmod (ignoring any current mode)
          *  @param target where the first shot is aimed at (may vary for later shots)
          *  @param shots maximum number of shots to fire (less may be fired in some circumstances)

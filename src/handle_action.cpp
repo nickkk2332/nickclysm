@@ -149,7 +149,7 @@ static const itype_id itype_radiocontrol( "radiocontrol" );
 static const json_character_flag json_flag_ALARMCLOCK( "ALARMCLOCK" );
 static const json_character_flag json_flag_BIONIC_SLEEP_FRIENDLY( "BIONIC_SLEEP_FRIENDLY" );
 static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
-static const json_character_flag json_flag_HANDS_CANNOT_USE_FIREARMS( "HANDS_CANNOT_USE_FIREARMS" );
+static const json_character_flag json_flag_CANNOT_USE_RANGED( "CANNOT_USE_RANGED" );
 static const json_character_flag json_flag_LEVITATION( "LEVITATION" );
 static const json_character_flag json_flag_PHASE_MOVEMENT( "PHASE_MOVEMENT" );
 static const json_character_flag json_flag_SUBTLE_SPELL( "SUBTLE_SPELL" );
@@ -162,8 +162,6 @@ static const quality_id qual_CUT( "CUT" );
 
 static const skill_id skill_melee( "melee" );
 
-static const trait_id trait_BRAWLER( "BRAWLER" );
-static const trait_id trait_GUNSHY( "GUNSHY" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_SHELL2( "SHELL2" );
@@ -1799,20 +1797,20 @@ static void fire()
         reach_attack( you );
         return;
     }
-    if( you.has_trait( trait_BRAWLER ) ) {
+    // CMBT-J03: the same checks as every other way to fire (Character::ranged_ban_reason)
+    if( you.has_flag( json_flag_CANNOT_USE_RANGED ) ) {
         add_msg( m_bad, _( "You refuse to use ranged weapons." ) );
         return;
     }
-    if( you.has_trait( trait_GUNSHY ) && weapon && weapon->is_firearm() ) {
-        add_msg( m_bad, _( "You refuse to use firearms." ) );
-        return;
+    if( weapon && weapon->is_gun() ) {
+        const std::string ban = you.ranged_ban_reason( *weapon, true );
+        if( !ban.empty() ) {
+            add_msg( m_bad, ban );
+            return;
+        }
     }
     if( you.has_flag( json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS ) ) {
         add_msg( m_bad, _( "You have no hands and cannot use ranged weapons!" ) );
-        return;
-    }
-    if( you.has_flag( json_flag_HANDS_CANNOT_USE_FIREARMS ) && weapon && weapon->is_firearm() ) {
-        add_msg( m_bad, _( "Your hands aren't suited for using firearms!" ) );
         return;
     }
     // try firing gun

@@ -1373,6 +1373,16 @@
     "//": "Due to mutation, your hands (or paws etc) are not suitable to use firearms."
   },
   {
+    "id": "CANNOT_USE_FIREARMS",
+    "type": "json_flag",
+    "//": "The character refuses to fire firearms, held or mounted (the GUNSHY trait); bows, slings and other primitive weapons are still fine.  NPCs too."
+  },
+  {
+    "id": "CANNOT_USE_RANGED",
+    "type": "json_flag",
+    "//": "The character refuses to fire any gun, held, mounted or natural (the BRAWLER trait); throwing is still fine.  NPCs too."
+  },
+  {
     "id": "NON_THRESH",
     "type": "json_flag",
     "//": "This mutation does not count toward thresholds at all."

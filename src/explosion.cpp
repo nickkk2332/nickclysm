@@ -155,7 +155,11 @@ class shrapnel_reader : public generic_typed_reader<shrapnel_reader>
 void explosion_data::deserialize( const JsonObject &jo )
 {
     mandatory( jo, was_loaded, "power", power );
-    optional( jo, was_loaded, "distance_factor", distance_factor, 0.75f );
+    optional( jo, was_loaded, "distance_factor", distance_factor, EXPLOSION_DEFAULT_DISTANCE_FACTOR );
+    // CMBT-J05: was caught only when it went off (a factor of 1 or more never dies down)
+    if( distance_factor < 0.0f || distance_factor >= 1.0f ) {
+        jo.throw_error_at( "distance_factor", "distance_factor must be at least 0 and below 1" );
+    }
     optional( jo, was_loaded, "max_noise", max_noise, 90000000 );
     optional( jo, was_loaded, "fire", fire );
     optional( jo, was_loaded, "shrapnel", shrapnel, shrapnel_reader{} );
@@ -164,7 +168,10 @@ void explosion_data::deserialize( const JsonObject &jo )
 void shrapnel_data::deserialize( const JsonObject &jo )
 {
     mandatory( jo, was_loaded, "casing_mass", casing_mass );
-    optional( jo, was_loaded, "fragment_mass", fragment_mass, 0.08 ); //differs from header?
+    optional( jo, was_loaded, "fragment_mass", fragment_mass, SHRAPNEL_DEFAULT_FRAGMENT_MASS );
+    if( casing_mass > 0 && fragment_mass <= 0.0f ) {
+        jo.throw_error_at( "fragment_mass", "fragment_mass must be above 0" );
+    }
     optional( jo, was_loaded, "recovery", recovery );
     optional( jo, was_loaded, "drop", drop, itype_id::NULL_ID() );
 }
@@ -377,13 +384,19 @@ static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, 
 
         Character *pl = critter->as_character();
         if( pl == nullptr ) {
-            const double dmg = std::max( force - critter->get_armor_type( damage_bash,
-                                         bodypart_id( "torso" ) ) / 2.0, 0.0 );
-            const int actual_dmg = rng_float( dmg * 2, dmg * 3 );
-            critter->apply_damage( mutable_source, bodypart_id( "torso" ), actual_dmg );
+            // CMBT-J05: bash damage dealt as any other hit is, so that resistances, enchantments
+            // and damage type EOCs apply.  The blast's 2 to 3 times the force, with the armor
+            // counted half, as when it was (force - armor / 2) times 2 to 3.  A blast isn't aimed:
+            // no weak point
+            const float mult = rng_float( 2.0f, 3.0f );
+            const damage_instance blast( damage_bash, force * mult, 0.0f, mult / 2.0f );
+            weakpoint_attack unaimed;
+            unaimed.accuracy = 0.0;
+            const dealt_damage_instance dealt = critter->deal_damage( mutable_source,
+                                                bodypart_id( "torso" ), blast, unaimed, weakpoint() );
             critter->check_dead_state( m );
             add_msg_debug( debugmode::DF_EXPLOSION, "Blast hits %s for %d damage", critter->disp_name(),
-                           actual_dmg );
+                           dealt.total_damage() );
             continue;
         }
 
@@ -406,18 +419,26 @@ static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, 
             float low_mul = 0.0f;
             float high_mul = 0.0f;
             float armor_mul = 0.0f;
+            // the order parts are hit in: torso, head, legs, arms, the rest, as it always was
+            int rank = 0;
         };
 
-        static const std::array<blastable_part, 6> blast_parts = { {
-                { bodypart_id( "torso" ), 2.0f, 3.0f, 0.5f },
-                { bodypart_id( "head" ),  2.0f, 3.0f, 0.5f },
-                // Hit limbs harder so that it hurts more without being much more deadly
-                { bodypart_id( "leg_l" ), 2.0f, 3.5f, 0.4f },
-                { bodypart_id( "leg_r" ), 2.0f, 3.5f, 0.4f },
-                { bodypart_id( "arm_l" ), 2.0f, 3.5f, 0.4f },
-                { bodypart_id( "arm_r" ), 2.0f, 3.5f, 0.4f },
+        // CMBT-J05: every main part the character has (tails, wings, extra arms), not a fixed
+        // human list.  Torso and head as before; hit the rest harder, as limbs, so that it hurts
+        // more without being much more deadly
+        std::vector<blastable_part> blast_parts;
+        for( const bodypart_id &bp : pl->get_all_body_parts( get_body_part_flags::only_main ) ) {
+            const bp_type limb = bp->primary_limb_type();
+            if( limb == bp_type::torso || limb == bp_type::head ) {
+                blast_parts.push_back( { bp, 2.0f, 3.0f, 0.5f, limb == bp_type::torso ? 0 : 1 } );
+            } else {
+                blast_parts.push_back( { bp, 2.0f, 3.5f, 0.4f, limb == bp_type::leg ? 2 : limb == bp_type::arm ? 3 : 4 } );
             }
-        };
+        }
+        std::sort( blast_parts.begin(), blast_parts.end(),
+        []( const blastable_part & a, const blastable_part & b ) {
+            return a.rank != b.rank ? a.rank < b.rank : a.bp.id().str() < b.bp.id().str();
+        } );
 
         for( const blastable_part &blp : blast_parts ) {
             const int part_dam = rng( force * blp.low_mul, force * blp.high_mul );

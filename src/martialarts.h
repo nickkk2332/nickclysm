@@ -508,6 +508,12 @@ class ma_buff
         bool strictly_melee = false; // can we only use it with weapons?
         bool stealthy = false; // do we make less noise when moving?
 
+        // Dialogue condition the buff also needs, gaining it and keeping it (u is the martial
+        // artist; there is no npc talker), and its description line
+        std::function<bool( const_dialogue const & )> condition;
+        std::string condition_desc;
+        bool has_condition = false;
+
         void load( const JsonObject &jo, std::string_view src );
         static void finalize_all();
 };

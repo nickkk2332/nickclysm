@@ -210,6 +210,8 @@ namespace io
             case enchant_vals::mod::BOOK_FUN: return "BOOK_FUN";
             case enchant_vals::mod::BIONIC_SURGERY_SKILL: return "BIONIC_SURGERY_SKILL";
             case enchant_vals::mod::MUT_OUT_OF_TREE_INSTABILITY_MULT: return "MUT_OUT_OF_TREE_INSTABILITY_MULT";
+            case enchant_vals::mod::BLOCK_EFFECTIVENESS: return "BLOCK_EFFECTIVENESS";
+            case enchant_vals::mod::BLOCK_STAMINA_COST: return "BLOCK_STAMINA_COST";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );

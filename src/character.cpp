@@ -1902,6 +1902,9 @@ void Character::on_dodge( Creature *source, float difficulty, float training_lev
     ma_event_context dodge_ctx;
     dodge_ctx.opponent = source;
     martial_arts_data->ma_ondodge_effects( *this, dodge_ctx );
+    // CMBT-J04: for any EOC, not only the selected style's
+    get_event_bus().send_with_talker( this, source,
+                                      cata::event::make<event_type::character_dodges>( getID() ) );
 
     magic->break_channeling( *this );
 

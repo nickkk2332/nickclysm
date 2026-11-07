@@ -1913,7 +1913,8 @@
     "cancels": [ "GUNSHY" ],
     "points": -4,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "flags": [ "CANNOT_USE_RANGED" ]
   },
   {
     "type": "mutation",
@@ -1923,7 +1924,8 @@
     "cancels": [ "BRAWLER" ],
     "points": -3,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "flags": [ "CANNOT_USE_FIREARMS" ]
   },
   {
     "type": "mutation",

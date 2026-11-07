@@ -171,6 +171,13 @@ static const flag_id json_flag_LEVER_ACTION( "LEVER_ACTION" );
 static const flag_id json_flag_PUMP_ACTION( "PUMP_ACTION" );
 static const flag_id json_flag_SINGLE_ACTION( "SINGLE_ACTION" );
 
+static const json_character_flag json_flag_CANNOT_USE_FIREARMS( "CANNOT_USE_FIREARMS" );
+static const json_character_flag json_flag_CANNOT_USE_RANGED( "CANNOT_USE_RANGED" );
+static const json_character_flag
+json_flag_HANDS_CANNOT_USE_FIREARMS( "HANDS_CANNOT_USE_FIREARMS" );
+static const json_character_flag
+json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS( "TEMPORARY_SHAPESHIFT_NO_HANDS" );
+
 static const material_id material_budget_steel( "budget_steel" );
 static const material_id material_glass( "glass" );
 static const material_id material_hardened_steel( "hardened_steel" );
@@ -192,9 +199,6 @@ static const skill_id skill_gun( "gun" );
 static const skill_id skill_launcher( "launcher" );
 static const skill_id skill_swimming( "swimming" );
 static const skill_id skill_throw( "throw" );
-
-static const trait_id trait_BRAWLER( "BRAWLER" );
-static const trait_id trait_GUNSHY( "GUNSHY" );
 
 static const trap_str_id tr_practice_target( "tr_practice_target" );
 static const trap_str_id tr_target_spinner( "tr_target_spinner" );
@@ -1223,6 +1227,8 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     tripoint_bub_ms aim = target;
     int curshot = 0;
     int hits = 0; // total shots on target
+    // The ammo of the first shot, for the character_fires_gun event
+    itype_id fired_ammo = itype_id::NULL_ID();
     int delay = 0; // delayed recoil that has yet to be applied
     // Snapshot the gun slot. The wielded item can stop being a gun
     // mid-loop (recoil-induced unwield, fire transforms), and the
@@ -1260,6 +1266,9 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         // get ammo_id in gun for event character_ranged_attacks_monster. If no ammo, use itype_id::NULL_ID()
         itype_id projectile_use_ammo_id = gun.has_ammo_data() ? gun.ammo_data()->get_id() :
                                           itype_id::NULL_ID();
+        if( curshot == 0 ) {
+            fired_ammo = projectile_use_ammo_id;
+        }
         projectile proj = make_gun_projectile( gun, *this );
 
         for( damage_unit &elem : proj.impact.damage_units ) {
@@ -1387,6 +1396,12 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
     }
     // Use different amounts of time depending on the type of gun and our skill
     mod_moves( -attack_moves );
+
+    // CMBT-J04: one event for the whole burst, for any EOC; not for a turret's targeting NPC
+    if( curshot > 0 && !is_fake() ) {
+        get_event_bus().send<event_type::character_fires_gun>( getID(), gun_id, fired_ammo, curshot,
+                hits );
+    }
 
     const islot_gun *firing = original_gun;
     if( !firing && gun.is_gun() ) {
@@ -4747,19 +4762,43 @@ void target_ui::on_target_accepted( bool harmful ) const
     }
 }
 
+std::string Character::ranged_ban_reason( const item &gun, const bool held ) const
+{
+    if( has_flag( json_flag_CANNOT_USE_RANGED ) ) {
+        return _( "You refuse to use ranged weapons." );
+    }
+    const bool firearm = gun.is_firearm();
+    if( firearm && has_flag( json_flag_CANNOT_USE_FIREARMS ) ) {
+        return _( "You refuse to use firearms." );
+    }
+    if( held && has_flag( json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS ) ) {
+        return _( "You have no hands and cannot use ranged weapons!" );
+    }
+    if( held && firearm && has_flag( json_flag_HANDS_CANNOT_USE_FIREARMS ) ) {
+        return _( "Your hands aren't suited for using firearms!" );
+    }
+    return std::string();
+}
+
+// Whether the gun (or a gunmod on it) is the one in the character's hands: not a mounted turret
+// or a mutation's or bionic's natural weapon
+static bool holds_gun( const Character &you, const item &gun )
+{
+    const item_location wielded = you.get_wielded_item();
+    return wielded && ( wielded.get_item() == &gun || wielded->has_item( gun ) );
+}
+
 bool gunmode_checks_common( avatar &you, const map &m, std::vector<std::string> &messages,
                             const gun_mode &gmode )
 {
     bool result = true;
-    if( you.has_trait( trait_BRAWLER ) ) {
-        messages.push_back( string_format( _( "Pfft.  You are a brawler; using this %s is beneath you." ),
-                                           gmode->tname() ) );
-        result = false;
-    }
-
-    if( you.has_trait( trait_GUNSHY ) && gmode->is_firearm() ) {
-        messages.push_back( string_format( _( "You're too gun-shy to use this." ) ) );
-        result = false;
+    // CMBT-J03: the BRAWLER and GUNSHY traits grant these flags, so anything else can too
+    if( gmode ) {
+        const std::string ban = you.ranged_ban_reason( *gmode, holds_gun( you, *gmode ) );
+        if( !ban.empty() ) {
+            messages.push_back( ban );
+            result = false;
+        }
     }
 
     // Check that passed gun mode is valid and we are able to use it

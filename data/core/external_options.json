@@ -688,5 +688,40 @@
     "//": "Crowd crush: added to the resist chance while you're prone (and not downed, since the downed effect carries its own CROWD_CRUSH_RESIST penalty).",
     "stype": "float",
     "value": -4
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_MIN_STAMINA",
+    "//": "Blocking: with less stamina than this you can't block a melee hit.",
+    "stype": "int",
+    "value": 2000
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_SIZE_MARGIN",
+    "//": "Blocking: you can't block an attacker more than this many size classes bigger than you, unless you have the BLOCK_HUGE_ATTACKS flag.",
+    "stype": "int",
+    "value": 1
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_REACTION_PER_SKILL",
+    "//": "Blocking: percent chance per level of melee skill (times the reaction limb score) to react in time to block.",
+    "stype": "float",
+    "value": 20
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_STAMINA_COST_MULT",
+    "//": "Blocking: stamina a block costs, in multiples of PLAYER_BASE_STAMINA_BURN_RATE, at melee skill 0 (each level takes 5% off).  The BLOCK_STAMINA_COST enchantment value modifies it.",
+    "stype": "float",
+    "value": 6
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BLOCK_COUNTER_MAX_GLASS_PERCENT",
+    "//": "Blocking: no block counter with a wielded weapon that is more than this percent glass.",
+    "stype": "int",
+    "value": 20
   }
 ]

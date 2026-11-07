@@ -174,6 +174,11 @@ static const trait_id trait_PROF_SKATER( "PROF_SKATER" );
 
 static const weapon_category_id weapon_category_UNARMED( "UNARMED" );
 
+static const std::string block_counter_max_glass_percent( "BLOCK_COUNTER_MAX_GLASS_PERCENT" );
+static const std::string block_min_stamina( "BLOCK_MIN_STAMINA" );
+static const std::string block_reaction_per_skill( "BLOCK_REACTION_PER_SKILL" );
+static const std::string block_size_margin( "BLOCK_SIZE_MARGIN" );
+static const std::string block_stamina_cost_mult( "BLOCK_STAMINA_COST_MULT" );
 static const std::string player_base_stamina_burn_rate( "PLAYER_BASE_STAMINA_BURN_RATE" );
 
 static void player_hit_message( Character *attacker, const std::string &message,
@@ -1130,6 +1135,14 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         // The technique's post-hit EOCs see the damage dealt and whether the target died
         if( technique.id != tec_none ) {
             ma_ctx.activate( *this, technique.post_hit_eocs );
+        }
+        // CMBT-J04: the hit, once its damage, technique and kill are known, for any EOC
+        if( !t.is_hallucination() ) {
+            const cata::event hit_event = cata::event::make<event_type::character_melee_hits>(
+                                              getID(), ma_ctx.weapon, ma_ctx.technique.str(), ma_ctx.bp,
+                                              static_cast<int>( ma_ctx.damage.value_or( 0.0 ) ),
+                                              ma_ctx.crit.value_or( false ), ma_ctx.killed.value_or( false ) );
+            get_event_bus().send_with_talker( this, &t, hit_event );
         }
     }
 
@@ -2383,8 +2396,12 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
     }
 }
 
-int melee::blocking_ability( const item &shield )
+int melee::wielded_blocking_ability( const item &shield )
 {
+    // CMBT-J07: the item's "block" "bonus", else the legacy WBLOCK technique tiers
+    if( shield.type->block.bonus ) {
+        return *shield.type->block.bonus;
+    }
     int block_bonus = 0;
     if( shield.has_technique( WBLOCK_3 ) ) {
         block_bonus = 10;
@@ -2392,18 +2409,24 @@ int melee::blocking_ability( const item &shield )
         block_bonus = 6;
     } else if( shield.has_technique( WBLOCK_1 ) ) {
         block_bonus = 4;
-    } else if( shield.has_flag( flag_BLOCK_WHILE_WORN ) ) {
-        block_bonus = 2;
     }
     return block_bonus;
+}
+
+int melee::blocking_ability( const item &shield )
+{
+    const int block_bonus = wielded_blocking_ability( shield );
+    if( block_bonus > 0 || shield.type->block.bonus ) {
+        return block_bonus;
+    }
+    return shield.has_flag( flag_BLOCK_WHILE_WORN ) ? 2 : 0;
 }
 
 item_location Character::best_shield()
 {
     // Note: wielded weapon, not one used for attacks
-    int best_value = melee::blocking_ability( weapon );
-    // "BLOCK_WHILE_WORN" without a blocking tech need to be worn for the bonus
-    best_value = best_value == 2 ? 0 : best_value;
+    // "BLOCK_WHILE_WORN" without a blocking tech or bonus need to be worn for the bonus
+    const int best_value = melee::wielded_blocking_ability( weapon );
     item_location best = best_value > 0 ? get_wielded_item() : item_location();
     item *best_worn = worn.best_shield();
     if( best_worn && melee::blocking_ability( *best_worn ) >= best_value ) {
@@ -2441,21 +2464,24 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     // which is affected by stamina, pain, and so on and when it hits
     // zero, that's when you get the message that you can't dodge, but
     // currently none of that affects blocking
-    if( get_stamina() < 2000 ) {
+    // CMBT-J07: the thresholds are external options (data/core/external_options.json)
+    if( get_stamina() < get_option<int>( block_min_stamina ) ) {
         add_msg_if_player( m_warning,
                            _( "You're close to exhaustion and cannot block effectively." ) );
         return false;
     }
 
     // Can't block attacks from attackers two sizes greater than you
-    if( ( get_size() + 1 < source->get_size() ) && !has_flag( json_flag_BLOCK_HUGE_ATTACKS ) ) {
+    if( ( get_size() + get_option<int>( block_size_margin ) < source->get_size() ) &&
+        !has_flag( json_flag_BLOCK_HUGE_ATTACKS ) ) {
         return false;
     }
 
     // Melee skill and reaction score governs if you can react in time
     // Skill of 5 without relevant encumbrance guarantees a block attempt
     float melee_skill = has_active_bionic( bio_cqb ) ? 5 : get_skill_level( skill_melee );
-    if( !x_in_y( melee_skill * 20.0 * get_limb_score( limb_score_reaction ), 100 ) ) {
+    const double reaction_per_skill = get_option<float>( block_reaction_per_skill );
+    if( !x_in_y( melee_skill * reaction_per_skill * get_limb_score( limb_score_reaction ), 100 ) ) {
         add_msg_debug( debugmode::DF_MELEE, "Block roll failed" );
         return false;
     }
@@ -2472,6 +2498,8 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     // Check if we are going to block with an item. This could
     // be worn equipment with the BLOCK_WHILE_WORN flag.
     const bool has_shield = !!shield;
+    // Its type: the shield itself may break from wear while it blocks
+    const itype *const shield_type = has_shield ? shield->type : nullptr;
     bool worn_shield = has_shield && shield->has_flag( flag_BLOCK_WHILE_WORN );
 
     bool conductive_shield = false;
@@ -2521,12 +2549,21 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
 
     // add martial arts block effectiveness bonus
     block_score += mabuff_block_effectiveness_bonus();
+    // CMBT-J07: and the BLOCK_EFFECTIVENESS enchantment value
+    block_score = static_cast<int>( enchantment_cache->modify_value(
+                                        enchant_vals::mod::BLOCK_EFFECTIVENESS, block_score ) );
 
     // weapon blocks are preferred to limb blocks
     std::string thing_blocked_with;
+    // The item that blocks, for the character_blocks event; null for a limb
+    itype_id blocked_with = itype_id::NULL_ID();
+    // Its "block" data; nullptr for a limb block
+    const item_block_data *item_block = nullptr;
     // Do we block with a weapon? Handle melee wear but leave bp the same
     if( !( unarmed || force_unarmed || worn_shield || armed_body_block ) && allow_weapon_blocking ) {
         thing_blocked_with = shield->tname();
+        blocked_with = shield->typeId();
+        item_block = &shield->type->block;
         // TODO: Change this depending on damage blocked
         float wear_modifier = 1.0f;
         if( source != nullptr && source->is_hallucination() ) {
@@ -2541,6 +2578,8 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
         add_msg_debug( debugmode::DF_MELEE, "Block score after multiplier %d", block_score );
         if( worn_shield && shield->covers( bp_hit ) ) {
             thing_blocked_with = shield->tname();
+            blocked_with = shield->typeId();
+            item_block = &shield->type->block;
 
             if( source != nullptr && !source->is_hallucination() ) {
                 for( damage_unit &du : dam.damage_units ) {
@@ -2588,7 +2627,19 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
             }
 
             float previous_amount = elem.amount;
-            elem.amount *= physical_block_multiplier;
+            // CMBT-J07: an item blocks a damage type as well as its "effectiveness" says
+            const float *effectiveness = nullptr;
+            if( item_block != nullptr ) {
+                const auto found = item_block->effectiveness.find( elem.type );
+                if( found != item_block->effectiveness.end() ) {
+                    effectiveness = &found->second;
+                }
+            }
+            if( effectiveness != nullptr ) {
+                elem.amount *= 1.0f - *effectiveness * ( 1.0f - physical_block_multiplier );
+            } else {
+                elem.amount *= physical_block_multiplier;
+            }
             damage_blocked += previous_amount - elem.amount;
         }
 
@@ -2600,7 +2651,12 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
             // Unarmed weapons won't block those
             if( item_blocking && can_block ) {
                 float previous_amount = elem.amount;
-                elem.amount /= 5;
+                // CMBT-J07: the shield's "elemental_mult", a fifth by default
+                if( shield_type != nullptr && shield_type->block.elemental_mult ) {
+                    elem.amount *= *shield_type->block.elemental_mult;
+                } else {
+                    elem.amount /= 5;
+                }
                 damage_blocked += previous_amount - elem.amount;
             }
         }
@@ -2644,8 +2700,11 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     // TODO: account for enemy melee scale, add diminishing returns.
     const int base_burn_rate = get_option<int>( player_base_stamina_burn_rate );
     const float block_skill_modifier = ( 20.0f - get_skill_level( skill_melee ) ) / 20.0f;
-    const float block_stamina_cost = static_cast<float>( base_burn_rate )  * 6.0f *
-                                     block_skill_modifier;
+    // CMBT-J07: an external option and the BLOCK_STAMINA_COST enchantment value
+    const float block_stamina_cost = static_cast<float>( enchantment_cache->modify_value(
+                                         enchant_vals::mod::BLOCK_STAMINA_COST,
+                                         static_cast<float>( base_burn_rate ) * get_option<float>( block_stamina_cost_mult ) *
+                                         block_skill_modifier ) );
     burn_energy_legs( -block_stamina_cost );
     set_activity_level( EXTRA_EXERCISE );
     add_msg_debug( debugmode::DF_MELEE, "Blocking stamina cost %.1f", block_stamina_cost );
@@ -2656,15 +2715,20 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     block_ctx.bp = bp_hit.id();
     block_ctx.damage = dam.total_damage();
     martial_arts_data->ma_onblock_effects( *this, block_ctx );
+    // CMBT-J04: for any EOC, not only the selected style's
+    get_event_bus().send_with_talker( this, source,
+                                      cata::event::make<event_type::character_blocks>( getID(), blocked_with, bp_hit.id(),
+                                              static_cast<int>( std::round( damage_blocked ) ) ) );
 
     // Check if we have any block counters
     matec_id tec = std::get<0>( pick_technique( *source, shield, false, false, true ) );
 
     if( tec != tec_none && !is_dead_state() ) {
-        int twenty_percent = std::round( ( 20 * weapon.type->mat_portion_total ) / 100.0f );
+        int glass_limit = std::round( ( get_option<int>( block_counter_max_glass_percent ) *
+                                        weapon.type->mat_portion_total ) / 100.0f );
         if( get_stamina() < get_stamina_max() / 3 ) {
             add_msg( m_bad, _( "You try to counterattack, but you are too exhausted!" ) );
-        } else if( weapon.made_of( material_glass ) > twenty_percent ) {
+        } else if( weapon.made_of( material_glass ) > glass_limit ) {
             add_msg( m_bad, _( "The item you are wielding is too fragile to counterattack with!" ) );
         } else {
             melee_attack( *source, false, tec );
@@ -3232,7 +3296,10 @@ double Character::evaluate_weapon_internal( const item &maybe_weapon, bool can_u
     // Needed because evaluation includes electricity via linked cables.
     const map &here = get_map();
 
-    bool allowed = can_use_gun && maybe_weapon.is_gun() && ( !use_silent || maybe_weapon.is_silent() );
+    // CMBT-J03: NPCs refuse the guns the avatar would (BRAWLER, GUNSHY, paws, no hands)
+    bool allowed = can_use_gun && maybe_weapon.is_gun() && ( !use_silent ||
+                   maybe_weapon.is_silent() ) &&
+                   ranged_ban_reason( maybe_weapon, true ).empty();
     // According to unmodified evaluation score, NPCs almost always prioritize wielding guns if they have one.
     // This is relatively reasonable, as players can issue commands to NPCs when we do not want them to use ranged weapons.
     // Conversely, we cannot directly issue commands when we want NPCs to prioritize ranged weapons.
