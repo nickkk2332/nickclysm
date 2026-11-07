@@ -826,6 +826,11 @@
   },
   {
     "type": "item_action",
+    "id": "smoke",
+    "name": { "ctxt": "SMOKING", "str": "Smoke" }
+  },
+  {
+    "type": "item_action",
     "id": "link_up",
     "name": { "str": "Plug in / Manage cables" }
   },

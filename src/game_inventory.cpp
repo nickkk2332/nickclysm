@@ -1166,8 +1166,10 @@ class activatable_inventory_preset : public pickup_inventory_preset
                 }
             }
 
-            const use_function *smoking = it.type->get_use( "SMOKING" );
-            if( smoking != nullptr ) {
+            // a smokable: the SMOKING function or a smoke action
+            const bool smoking = it.type->get_use( "SMOKING" ) != nullptr ||
+                                 it.type->get_use( "smoke" ) != nullptr;
+            if( smoking ) {
                 std::optional<std::string> litcig = iuse::can_smoke( you );
                 if( litcig.has_value() ) {
                     return _( litcig.value_or( "" ) );

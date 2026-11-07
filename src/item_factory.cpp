@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <iterator>
@@ -2150,6 +2151,34 @@ class iuse_function_wrapper : public iuse_actor
         void load( const JsonObject &, const std::string & ) override {}
 };
 
+// A C++ function that takes JSON parameters: an object-form use action of it can set those it
+// declares, and they are passed to it on each use.
+class iuse_function_wrapper_with_params : public iuse_actor
+{
+    private:
+        use_function_pointer_with_params cpp_function;
+        std::vector<iuse_params::param> declared;
+        iuse_params params;
+    public:
+        iuse_function_wrapper_with_params( const std::string &type,
+                                           const use_function_pointer_with_params f,
+                                           const std::vector<iuse_params::param> &declared_params )
+            : iuse_actor( type ), cpp_function( f ), declared( declared_params ) { }
+
+        ~iuse_function_wrapper_with_params() override = default;
+        std::optional<int> use( Character *p, item &it, map */*here*/,
+                                const tripoint_bub_ms &pos ) const override {
+            return cpp_function( p, &it, pos, params );
+        }
+        std::unique_ptr<iuse_actor> clone() const override {
+            return std::make_unique<iuse_function_wrapper_with_params>( *this );
+        }
+
+        void load( const JsonObject &jo, const std::string & ) override {
+            params.load( jo, declared );
+        }
+};
+
 class iuse_function_wrapper_with_info : public iuse_function_wrapper
 {
     private:
@@ -2186,6 +2215,56 @@ void Item_factory::add_iuse( const std::string &type, const use_function_pointer
 {
     iuse_function_list[ type ] =
         use_function( std::make_unique<iuse_function_wrapper_with_info>( type, f, info ) );
+}
+
+void Item_factory::add_iuse_with_params( const std::string &type,
+        const use_function_pointer_with_params f, const std::vector<iuse_params::param> &declared )
+{
+    iuse_function_list[ type ] =
+        use_function( std::make_unique<iuse_function_wrapper_with_params>( type, f, declared ) );
+}
+
+void iuse_params::load( const JsonObject &jo, const std::vector<param> &declared )
+{
+    numbers.clear();
+    strings.clear();
+    for( const param &p : declared ) {
+        if( !jo.has_member( p.name ) ) {
+            continue;
+        }
+        switch( p.type ) {
+            case kind::integer:
+                numbers[p.name] = jo.get_int( p.name );
+                break;
+            case kind::duration: {
+                time_duration dur = 0_turns;
+                mandatory( jo, false, p.name, dur );
+                numbers[p.name] = to_turns<int64_t>( dur );
+                break;
+            }
+            case kind::string:
+                strings[p.name] = jo.get_string( p.name );
+                break;
+        }
+    }
+}
+
+int iuse_params::get_int( const std::string &name, int def ) const
+{
+    const auto iter = numbers.find( name );
+    return iter == numbers.end() ? def : static_cast<int>( iter->second );
+}
+
+time_duration iuse_params::get_duration( const std::string &name, const time_duration &def ) const
+{
+    const auto iter = numbers.find( name );
+    return iter == numbers.end() ? def : time_duration::from_turns( iter->second );
+}
+
+std::string iuse_params::get_string( const std::string &name, const std::string &def ) const
+{
+    const auto iter = strings.find( name );
+    return iter == strings.end() ? def : iter->second;
 }
 
 void Item_factory::add_actor( std::unique_ptr<iuse_actor> ptr )
@@ -2402,7 +2481,7 @@ void Item_factory::init()
     add_iuse( "EYEDROPS", &iuse::eyedrops );
     add_iuse( "FILL_PIT", &iuse::fill_pit );
     add_iuse( "FIRECRACKER_PACK_ACT", &iuse::firecracker_pack_act );
-    add_iuse( "FISH_ROD", &iuse::fishing_rod );
+    add_iuse_with_params( "FISH_ROD", &iuse::fishing_rod, { { "duration", iuse_params::kind::duration } } );
     add_iuse( "FISH_TRAP", &iuse::fish_trap );
     add_iuse( "FISH_TRAP_TICK", &iuse::fish_trap_tick );
     add_iuse( "FITNESS_CHECK", &iuse::fitness_check );
@@ -2441,7 +2520,7 @@ void Item_factory::init()
     add_iuse( "MEASURE_RESONANCE", &iuse::measure_resonance );
     add_iuse( "CHANGE_OUTFIT", &iuse::change_outfit );
     add_iuse( "PLAY_GAME", &iuse::play_game );
-    add_iuse( "MAKEMOUND", &iuse::makemound );
+    add_iuse_with_params( "MAKEMOUND", &iuse::makemound, { { "moves", iuse_params::kind::integer } } );
     add_iuse( "DIG_CHANNEL", &iuse::dig_channel );
     add_iuse( "MA_MANUAL", &iuse::ma_manual );
     add_iuse( "MANAGE_EXOSUIT", &iuse::manage_exosuit );
@@ -2533,6 +2612,7 @@ void Item_factory::init()
     add_actor( std::make_unique<fireweapon_off_actor>() );
     add_actor( std::make_unique<fireweapon_on_actor>() );
     add_actor( std::make_unique<heal_actor>() );
+    add_actor( std::make_unique<smoke_actor>() );
     add_actor( std::make_unique<holster_actor>() );
     add_actor( std::make_unique<inscribe_actor>() );
     add_actor( std::make_unique<iuse_transform>() );
@@ -3342,6 +3422,15 @@ void Item_factory::check_definitions() const
                                       type->transform_into.value().target.is_null() ) ) {
             msg += string_format( "invalid revert_to property %s\n does not exist",
                                   type->transform_into.value().target.c_str() );
+        }
+
+        if( type->smoke ) {
+            if( !type->smoke->puff_effect.is_null() && !type->smoke->puff_effect.is_valid() ) {
+                msg += string_format( "invalid smoke puff_effect %s\n", type->smoke->puff_effect.str() );
+            }
+            if( !type->has_flag( flag_LITCIG ) ) {
+                msg += "smoke is only used by an item with the LITCIG flag\n";
+            }
         }
 
         if( msg.empty() ) {
@@ -4827,6 +4916,18 @@ static void replace_materials( const JsonObject &jo, itype &def )
     }
 }
 
+void itype_smoke_data::load( const JsonObject &jo, std::string_view src )
+{
+    optional( jo, false, "puff_effect", puff_effect, efftype_id::NULL_ID() );
+    optional( jo, false, "puff_duration", puff_duration, 15_seconds );
+    for( JsonValue jv : jo.get_array( "puff_eocs" ) ) {
+        puff_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+    for( JsonValue jv : jo.get_array( "burn_out_eocs" ) ) {
+        burn_out_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+}
+
 void itype::load( const JsonObject &jo, std::string_view src )
 {
     units_bound_reader<units::mass> not_negative_mass{ 0_milligram };
@@ -5024,6 +5125,12 @@ void itype::load( const JsonObject &jo, std::string_view src )
     if( jo.has_member( "revert_to" ) && jo.has_member( "transform_into" ) ) {
         jo.throw_error_at( "transform_into",
                            "Item specified both transform_into and revert_to: they're mutually exclusive" );
+    }
+
+    // replaces an inherited block whole
+    if( jo.has_member( "smoke" ) ) {
+        smoke = cata::make_value<itype_smoke_data>();
+        smoke->load( jo.get_object( "smoke" ), src );
     }
 
     //First, check for copy-from

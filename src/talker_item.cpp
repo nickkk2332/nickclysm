@@ -140,6 +140,8 @@ int talker_item_const::get_hp_max( const bodypart_id & ) const
     return it != nullptr ? it->max_damage() : 0;
 }
 
+// Item power is battery charges, counted as 1 mJ each. Only battery is power: a lamp-oil or
+// arrow tool has none, as power_max() says.
 units::energy talker_item_const::power_cur() const
 {
     const item *it = alive( me_it_const );
@@ -164,6 +166,12 @@ int talker_item_const::get_artifact_resonance() const
         ret += this_ench.get_value_add( enchant_vals::mod::ARTIFACT_RESONANCE );
     }
     return ret;
+}
+
+int talker_item_const::charges_of( const itype_id &item_id ) const
+{
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->charges_of( item_id ) : 0;
 }
 
 int talker_item_const::get_count() const

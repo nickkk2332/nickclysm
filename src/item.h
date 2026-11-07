@@ -2894,6 +2894,11 @@ class item
         const item_pocket *pocket_by_id( const std::string &id ) const;
 
         int ammo_remaining_in_pocket( const std::string &id ) const;
+        /**
+         * How much of one ammo the item holds: loaded in its integral magazine pockets and in the
+         * magazines in its magazine wells. Nothing else is counted: not containers, links or UPS.
+         */
+        int ammo_remaining_of( const itype_id &ammo ) const;
         int ammo_consume_in_pocket( const std::string &id, int qty, map &here,
                                     const tripoint_bub_ms &pos );
 

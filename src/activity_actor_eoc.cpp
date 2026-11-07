@@ -149,8 +149,6 @@ static const itype_id itype_paper( "paper" );
 static const json_character_flag json_flag_SAFECRACK_NO_TOOL( "SAFECRACK_NO_TOOL" );
 
 static const proficiency_id proficiency_prof_dissect_humans( "prof_dissect_humans" );
-static const proficiency_id proficiency_prof_wound_care( "prof_wound_care" );
-static const proficiency_id proficiency_prof_wound_care_expert( "prof_wound_care_expert" );
 
 static const quality_id qual_AXE( "AXE" );
 static const quality_id qual_BUTCHER( "BUTCHER" );
@@ -1071,6 +1069,7 @@ refusal start_firstaid( const activity_id &, Character &who, const eoc_activity_
         if( who.has_effect( effect_bite, part ) && actor->disinfectant_power > 0 ) {
             damage += actor->bite * who.get_effect_dur( effect_bite, part ) / 1_minutes;
         }
+        damage += static_cast<int>( actor->cure_urgency( who, part ) );
         if( damage > highest ) {
             highest = damage;
             healed = part;
@@ -1079,10 +1078,8 @@ refusal start_firstaid( const activity_id &, Character &who, const eoc_activity_
     if( healed == bodypart_str_id::NULL_ID() ) {
         return string_format( _( "The %1$s can't help %2$s now." ), med->tname(), who.get_name() );
     }
-    // As heal_actor::use: each tier of proficiency halves the time.
-    int cost = actor->move_cost;
-    cost = who.has_proficiency( proficiency_prof_wound_care_expert ) ? cost / 2 : cost;
-    cost = who.has_proficiency( proficiency_prof_wound_care ) ? cost / 2 : cost;
+    // As heal_actor::use: each of the action's proficiencies (wound care) cuts the time.
+    const int cost = actor->get_move_cost( who );
     const std::string name = med->tname();
     who.assign_activity( firstaid_activity_actor( cost, name, who.getID(), false,
                          heal_use->get_id() ) );

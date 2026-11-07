@@ -107,6 +107,8 @@
 static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
 static const activity_id ACT_REPAIR_ITEM( "ACT_REPAIR_ITEM" );
 
+static const addiction_id addiction_nicotine( "nicotine" );
+
 static const damage_type_id damage_acid( "acid" );
 static const damage_type_id damage_bash( "bash" );
 static const damage_type_id damage_bullet( "bullet" );
@@ -117,6 +119,7 @@ static const efftype_id effect_asthma( "asthma" );
 static const efftype_id effect_bandaged( "bandaged" );
 static const efftype_id effect_bite( "bite" );
 static const efftype_id effect_bleed( "bleed" );
+static const efftype_id effect_cig( "cig" );
 static const efftype_id effect_disinfected( "disinfected" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_infected( "infected" );
@@ -3713,9 +3716,42 @@ std::string repair_item_actor::get_description() const
     return string_format( _( "Repair %s" ), mats );
 }
 
-void heal_actor::load( const JsonObject &obj, const std::string & )
+heal_actor::heal_actor( const std::string &type ) : iuse_actor( type ), skill( skill_firstaid )
+{
+    // each tier of wound care halves the time and adds to the skill level
+    proficiencies.push_back( { proficiency_prof_wound_care, 0.5f, 1.0f } );
+    proficiencies.push_back( { proficiency_prof_wound_care_expert, 0.5f, 2.0f } );
+}
+
+void heal_actor::proficiency_bonus::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "id", id );
+    optional( jo, false, "time_mult", time_mult, 1.0f );
+    optional( jo, false, "bonus", bonus, 0.0f );
+}
+
+void heal_actor::cure_data::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "effect", effect );
+    optional( jo, false, "chance", chance, 1.0f );
+    optional( jo, false, "replace_with", replace_with, efftype_id::NULL_ID() );
+    optional( jo, false, "message", message, to_translation( "The treatment works." ) );
+    optional( jo, false, "fail_message", fail_message,
+              to_translation( "The treatment doesn't work this time." ) );
+}
+
+void heal_actor::load( const JsonObject &obj, const std::string &src )
 {
     mandatory( obj, false, "move_cost", move_cost );
+    optional( obj, false, "skill", skill, skill_firstaid );
+    if( obj.has_member( "proficiencies" ) ) {
+        proficiencies.clear();
+        mandatory( obj, false, "proficiencies", proficiencies );
+    }
+    optional( obj, false, "cures", cures );
+    for( JsonValue jv : obj.get_array( "finish_eocs" ) ) {
+        finish_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
 
     optional( obj, false, "limb_power", limb_power, 0 );
     optional( obj, false, "bandages_power", bandages_power, 0 );
@@ -3742,7 +3778,8 @@ void heal_actor::load( const JsonObject &obj, const std::string & )
     const bool heal_over_time = bandages_power;
     const bool stops_bleed = bleed;
     const bool has_any_disinfect = disinfectant_power || bite || infect;
-    const bool has_scripted_effect = obj.has_array( "effects" );
+    const bool has_scripted_effect = obj.has_array( "effects" ) || !cures.empty() ||
+                                     !finish_eocs.empty();
     if( !does_instant_healing && !heal_over_time && !stops_bleed
         && !has_any_disinfect && !has_scripted_effect ) {
         obj.throw_error( _( "Heal actor is missing any valid healing effect" ) );
@@ -3757,6 +3794,83 @@ void heal_actor::load( const JsonObject &obj, const std::string & )
         optional( u, false, "charges", used_up_item_charges, 1 );
         optional( u, false, "flags", used_up_item_flags );
     }
+}
+
+void heal_actor::finalize( const itype_id &my_item_type )
+{
+    if( !skill.is_valid() ) {
+        debugmsg( "Item %s has a heal action with invalid skill %s", my_item_type.str(), skill.str() );
+    }
+    for( const proficiency_bonus &prof : proficiencies ) {
+        if( !prof.id.is_valid() ) {
+            debugmsg( "Item %s has a heal action with invalid proficiency %s", my_item_type.str(),
+                      prof.id.str() );
+        }
+    }
+    for( const cure_data &cure : cures ) {
+        if( !cure.effect.is_valid() ) {
+            debugmsg( "Item %s has a heal action that cures invalid effect %s", my_item_type.str(),
+                      cure.effect.str() );
+        }
+        if( !cure.replace_with.is_null() && !cure.replace_with.is_valid() ) {
+            debugmsg( "Item %s has a heal action that replaces %s with invalid effect %s",
+                      my_item_type.str(), cure.effect.str(), cure.replace_with.str() );
+        }
+    }
+}
+
+int heal_actor::get_move_cost( const Character &healer ) const
+{
+    int cost = move_cost;
+    for( const proficiency_bonus &prof : proficiencies ) {
+        if( healer.has_proficiency( prof.id ) ) {
+            cost = static_cast<int>( cost * prof.time_mult );
+        }
+    }
+    return cost;
+}
+
+float heal_actor::get_proficiency_bonus( const Character &healer ) const
+{
+    float bonus = 0.0f;
+    for( const proficiency_bonus &prof : proficiencies ) {
+        if( healer.has_proficiency( prof.id ) ) {
+            bonus += prof.bonus;
+        }
+    }
+    return bonus;
+}
+
+// The part a cure's effect is on: the treated part, else the whole body (an effect on no part,
+// such as poison), else none.
+static std::optional<bodypart_id> cure_target( const Character &patient, const efftype_id &eff,
+        const bodypart_id &healed )
+{
+    if( healed.id() != bodypart_str_id::NULL_ID() && !patient.get_effect( eff, healed ).is_null() ) {
+        return healed;
+    }
+    if( !patient.get_effect( eff, bodypart_str_id::NULL_ID() ).is_null() ) {
+        return bodypart_str_id::NULL_ID().id();
+    }
+    return std::nullopt;
+}
+
+bool heal_actor::can_cure( const Character &patient, const bodypart_id &healed ) const
+{
+    return std::any_of( cures.begin(), cures.end(), [&]( const cure_data & cure ) {
+        return cure_target( patient, cure.effect, healed ).has_value();
+    } );
+}
+
+float heal_actor::cure_urgency( const Character &patient, const bodypart_id &healed ) const
+{
+    float urgency = 0.0f;
+    for( const cure_data &cure : cures ) {
+        if( const std::optional<bodypart_id> on = cure_target( patient, cure.effect, healed ) ) {
+            urgency += cure.chance * to_minutes<float>( patient.get_effect_dur( cure.effect, *on ) );
+        }
+    }
+    return urgency;
 }
 
 static Character &get_patient( Character &healer, map *here, const tripoint_bub_ms &pos )
@@ -3798,9 +3912,7 @@ std::optional<int> heal_actor::use( Character *p, item &it, map *here,
     }
 
     // each tier of proficiency cuts required time by half
-    int cost = move_cost;
-    cost = p->has_proficiency( proficiency_prof_wound_care_expert ) ? cost / 2 : cost;
-    cost = p->has_proficiency( proficiency_prof_wound_care ) ? cost / 2 : cost;
+    const int cost = get_move_cost( *p );
 
     p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID(), true, id ) );
 
@@ -3823,10 +3935,12 @@ int heal_actor::get_heal_value( const Character &healer, bodypart_id healed ) co
 {
     int heal_base;
     float bonus_mult;
-    if( healed == bodypart_id( "head" ) ) {
+    // by the part's limb type, so a modded or mutated head or torso heals as one
+    const bp_type limb = healed->primary_limb_type();
+    if( limb == bp_type::head ) {
         heal_base = head_power;
         bonus_mult = head_scaling;
-    } else if( healed == bodypart_id( "torso" ) ) {
+    } else if( limb == bp_type::torso ) {
         heal_base = torso_power;
         bonus_mult = torso_scaling;
     } else {
@@ -3836,7 +3950,7 @@ int heal_actor::get_heal_value( const Character &healer, bodypart_id healed ) co
 
     if( heal_base > 0 ) {
         /** @EFFECT_FIRSTAID increases healing item effects */
-        return round( heal_base + bonus_mult * healer.get_skill_level( skill_firstaid ) );
+        return round( heal_base + bonus_mult * healer.get_skill_level( skill ) );
     }
 
     return heal_base;
@@ -3845,11 +3959,7 @@ int heal_actor::get_heal_value( const Character &healer, bodypart_id healed ) co
 int heal_actor::get_bandaged_level( const Character &healer ) const
 {
     if( bandages_power > 0 ) {
-        float prof_bonus = healer.get_skill_level( skill_firstaid );
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care ) ?
-                     prof_bonus + 1 : prof_bonus;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
-                     prof_bonus + 2 : prof_bonus;
+        const float prof_bonus = healer.get_skill_level( skill ) + get_proficiency_bonus( healer );
         /** @EFFECT_FIRSTAID increases healing item effects */
         float total_bonus = bandages_power + bandages_scaling * prof_bonus;
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::BANDAGE_BONUS,
@@ -3864,11 +3974,7 @@ int heal_actor::get_disinfected_level( const Character &healer ) const
 {
     if( disinfectant_power > 0 ) {
         /** @EFFECT_FIRSTAID increases healing item effects */
-        float prof_bonus = healer.get_skill_level( skill_firstaid );
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care ) ?
-                     prof_bonus + 1 : prof_bonus;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
-                     prof_bonus + 2 : prof_bonus;
+        const float prof_bonus = healer.get_skill_level( skill ) + get_proficiency_bonus( healer );
         float total_bonus = disinfectant_power + disinfectant_scaling * prof_bonus;
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::DISINFECTANT_BONUS,
                       total_bonus );
@@ -3882,11 +3988,8 @@ int heal_actor::get_stopbleed_level( const Character &healer ) const
 {
     if( bleed > 0 ) {
         /** @EFFECT_FIRSTAID increases healing item effects */
-        float prof_bonus = healer.get_skill_level( skill_firstaid ) / 2;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care ) ?
-                     prof_bonus + 1 : prof_bonus;
-        prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
-                     prof_bonus + 2 : prof_bonus;
+        const float prof_bonus = healer.get_skill_level( skill ) / 2 +
+                                 get_proficiency_bonus( healer );
         // bleed is the base value at First Aid 0; skill and proficiencies add multiples of it.
         float total_bonus = bleed * ( 1.0f + prof_bonus );
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::BLEED_STOP_BONUS,
@@ -3978,6 +4081,25 @@ int heal_actor::finish_using( Character &healer, Character &patient, item &it,
 
         practice_amount += infect * 10.0f;
     }
+    for( const cure_data &cure : cures ) {
+        const std::optional<bodypart_id> on = cure_target( patient, cure.effect, healed );
+        if( !on ) {
+            continue;
+        }
+        if( x_in_y( cure.chance, 1.0f ) ) {
+            const time_duration left = patient.get_effect_dur( cure.effect, *on );
+            patient.remove_effect( cure.effect, *on );
+            if( !cure.replace_with.is_null() ) {
+                patient.add_effect( cure.replace_with, left );
+            }
+            if( u_see ) {
+                add_msg( m_good, "%s", cure.message.translated() );
+            }
+        } else if( u_see ) {
+            add_msg( m_warning, "%s", cure.fail_message.translated() );
+        }
+        practice_amount += cure.chance * 3.0f;
+    }
 
     healer.add_msg_if_player( _( "You finish using the %s." ), it.tname() );
 
@@ -4029,11 +4151,16 @@ int heal_actor::finish_using( Character &healer, Character &patient, item &it,
     }
     practice_amount = std::max( 9.0f, practice_amount );
 
-    healer.practice( skill_firstaid, static_cast<int>( practice_amount ) );
-    healer.practice_proficiency( proficiency_prof_wound_care,
-                                 time_duration::from_turns( practice_amount ) );
-    healer.practice_proficiency( proficiency_prof_wound_care_expert,
-                                 time_duration::from_turns( practice_amount ) );
+    healer.practice( skill, static_cast<int>( practice_amount ) );
+    for( const proficiency_bonus &prof : proficiencies ) {
+        healer.practice_proficiency( prof.id, time_duration::from_turns( practice_amount ) );
+    }
+
+    for( const effect_on_condition_id &eoc : finish_eocs ) {
+        dialogue d( get_talker_for( healer ), get_talker_for( patient ) );
+        write_var_value( var_type::context, "bodypart", &d, healed.id().str() );
+        eoc->activate( d );
+    }
     return 1;
 }
 
@@ -4042,7 +4169,7 @@ static bodypart_id pick_part_to_heal(
     const std::string &menu_header,
     int limb_power, int head_bonus, int torso_bonus,
     int bleed_stop, float bite_chance, float infect_chance,
-    bool force, float bandage_power, float disinfectant_power )
+    bool force, float bandage_power, float disinfectant_power, const heal_actor &actor )
 {
     const bool bleed = bleed_stop > 0;
     const bool bite = bite_chance > 0.0f;
@@ -4050,14 +4177,19 @@ static bodypart_id pick_part_to_heal(
     const bool precise = &healer == &patient ? false :
                          /** @EFFECT_PER slightly increases precision when using first aid on someone else */
                          /** @EFFECT_FIRSTAID increases precision when using first aid on someone else */
-                         ( ( healer.get_skill_level( skill_firstaid ) +
+                         ( ( healer.get_skill_level( actor.skill ) +
                              ( healer.has_proficiency( proficiency_prof_wound_care ) ? 0 : 1 ) +
                              ( healer.has_proficiency( proficiency_prof_wound_care ) ? 0 : 2 ) ) * 4 +
                            healer.get_per() >= 20 );
+    // a part with an effect one of the item's cures removes can be chosen
+    const std::function<bool( const bodypart_id & )> cures = [&actor, &patient](
+    const bodypart_id & bp ) {
+        return actor.can_cure( patient, bp );
+    };
     while( true ) {
         bodypart_id healed_part = patient.body_window( menu_header, force, precise,
                                   limb_power, head_bonus, torso_bonus,
-                                  bleed_stop, bite_chance, infect_chance, bandage_power, disinfectant_power );
+                                  bleed_stop, bite_chance, infect_chance, bandage_power, disinfectant_power, cures );
         if( healed_part == bodypart_str_id::NULL_ID() ) {
             return healed_part;
         }
@@ -4069,17 +4201,20 @@ static bodypart_id pick_part_to_heal(
 
         if( ( infect && patient.has_effect( effect_infected, healed_part ) ) ||
             ( bite && patient.has_effect( effect_bite, healed_part ) ) ||
-            ( bleed && patient.has_effect( effect_bleed, healed_part ) ) ) {
+            ( bleed && patient.has_effect( effect_bleed, healed_part ) ) ||
+            actor.can_cure( patient, healed_part ) ) {
             return healed_part;
         }
 
         if( patient.is_limb_broken( healed_part ) ) {
-            if( healed_part == bodypart_id( "arm_l" ) || healed_part == bodypart_id( "arm_r" ) ) {
+            if( healed_part->primary_limb_type() == bp_type::arm ) {
                 add_msg( m_info, _( "That arm is broken.  It needs surgical attention or a splint." ) );
-            } else if( healed_part == bodypart_id( "leg_l" ) || healed_part == bodypart_id( "leg_r" ) ) {
+            } else if( healed_part->primary_limb_type() == bp_type::leg ) {
                 add_msg( m_info, _( "That leg is broken.  It needs surgical attention or a splint." ) );
             } else {
-                debugmsg( "That body part is bugged.  It needs developer's attention." );
+                //~ %s: body part name
+                add_msg( m_info, _( "Your %s is broken.  It needs surgical attention or a splint." ),
+                         body_part_name( healed_part ) );
             }
 
             continue;
@@ -4123,6 +4258,7 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
             if( patient.has_effect( effect_bite, part_id ) && disinfectant_power > 0 ) {
                 damage += bite * patient.get_effect_dur( effect_bite, part_id ) / 1_minutes;
             }
+            damage += static_cast<int>( cure_urgency( patient, part_id ) );
             if( damage > highest_damage ) {
                 highest_damage = damage;
                 healed = part_id;
@@ -4134,7 +4270,7 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
             const std::string menu_header = _( "Select a body part for: " ) + it.tname();
             healed = pick_part_to_heal( healer, patient, menu_header, limb_power, head_bonus, torso_bonus,
                                         get_stopbleed_level( healer ), bite, infect, force, get_bandaged_level( healer ),
-                                        get_disinfected_level( healer ) );
+                                        get_disinfected_level( healer ), *this );
             if( healed == bodypart_str_id::NULL_ID() ) {
                 add_msg( m_info, _( "Never mind." ) );
                 return bodypart_str_id::NULL_ID().id(); // canceled
@@ -4153,7 +4289,7 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
                                         patient.disp_name(), it.tname() );
         healed = pick_part_to_heal( healer, patient, menu_header, limb_power, head_bonus, torso_bonus,
                                     get_stopbleed_level( healer ), bite, infect, force, get_bandaged_level( healer ),
-                                    get_disinfected_level( healer ) );
+                                    get_disinfected_level( healer ), *this );
     }
 
     return healed;
@@ -4219,6 +4355,62 @@ void heal_actor::info( const item &, std::vector<iteminfo> &dump ) const
         }
     }
     dump.emplace_back( "HEAL", _( "Moves to use: " ), move_cost );
+}
+
+void smoke_actor::load( const JsonObject &obj, const std::string & )
+{
+    mandatory( obj, false, "lit_item", lit_item );
+    optional( obj, false, "burn_time", burn_time, 4_minutes );
+    optional( obj, false, "hunger", hunger, 0 );
+    optional( obj, false, "thirst", thirst, 0 );
+}
+
+void smoke_actor::finalize( const itype_id &my_item_type )
+{
+    if( !item::type_is_defined( lit_item ) ) {
+        debugmsg( "Item %s has a smoke action with invalid lit_item %s", my_item_type.str(),
+                  lit_item.str() );
+    } else if( !lit_item->has_flag( flag_LITCIG ) ) {
+        // without LITCIG it would never burn down nor go out
+        debugmsg( "Item %s has a smoke action whose lit_item %s lacks the LITCIG flag",
+                  my_item_type.str(), lit_item.str() );
+    }
+}
+
+std::optional<int> smoke_actor::use( Character *p, item &it, map *,
+                                     const tripoint_bub_ms & ) const
+{
+    if( p == nullptr ) {
+        return std::nullopt;
+    }
+    if( const std::optional<std::string> refusal = iuse::can_smoke( *p ) ) {
+        p->add_msg_if_player( m_info, "%s", *refusal );
+        return std::nullopt;
+    }
+    item lit( lit_item, calendar::turn );
+    lit.item_counter = to_turns<int>( burn_time );
+    lit.active = true;
+    // a lit item that isn't worn or wielded goes out at once
+    const ret_val<void> wear = p->can_wear( lit );
+    if( !wear.success() ) {
+        p->add_msg_if_player( m_info, "%s", wear.str() );
+        return std::nullopt;
+    }
+    p->mod_hunger( hunger );
+    p->mod_thirst( thirst );
+    p->use_charges_if_avail( itype_fire, 1 );
+    p->wear_item( lit, false );
+    p->add_msg_if_player( m_neutral, _( "You light a %s." ), it.tname() );
+    if( p->get_effect_dur( effect_cig ) > 10_minutes * ( p->addiction_level(
+                addiction_nicotine ) + 1 ) ) {
+        p->add_msg_if_player( m_bad, _( "Ugh, too much smoke… you feel nasty." ) );
+    }
+    return 1;
+}
+
+std::unique_ptr<iuse_actor> smoke_actor::clone() const
+{
+    return std::make_unique<smoke_actor>( *this );
 }
 
 place_trap_actor::place_trap_actor( const std::string &type ) :

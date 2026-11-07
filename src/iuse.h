@@ -2,6 +2,8 @@
 #ifndef CATA_SRC_IUSE_H
 #define CATA_SRC_IUSE_H
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,9 +26,39 @@ class JsonValue;
 class item;
 class map;
 class monster;
+class time_duration;
 struct iteminfo;
 struct washing_rules;
 template<typename T> class ret_val;
+
+/**
+ * The JSON parameters of an object-form use action of a C++ use function that takes some, such as
+ * { "type": "FISH_ROD", "duration": "3 h" }. Such a function is registered with the parameters it
+ * reads (Item_factory::add_iuse_with_params); any other member of the object is an error.
+ */
+class iuse_params
+{
+    public:
+        enum class kind : int {
+            integer,
+            // a time string or a number of turns
+            duration,
+            string
+        };
+        struct param {
+            std::string name;
+            kind type;
+        };
+        /** Reads the declared parameters that `jo` has. */
+        void load( const JsonObject &jo, const std::vector<param> &declared );
+        int get_int( const std::string &name, int def ) const;
+        time_duration get_duration( const std::string &name, const time_duration &def ) const;
+        std::string get_string( const std::string &name, const std::string &def ) const;
+    private:
+        // integers, and durations in turns
+        std::map<std::string, int64_t> numbers;
+        std::map<std::string, std::string> strings;
+};
 
 // iuse methods return the number of charges expended, which is usually "1", or no value.
 // Returning 0 indicates the item has not been used up, though it may have been successfully activated.
@@ -106,7 +138,9 @@ std::optional<int> fill_pit( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> firecracker_pack_act( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> fish_trap( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> fish_trap_tick( Character *, item *, const tripoint_bub_ms & );
-std::optional<int> fishing_rod( Character *, item *, const tripoint_bub_ms & );
+// JSON parameters: "duration", how long the fishing activity lasts (default 5 h)
+std::optional<int> fishing_rod( Character *, item *, const tripoint_bub_ms &,
+                                const iuse_params &params = iuse_params() );
 std::optional<int> fitness_check( Character *p, item *it, const tripoint_bub_ms & );
 std::optional<int> foodperson( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> foodperson_voice( Character *, item *, const tripoint_bub_ms & );
@@ -133,7 +167,9 @@ std::optional<int> magic_8_ball( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> measure_resonance( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> change_outfit( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> ebooksave( Character *, item *, const tripoint_bub_ms & );
-std::optional<int> makemound( Character *, item *, const tripoint_bub_ms & );
+// JSON parameters: "moves", how long churning up the soil takes (default 18000)
+std::optional<int> makemound( Character *, item *, const tripoint_bub_ms &,
+                              const iuse_params &params = iuse_params() );
 std::optional<int> mace( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> manage_exosuit( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> mininuke( Character *, item *, const tripoint_bub_ms & );
@@ -221,7 +257,6 @@ void play_music( Character *p, const tripoint_bub_ms &source, int volume, int ma
                  bool play_sounds = true );
 void make_music( Character *p, const tripoint_bub_ms &source, int volume, int max_morale,
                  bool play_sounds = true );
-std::optional<int> purify_water( Character *p, item *purifier, item_location &water );
 int towel_common( Character *, item *, bool );
 
 // Helper for validating a potential target of robot control
@@ -296,6 +331,9 @@ heating_requirements heating_requirements_for_weight( const units::mass &,
 
 using use_function_pointer = std::optional<int> ( * )( Character *, item *,
                              const tripoint_bub_ms & );
+// A C++ use function that takes JSON parameters (see iuse_params).
+using use_function_pointer_with_params = std::optional<int> ( * )( Character *, item *,
+        const tripoint_bub_ms &, const iuse_params & );
 
 class iuse_actor
 {

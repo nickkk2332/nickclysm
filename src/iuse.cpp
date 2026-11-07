@@ -291,7 +291,6 @@ static const itype_id itype_mws_weather_sensor_array( "mws_weather_sensor_array"
 static const itype_id itype_nicotine_liquid( "nicotine_liquid" );
 static const itype_id itype_paper( "paper" );
 static const itype_id itype_pot( "pot" );
-static const itype_id itype_pur_tablets( "pur_tablets" );
 static const itype_id itype_radio_car_on( "radio_car_on" );
 static const itype_id itype_radio_mod( "radio_mod" );
 static const itype_id itype_radio_on( "radio_on" );
@@ -309,8 +308,6 @@ static const itype_id itype_towel( "towel" );
 static const itype_id itype_towel_wet( "towel_wet" );
 static const itype_id itype_water( "water" );
 static const itype_id itype_water_clean( "water_clean" );
-static const itype_id itype_water_murky( "water_murky" );
-static const itype_id itype_water_purifying_active( "water_purifying_active" );
 static const itype_id itype_wax( "wax" );
 static const itype_id itype_weather_reader( "weather_reader" );
 
@@ -1437,7 +1434,8 @@ static void poor_fishing_spot_message( Character &p )
     p.add_msg_if_player( m_info, _( "You doubt you will have much luck catching fish here." ) );
 }
 
-std::optional<int> iuse::fishing_rod( Character *p, item *it, const tripoint_bub_ms & )
+std::optional<int> iuse::fishing_rod( Character *p, item *it, const tripoint_bub_ms &,
+                                      const iuse_params &params )
 {
     if( p->is_npc() ) {
         // Long actions - NPCs don't like those yet.
@@ -1477,7 +1475,8 @@ std::optional<int> iuse::fishing_rod( Character *p, item *it, const tripoint_bub
 
     p->add_msg_if_player( _( "You cast your line and wait to hook something…" ) );
     p->assign_activity( fish_activity_actor( item_location( *p, it ),
-                        g->get_fishable_locations_abs( MAX_VIEW_DISTANCE, *found ), 5_hours ) );
+                        g->get_fishable_locations_abs( MAX_VIEW_DISTANCE, *found ),
+                        params.get_duration( "duration", 5_hours ) ) );
     return 0;
 }
 
@@ -2171,59 +2170,6 @@ std::optional<int> iuse::water_purifier( Character *p, item *it, const tripoint_
 }
 
 
-// Part of iuse::water_tablets, but with the user interaction split out so it can be unit tested
-std::optional<int> iuse::purify_water( Character *p, item *purifier, item_location &water )
-{
-    const double default_ratio = 4; // Existing pur_tablets will not have the var
-    double max_water_per_tablet_d = purifier->get_var( "water_per_tablet", default_ratio );
-    const int max_water_per_tablet = static_cast<int>( std::lround( max_water_per_tablet_d ) );
-    if( max_water_per_tablet < 1 ) {
-        debugmsg( _( "ERROR: %s set to purify only %d water each.  Nothing was purified." ),
-                  purifier->typeId().str(), max_water_per_tablet );
-        return std::nullopt;
-    }
-
-    const std::vector<item *> liquids = water.items_with( []( const item & it ) {
-        return it.typeId() == itype_water || it.typeId() == itype_water_murky;
-    } );
-    int charges_of_water = 0;
-    for( const item *water : liquids ) {
-        charges_of_water += water->charges;
-    }
-    float to_consume_f = charges_of_water;
-    to_consume_f /= max_water_per_tablet;
-
-    const int available = p->crafting_inventory().count_item( itype_pur_tablets );
-    if( available * max_water_per_tablet >= charges_of_water ) {
-        int to_consume = std::ceil( to_consume_f );
-        p->add_msg_if_player( m_info, _( "Purifying %d water using %d %s" ), charges_of_water,
-                              to_consume, purifier->tname( to_consume ) );
-        // Pull from surrounding map first because it will update to_consume
-        get_map().use_amount( p->pos_bub(), PICKUP_RANGE, itype_pur_tablets, to_consume );
-        // Then pull from inventory
-        if( to_consume > 0 ) {
-            p->use_amount( itype_pur_tablets, to_consume );
-        }
-    } else {
-        p->add_msg_if_player( m_info,
-                              _( "You need %d tablets to purify that.  You only have %d" ),
-                              charges_of_water / max_water_per_tablet,  available );
-        return std::nullopt;
-    }
-
-    // Try to match crafting recipe at 5m for 1, 90% batch time savings:
-    int req_moves = to_moves<int>( 5_minutes );
-    req_moves = req_moves * 0.1 * to_consume_f;
-    p->mod_moves( -req_moves );
-
-    for( item *water : liquids ) {
-        water->convert( itype_water_purifying_active, p ).poison = 0;
-        water->set_birthday( calendar::turn );
-    }
-    // We've already consumed the tablets, so don't try to consume them again
-    return std::nullopt;
-}
-
 std::optional<int> iuse::directional_antenna( Character *p, item *it, const tripoint_bub_ms & )
 {
     // Find out if we have an active radio
@@ -2568,7 +2514,8 @@ std::optional<int> iuse::crowbar( Character *p, item *it, const tripoint_bub_ms 
     return std::nullopt;
 }
 
-std::optional<int> iuse::makemound( Character *p, item *it, const tripoint_bub_ms & )
+std::optional<int> iuse::makemound( Character *p, item *it, const tripoint_bub_ms &,
+                                    const iuse_params &params )
 {
     if( !p ) {
         debugmsg( "%s called action makemound that requires character but no character is present",
@@ -2594,7 +2541,8 @@ std::optional<int> iuse::makemound( Character *p, item *it, const tripoint_bub_m
     if( here.has_flag( ter_furn_flag::TFLAG_PLOWABLE, pnt ) &&
         !here.has_flag( ter_furn_flag::TFLAG_PLANT, pnt ) ) {
         p->add_msg_if_player( _( "You start churning up the earth here." ) );
-        p->assign_activity( churn_activity_actor( 18000, item_location( *p, it ) ) );
+        p->assign_activity( churn_activity_actor( std::max( 1, params.get_int( "moves", 18000 ) ),
+                            item_location( *p, it ) ) );
         p->activity.placement = here.get_abs( pnt );
         return 1;
     } else {

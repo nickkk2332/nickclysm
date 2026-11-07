@@ -56,6 +56,7 @@ class talker_item_const: public const_talker_cloner<talker_item_const>
         units::energy power_max() const override;
         int get_artifact_resonance() const override;
 
+        int charges_of( const itype_id &item_id ) const override;
         int get_count() const override;
         int coverage_at( bodypart_id & ) const override;
         int encumbrance_at( bodypart_id & ) const override;

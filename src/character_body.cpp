@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -1098,7 +1099,8 @@ void Character::update_stomach( const time_point &from, const time_point &to )
 bodypart_id Character::body_window( const std::string &menu_header,
                                     bool show_all, bool precise,
                                     int normal_bonus, int /* head_bonus */, int /* torso_bonus */,
-                                    int bleed, float bite, float infect, float bandage_power, float disinfectant_power ) const
+                                    int bleed, float bite, float infect, float bandage_power, float disinfectant_power,
+                                    const std::function<bool( const bodypart_id & )> &also_treats ) const
 {
     /* This struct establishes some kind of connection between the hp_part (which can be healed and
      * have HP) and the body_part. Note that there are more body_parts than hp_parts. For example:
@@ -1143,7 +1145,8 @@ bodypart_id Character::body_window( const std::string &menu_header,
         // This will c_light_gray if the part does not have any effects cured by the item/effect
         // (e.g. it cures only bites, but the part does not have a bite effect)
         const nc_color state_col = display::limb_color( *this, bp, bleed > 0, bite > 0.0f, infect > 0.0f );
-        const bool has_curable_effect = state_col != c_light_gray;
+        const bool has_curable_effect = state_col != c_light_gray || ( also_treats &&
+                                        also_treats( bp ) );
         // The same as in the main UI sidebar. Independent of the capability of the healing item/effect!
         const nc_color all_state_col = display::limb_color( *this, bp, true, true, true );
         // Broken means no HP can be restored, it requires surgical attention.

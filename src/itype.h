@@ -1391,6 +1391,19 @@ struct item_melee_damage {
     void deserialize( const JsonObject &jo );
 };
 
+/** The "smoke" block of a lit smokable (LITCIG): what its puffs and burning out do. */
+struct itype_smoke_data {
+    /** Given to the smoker on each puff; null for none. */
+    efftype_id puff_effect = efftype_id::NULL_ID();
+    /** How long a puff's effect lasts: halved by TOLERANCE, doubled by LIGHTWEIGHT. */
+    time_duration puff_duration = 15_seconds;
+    /** Run on each puff, with the smoker as u. */
+    std::vector<effect_on_condition_id> puff_eocs;
+    /** Run when it burns out, with the smoker (if any) as u. */
+    std::vector<effect_on_condition_id> burn_out_eocs;
+    void load( const JsonObject &jo, std::string_view src );
+};
+
 struct itype {
         friend class Item_factory;
         friend struct mod_tracker;
@@ -1626,6 +1639,9 @@ struct itype {
         * Tools revert to this when they run out of charges
         */
         std::optional<item_transformation> transform_into;
+
+        /** How a lit smokable (LITCIG) acts while it burns; null for the default puffs. */
+        cata::value_ptr<itype_smoke_data> smoke;
 
         /**
         * Space occupied by items of this type

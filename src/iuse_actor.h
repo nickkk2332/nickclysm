@@ -978,6 +978,42 @@ class heal_actor : public iuse_actor
         int used_up_item_charges = 1;
         std::set<flag_id> used_up_item_flags;
 
+        /** The skill that scales the healing and is practised (firstaid). */
+        skill_id skill;
+        /** A proficiency that makes the healer faster and better at it. */
+        struct proficiency_bonus {
+            proficiency_id id;
+            /** Multiplies the time it takes when the healer has the proficiency. */
+            float time_mult = 1.0f;
+            /** Added to the skill level for bandaging, disinfecting and stopping bleeding. */
+            float bonus = 0.0f;
+            void deserialize( const JsonObject &jo );
+        };
+        /** The proficiencies that help, all practised (wound care and expert wound care). */
+        std::vector<proficiency_bonus> proficiencies;
+        /** An effect the item can remove, like bite and infect. */
+        struct cure_data {
+            efftype_id effect;
+            /** Chance (0 to 1) to remove it. */
+            float chance = 1.0f;
+            /** Effect given, for as long as the cured one had left, when it's removed. */
+            efftype_id replace_with = efftype_id::NULL_ID();
+            translation message;
+            translation fail_message;
+            void deserialize( const JsonObject &jo );
+        };
+        std::vector<cure_data> cures;
+        /** Run when the healing is done: u is the healer, npc the patient. */
+        std::vector<effect_on_condition_id> finish_eocs;
+
+        /** Moves it takes `healer` to use the item, after proficiencies. */
+        int get_move_cost( const Character &healer ) const;
+        /** What the healer's proficiencies add to the skill level. */
+        float get_proficiency_bonus( const Character &healer ) const;
+        /** Whether one of the cures can remove an effect from `healed` (or from the whole body). */
+        bool can_cure( const Character &patient, const bodypart_id &healed ) const;
+        /** How much treating `healed` would cure, for choosing a part: chance times minutes left. */
+        float cure_urgency( const Character &patient, const bodypart_id &healed ) const;
         /** How much hp would `healer` heal using this actor on `healed` body part. */
         int get_heal_value( const Character &healer, bodypart_id healed ) const;
         /** How many intensity levels will be applied using this actor by `healer`. */
@@ -991,15 +1027,41 @@ class heal_actor : public iuse_actor
 
         bodypart_id use_healing_item( Character &healer, Character &patient, item &it, bool force ) const;
 
-        explicit heal_actor( const std::string &type = "heal" ) : iuse_actor( type ) {}
+        explicit heal_actor( const std::string &type = "heal" );
 
         ~heal_actor() override = default;
         void load( const JsonObject &obj, const std::string & ) override;
+        void finalize( const itype_id &my_item_type ) override;
         using iuse_actor::use;
         std::optional<int> use( Character *p, item &it, map *here,
                                 const tripoint_bub_ms &pos ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+};
+
+/**
+ * Lights a smokable, as SMOKING does a cigarette: the smoker wears its lit version, which burns
+ * for a while (a LITCIG item).
+ */
+class smoke_actor : public iuse_actor
+{
+    public:
+        /** What the item becomes when lit. */
+        itype_id lit_item;
+        /** How long the lit item burns. */
+        time_duration burn_time = 4_minutes;
+        /** Added to the smoker's hunger and thirst when it's lit. */
+        int hunger = 0;
+        int thirst = 0;
+
+        explicit smoke_actor( const std::string &type = "smoke" ) : iuse_actor( type ) {}
+        ~smoke_actor() override = default;
+        void load( const JsonObject &obj, const std::string & ) override;
+        void finalize( const itype_id &my_item_type ) override;
+        using iuse_actor::use;
+        std::optional<int> use( Character *p, item &it, map *here,
+                                const tripoint_bub_ms &pos ) const override;
+        std::unique_ptr<iuse_actor> clone() const override;
 };
 
 class place_trap_actor : public iuse_actor

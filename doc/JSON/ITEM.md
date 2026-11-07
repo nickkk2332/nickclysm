@@ -1169,6 +1169,8 @@ Every use action of an item has an id, which the item's use menu, the item actio
 
 Each action with an id of its own gets its own entry in the item action menu (when its type is listed in `item_actions.json`), without a key binding.  Code and saves that name an action by its type, such as `{ "u_activate": "cast_spell" }`, the C++ that looks for an item's `heal` or `firestarter` action, or an activity saved before ids existed, get the item's action with that id, or else its first action of that type in id order.
 
+A built-in function in object form takes no other fields, except those it lists in [JSON_FLAGS.md](JSON_FLAGS.md) (any other field is a load error), for example `{ "type": "FISH_ROD", "duration": "3 h" }`.
+
 A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more actions and `delete` actions by id.  In `delete`, a string is an action's id (its type when it has no id); an object or array names the action it would load as, by its `"id"` or else its type, and nothing else of it is read.  Deleting an action also removes its `ammo_scale`.  An item that redefines an inherited action keeps the `ammo_scale` it inherited for that id; give the new action another id to set its own.
 
 ```jsonc
@@ -1275,6 +1277,13 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
     [ "mutagen", 125 ]
   ] 
 },
+"use_action": {
+  "type": "smoke",                  // Light a smokable (cigarette, cigar...) and smoke it over time, as SMOKING does the vanilla ones.  Lighting it uses one charge of fire; it's refused while the smoker is already smoking something, has nothing to light it with or can't wear the lit item (a gas mask on)
+  "lit_item": "cig_lit",            // Mandatory.  What the smoker wears while it burns: an item with the LITCIG flag and a "revert_to" (the butt).  It burns while worn or wielded, and goes out when put away
+  "burn_time": "4 m",               // (optional) How long it burns.  Default 4 minutes
+  "hunger": -3,                     // (optional) Added to the smoker's hunger when it's lit.  Default 0
+  "thirst": 2                       // (optional) Added to the smoker's thirst when it's lit.  Default 0
+},                                  // On a comestible, its usual consumption effects (stim, fun, addiction, consumption_effect_on_conditions...) apply when it's lit, and it takes one minute to light from the eat menu.  The puffs are the lit item's: see "Lit smokables" below
 "use_action": {
   "type": "place_monster",          // Place a turret / manhack / whatever monster on the map
   "monster_id": "mon_manhack",      // Monster ID, see monsters.json
@@ -1429,11 +1438,11 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
 },
 "use_action": {
   "type": "heal",               // Heal damage, possibly some statuses
-  "limb_power": 10,             // How much hp to restore when healing limbs?  At least one of limb_power, head_power, torso_power, bandages_power, bleed, disinfectant_power, bite, infect or effects is needed
+  "limb_power": 10,             // How much hp to restore when healing limbs?  At least one of limb_power, head_power, torso_power, bandages_power, bleed, disinfectant_power, bite, infect, effects, cures or finish_eocs is needed
   "bandages_power": 1,          // (optional) Strength of the "bandaged" effect it applies, which heals over time.  Default 0
   "bandages_scaling": 0.25,     // (optional) Extra bandages_power per first aid level.  Defaults to 0.25 * bandages_power
-  "head_power": 7,              // How much hp to restore when healing head? If unset, defaults to 0.8 * limb_power
-  "torso_power": 15,            // How much hp to restore when healing torso? If unset, defaults to 1.5 * limb_power
+  "head_power": 7,              // How much hp to restore when healing head? If unset, defaults to 0.8 * limb_power.  Used for every body part whose (first) limb type is "head"
+  "torso_power": 15,            // How much hp to restore when healing torso? If unset, defaults to 1.5 * limb_power.  Used for every body part whose (first) limb type is "torso"; limb_power is used for the others
   "bleed": 4,                   // How many bleed effect intensity levels can be reduced by it. Base value
   "disinfectant_power": 4,      // Quality of disinfection. Antiseptic is 4, alcohol wipe is 2; float
   "disinfectant_scaling": 1.0,  // (optional) Extra disinfectant_power per first aid level.  Defaults to 0.25 * disinfectant_power
@@ -1446,6 +1455,16 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
   "effects": [                  // Effects to apply to patient on finished healing. Same syntax as in consume_drug effects
     { "id": "pkill1", "duration": 120 }
   ],
+  "skill": "firstaid",          // (optional) The skill that scales all the healing above (the "per first aid level" of the scaling fields) and that using the item practises.  Default "firstaid"
+  "proficiencies": [            // (optional) Proficiencies that help, all practised by using the item.  Default: the two below.  An empty list means none
+    { "id": "prof_wound_care", "time_mult": 0.5, "bonus": 1 },        // time_mult (default 1) multiplies the time to use the item when the healer has it;
+    { "id": "prof_wound_care_expert", "time_mult": 0.5, "bonus": 2 }  // bonus (default 0) is added to the skill level for bandaging, disinfecting and stopping bleeding
+  ],
+  "cures": [                    // (optional) Other effects it can remove, like bite and infect.  The effect is looked for on the treated body part, then on the whole body (an effect on no part, such as poison).  A part with one of them can be chosen for treatment even at full hp
+    { "effect": "venom", "chance": 1.0, "replace_with": "recover", "message": "The venom is drawn out.", "fail_message": "Some venom is still in the wound." }
+                                // chance (default 1) to remove it; replace_with (optional) is given to the whole body for as long as the cured effect had left; message and fail_message (optional) are shown when the patient can be seen
+  ],
+  "finish_eocs": [ "EOC_AFTER_HEAL" ], // (optional) Effect on conditions run when the healing is done, after the effects above: u is the healer, npc the patient, and the context variable _bodypart holds the id of the treated body part
   "used_up_item": "rag_bloody"  // Item produced on successful healing. If the healing item is a tool, it is turned into the new type. Otherwise a new item is produced
                                 // Can also be an object: { "id": "rag_bloody", "quantity": 1, "charges": 1, "flags": [ "FILTHY" ] }
 },
@@ -1633,6 +1652,19 @@ Once the duration of the timer has passed the `"countdown_action"` is executed. 
 ```
 
 Additionally `"revert_to"` can be defined in item definitions (not in use action). The item is deactivated and turned to this type after the `"countdown_action"`. If no revert_to is specified the item is destroyed.
+
+### Lit smokables
+
+A lit cigarette, cigar or joint is an item with the `LITCIG` flag, which the `smoke` use action (or `SMOKING`) makes the smoker wear. While worn or wielded it burns until its item counter (the `smoke` action's `burn_time`) runs out, then turns into its `"revert_to"` (the butt); put away, it goes out. About every ten turns the smoker takes a puff: by default a `TOBACCO` item gives the `cig` effect for 15 seconds and any other item `weed_high` for 7 seconds (halved by the `TOLERANCE` trait, doubled by `LIGHTWEIGHT`). A `"smoke"` block on the lit item replaces that puff (on `copy-from`, a `"smoke"` block replaces the inherited one whole):
+
+```jsonc
+"smoke": {
+  "puff_effect": "cig",             // (optional) Effect given on each puff.  Default none
+  "puff_duration": "15 s",          // (optional) How long it lasts: halved by TOLERANCE, doubled by LIGHTWEIGHT.  Default 15 seconds
+  "puff_eocs": [ "EOC_HERB_PUFF" ], // (optional) Effect on conditions run on each puff, with the smoker as u (there is no npc) and the lit item's id in the context variable _id
+  "burn_out_eocs": [ "EOC_HERB_DONE" ] // (optional) Run when it burns out, after it turned into its butt, with the smoker (if any) as u and the lit item's id in _id
+}
+```
 
 
 ### Item Properties

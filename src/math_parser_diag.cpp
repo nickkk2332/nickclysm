@@ -3329,6 +3329,114 @@ double remaining_weight_eval( const_dialogue const &d, char scope,
                                 "remaining_weight" ) ).remaining_weight );
 }
 
+// USE-J10: the state of an item talker: active, countdown, item_counter, ammo and charges.
+item_location &mutable_item_talker( dialogue &d, char scope, std::string_view func )
+{
+    item_location *const it = d.actor( is_beta( scope ) )->get_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "For %s(), talker must be an item", func );
+    }
+    return *it;
+}
+
+// A value written to an item's state, as an int kept within 0 and INT_MAX.
+int item_state_amount( double val )
+{
+    return static_cast<int>( std::llround( std::clamp( val, 0.0, static_cast<double>( INT_MAX ) ) ) );
+}
+
+// Its weight or contents changed: the carrier's and container's caches must know.
+void item_state_changed( item_location &loc )
+{
+    loc->on_contents_changed();
+    if( loc.has_parent() ) {
+        loc.parent_item()->on_contents_changed();
+    }
+    if( Character *const carrier = loc.carrier() ) {
+        carrier->invalidate_weight_carried_cache();
+    }
+}
+
+double item_active_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    return container_talker( d, scope, "item_active" )->active ? 1 : 0;
+}
+
+void item_active_ass( double val, dialogue &d, char scope,
+                      std::vector<diag_value> const & /* params */,
+                      diag_kwargs const & /* kwargs */ )
+{
+    item_location &loc = mutable_item_talker( d, scope, "item_active" );
+    if( is_true( val ) ) {
+        loc->active = true;
+        // an item on the ground or in a vehicle is processed once it is in the active item list
+        loc.make_active();
+    } else {
+        // as transform_item: an item with a temperature stays active to keep it up to date
+        loc->active = loc->has_temperature();
+    }
+}
+
+double item_counter_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */,
+                          diag_kwargs const & /* kwargs */ )
+{
+    return container_talker( d, scope, "item_counter" )->item_counter;
+}
+
+void item_counter_ass( double val, dialogue &d, char scope,
+                       std::vector<diag_value> const & /* params */,
+                       diag_kwargs const & /* kwargs */ )
+{
+    mutable_item_talker( d, scope, "item_counter" )->item_counter = item_state_amount( val );
+}
+
+itype_id item_ammo_param( const_dialogue const &d, diag_value const &param )
+{
+    const itype_id ammo( param.str( d ) );
+    if( !ammo.is_valid() || !ammo->ammo ) {
+        throw math::runtime_error( R"(For item_ammo(), "%s" is not an ammo)", ammo.str() );
+    }
+    return ammo;
+}
+
+double item_ammo_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const & /* kwargs */ )
+{
+    item const *const it = container_talker( d, scope, "item_ammo" );
+    return it->ammo_remaining_of( item_ammo_param( d, params[0] ) );
+}
+
+void item_ammo_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                    diag_kwargs const & /* kwargs */ )
+{
+    item_location &loc = mutable_item_talker( d, scope, "item_ammo" );
+    const itype_id ammo = item_ammo_param( d, params[0] );
+    const ammotype &type = ammo->ammo->type;
+    // the magazine that takes this ammo, or the item's own magazine pocket
+    item *target = loc.get_item();
+    for( item *mag : loc->magazines_current() ) {
+        if( mag->ammo_capacity( type ) > 0 ) {
+            target = mag;
+            break;
+        }
+    }
+    const int capacity = target->ammo_capacity( type );
+    if( capacity <= 0 ) {
+        // nothing takes it now: no magazine, or a pocket for another ammo
+        return;
+    }
+    const int amount = std::min( item_state_amount( val ), capacity );
+    if( amount == target->ammo_remaining_of( ammo ) ) {
+        return;
+    }
+    // what the magazine held is replaced: 0 empties it
+    target->ammo_set( ammo, amount );
+    item_state_changed( loc );
+}
+
 vehicle const *vehicle_talker( const_dialogue const &d, char scope, std::string_view func )
 {
     vehicle const *const veh = d.const_actor( is_beta( scope ) )->get_const_vehicle();
@@ -4047,7 +4155,10 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "hp", { "un", 1, hp_eval, hp_ass } },
     { "hp_max", { "un", 1, hp_max_eval } },
     { "is_hallucination", { "un", 0, is_hallucination_eval } },
+    { "item_active", { "un", 0, item_active_eval, item_active_ass } },
+    { "item_ammo", { "un", 1, item_ammo_eval, item_ammo_ass } },
     { "item_count", { "un", 1, item_count_eval } },
+    { "item_counter", { "un", 0, item_counter_eval, item_counter_ass } },
     { "item_temp", { "un", 0, item_temp_eval, item_temp_ass } },
     { "item_rad", { "un", 1, item_rad_eval, {}, { "aggregate" } } },
     { "item_charges", { "un", 0, item_charges_eval, item_charges_ass } },

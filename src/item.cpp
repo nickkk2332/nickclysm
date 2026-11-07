@@ -25,6 +25,7 @@
 #include "character_id.h"
 #include "character_martial_arts.h"
 #include "color.h"
+#include "condition.h"
 #include "coordinates.h"
 #include "craft_command.h"
 #include "craft_reservation.h"
@@ -32,6 +33,7 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect.h" // for weed_msg
+#include "effect_on_condition.h"
 #include "enum_bitset.h"
 #include "enums.h"
 #include "event.h"
@@ -4630,6 +4632,18 @@ bool item::process_fake_smoke( map &here, Character * /*carrier*/, const tripoin
     return false;
 }
 
+// The EOCs of a lit smokable's "smoke" block, with the smoker (if any) as u and the lit item's
+// id as _id. The item isn't a talker: an EOC could destroy it while it's processed.
+static void run_smoke_eocs( const std::vector<effect_on_condition_id> &eocs, Character *smoker,
+                            const itype_id &lit )
+{
+    for( const effect_on_condition_id &eoc : eocs ) {
+        dialogue d( smoker != nullptr ? get_talker_for( *smoker ) : nullptr, nullptr );
+        write_var_value( var_type::context, "id", &d, lit.str() );
+        eoc->activate( d );
+    }
+}
+
 bool item::process_litcig( map &here, Character *carrier, const tripoint_bub_ms &pos )
 {
     // cig dies out
@@ -4637,10 +4651,16 @@ bool item::process_litcig( map &here, Character *carrier, const tripoint_bub_ms 
         if( carrier != nullptr ) {
             carrier->add_msg_if_player( m_neutral, _( "You finish your %s." ), type_name() );
         }
+        // read before the item turns into its butt
+        const itype_smoke_data *const smoke = type->smoke.get();
+        const itype_id lit = typeId();
         if( type->transform_into ) {
             type->transform_into.value().transform( carrier, *this, true );
         } else {
             type->invoke( carrier, *this, pos, "transform" );
+        }
+        if( smoke != nullptr ) {
+            run_smoke_eocs( smoke->burn_out_eocs, carrier, lit );
         }
         if( typeId() == itype_joint_lit && carrier != nullptr ) {
             carrier->add_effect( effect_weed_high, 1_minutes ); // one last puff
@@ -4684,7 +4704,23 @@ bool item::process_litcig( map &here, Character *carrier, const tripoint_bub_ms 
             duration = 30_seconds;
         }
         carrier->add_msg_if_player( m_neutral, _( "You take a puff of your %s." ), type_name() );
-        if( has_flag( flag_TOBACCO ) ) {
+        if( const itype_smoke_data *const smoke = type->smoke.get() ) {
+            // USE-J09: the item's own puff, with the traits scaling it as they do the default
+            duration = smoke->puff_duration;
+            if( carrier->has_trait( trait_TOLERANCE ) ) {
+                duration = duration / 2;
+            } else if( carrier->has_trait( trait_LIGHTWEIGHT ) ) {
+                duration = duration * 2;
+            }
+            if( !smoke->puff_effect.is_null() ) {
+                carrier->add_effect( smoke->puff_effect, duration );
+            }
+            run_smoke_eocs( smoke->puff_eocs, carrier, typeId() );
+            // the puff's EOCs may have put it out
+            if( !active ) {
+                return false;
+            }
+        } else if( has_flag( flag_TOBACCO ) ) {
             carrier->add_effect( effect_cig, duration );
         } else {
             carrier->add_effect( effect_weed_high, duration / 2 );
