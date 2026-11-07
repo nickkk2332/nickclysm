@@ -183,14 +183,21 @@ class profession
         bool is_blacklisted() const;
 };
 
+// profession_blacklist: every "blacklist" adds its professions to the hidden ones, and the
+// last "whitelist" hides every profession it doesn't list, whatever a blacklist says
 struct profession_blacklist {
+    // Every blacklist's professions, or the last whitelist's when one is in force
     std::set<string_id<profession>> professions;
     bool whitelist = false;
+    // Every blacklist's professions
+    std::set<string_id<profession>> blacklisted;
 
     static void load_profession_blacklist( const JsonObject &jo, std::string_view src );
     static void reset();
     void load( const JsonObject &jo, std::string_view );
     void check_consistency() const;
+    // Whether the lists hide @p prof
+    bool hides( const string_id<profession> &prof ) const;
 };
 
 

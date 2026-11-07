@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -100,6 +101,13 @@ void load_new_character( Character &you );
 void load_existing_character( Character &you );
 /** Loads an inline eoc */
 effect_on_condition_id load_inline_eoc( const JsonValue &jv, std::string_view src );
+/** Loads an effect_on_condition_migration: a saved queued or inactive EOC renamed or dropped */
+void load_migration( const JsonObject &jo );
+/** The EOC a saved queued or inactive EOC @p id loads as: @p id itself without a migration,
+ *  none when a migration drops it */
+std::optional<effect_on_condition_id> migrate_saved( const effect_on_condition_id &id );
+/** Applies the migrations to a saved list of inactive EOCs */
+void migrate_saved( std::vector<effect_on_condition_id> &eocs );
 /** Runs @p check from check_consistency(), once all data is loaded: for ids written in EOC
  *  JSON whose type may load later. The check reports problems with debugmsg. */
 void add_load_check( std::function<void()> check );

@@ -444,6 +444,7 @@ void DynamicDataLoader::initialize()
     add( "fault_group", &faults::load_group );
     add( "relic_procgen_data", &relic_procgen_data::load_relic_procgen_data );
     add( "effect_on_condition", &effect_on_conditions::load );
+    add( "effect_on_condition_migration", &effect_on_conditions::load_migration );
     add( "execution", &executions::load );
     add( "ability", &abilities::load );
     add( "damage_rule", &damage_rules::load );
@@ -460,6 +461,7 @@ void DynamicDataLoader::initialize()
     add( "ammo_effect", &ammo_effects::load );
     add( "emit", &emit::load_emit );
     add( "activity_type", &activity_type::load_all );
+    add( "activity_migration", &activity_type::load_migration );
     add( "addiction_type", &add_type::load_add_types );
     add( "movement_mode", &move_mode::load_move_mode );
     add( "vitamin", &vitamin::load_vitamin );
@@ -535,6 +537,7 @@ void DynamicDataLoader::initialize()
     } );
     add( "trap", &trap::load_trap );
     add( "trap_migration", &trap_migrations::load );
+    add( "monster_migration", &monster_migrations::load );
 
     add( "ITEM", &items::load );
     add( "ITEM_CATEGORY", &item_category::load_item_cat );
@@ -719,6 +722,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "WORLD_OPTION", json_inheritance::none },
         { "ability", json_inheritance::copy_from },
         { "achievement", json_inheritance::copy_from },
+        { "activity_migration", json_inheritance::none },
         { "activity_type", json_inheritance::copy_from },
         { "addiction_type", json_inheritance::copy_from },
         { "ammo_effect", json_inheritance::copy_from },
@@ -755,6 +759,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "dream", json_inheritance::copy_from },
         { "effect_migration", json_inheritance::none },
         { "effect_on_condition", json_inheritance::copy_from },
+        { "effect_on_condition_migration", json_inheritance::none },
         { "effect_type", json_inheritance::copy_from },
         { "emit", json_inheritance::none },
         { "enchantment", json_inheritance::copy_from },
@@ -796,6 +801,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "monster_adjustment", json_inheritance::none },
         { "monster_attack", json_inheritance::none },
         { "monster_flag", json_inheritance::copy_from },
+        { "monster_migration", json_inheritance::none },
         { "monstergroup", json_inheritance::merges },
         { "mood_face", json_inheritance::copy_from },
         { "morale_type", json_inheritance::copy_from },
@@ -1200,6 +1206,7 @@ void DynamicDataLoader::unload_data()
     ter_furn_transform::reset();
     trap::reset();
     trap_migrations::reset();
+    monster_migrations::reset();
     unload_talk_topics();
     VehicleGroup::reset();
     VehiclePlacement::reset();
@@ -1444,6 +1451,7 @@ void DynamicDataLoader::check_consistency()
                 }
             },
             { _( "Monster groups" ), &MonsterGroupManager::check_group_definitions },
+            { _( "Monster migrations" ), &monster_migrations::check },
             { _( "Furniture and terrain" ), &check_furniture_and_terrain },
             { _( "Furniture and terrain migrations" ), &ter_furn_migrations::check },
             { _( "Constructions" ), &check_constructions },

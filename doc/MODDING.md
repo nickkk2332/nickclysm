@@ -296,7 +296,7 @@ Finally, if you're trying to blacklist something that spawns inside of cities, y
 ### Disabling certain scenarios
 The `SCENARIO_BLACKLIST` can be either a blacklist or a whitelist.
 When it is a whitelist, it blacklists all scenarios but the ones specified.
-No more than one blacklist can be specified at one time - this is in all json loaded for a particular game (all mods + base game), not just your specific mod.
+Every blacklist loaded for a game (the base game's and every mod's) adds its scenarios to the hidden ones.  A whitelist replaces any whitelist loaded before it (so a mod_interactions file can restate a whitelist to add or remove scenarios), and while a whitelist is in force only the scenarios it lists can be chosen, whatever the blacklists say.  (Before 2.0 each list replaced every earlier one, so a mod's blacklist could unhide the base game's.)
 The format is as follows:
 ```jsonc
 [
@@ -313,7 +313,7 @@ Valid values for `subtype` are `whitelist` and `blacklist`.
 ### Disabling certain professions or hobbies
 The `profession_blacklist` can be either a blacklist or a whitelist.
 When it is a whitelist, only the professions/hobbies specified may be chosen.
-No more than one blacklist can be specified at one time - this is in all json loaded for a particular game (all mods + base game), not just your specific mod.
+Lists combine as `SCENARIO_BLACKLIST`s do: blacklists add up, a whitelist replaces an earlier whitelist, and while a whitelist is in force only what it lists can be chosen.
 The format is as follows:
 ```jsonc
 [

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -108,29 +109,34 @@ void profession_blacklist::load_profession_blacklist( const JsonObject &jo,
 
 void profession_blacklist::load( const JsonObject &jo, std::string_view )
 {
-    if( !professions.empty() ) {
-        DebugLog( D_INFO, DC_ALL ) << "Loading profession black with one already loaded, resetting";
-        profession_blacklist::reset();
-    }
-
     const std::string type = jo.get_string( "subtype" );
+    std::set<string_id<profession>> listed;
+    mandatory( jo, false, "professions", listed );
 
     if( type == "whitelist" ) {
+        // A later whitelist replaces an earlier one
         whitelist = true;
+        professions = std::move( listed );
     } else if( type == "blacklist" ) {
-        whitelist = false;
+        // Blacklists add up
+        blacklisted.insert( listed.begin(), listed.end() );
+        if( !whitelist ) {
+            professions = blacklisted;
+        }
     } else {
         jo.throw_error( "Invalid subtype %s for profession blacklist" );
     }
-
-    mandatory( jo, false, "professions", professions );
 }
 
 void profession_blacklist::check_consistency() const
 {
-    for( const string_id<profession> &p : professions ) {
-        if( !p.is_valid() ) {
-            debugmsg( "Invalid profession %s in blacklist", p.str() );
+    for( const std::set<string_id<profession>> *listed : {
+             &professions, &blacklisted
+         } ) {
+        for( const string_id<profession> &p : *listed ) {
+            if( !p.is_valid() ) {
+                debugmsg( "Invalid profession %s in blacklist", p.str() );
+            }
         }
     }
 }
@@ -138,15 +144,21 @@ void profession_blacklist::check_consistency() const
 void profession_blacklist::reset()
 {
     prof_blacklist.professions.clear();
+    prof_blacklist.blacklisted.clear();
     prof_blacklist.whitelist = false;
+}
+
+bool profession_blacklist::hides( const string_id<profession> &prof ) const
+{
+    if( whitelist ) {
+        return professions.count( prof ) == 0;
+    }
+    return professions.count( prof ) != 0;
 }
 
 bool profession::is_blacklisted() const
 {
-    if( prof_blacklist.whitelist ) {
-        return prof_blacklist.professions.count( id ) == 0;
-    }
-    return prof_blacklist.professions.count( id ) != 0;
+    return prof_blacklist.hides( id );
 }
 
 profession::profession()

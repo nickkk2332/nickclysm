@@ -76,6 +76,45 @@ bool string_id<effect_on_condition>::is_valid() const
 
 static std::vector<std::pair<std::string, std::string>> pending_eoc_refs;
 static std::vector<std::function<void()>> pending_load_checks;
+// effect_on_condition_migration entries: what a saved queued or inactive EOC becomes; none: it
+// is dropped
+static std::map<effect_on_condition_id, std::optional<effect_on_condition_id>> eoc_migrations;
+
+void effect_on_conditions::load_migration( const JsonObject &jo )
+{
+    const effect_on_condition_id from( jo.get_string( "from" ) );
+    std::optional<effect_on_condition_id> to;
+    if( jo.has_member( "to" ) ) {
+        to = effect_on_condition_id( jo.get_string( "to" ) );
+    }
+    // A later migration of the same id replaces the earlier one
+    eoc_migrations.insert_or_assign( from, to );
+}
+
+std::optional<effect_on_condition_id> effect_on_conditions::migrate_saved(
+    const effect_on_condition_id &id )
+{
+    const auto it = eoc_migrations.find( id );
+    if( it == eoc_migrations.end() ) {
+        return id;
+    }
+    return it->second;
+}
+
+void effect_on_conditions::migrate_saved( std::vector<effect_on_condition_id> &eocs )
+{
+    if( eoc_migrations.empty() ) {
+        return;
+    }
+    std::vector<effect_on_condition_id> migrated;
+    migrated.reserve( eocs.size() );
+    for( const effect_on_condition_id &id : eocs ) {
+        if( std::optional<effect_on_condition_id> to = migrate_saved( id ) ) {
+            migrated.push_back( *to );
+        }
+    }
+    eocs = std::move( migrated );
+}
 
 void effect_on_conditions::add_load_check( std::function<void()> check )
 {
@@ -95,6 +134,12 @@ void effect_on_conditions::check_consistency()
         check();
     }
     pending_load_checks.clear();
+    for( const auto &[from, to] : eoc_migrations ) {
+        if( to && !to->is_valid() ) {
+            debugmsg( "effect_on_condition_migration from %s names an EOC that does not exist: %s",
+                      from.str(), to->str() );
+        }
+    }
 }
 
 void effect_on_condition::load( const JsonObject &jo, std::string_view src )
@@ -192,11 +237,10 @@ static void process_new_eocs( queued_eocs &eoc_queue,
 {
     queued_eocs temp_queued_eocs;
     while( !eoc_queue.empty() ) {
+        // An EOC that is no longer loaded (its mod was removed) is dropped
         // Check if EoC is moved from global to local, or vice versa
-        if( global_queue == eoc_queue.top().eoc->global ) {
-            if( eoc_queue.top().eoc.is_valid() ) {
-                temp_queued_eocs.push( eoc_queue.top() );
-            }
+        if( eoc_queue.top().eoc.is_valid() && global_queue == eoc_queue.top().eoc->global ) {
+            temp_queued_eocs.push( eoc_queue.top() );
             new_eocs[eoc_queue.top().eoc] = false;
         }
         eoc_queue.pop();
@@ -681,6 +725,7 @@ void effect_on_conditions::reset()
     effect_on_condition_factory.reset();
     pending_eoc_refs.clear();
     pending_load_checks.clear();
+    eoc_migrations.clear();
 }
 
 void effect_on_conditions::load( const JsonObject &jo, const std::string &src )

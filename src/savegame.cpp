@@ -22,11 +22,13 @@
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "execution_runtime.h"
 #include "execution_combat.h"
 #include "ability_runtime.h"
 #include "explosion.h"
 #include "faction.h"
+#include "global_vars.h"
 #include "hash_utils.h"
 #include "horde_entity.h"
 #include "input.h"
@@ -53,6 +55,7 @@
 #include "regional_settings.h"
 #include "scent_map.h"
 #include "stats_tracker.h"
+#include "string_formatter.h"
 #include "timed_event.h"
 
 class overmap_connection;
@@ -334,11 +337,19 @@ void game::unserialize_impl( const JsonObject &data )
     data.read( "player", u );
     data.read( "inactive_global_effect_on_condition_vector",
                inactive_global_effect_on_condition_vector );
+    effect_on_conditions::migrate_saved( inactive_global_effect_on_condition_vector );
     //load queued_eocs
     for( JsonObject elem : data.get_array( "queued_global_effect_on_conditions" ) ) {
         queued_eoc temp;
         temp.time = time_point( elem.get_int( "time" ) );
-        temp.eoc = effect_on_condition_id( elem.get_string( "eoc" ) );
+        const std::optional<effect_on_condition_id> eoc = effect_on_conditions::migrate_saved(
+                    effect_on_condition_id( elem.get_string( "eoc" ) ) );
+        if( !eoc ) {
+            // An effect_on_condition_migration drops it
+            elem.allow_omitted_members();
+            continue;
+        }
+        temp.eoc = *eoc;
         elem.read( "context", temp.context );
         queued_global_effect_on_conditions.push( temp );
     }
@@ -678,11 +689,18 @@ void overmap::unserialize( const JsonObject &jsobj )
                                                   ( monster_location ) );
                 if( monster_map_json.test_string() ) {
                     mtype_id monster_id( monster_map_json.next_string() );
-                    result = hordes.spawn_entity( monster_location, monster_id );
+                    // A monster_migration can rename the type or remove the monster
+                    if( !monster_migrations::removes( monster_id ) ) {
+                        result = hordes.spawn_entity( monster_location,
+                                                      monster_migrations::migrate( monster_id ) );
+                    }
                 } else {
-                    monster new_monster;
-                    new_monster.deserialize( monster_map_json.next_object() );
-                    result = hordes.spawn_entity( monster_location, new_monster );
+                    const JsonObject saved_monster = monster_map_json.next_object();
+                    if( !monster_migrations::removes( saved_monster ) ) {
+                        monster new_monster;
+                        new_monster.deserialize( saved_monster );
+                        result = hordes.spawn_entity( monster_location, new_monster );
+                    }
                 }
 
                 if( result.has_value() ) {
@@ -1611,6 +1629,9 @@ void mongroup::deserialize_legacy( const JsonObject &jo )
         } else if( name == "monsters" ) {
             JsonArray ja = json;
             for( JsonObject monster_json : ja ) {
+                if( monster_migrations::removes( monster_json ) ) {
+                    continue;
+                }
                 monster new_monster;
                 new_monster.deserialize( monster_json );
                 monsters.push_back( new_monster );
@@ -1869,13 +1890,7 @@ void global_variables::unserialize( const JsonObject &jo )
     // global variables
     jo.read( "global_vals", global_values );
     // potentially migrate some variable names
-    for( std::pair<std::string, std::string> migration : migrations ) {
-        if( global_values.count( migration.first ) != 0 ) {
-            auto extracted = global_values.extract( migration.first );
-            extracted.key() = migration.second;
-            global_values.insert( std::move( extracted ) );
-        }
-    }
+    migrate_vars( global_values, var_scope::global );
 
     game::legacy_migrate_npctalk_var_prefix( global_values );
 }
@@ -2022,11 +2037,68 @@ void global_variables::serialize( JsonOut &jsout ) const
 
 void global_variables::load_migrations( const JsonObject &jo, std::string_view )
 {
+    static const std::map<std::string, var_scope> scope_names = {
+        { "global", var_scope::global },
+        { "character", var_scope::character },
+        { "monster", var_scope::monster },
+        { "item", var_scope::item },
+        { "vehicle", var_scope::vehicle },
+        { "computer", var_scope::computer },
+    };
     const std::string from( jo.get_string( "from" ) );
-    const std::string to = jo.has_string( "to" )
-                           ? jo.get_string( "to" )
-                           : "NULL_VALUE";
-    get_globals().migrations.emplace( from, to );
+    if( from.empty() ) {
+        jo.throw_error_at( "from", "var_migration needs a variable name" );
+    }
+    var_migration migration;
+    // Without "to" the variable is erased
+    if( jo.has_member( "to" ) ) {
+        migration.to = jo.get_string( "to" );
+    }
+    jo.read( "prefix", migration.prefix );
+    if( jo.has_member( "scope" ) ) {
+        for( const std::string &name : jo.get_as_string_array( "scope" ) ) {
+            const auto it = scope_names.find( name );
+            if( it == scope_names.end() ) {
+                jo.throw_error_at( "scope", string_format( "unknown var_migration scope \"%s\"", name ) );
+            }
+            migration.scopes.insert( it->second );
+        }
+    }
+    get_globals().migrations.insert_or_assign( from, migration );
+}
+
+void global_variables::migrate_vars( impl_t &vars, const var_scope scope ) const
+{
+    if( vars.empty() ) {
+        return;
+    }
+    for( const std::pair<const std::string, var_migration> &entry : migrations ) {
+        const std::string &from = entry.first;
+        const var_migration &migration = entry.second;
+        if( !migration.applies_to( scope ) ) {
+            continue;
+        }
+        std::vector<std::string> keys;
+        if( migration.prefix ) {
+            for( const std::pair<const std::string, diag_value> &var : vars ) {
+                if( var.first.compare( 0, from.size(), from ) == 0 ) {
+                    keys.push_back( var.first );
+                }
+            }
+            // The same result whatever the map's order
+            std::sort( keys.begin(), keys.end() );
+        } else if( vars.count( from ) != 0 ) {
+            keys.push_back( from );
+        }
+        for( const std::string &key : keys ) {
+            impl_t::node_type extracted = vars.extract( key );
+            if( migration.to ) {
+                extracted.key() = *migration.to + key.substr( from.size() );
+                // A variable already saved under the new name is kept
+                vars.insert( std::move( extracted ) );
+            }
+        }
+    }
 }
 
 void timed_event_manager::serialize_all( JsonOut &jsout )
@@ -2129,9 +2201,14 @@ void creature_tracker::deserialize( const JsonArray &ja )
     monsters_by_location.clear();
     monsters_by_uid.clear();
     for( JsonValue jv : ja ) {
+        const JsonObject saved_monster = jv.get_object();
+        // A monster_migration can remove it
+        if( monster_migrations::removes( saved_monster ) ) {
+            continue;
+        }
         // TODO: would be nice if monster had a constructor using JsonIn or similar, so this could be one statement.
         shared_ptr_fast<monster> mptr = make_shared_fast<monster>();
-        jv.read( *mptr );
+        mptr->deserialize( saved_monster );
         add( mptr );
     }
 }

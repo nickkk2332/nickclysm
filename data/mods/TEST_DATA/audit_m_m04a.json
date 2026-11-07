@@ -1,0 +1,52 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M04A_NEW",
+    "//": "DATA-J08: the EOC a saved EOC_AUDIT_M04A_OLD becomes",
+    "effect": [ { "math": [ "audit_m04a_new_eoc_ran", "=", "1" ] } ]
+  },
+  {
+    "type": "effect_on_condition_migration",
+    "from": "EOC_AUDIT_M04A_OLD",
+    "to": "EOC_AUDIT_M04A_NEW"
+  },
+  {
+    "type": "effect_on_condition_migration",
+    "from": "EOC_AUDIT_M04A_GONE"
+  },
+  {
+    "type": "monster_migration",
+    "from": "mon_audit_m04a_old",
+    "to": "mon_zombie"
+  },
+  {
+    "type": "monster_migration",
+    "from": "mon_audit_m04a_gone"
+  },
+  {
+    "type": "activity_migration",
+    "from": "ACT_AUDIT_M04A_OLD",
+    "to": "ACT_WAIT"
+  },
+  {
+    "type": "activity_migration",
+    "from": "ACT_AUDIT_M04A_GONE"
+  },
+  {
+    "type": "var_migration",
+    "//": "DATA-J05: only item variables",
+    "from": "audit_m04a_old_var",
+    "to": "audit_m04a_new_var",
+    "scope": [ "item" ]
+  },
+  {
+    "type": "var_migration",
+    "from": "audit_m04a_pre_",
+    "to": "audit_m04a_post_",
+    "prefix": true
+  },
+  {
+    "type": "var_migration",
+    "from": "audit_m04a_doomed_var"
+  }
+]
