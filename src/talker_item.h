@@ -2,10 +2,8 @@
 #ifndef CATA_SRC_TALKER_ITEM_H
 #define CATA_SRC_TALKER_ITEM_H
 
-#include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "coords_fwd.h"
 #include "talker.h"

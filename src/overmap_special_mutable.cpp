@@ -12,7 +12,6 @@
 #include "cata_assert.h"
 #include "cata_utility.h"
 #include "cata_views.h"
-#include "city.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "distribution.h"

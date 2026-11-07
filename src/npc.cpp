@@ -2660,7 +2660,7 @@ void healing_options::set_all()
     cure = heal_actor::curable_effects();
 }
 
-bool npc::has_healing_item( healing_options try_to_fix )
+bool npc::has_healing_item( const healing_options &try_to_fix )
 {
     return !get_healing_item( try_to_fix, true ).is_null();
 }
@@ -2672,13 +2672,13 @@ healing_options npc::has_healing_options()
     return has_healing_options( try_to_fix );
 }
 
-healing_options npc::has_healing_options( healing_options try_to_fix )
+healing_options npc::has_healing_options( const healing_options &try_to_fix )
 {
     healing_options can_fix;
     can_fix.clear_all();
     healing_options *fix_p = &can_fix;
 
-    visit_items( [&fix_p, try_to_fix]( item_location node ) {
+    visit_items( [&fix_p, &try_to_fix]( item_location node ) {
         const use_function *use = node->type->get_use( "heal" );
         if( use == nullptr ) {
             return VisitResponse::NEXT;

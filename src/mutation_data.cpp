@@ -33,6 +33,13 @@
 #include "units.h"
 #include "weighted_list.h"
 
+class json_flag;
+class material_type;
+class monfaction;
+struct itype;
+struct mon_flag;
+struct species_type;
+
 static const json_character_flag json_flag_ATTUNEMENT( "ATTUNEMENT" );
 static const json_character_flag json_flag_HERITAGE( "HERITAGE" );
 static const json_character_flag json_flag_PERK( "PERK" );
@@ -589,7 +596,7 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
                  "cost", "kcal", "thirst", "sleepiness", "mana", "stamina"
              } ) {
             if( jo.has_member( legacy ) ) {
-                jo.throw_error_at( legacy, "use either \"costs\" or \"cost\" with resource flags, not both" );
+                jo.throw_error_at( legacy, R"(use either "costs" or "cost" with resource flags, not both)" );
             }
         }
         JsonObject costs = jo.get_object( "costs" );

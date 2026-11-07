@@ -1,7 +1,7 @@
-#include <stddef.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <initializer_list>
 #include <memory>

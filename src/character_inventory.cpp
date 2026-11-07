@@ -27,12 +27,12 @@
 #include "calendar.h"
 #include "catacharset.h"
 #include "character.h"
-#include "craft_reservation.h"
-#include "crafting.h"
 #include "character_attire.h"
 #include "character_martial_arts.h"
 #include "color.h"
 #include "coordinates.h"
+#include "craft_reservation.h"
+#include "crafting.h"
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
@@ -55,9 +55,9 @@
 #include "line.h"
 #include "magic_enchantment.h"
 #include "map.h"
-#include "mapdata.h"
 #include "map_iterator.h"
 #include "map_selector.h"
+#include "mapdata.h"
 #include "messages.h"
 #include "monster.h"
 #include "morale.h"
@@ -82,6 +82,8 @@
 #include "visitable.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
+
+class Creature;
 
 static const activity_id ACT_MOVE_ITEMS( "ACT_MOVE_ITEMS" );
 

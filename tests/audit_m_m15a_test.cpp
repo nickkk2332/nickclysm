@@ -1,4 +1,5 @@
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -12,6 +13,7 @@
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
 #include "character.h"
+#include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -49,10 +51,10 @@ static const efftype_id effect_sleep( "sleep" );
 
 static const json_character_flag json_flag_AUDIT_M15A_B( "AUDIT_M15A_B" );
 
-static const morale_type morale_audit_m15a_perm( "audit_m15a_perm" );
-static const morale_type morale_audit_m15a_temp( "audit_m15a_temp" );
-static const morale_type morale_morale_perm_optimist( "morale_perm_optimist" );
-static const morale_type morale_morale_wet( "morale_wet" );
+static const morale_type audit_m15a_perm( "audit_m15a_perm" );
+static const morale_type audit_m15a_temp( "audit_m15a_temp" );
+static const morale_type morale_perm_optimist( "morale_perm_optimist" );
+static const morale_type morale_wet( "morale_wet" );
 
 static const wound_type_id wound_audit_m15a_bleeds( "audit_m15a_bleeds" );
 static const wound_type_id wound_audit_m15a_dry( "audit_m15a_dry" );
@@ -403,8 +405,8 @@ TEST_CASE( "hlth-j07_effect_tick_eocs", "[audit][effect]" )
 // could be given permanently, and no math read one morale type's value.
 TEST_CASE( "hlth-j08_permanent_morale_types_from_json", "[audit][morale]" )
 {
-    CHECK( morale_morale_perm_optimist->is_permanent() );
-    CHECK_FALSE( morale_morale_wet->is_permanent() );
+    CHECK( morale_perm_optimist->is_permanent() );
+    CHECK_FALSE( morale_wet->is_permanent() );
 
     clear_avatar();
     avatar &u = get_avatar();
@@ -413,18 +415,18 @@ TEST_CASE( "hlth-j08_permanent_morale_types_from_json", "[audit][morale]" )
     } );
     dialogue d( get_talker_for( u ), nullptr );
 
-    u.add_morale( morale_audit_m15a_perm, 5, 5, 0_turns, 0_turns );
-    CHECK( u.has_morale( morale_audit_m15a_perm ) == 5 );
+    u.add_morale( audit_m15a_perm, 5, 5, 0_turns, 0_turns );
+    CHECK( u.has_morale( audit_m15a_perm ) == 5 );
     CHECK( eval_math( d, "u_morale_value('audit_m15a_perm')" ) == 5 );
 
     const std::string refused = capture_debugmsg_during( [&u]() {
-        u.add_morale( morale_audit_m15a_temp, 5, 5, 0_turns, 0_turns );
+        u.add_morale( audit_m15a_temp, 5, 5, 0_turns, 0_turns );
     } );
     CHECK( refused.find( "non-permanent" ) != std::string::npos );
-    CHECK( u.has_morale( morale_audit_m15a_temp ) == 0 );
+    CHECK( u.has_morale( audit_m15a_temp ) == 0 );
     CHECK( eval_math( d, "u_morale_value('audit_m15a_temp')" ) == 0 );
 
-    u.add_morale( morale_audit_m15a_temp, -7, -20, 1_hours, 30_minutes );
+    u.add_morale( audit_m15a_temp, -7, -20, 1_hours, 30_minutes );
     CHECK( eval_math( d, "u_morale_value('audit_m15a_temp')" ) == -7 );
 }
 

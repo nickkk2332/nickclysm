@@ -15,6 +15,7 @@
 #include <set>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -3070,9 +3071,9 @@ ret_val<void> item::is_gunmod_compatible( const item &mod ) const
     }
     const islot_gunmod &gunmod = *mod.type->gunmod;
     // The mod's blacklist_message if it has one
-    const auto blacklisted = [&gunmod]( const std::string & fallback ) {
-        return ret_val<void>::make_failure( "%s", gunmod.blacklist_message.empty() ? fallback :
-                                            gunmod.blacklist_message.translated() );
+    const auto blacklisted = [&gunmod]( const std::string_view fallback ) {
+        return ret_val<void>::make_failure( "%s", gunmod.blacklist_message.empty() ?
+                                            std::string( fallback ) : gunmod.blacklist_message.translated() );
     };
 
     if( !is_gun() ) {
@@ -4561,20 +4562,20 @@ int item::get_min_str() const
     return get_min_str( get_player_character() );
 }
 
-int item::get_min_str( const Character &p ) const
+int item::get_min_str( const Character &who ) const
 {
     if( type->gun ) {
         int min_str = type->min_str;
         // we really need some better check for bows than its skill
         if( type->gun->skill_used == skill_archery ) {
             // Rounded to the nearest point: a bonus of 0.5 counts (PROG-J09)
-            min_str -= static_cast<int>( std::lround( p.get_proficiency_bonus( "archery",
+            min_str -= static_cast<int>( std::lround( who.get_proficiency_bonus( "archery",
                                          proficiency_bonus_type::strength ) ) );
         }
         for( const item *mod : gunmods() ) {
             min_str += mod->type->gunmod->min_str_required_mod;
         }
-        if( p.is_prone() ) {
+        if( who.is_prone() ) {
             for( const item *mod : gunmods() ) {
                 min_str += mod->type->gunmod->min_str_required_mod_if_prone;
             }

@@ -1,14 +1,17 @@
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "cata_variant.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "dialogue.h"
@@ -24,16 +27,17 @@
 #include "map.h"
 #include "map_extras.h"
 #include "map_helpers.h"
+#include "map_scale_constants.h"
 #include "mapbuffer.h"
 #include "mapgen_functions.h"
 #include "mapgen_parameter.h"
 #include "mapgendata.h"
 #include "math_parser_diag_value.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "regional_settings.h"
+#include "ret_val.h"
 #include "talker.h"
 #include "timed_event.h"
 #include "type_id.h"
@@ -105,9 +109,10 @@ void m08a_load_timed_events( const std::string &saved )
 }
 
 // An overmap tile west or north of the reality bubble, as the MGEN-B04 test uses
-tripoint_abs_omt m08a_omt_outside_bubble( int dx, int dy )
+tripoint_abs_omt m08a_omt_outside_bubble( const point &offset )
 {
-    return project_to<coords::omt>( get_map().get_abs_sub() ) + tripoint_rel_omt( dx, dy, 0 );
+    return project_to<coords::omt>( get_map().get_abs_sub() ) + tripoint_rel_omt( offset.x, offset.y,
+            0 );
 }
 
 // The terrain at a tile of an overmap tile, loaded on its own
@@ -220,7 +225,7 @@ TEST_CASE( "mgen-b10_mirrored_update_mirrors_its_queued_points", "[audit][mapgen
     on_out_of_scope cleanup( [&globals]() {
         globals.remove_global_value( "audit_queued_point" );
     } );
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -3, -6 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -3, -6 ) );
     overmap_buffer.ter_set( omt, oter_field.id() );
 
     // test_audit_queue_point queues ( 2, 3 ); mirrored east-west it is ( 21, 3 )
@@ -244,7 +249,7 @@ TEST_CASE( "mgen-j01_place_eocs_runs_its_eoc_with_the_place", "[audit][mapgen][e
         globals.remove_global_value( "audit_m08a_eoc_loc" );
         globals.remove_global_value( "audit_m08a_eoc_oter" );
     } );
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -6, -3 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -6, -3 ) );
     overmap_buffer.ter_set( omt, oter_field.id() );
 
     run_mapgen_update_func( update_mapgen_test_audit_m08a_place_eoc, omt, {}, nullptr, false );
@@ -270,7 +275,7 @@ TEST_CASE( "mgen-j01_place_variables_rolls_its_range", "[audit][mapgen]" )
     on_out_of_scope cleanup( [&globals]() {
         globals.remove_global_value( "audit_m08a_ranged_point" );
     } );
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -6, -6 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -6, -6 ) );
     overmap_buffer.ter_set( omt, oter_field.id() );
     const tripoint_abs_ms origin = project_to<coords::ms>( omt );
 
@@ -342,7 +347,7 @@ TEST_CASE( "mgen-j01_map_extra_runs_its_eocs_and_sends_its_event", "[audit][mapg
     clear_map();
     m08a_eoc_queue_cleaner clean_queue;
     global_variables &globals = get_globals();
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -9, -3 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -9, -3 ) );
     on_out_of_scope cleanup( [&globals, omt]() {
         globals.remove_global_value( "audit_m08a_mx_loc" );
         globals.remove_global_value( "audit_m08a_mx_id" );
@@ -394,7 +399,7 @@ TEST_CASE( "mgen-j02_mapgen_update_takes_parameters_rotation_and_an_anchor",
     clear_avatar();
     clear_map();
     global_variables &globals = get_globals();
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -9, -6 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -9, -6 ) );
     on_out_of_scope cleanup( [&globals]() {
         globals.remove_global_value( "audit_m08a_target" );
         globals.remove_global_value( "audit_m08a_update_result" );
@@ -471,7 +476,7 @@ TEST_CASE( "mgen-j02_delayed_mapgen_update_keeps_its_settings", "[audit][mapgen]
 TEST_CASE( "mgen-j03_map_extra_condition_gates_it", "[audit][mapgen]" )
 {
     global_variables &globals = get_globals();
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -12, -3 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -12, -3 ) );
     on_out_of_scope cleanup( [&globals]() {
         globals.remove_global_value( "audit_m08a_mx_allowed" );
     } );
@@ -500,7 +505,7 @@ TEST_CASE( "mgen-j03_place_map_extra_and_map_has_extra", "[audit][mapgen][eoc]" 
     clear_map();
     m08a_eoc_queue_cleaner clean_queue;
     global_variables &globals = get_globals();
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -12, -6 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -12, -6 ) );
     on_out_of_scope cleanup( [&globals, omt]() {
         globals.remove_global_value( "audit_m08a_mx_target" );
         globals.remove_global_value( "audit_m08a_mx_loc" );
@@ -535,7 +540,7 @@ TEST_CASE( "mgen-j03_place_map_extra_and_map_has_extra", "[audit][mapgen][eoc]" 
 // without settings they draw vanilla's
 TEST_CASE( "mgen-j04_river_terrain_comes_from_the_region", "[audit][mapgen]" )
 {
-    const tripoint_abs_omt omt = m08a_omt_outside_bubble( -15, -3 );
+    const tripoint_abs_omt omt = m08a_omt_outside_bubble( point( -15, -3 ) );
     const oter_id old_ter = overmap_buffer.ter( omt );
     overmap_buffer.ter_set( omt, oter_river_north.id() );
     small_fake_map fake( ter_t_dirt.id() );

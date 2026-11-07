@@ -1,3 +1,4 @@
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -9,7 +10,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "creature_tracker.h"
@@ -18,16 +18,17 @@
 #include "itype.h"
 #include "iuse.h"
 #include "iuse_actor.h"
-#include "line.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "monster.h"
 #include "npc.h"
 #include "npc_ai_tuning.h"
 #include "npc_attack.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "stomach.h"

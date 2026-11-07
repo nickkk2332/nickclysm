@@ -1,5 +1,7 @@
 #include <list>
+#include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -37,6 +39,7 @@
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 
 static const ammotype ammo_battery( "battery" );
 static const ammotype ammo_test_9mm( "test_9mm" );
@@ -97,9 +100,9 @@ static std::string info_str( const item &it, const std::vector<iteminfo_parts> &
     return format_item_info( info_v, {} );
 }
 
-static bool contains( const std::string &haystack, const std::string_view needle )
+static bool contains( const std::string_view haystack, const std::string_view needle )
 {
-    return haystack.find( needle ) != std::string::npos;
+    return haystack.find( needle ) != std::string_view::npos;
 }
 
 // The single worn item of a type

@@ -1,6 +1,7 @@
 #include "sleep.h"
 
 #include <list>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -16,6 +17,7 @@
 #include "item_stack.h"
 #include "map.h"
 #include "mapdata.h"
+#include "talker.h"
 #include "translations.h"
 #include "trap.h"
 #include "type_id.h"
@@ -233,7 +235,7 @@ void comfort_data::condition::deserialize( const JsonObject &jo )
             break;
         case category::condition:
             if( !jo.has_member( "condition" ) ) {
-                jo.throw_error( "a comfort condition of type \"condition\" needs a \"condition\"" );
+                jo.throw_error( R"(a comfort condition of type "condition" needs a "condition")" );
             }
             read_condition( jo, "condition", dialogue_condition, false );
             break;

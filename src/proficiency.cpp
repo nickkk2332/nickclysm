@@ -18,6 +18,8 @@
 #include "options.h"
 #include "string_formatter.h"
 
+class json_flag;
+
 const float book_proficiency_bonus::default_time_factor = 0.5f;
 const float book_proficiency_bonus::default_fail_factor = 0.5f;
 const bool book_proficiency_bonus::default_include_prereqs = true;

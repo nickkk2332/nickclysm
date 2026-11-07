@@ -1,5 +1,7 @@
 #include "monexamine.h"
 
+#include <stddef.h>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -43,6 +45,7 @@
 #include "skill.h"
 #include "string_formatter.h"
 #include "talker.h"  // IWYU pragma: keep
+#include "translation.h"
 #include "translations.h"
 #include "type_id.h"
 #include "uilist.h"

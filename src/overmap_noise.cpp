@@ -1,5 +1,6 @@
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <string>
 
 #include "flexbuffer_json.h"
 #include "overmap_noise.h"

@@ -345,8 +345,6 @@ static const start_location_id start_location_sloc_shelter_safe( "sloc_shelter_s
 
 static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
 static const trait_id trait_ARACHNID_ARMS_OK( "ARACHNID_ARMS_OK" );
-static const trait_id trait_BIRD_EYE( "BIRD_EYE" );
-static const trait_id trait_CF_HAIR( "CF_HAIR" );
 static const trait_id trait_CHITIN2( "CHITIN2" );
 static const trait_id trait_CHITIN3( "CHITIN3" );
 static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
@@ -4842,7 +4840,7 @@ bool Character::invoke_item( item *used, const std::string &method, const tripoi
 
     // The use can transform the item or use it up: the event names what was activated (USE-J07)
     const itype_id activated_type = actually_used->typeId();
-    const std::string activated_method = method;
+    const std::string &activated_method = method;
     std::optional<int> charges_used = actually_used->type->invoke( this, *actually_used,
                                       pt, method );
     if( !charges_used.has_value() ) {

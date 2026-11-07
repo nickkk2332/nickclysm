@@ -1,8 +1,11 @@
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"
@@ -17,11 +20,9 @@
 #include "debug.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
-#include "harvest.h"
 #include "item.h"
 #include "item_location.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -33,11 +34,14 @@
 #include "monstergenerator.h"
 #include "mtype.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "projectile.h"
 #include "rng.h"
 #include "string_formatter.h"
 #include "type_id.h"
 #include "value_ptr.h"
+
+class harvest_drop_type;
 
 static const damage_type_id damage_bash( "bash" );
 

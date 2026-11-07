@@ -9,6 +9,7 @@
 
 #include "cata_assert.h"
 #include "debug.h"
+#include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "overmap_location.h"
 

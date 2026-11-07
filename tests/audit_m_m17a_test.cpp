@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -11,12 +13,12 @@
 #include "character_martial_arts.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
-#include "field.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "item.h"

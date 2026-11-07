@@ -4,7 +4,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "bodypart.h"
 #include "damage.h"
 #include "debug.h"
 #include "flexbuffer_json.h"

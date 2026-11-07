@@ -1,32 +1,36 @@
+#include <plf/list.h>
 #include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "avatar.h"
 #include "basecamp.h"
+#include "build_reqs.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue_chatbin.h"
 #include "faction.h"
 #include "faction_camp.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "game_constants.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
-#include "item_pocket.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -34,23 +38,21 @@
 #include "map_scale_constants.h"
 #include "mapgendata.h"
 #include "math_parser_diag_value.h"
-#include "memory_fast.h"
 #include "mission.h"
 #include "mission_companion.h"
 #include "monster.h"
 #include "npc.h"
 #include "npctrade.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
 #include "recipe.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "skill.h"
 #include "stomach.h"
 #include "talker.h"
-#include "trade_ui.h"
 #include "type_id.h"
 #include "visitable.h"
 
@@ -64,6 +66,7 @@ static const itype_id itype_test_m22a_token_a( "test_m22a_token_a" );
 static const itype_id itype_test_m22a_token_b( "test_m22a_token_b" );
 static const itype_id itype_test_m22a_token_c( "test_m22a_token_c" );
 
+static const mission_type_id mission_TEST_M22A_INLINE_MISSION( "TEST_M22A_INLINE_MISSION" );
 static const mission_type_id
 mission_TEST_MISSION_M22A_FIND_TOKENS( "TEST_MISSION_M22A_FIND_TOKENS" );
 static const mission_type_id
@@ -774,7 +777,7 @@ TEST_CASE( "camp-j04_mission_definitions_are_checked", "[audit][mission]" )
     const auto check_of = []( const std::string & json ) {
         const JsonValue jv = json_loader::from_string( json );
         mission_type m;
-        m.id = mission_type_id( "TEST_M22A_INLINE_MISSION" );
+        m.id = mission_TEST_M22A_INLINE_MISSION;
         m.load( jv.get_object(), "test" );
         return capture_debugmsg_during( [&m]() {
             m.check();

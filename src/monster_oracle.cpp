@@ -2,13 +2,13 @@
 
 #include "behavior.h"
 #include "coordinates.h"
-#include "item.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "mapdata.h"
 #include "monster.h"
 #include "monster_oracle.h"
-#include "type_id.h"
+
+class item;
 
 namespace behavior
 {

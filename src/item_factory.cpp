@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -78,6 +79,7 @@
 #include "vitamin.h"
 #include "weighted_list.h"
 
+struct const_dialogue;
 template <typename T> struct enum_traits;
 
 // Reader for item qualities that accepts both legacy array ["CUT", 1] and

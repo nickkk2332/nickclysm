@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -28,9 +29,9 @@
 #include "game_constants.h"
 #include "magic.h"
 #include "magic_enchantment.h"
-#include "math_parser_diag_value.h"
 #include "map.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "mutation.h"
 #include "output.h"
 #include "overmapbuffer.h"

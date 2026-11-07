@@ -1,5 +1,7 @@
+#include <functional>
 #include <initializer_list>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -12,7 +14,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_attire.h"
 #include "debug.h"
 #include "effect.h"
@@ -39,8 +40,6 @@ static const bodypart_str_id body_part_hand_slime_l( "hand_slime_l" );
 static const bodypart_str_id body_part_hoof_l( "hoof_l" );
 static const bodypart_str_id body_part_insect_hand_l( "insect_hand_l" );
 
-static const matec_id TECH_SLIME_PUNCH( "TECH_SLIME_PUNCH" );
-
 static const efftype_id effect_common_cold( "common_cold" );
 static const efftype_id effect_flu( "flu" );
 static const efftype_id effect_heating_bionic( "heating_bionic" );
@@ -60,6 +59,8 @@ static const json_character_flag json_flag_FROSTBITE_VULNERABLE( "FROSTBITE_VULN
 static const json_character_flag json_flag_LIMB_LOWER( "LIMB_LOWER" );
 static const json_character_flag json_flag_LIMB_UPPER( "LIMB_UPPER" );
 static const json_character_flag json_flag_NIGHT_VISION( "NIGHT_VISION" );
+
+static const matec_id TECH_SLIME_PUNCH( "TECH_SLIME_PUNCH" );
 
 static const material_id material_cotton( "cotton" );
 static const material_id material_wool( "wool" );

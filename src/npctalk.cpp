@@ -6022,7 +6022,7 @@ talk_effect_fun_t::func f_clear_dimension( const JsonObject &jo, std::string_vie
 }
 
 // A bool, or a number or math expression that mirrors when it isn't 0 (MGEN-J02)
-static dbl_or_var read_mapgen_update_flag( const JsonObject &jo, std::string_view member )
+dbl_or_var read_mapgen_update_flag( const JsonObject &jo, std::string_view member )
 {
     dbl_or_var flag;
     if( jo.has_bool( member ) ) {
@@ -12440,7 +12440,7 @@ talk_effect_fun_t::func f_add_radio_station( const JsonObject &jo, std::string_v
     if( jo.has_member( "message" ) ) {
         message = get_translation_or_var( jo.get_member( "message" ), "message", false );
     }
-    dbl_or_var strength = get_dbl_or_var( jo, "strength", false, RADIO_MAX_STRENGTH / 2 );
+    dbl_or_var strength = get_dbl_or_var( jo, "strength", false, RADIO_MAX_STRENGTH / 2.0 );
     const bool weather = jo.get_bool( "weather", false );
     std::optional<var_info> frequency_var;
     optional( jo, false, "frequency_var", frequency_var );

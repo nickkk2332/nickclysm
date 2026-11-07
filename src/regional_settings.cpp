@@ -673,40 +673,34 @@ void region_settings_city::size_variation::deserialize( const JsonObject &jo )
     optional( jo, false, "divide", divide, 1 );
 }
 
-static const mongroup_id &group_or_default( const mongroup_id &group,
-        const mongroup_id &default_group )
-{
-    return group.is_empty() ? default_group : group;
-}
-
 const mongroup_id &region_settings_worldgen_monsters::city_horde() const
 {
-    return group_or_default( city_horde_group, GROUP_ZOMBIE_HORDE );
+    return city_horde_group.is_empty() ? GROUP_ZOMBIE_HORDE : city_horde_group;
 }
 
 const mongroup_id &region_settings_worldgen_monsters::swamp() const
 {
-    return group_or_default( swamp_group, GROUP_SWAMP );
+    return swamp_group.is_empty() ? GROUP_SWAMP : swamp_group;
 }
 
 const mongroup_id &region_settings_worldgen_monsters::river() const
 {
-    return group_or_default( river_group, GROUP_RIVER );
+    return river_group.is_empty() ? GROUP_RIVER : river_group;
 }
 
 const mongroup_id &region_settings_worldgen_monsters::ocean_deep() const
 {
-    return group_or_default( ocean_deep_group, GROUP_OCEAN_DEEP );
+    return ocean_deep_group.is_empty() ? GROUP_OCEAN_DEEP : ocean_deep_group;
 }
 
 const mongroup_id &region_settings_worldgen_monsters::ocean_shore() const
 {
-    return group_or_default( ocean_shore_group, GROUP_OCEAN_SHORE );
+    return ocean_shore_group.is_empty() ? GROUP_OCEAN_SHORE : ocean_shore_group;
 }
 
 const mongroup_id &region_settings_worldgen_monsters::subway_city() const
 {
-    return group_or_default( subway_city_group, GROUP_SUBWAY_CITY );
+    return subway_city_group.is_empty() ? GROUP_SUBWAY_CITY : subway_city_group;
 }
 
 void region_settings_worldgen_monsters::deserialize( const JsonObject &jo )

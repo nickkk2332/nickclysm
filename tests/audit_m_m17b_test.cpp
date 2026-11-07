@@ -1,6 +1,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -8,11 +9,13 @@
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "coordinates.h"
 #include "damage.h"
 #include "magic_enchantment.h"
 #include "math_parser_diag_value.h"
 #include "mutation.h"
 #include "player_helpers.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
 

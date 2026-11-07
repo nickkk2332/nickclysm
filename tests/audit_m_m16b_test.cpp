@@ -1,9 +1,13 @@
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -15,7 +19,9 @@
 #include "coordinates.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
+#include "game_constants.h"
 #include "json_loader.h"
 #include "magic_enchantment.h"
 #include "math_parser.h"
@@ -23,6 +29,7 @@
 #include "mutation.h"
 #include "npc.h"
 #include "options.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "profession.h"
 #include "proficiency.h"

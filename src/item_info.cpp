@@ -53,6 +53,7 @@
 #include "item_factory.h"
 #include "item_location.h"
 #include "item_pocket.h"
+#include "item_transformation.h"
 #include "item_uid.h"
 #include "iteminfo_query.h"
 #include "itype.h"
@@ -1705,6 +1706,7 @@ void item::gunmod_info( std::vector<iteminfo> &info, const iteminfo_query *parts
     if( parts->test( iteminfo_parts::GUNMOD_FIRE_MODES ) ) {
         if( !mod.mode_modifier.empty() ) {
             std::vector<std::string> modes;
+            modes.reserve( mod.mode_modifier.size() );
             for( const std::pair<const gun_mode_id, gun_modifier_data> &m : mod.mode_modifier ) {
                 modes.emplace_back( string_format( "%s (%i)", m.second.tname(), m.second.qty() ) );
             }
@@ -1712,6 +1714,7 @@ void item::gunmod_info( std::vector<iteminfo> &info, const iteminfo_query *parts
         }
         if( !mod.hide_modes.empty() ) {
             std::vector<std::string> modes;
+            modes.reserve( mod.hide_modes.size() );
             for( const gun_mode_id &m : mod.hide_modes ) {
                 modes.emplace_back( m.str() );
             }

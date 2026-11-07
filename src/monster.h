@@ -40,6 +40,7 @@ class map;
 enum class mon_trigger : int;
 enum class mon_trigger_kind : int;
 enum class phase_id : int;
+struct dealt_projectile_attack;
 struct monster_plan;
 struct mtype;
 

@@ -1,6 +1,9 @@
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstddef>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -31,7 +34,9 @@
 #include "point.h"
 #include "regional_settings.h"
 #include "talker.h"
+#include "translation.h"
 #include "type_id.h"
+#include "weighted_list.h"
 
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_M09A_RADIO_ADD( "EOC_TEST_M09A_RADIO_ADD" );

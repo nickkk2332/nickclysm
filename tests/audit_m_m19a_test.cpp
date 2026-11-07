@@ -1,5 +1,7 @@
 #include <cstddef>
 #include <initializer_list>
+#include <map>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -20,12 +22,11 @@
 #include "item.h"
 #include "json.h"
 #include "json_loader.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
-#include "mattack_common.h"
 #include "math_parser_diag_value.h"
+#include "mattack_common.h"
 #include "monattack.h"
 #include "monster.h"
 #include "monster_oracle.h"
@@ -274,12 +275,12 @@ TEST_CASE( "monai-b08_only_a_protective_parent_is_angered_near_its_baby", "[audi
         return std::make_pair( mother.aggro_character, mother.anger - anger_before );
     };
 
-    CHECK( angered( "mon_test_m19a_mother_calm", point( 3, 0 ), point( 1, 0 ) ) ==
+    CHECK( angered( "mon_test_m19a_mother_calm", point( 3, 0 ), point::east ) ==
            std::make_pair( false, 0 ) );
-    CHECK( angered( "mon_test_m19a_mother_protective", point( 3, 0 ), point( 1, 0 ) ) ==
+    CHECK( angered( "mon_test_m19a_mother_protective", point( 3, 0 ), point::east ) ==
            std::make_pair( true, 8 ) );
     // The cub is farther from the player than its mother
-    CHECK( angered( "mon_test_m19a_mother_protective", point( -1, 0 ), point( 2, 0 ) ) ==
+    CHECK( angered( "mon_test_m19a_mother_protective", point::west, point( 2, 0 ) ) ==
            std::make_pair( true, 8 ) );
     // Too far from the player to be threatened
     CHECK( angered( "mon_test_m19a_mother_protective", point( 3, 0 ), point( 0, 5 ) ) ==

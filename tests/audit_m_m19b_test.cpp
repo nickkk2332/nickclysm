@@ -1,3 +1,5 @@
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -8,7 +10,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
@@ -19,7 +20,6 @@
 #include "event_subscriber.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
-#include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"

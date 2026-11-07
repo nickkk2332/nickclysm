@@ -1,4 +1,6 @@
 #include <cmath>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,7 +30,6 @@
 #include "options_helpers.h"
 #include "player_helpers.h"
 #include "point.h"
-#include "talker.h"
 #include "type_id.h"
 #include "value_ptr.h"
 

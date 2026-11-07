@@ -76,8 +76,6 @@ class enchant_cache;
 class faction;
 class known_magic;
 class ma_technique;
-struct ma_event_context;
-struct tech_effect_data;
 class map;
 class player_morale;
 class profession;
@@ -87,8 +85,10 @@ class spell;
 class ui_adaptor;
 class vehicle;
 class vpart_reference;
-
 enum scaling_stat : int;
+struct ma_event_context;
+struct tech_effect_data;
+struct wound_change;
 
 namespace catacurses
 {
@@ -105,6 +105,7 @@ enum class magic_energy_type : int;
 enum class mutation_builtin_activation : int;
 enum class recipe_filter_flags : int;
 enum class steed_type : int;
+enum class technique_rejection : int;
 enum npc_attitude : int;
 struct attention_plan;
 struct bionic;
@@ -114,7 +115,6 @@ struct dealt_projectile_attack;
 /// @brief Item slot used to apply modifications from food and meds
 struct islot_comestible;
 struct item_comp;
-struct vitamin_resource_cost;
 struct itype;
 struct mutation_branch;
 struct mutation_category_trait;
@@ -128,10 +128,10 @@ struct technique_query;
 struct tool_comp;
 struct trait_and_var;
 struct trap;
+struct vitamin_resource_cost;
 struct w_point;
 struct walk_order;
 template <typename E> struct enum_traits;
-enum class technique_rejection : int;
 
 using bionic_uid = unsigned int;
 
@@ -1042,7 +1042,7 @@ class Character : public Creature, public visitable
         void remove_wounds_of_type( const bodypart_id &bp, wound_type_id wd );
         /** Sends character_gains_wound, character_wound_progresses or character_loses_wound for
          * each change (HLTH-J04); their EOCs may change the wounds again */
-        void send_wound_events( const std::vector<wound_change> &changes );
+        void send_wound_events( const std::vector<wound_change> &changes ) const;
         /** Updates the status of wounds character has, and applies variety of effects they cause*/
         void update_wounds( time_duration time_passed );
         /** Returns true if bodypart in question has any bleeding wound */
@@ -1524,7 +1524,7 @@ class Character : public Creature, public visitable
         /** Returns the id of a random starting chargen trait that costs < 0 points */
         trait_id random_bad_trait();
         /** Returns the id of a random trait matching the given predicate */
-        trait_id get_random_trait( const std::function<bool( const mutation_branch & )> &func );
+        trait_id get_random_trait( const std::function<bool( const mutation_branch & )> &func ) const;
         void randomize_cosmetic_trait( const std::string &mutation_type );
         /** Damages worn equipment
         @param days - simulated number of in-game days passed

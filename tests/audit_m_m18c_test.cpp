@@ -1,12 +1,15 @@
+#include <functional>
 #include <memory>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "ammo.h"
 #include "avatar.h"
 #include "bionics.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
@@ -19,7 +22,6 @@
 #include "dispersion.h"
 #include "explosion.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "game_constants.h"
 #include "item.h"
 #include "item_location.h"
@@ -42,6 +44,7 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "talker.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"

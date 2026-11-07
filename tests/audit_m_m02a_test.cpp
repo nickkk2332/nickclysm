@@ -33,7 +33,7 @@ static std::vector<std::string> unknown_ids( const std::string_view expr )
     return exp.check_literal_ids();
 }
 
-static bool has_message( const std::vector<std::string> &messages, const std::string &text )
+static bool has_message( const std::vector<std::string> &messages, const std::string_view text )
 {
     return std::any_of( messages.begin(), messages.end(), [&text]( std::string_view msg ) {
         return msg.find( text ) != std::string_view::npos;

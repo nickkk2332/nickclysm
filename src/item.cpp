@@ -32,6 +32,7 @@
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect.h" // for weed_msg
 #include "effect_on_condition.h"
 #include "enum_bitset.h"

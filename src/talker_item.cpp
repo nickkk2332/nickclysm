@@ -1,6 +1,7 @@
 #include "talker_item.h"
 
 #include <climits>
+#include <functional>
 #include <list>
 #include <vector>
 
@@ -19,6 +20,7 @@
 #include "math_parser_diag_value.h"
 #include "messages.h"
 #include "pocket_type.h"
+#include "ret_val.h"
 #include "units.h"
 #include "value_ptr.h"
 #include "visitable.h"

@@ -3053,7 +3053,7 @@ void npc::cleanup_on_no_danger()
     deactivate_combat_items();
 }
 
-healing_options npc::patient_assessment( const Character &c )
+healing_options npc::patient_assessment( const Character &c ) const
 {
     healing_options try_to_fix;
     try_to_fix.clear_all();

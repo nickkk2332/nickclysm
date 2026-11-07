@@ -1,12 +1,11 @@
 #include "iuse_actor.h"
 
+#include <imgui/imgui.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <functional>
-#include <initializer_list>
-#include <imgui/imgui.h>
 #include <iterator>
 #include <limits>
 #include <list>
@@ -6053,7 +6052,7 @@ void wash_actor::load( const JsonObject &obj, const std::string & )
     optional( obj, false, "time", rules.time, defaults.time );
     optional( obj, false, "time_per", rules.time_per, defaults.time_per );
     if( !rules.soft && !rules.hard ) {
-        obj.throw_error( "washes nothing: \"soft\" and \"hard\" are both false" );
+        obj.throw_error( R"(washes nothing: "soft" and "hard" are both false)" );
     }
     const auto check_per = [&obj]( const std::string_view member, const units::volume & per ) {
         if( per <= 0_ml ) {

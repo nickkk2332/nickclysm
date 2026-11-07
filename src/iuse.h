@@ -26,7 +26,6 @@ class JsonValue;
 class item;
 class map;
 class monster;
-class time_duration;
 struct iteminfo;
 struct washing_rules;
 template<typename T> class ret_val;

@@ -1,6 +1,8 @@
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -10,7 +12,6 @@
 #include "butchery.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -43,6 +44,7 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "rng.h"
+#include "shearing.h"
 #include "stats_tracker.h"
 #include "talker.h"
 #include "type_id.h"

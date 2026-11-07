@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <initializer_list>
+#include <memory>
 #include <string>
 
 #include "calendar.h"

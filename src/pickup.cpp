@@ -15,8 +15,8 @@
 #include "auto_pickup.h"
 #include "calendar.h"
 #include "character.h"
-#include "crafting.h"
 #include "contents_change_handler.h"
+#include "crafting.h"
 #include "debug.h"
 #include "enums.h"
 #include "event.h"
@@ -38,8 +38,8 @@
 #include "mapdata.h"
 #include "math_parser_diag_value.h"
 #include "messages.h"
-#include "overmapbuffer.h"
 #include "options.h"
+#include "overmapbuffer.h"
 #include "pimpl.h"
 #include "player_activity.h"
 #include "point.h"
@@ -50,6 +50,8 @@
 #include "type_id.h"
 #include "uilist.h"
 #include "units.h"
+
+class Creature;
 
 using ItemCount = std::pair<item, int>;
 using PickupMap = std::map<std::string, ItemCount>;

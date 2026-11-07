@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,7 +11,6 @@
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
-#include "creature.h"
 #include "dialogue.h"
 #include "effect.h"
 #include "effect_on_condition.h"
@@ -22,6 +22,7 @@
 #include "math_parser_diag_value.h"
 #include "messages.h"
 #include "mutation.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "rng.h"
 #include "sleep.h"

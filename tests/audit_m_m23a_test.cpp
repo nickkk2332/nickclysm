@@ -1,6 +1,8 @@
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,13 +17,13 @@
 #include "effect_source.h"
 #include "enums.h"
 #include "global_vars.h"
-#include "item.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "math_parser_diag_value.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "rng.h"
+#include "tileray.h"
 #include "type_id.h"
 #include "units.h"
 #include "veh_type.h"

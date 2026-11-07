@@ -1,8 +1,11 @@
 #include <algorithm>
 #include <functional>
+#include <initializer_list>
 #include <list>
+#include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -59,9 +62,10 @@ static const fault_id fault_engine_starter( "fault_engine_starter" );
 
 static const flag_id json_flag_AUDIT_M10A_SLOW_ROT( "AUDIT_M10A_SLOW_ROT" );
 
-static const item_group_id item_group_audit_m10a_conditional( "audit_m10a_conditional" );
-static const item_group_id item_group_audit_m10a_conditional_pick( "audit_m10a_conditional_pick" );
-static const item_group_id item_group_audit_m10a_trimmed( "audit_m10a_trimmed" );
+static const item_group_id Item_spawn_data_audit_m10a_conditional( "audit_m10a_conditional" );
+static const item_group_id
+Item_spawn_data_audit_m10a_conditional_pick( "audit_m10a_conditional_pick" );
+static const item_group_id Item_spawn_data_audit_m10a_trimmed( "audit_m10a_trimmed" );
 
 static const itype_id itype_1cyl_combustion( "1cyl_combustion" );
 static const itype_id itype_9mm( "9mm" );
@@ -550,18 +554,20 @@ TEST_CASE( "item-j07_item_group_entry_conditions", "[audit][item]" )
     clear_avatar();
     on_out_of_scope cleanup = forget_globals( { "audit_m10a_spawn" } );
 
-    std::vector<item> spawned = item_group::items_from( item_group_audit_m10a_conditional,
+    std::vector<item> spawned = item_group::items_from( Item_spawn_data_audit_m10a_conditional,
                                 calendar::turn );
     CHECK( count_of( spawned, itype_audit_m10a_cured ) == 0 );
     CHECK( count_of( spawned, itype_audit_m10a_crock ) == 1 );
-    CHECK( item_group::items_from( item_group_audit_m10a_conditional_pick, calendar::turn ).empty() );
+    CHECK( item_group::items_from( Item_spawn_data_audit_m10a_conditional_pick,
+                                   calendar::turn ).empty() );
 
     get_globals().set_global_value( "audit_m10a_spawn", 1.0 );
-    spawned = item_group::items_from( item_group_audit_m10a_conditional, calendar::turn );
+    spawned = item_group::items_from( Item_spawn_data_audit_m10a_conditional, calendar::turn );
     CHECK( count_of( spawned, itype_audit_m10a_cured ) == 1 );
     CHECK( count_of( spawned, itype_audit_m10a_crock ) == 1 );
-    const std::vector<item> picked = item_group::items_from( item_group_audit_m10a_conditional_pick,
-                                     calendar::turn );
+    const std::vector<item> picked = item_group::items_from(
+                                         Item_spawn_data_audit_m10a_conditional_pick,
+                                         calendar::turn );
     CHECK( count_of( picked, itype_audit_m10a_cured ) == 1 );
 }
 
@@ -573,7 +579,7 @@ TEST_CASE( "item-j07_item_group_delete", "[audit][item]" )
     on_out_of_scope cleanup = forget_globals( { "audit_m10a_spawn" } );
     get_globals().set_global_value( "audit_m10a_spawn", 1.0 );
 
-    const std::vector<item> spawned = item_group::items_from( item_group_audit_m10a_trimmed,
+    const std::vector<item> spawned = item_group::items_from( Item_spawn_data_audit_m10a_trimmed,
                                       calendar::turn );
     CHECK( count_of( spawned, itype_audit_m10a_cured ) == 0 );
     CHECK( count_of( spawned, itype_audit_m10a_crock ) == 1 );

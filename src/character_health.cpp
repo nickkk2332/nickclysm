@@ -1,5 +1,3 @@
-#include "character.h"
-
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -14,10 +12,12 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "ability_runtime.h"
 #include "action.h"
 #include "activity_handlers.h"
 #include "activity_tracker.h"
@@ -27,12 +27,14 @@
 #include "calendar.h"
 #include "cata_assert.h"
 #include "cata_utility.h"
+#include "character.h"
 #include "character_attire.h"
 #include "color.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "cursesdef.h"
 #include "damage.h"
+#include "damage_transaction.h"
 #include "debug.h"
 #include "disease.h"
 #include "effect.h"
@@ -40,11 +42,9 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "damage_transaction.h"
-#include "ability_runtime.h"
-#include "execution_combat.h"
 #include "field_type.h"
 #include "flag.h"
 #include "fungal_effects.h"
@@ -2727,7 +2727,7 @@ void Character::remove_wounds_of_type( const bodypart_id &bp, const wound_type_i
     send_wound_events( std::vector<wound_change>( static_cast<size_t>( removed ), gone ) );
 }
 
-void Character::send_wound_events( const std::vector<wound_change> &changes )
+void Character::send_wound_events( const std::vector<wound_change> &changes ) const
 {
     for( const wound_change &change : changes ) {
         switch( change.what ) {

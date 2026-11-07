@@ -63,6 +63,7 @@
 #include "scent_map.h"
 #include "sounds.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "tileray.h"
 #include "translations.h"
 #include "trap.h"

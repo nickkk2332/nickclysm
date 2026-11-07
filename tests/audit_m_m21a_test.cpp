@@ -1,6 +1,8 @@
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -9,12 +11,10 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_attire.h"
 #include "character_id.h"
 #include "color.h"
 #include "coordinates.h"
-#include "creature.h"
 #include "creature_tracker.h"
 #include "event.h"
 #include "event_bus.h"
@@ -40,13 +40,17 @@
 #include "npc_attack.h"
 #include "npc_class.h"
 #include "options_helpers.h"
+#include "overmap_ui.h"
 #include "pimpl.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "stomach.h"
 #include "type_id.h"
 #include "vitamin.h"
+
+class Creature;
 
 static const bionic_id bio_flashlight( "bio_flashlight" );
 
@@ -65,9 +69,9 @@ static const itype_id itype_machete( "machete" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
-static const npc_class_id npc_class_audit_m21a_child( "audit_m21a_child" );
-static const npc_class_id npc_class_audit_m21a_child_edit( "audit_m21a_child_edit" );
-static const npc_class_id npc_class_audit_m21a_parent( "audit_m21a_parent" );
+static const npc_class_id audit_m21a_child( "audit_m21a_child" );
+static const npc_class_id audit_m21a_child_edit( "audit_m21a_child_edit" );
+static const npc_class_id audit_m21a_parent( "audit_m21a_parent" );
 
 static const spell_id spell_test_spell_pew( "test_spell_pew" );
 static const spell_id spell_test_spell_random_damage( "test_spell_random_damage" );
@@ -284,7 +288,7 @@ TEST_CASE( "npc-b07_hot_potato_is_thrown_clear_of_the_thrower_and_allies", "[aud
     const tripoint_bub_ms nw_corner = m21a_pos + tripoint( -range, -range, 0 );
 
     SECTION( "with an ally next to the north-west corner" ) {
-        npc &buddy = m21a_place_follower( nw_corner + tripoint( 1, 1, 0 ) );
+        npc &buddy = m21a_place_follower( nw_corner + tripoint::south_east );
         const npc_attack_throw attack( *potato, nullptr, guy.speed_rating() );
         const npc_attack_rating rating = attack.evaluate( guy, nullptr );
         REQUIRE( rating.value() );
@@ -454,14 +458,14 @@ TEST_CASE( "npc-b10_npc_fetches_the_best_item_not_the_farthest", "[audit][npc]" 
 // class lost the bonuses it didn't restate; a copied spell's level couldn't be changed either.
 TEST_CASE( "npc-b11_npc_class_copy_keeps_what_it_does_not_restate", "[audit][npc]" )
 {
-    const npc_class &parent = npc_class_audit_m21a_parent.obj();
+    const npc_class &parent = audit_m21a_parent.obj();
     CHECK( parent.roll_strength() == 7 );
     CHECK( parent.roll_dexterity() == 0 );
     CHECK( parent.roll_perception() == -2 );
     CHECK( parent.roll_bravery() == 3 );
     CHECK( parent._starting_spells.size() == 2 );
 
-    const npc_class &child = npc_class_audit_m21a_child.obj();
+    const npc_class &child = audit_m21a_child.obj();
     CHECK( child.roll_strength() == 7 );
     CHECK( child.roll_dexterity() == 1 );
     CHECK( child.roll_perception() == -2 );
@@ -469,7 +473,7 @@ TEST_CASE( "npc-b11_npc_class_copy_keeps_what_it_does_not_restate", "[audit][npc
     CHECK( child._starting_spells == parent._starting_spells );
     CHECK( child.bionic_list == parent.bionic_list );
 
-    const npc_class &edit = npc_class_audit_m21a_child_edit.obj();
+    const npc_class &edit = audit_m21a_child_edit.obj();
     CHECK( edit.roll_strength() == 2 );
     CHECK( edit.roll_perception() == -2 );
     REQUIRE( edit._starting_spells.count( spell_test_spell_pew ) == 1 );

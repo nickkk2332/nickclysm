@@ -1,13 +1,17 @@
 #include "mattack_common.h" // IWYU pragma: associated
 #include "monstergenerator.h" // IWYU pragma: associated
 
+#include <stddef.h>
 #include <algorithm>
+#include <array>
+#include <initializer_list>
 #include <optional>
 #include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
+#include "behavior.h"
 #include "cached_options.h"
 #include "calendar.h"
 #include "cata_utility.h"
@@ -18,6 +22,7 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enum_conversions.h"
 #include "enums.h"
 #include "execution_fatal.h"
 #include "field_type.h"
@@ -134,11 +139,6 @@ bool trigger_takes( mon_trigger_kind kind, mon_trigger trig, const std::string_v
                       trig == mon_trigger::MATING_SEASON || trig == mon_trigger::HOSTILE_WEAK );
 }
 } // namespace
-
-namespace behavior
-{
-class node_t;
-}  // namespace behavior
 
 namespace io
 {
@@ -1362,7 +1362,7 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
         if( multi ) {
             optional( up, was_loaded, "spawn_range", upgrade_multi_range );
             if( !upgrade_multi_range ) {
-                up.throw_error( "\"spawn_range\" is mandatory when \"multiple_spawns\" is true" );
+                up.throw_error( R"("spawn_range" is mandatory when "multiple_spawns" is true)" );
             }
         } else {
             // false clears a range copy-from gave

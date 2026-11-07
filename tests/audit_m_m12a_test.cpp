@@ -8,7 +8,6 @@
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
@@ -31,9 +30,12 @@
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
+#include "point.h"
+#include "ret_val.h"
 #include "stats_tracker.h"
 #include "talker.h"
 #include "type_id.h"
+#include "visitable.h"
 
 static const flag_id json_flag_BINDS_HANDS( "BINDS_HANDS" );
 

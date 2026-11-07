@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "cached_options.h"
 #include "cata_catch.h"

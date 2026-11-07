@@ -1,7 +1,7 @@
 #include "event_statistics.h"
 
-#include <stddef.h>
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <map>

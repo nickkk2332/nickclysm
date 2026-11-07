@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "basecamp.h"
-#include "city.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "line.h"

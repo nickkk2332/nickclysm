@@ -1,6 +1,7 @@
 #include "climbing.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "bodypart.h"
@@ -141,7 +142,7 @@ void climbing_aid::load( const JsonObject &jo, std::string_view )
         mandatory( jo, was_loaded, "down", down );
     } else if( !was_loaded ) {
         if( !jo.has_member( "up" ) ) {
-            jo.throw_error( "a climbing aid needs \"down\", \"up\" or both" );
+            jo.throw_error( R"(a climbing aid needs "down", "up" or both)" );
         }
         down.max_height = 0;
     }

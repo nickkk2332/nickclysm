@@ -19,6 +19,7 @@
 #include "enums.h"
 #include "generic_factory.h"
 #include "magic_enchantment.h"
+#include "pimpl.h"
 #include "rng.h"
 #include "talker.h"
 #include "text_snippets.h"

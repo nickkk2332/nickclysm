@@ -134,7 +134,7 @@ void scenario::load( const JsonObject &jo, std::string_view )
             for( const JsonMember member : changes ) {
                 if( scenario_changeable_members().count( member.name() ) == 0 ) {
                     changes.throw_error_at( member.name(), string_format(
-                                                "\"%s\" doesn't take \"%s\" in a scenario", member.name(), change ) );
+                                                R"("%s" doesn't take "%s" in a scenario)", member.name(), change ) );
                 }
             }
         }

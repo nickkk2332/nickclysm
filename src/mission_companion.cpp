@@ -2792,16 +2792,13 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
             }
         }
 
-        if( player_character.has_trait( trait_DEBUG_HS ) ) {
-            available.push_back( guy );
-        } else if( until_planned_return ) {
-            if( guy->companion_mission_time <= deadline &&
-                guy->companion_mission_time_ret <= calendar::turn ) {
-                available.push_back( guy );
-            }
-        } else if( guy->companion_mission_time <= deadline ||
-                   ( deadline == calendar::before_time_starts &&
-                     guy->companion_mission_time_ret <= calendar::turn ) ) {
+        const bool due = until_planned_return ?
+                         guy->companion_mission_time <= deadline &&
+                         guy->companion_mission_time_ret <= calendar::turn :
+                         guy->companion_mission_time <= deadline ||
+                         ( deadline == calendar::before_time_starts &&
+                           guy->companion_mission_time_ret <= calendar::turn );
+        if( player_character.has_trait( trait_DEBUG_HS ) || due ) {
             available.push_back( guy );
         }
     }

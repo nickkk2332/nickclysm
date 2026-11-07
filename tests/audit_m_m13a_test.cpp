@@ -1,10 +1,8 @@
-#include <list>
 #include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "activity_actor.h"
@@ -13,7 +11,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_variant.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"

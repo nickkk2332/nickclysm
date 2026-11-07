@@ -2358,7 +2358,8 @@ bool Character::forbids_trait_by_background( const trait_id &trait ) const
     } );
 }
 
-trait_id Character::get_random_trait( const std::function<bool( const mutation_branch & )> &func )
+trait_id Character::get_random_trait( const std::function<bool( const mutation_branch & )>
+                                      &func ) const
 {
     std::vector<trait_id> vTraits;
 

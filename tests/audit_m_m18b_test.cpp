@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -12,23 +14,19 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
-#include "character.h"
 #include "character_id.h"
 #include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "damage.h"
-#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
 #include "explosion.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
-#include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic_enchantment.h"
 #include "map.h"
@@ -43,6 +41,7 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "ranged.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "type_id.h"
 
@@ -77,6 +76,8 @@ static const matype_id test_style_m18b( "test_style_m18b" );
 static const matype_id test_style_m18b_deleted( "test_style_m18b_deleted" );
 static const matype_id test_style_m18b_extended( "test_style_m18b_extended" );
 static const matype_id test_style_m18b_replaced( "test_style_m18b_replaced" );
+
+static const mod_id MOD_INFORMATION_test_data( "test_data" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
@@ -447,7 +448,7 @@ TEST_CASE( "cmbt-j06_buff_condition_gates_the_buff", "[audit][martial_arts]" )
     CHECK( buff.get_description().find( "says so" ) != std::string::npos );
     // The inline buff is the style's mod's
     REQUIRE_FALSE( buff.src.empty() );
-    CHECK( buff.src.back().second == mod_id( "test_data" ) );
+    CHECK( buff.src.back().second == MOD_INFORMATION_test_data );
 }
 
 TEST_CASE( "cmbt-j06_martial_art_lists_follow_copy_from", "[audit][martial_arts]" )

@@ -20,7 +20,7 @@
 #include "game_constants.h"
 #include "json_loader.h"
 #include "map_helpers.h"
-#include "math_parser_diag_value.h"
+#include "map_scale_constants.h"
 #include "omdata.h"
 #include "overmap.h"
 #include "overmap_connection.h"
@@ -45,7 +45,6 @@ static const oter_str_id oter_field( "field" );
 static const oter_str_id oter_forest( "forest" );
 static const oter_str_id oter_forest_thick( "forest_thick" );
 static const oter_str_id oter_forest_water( "forest_water" );
-static const oter_str_id oter_lake_water_cube( "lake_water_cube" );
 static const oter_str_id oter_ocean_bed( "ocean_bed" );
 static const oter_str_id oter_ocean_surface( "ocean_surface" );
 static const oter_str_id oter_ravine( "ravine" );

@@ -20,7 +20,6 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_lazy.h"
-#include "character_id.h"
 #include "compatibility.h"
 #include "coordinates.h"
 #include "creature_ref.h"
@@ -44,6 +43,7 @@ class JsonObject;
 class JsonOut;
 class avatar;
 class body_part_set;
+class character_id;
 class const_talker;
 class effect;
 class effect_type;

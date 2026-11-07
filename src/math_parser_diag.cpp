@@ -13,6 +13,7 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -57,9 +58,9 @@
 #include "magic_enchantment.h"
 #include "map.h"
 #include "map_iterator.h"
-#include "melee.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
+#include "melee.h"
 #include "mod_manager.h"
 #include "mod_setting.h"
 #include "mongroup.h"

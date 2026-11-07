@@ -1,6 +1,9 @@
+#include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -9,10 +12,12 @@
 #include "cata_catch.h"
 #include "cata_variant.h"
 #include "character.h"
+#include "character_id.h"
 #include "climbing.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "damage.h"
 #include "dialogue.h"
 #include "event.h"
 #include "event_bus.h"
@@ -27,7 +32,6 @@
 #include "map_helpers_tests.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
-#include "move_mode.h"
 #include "mutation.h"
 #include "npc.h"
 #include "player_helpers.h"

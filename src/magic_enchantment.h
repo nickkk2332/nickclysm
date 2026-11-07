@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "body_part_set.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "color.h"
 #include "dialogue_helpers.h"
