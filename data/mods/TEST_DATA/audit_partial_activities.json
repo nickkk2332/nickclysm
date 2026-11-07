@@ -1,0 +1,25 @@
+[
+  {
+    "id": "test_audit_partial_hammer_frame",
+    "type": "vehicle_part",
+    "copy-from": "frame",
+    "name": { "str": "TEST hammered frame" },
+    "//": "A frame whose repair needs only a hammer, so a test can put the hammer within or out of reach (ACT-B02).",
+    "requirements": { "repair": { "time": "1 m", "qualities": [ { "id": "HAMMER", "level": 1 } ] } }
+  },
+  {
+    "id": "test_audit_partial_two_pocket_bag",
+    "type": "ITEM",
+    "name": { "str": "TEST two-pocket bag" },
+    "description": "A soft bag with two plain pockets, so a test can tell which one an item went into (UIINV-B02).",
+    "weight": "200 g",
+    "volume": "500 ml",
+    "material": [ "cotton" ],
+    "symbol": ")",
+    "color": "white",
+    "pocket_data": [
+      { "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "5 kg", "moves": 100 },
+      { "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "5 kg", "moves": 100 }
+    ]
+  }
+]

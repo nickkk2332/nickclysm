@@ -299,8 +299,20 @@ struct requirement_data {
          */
         static void load_requirement( const JsonObject &jsobj,
                                       const requirement_id &id = requirement_id::NULL_ID(),
-                                      bool check_extend = false,
-                                      bool is_abstract = false );
+                                      bool check_extend = false );
+
+        /**
+         * Loads a recipe's inline components, tools and qualities and stores them as id
+         * (CRAFT-J01).  It starts from inherited (a copy-from parent's inline requirements):
+         * each of the three that jsobj gives replaces the inherited one, then the groups in
+         * "extend" are appended and the ids in "delete" are taken out of every group.
+         * Stored over a copy of itself (inherited has this id) the result replaces what was
+         * stored; otherwise, like save_requirement, an earlier definition of id keeps the
+         * groups the result leaves empty.
+         * @param was_loaded jsobj copies another definition, so "extend" and "delete" are allowed
+         */
+        static void load_inline_requirement( const JsonObject &jsobj, const requirement_id &id,
+                                             const requirement_data &inherited, bool was_loaded );
 
         /**
          * Store requirement data for future lookup

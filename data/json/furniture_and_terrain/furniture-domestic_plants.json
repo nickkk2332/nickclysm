@@ -409,7 +409,16 @@
     "deconstruct": { "items": [  ] },
     "required_str": 3,
     "flags": [ "SEALED", "TRANSPARENT", "CONTAINER", "EASY_DECONSTRUCT", "DONT_REMOVE_ROTTEN", "FLAMMABLE_ASH" ],
-    "examine_action": "stook_full",
+    "examine_action": {
+      "type": "process_finish",
+      "//": "The drying time counts from the grain's harvest.",
+      "duration": "336 h",
+      "examine_message": "There's a grain stook there.",
+      "time_left_message": "The stook will finish drying in %s.",
+      "convert_to_smoking_result": true,
+      "done_message": "You take down the stook as the drying process is now finished.",
+      "furn_set": "f_null"
+    },
     "bash": { "str_min": 3, "str_max": 60, "sound": "crunch.", "sound_fail": "whish." }
   },
   {
@@ -424,6 +433,17 @@
     "max_volume": "10 L",
     "required_str": -1,
     "flags": [ "TRANSPARENT", "CONTAINER", "EASY_DECONSTRUCT", "NOCOLLIDE" ],
-    "examine_action": "stook_empty"
+    "examine_action": {
+      "type": "process_start",
+      "accepts": { "flags": [ "FRESH_GRAIN" ], "fresh": true },
+      "reject_message": "This pile contains %s, which can't be dried here!",
+      "empty_message": "Place some fresh grain here and try again.",
+      "requires_outside": true,
+      "outside_message": "The stook will need to be set up outside to dry.",
+      "ready_message": "This pile contains grain that is ready to be left out for drying.",
+      "query": "Stand the grain up to dry?",
+      "success_message": "You set up the stook and leave it to dry.",
+      "furn_set": "f_stook_full"
+    }
   }
 ]

@@ -1,0 +1,89 @@
+[
+  {
+    "type": "furniture",
+    "id": "f_test_audit_high_dryer",
+    "name": "test dryer",
+    "description": "A process furniture made only of JSON.",
+    "symbol": "U",
+    "color": "brown",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "max_volume": "100 L",
+    "flags": [ "CONTAINER", "PLACE_ITEM" ],
+    "examine_action": {
+      "type": "process_start",
+      "accepts": { "items": [ "stick", "2x4", "splinter" ] },
+      "reject_if_contains": { "items": [ "charcoal" ] },
+      "contains_message": "The test dryer is full of %s.",
+      "reject_message": "The test dryer won't take %s.",
+      "empty_message": "The test dryer is empty.",
+      "yield_percent": { "math": [ "_volume >= 2000 ? 50 : 0" ] },
+      "intermediate": "unfinished_charcoal",
+      "too_small_message": "Too little for the test dryer.",
+      "success_message": { "text": "The test dryer starts.", "type": "good" },
+      "furn_set": "f_test_audit_high_dryer_full",
+      "effect_on_conditions": [ { "id": "EOC_test_audit_high_dryer_started", "effect": [ { "math": [ "test_audit_high_dryer_started = 1" ] } ] } ]
+    }
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_audit_high_dryer_full",
+    "name": "running test dryer",
+    "description": "A process furniture made only of JSON, running.",
+    "symbol": "U",
+    "color": "brown_red",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "flags": [ "NOITEM", "SEALED", "CONTAINER", "PLACE_ITEM" ],
+    "examine_action": {
+      "type": "process_finish",
+      "duration": { "math": [ "3 * 3600" ] },
+      "empty_message": "The test dryer is empty.",
+      "examine_message": "The test dryer hums.",
+      "time_left_message": "The test dryer needs %s more.",
+      "output": { "item": "charcoal", "from": [ "unfinished_charcoal" ] },
+      "done_message": "The test dryer made %d charcoal.",
+      "furn_set": "f_test_audit_high_dryer",
+      "effect_on_conditions": [ { "id": "EOC_test_audit_high_dryer_done", "effect": [ { "math": [ "test_audit_high_dryer_done = 1" ] } ] } ]
+    }
+  },
+  {
+    "type": "harvest_drop_type",
+    "id": "test_audit_high_fat",
+    "action_yield": { "FULL": 1, "QUICK": 0.5, "SKIN": { "mult": 0.75 }, "DISSECT": { "mult": 0, "random": [ 1, 1 ] } },
+    "corpse_damage_yield": [ 1, 0.5 ],
+    "gib_yield": 0.25,
+    "survives_splatter": true,
+    "enables_action": [ "SKIN" ],
+    "corpse_flag_yield": [ { "flags": [ "FIELD_DRESS" ], "skip": true }, { "actions": [ "FULL" ], "yield": 3 } ],
+    "proficiency_penalties": [ { "proficiency": "prof_butchering_basic", "penalty": 1 } ],
+    "trains_proficiencies": [ { "proficiencies": [ "prof_skinning_basic" ], "time_fraction": { "SKIN": 0.5 } } ]
+  },
+  {
+    "type": "harvest_drop_type",
+    "id": "test_audit_high_plain"
+  },
+  {
+    "id": "test_audit_high_fat_harvest",
+    "type": "harvest",
+    "entries": [
+      { "drop": "fat", "type": "test_audit_high_fat", "mass_ratio": 0.1 },
+      { "drop": "meat", "type": "test_audit_high_plain", "mass_ratio": 0.1 }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_audit_high_fatty",
+    "name": { "str": "test fatty", "//~": "NO_I18N" },
+    "description": { "str": "A beast whose harvest is test fat and plain meat.", "//~": "NO_I18N" },
+    "default_faction": "herbivore",
+    "material": [ "flesh" ],
+    "harvest": "test_audit_high_fat_harvest",
+    "symbol": "B",
+    "volume": "81500 ml",
+    "weight": "81500 g",
+    "hp": 100,
+    "speed": 50,
+    "flags": [ "SEES", "HEARS", "SMELLS", "ANIMAL", "WARM" ]
+  }
+]

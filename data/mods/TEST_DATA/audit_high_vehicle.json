@@ -1,0 +1,25 @@
+[
+  {
+    "id": "test_vint_j01_talking_cart",
+    "type": "vehicle",
+    "//": "VINT-J01: a vehicle prototype with chat topics, used in tests/audit_high_vehicle_test.cpp",
+    "name": "TEST talking cart",
+    "blueprint": [ "o" ],
+    "parts": [ { "x": 0, "y": 0, "parts": [ "frame#vertical", "cargo_space" ] } ],
+    "chat_topics": [ "TALK_TEST_VINT_J01_CART" ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_TEST_VINT_J01_CART",
+    "//": "VINT-J01",
+    "dynamic_line": "Beep.",
+    "responses": [ { "text": "Bye.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_TEST_VINT_J01_CART_2",
+    "//": "VINT-J01: added by u_add_vehicle_chat_topic",
+    "dynamic_line": "Boop.",
+    "responses": [ { "text": "Bye.", "topic": "TALK_DONE" } ]
+  }
+]

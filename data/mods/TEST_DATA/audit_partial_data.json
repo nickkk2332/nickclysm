@@ -1,0 +1,59 @@
+[
+  {
+    "//": "MGEN-B06: its only mapgen has a math weight and expects a predecessor, so it must be checked against this terrain's flags.",
+    "type": "overmap_terrain",
+    "id": "audit_partial_data_var_pred_omt",
+    "name": "audit variable weight predecessor test",
+    "sym": "%",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "REQUIRES_PREDECESSOR", "SHOULD_NOT_SPAWN" ]
+  },
+  {
+    "type": "mapgen",
+    "om_terrain": "audit_partial_data_var_pred_omt",
+    "weight": { "math": [ "1000" ] },
+    "object": { "fallback_predecessor_mapgen": "field" }
+  },
+  {
+    "//": "SPAT-B10: a gas that lowers the scent two tiles out.  At intensity 1 it never spreads.",
+    "type": "field_type",
+    "id": "audit_partial_data_wide_scent_gas",
+    "intensity_levels": [ { "name": "audit scent gas", "sym": "8", "color": "white", "scent_neutralization": 5 } ],
+    "percent_spread": 1,
+    "scent_neutralization_radius": 2,
+    "phase": "gas",
+    "display_field": true
+  },
+  {
+    "//": "PROG-B03: the player may only take the driving license; NPCs aren't held to that.",
+    "type": "scenario",
+    "id": "audit_partial_data_one_hobby",
+    "name": "Audit one hobby",
+    "points": 0,
+    "description": "PROG-B03 test scenario whose only hobby is the driving license.",
+    "allowed_locs": [ "sloc_shelter_safe" ],
+    "start_name": "Evac Shelter",
+    "whitelist_hobbies": true,
+    "hobbies": [ "driving_license" ]
+  },
+  {
+    "//": "HLTH-B05: a chance of 0 and of -1 never fire, a chance of 0.5 in 2 is 1 in 2, and no chance at all fires every time.",
+    "type": "effect_type",
+    "id": "audit_partial_data_chances",
+    "name": [ "Audit chances" ],
+    "desc": [ "HLTH-B05 test effect." ],
+    "base_mods": {
+      "pain_min": [ 1 ],
+      "pain_chance": [ 0 ],
+      "hurt_min": [ 1 ],
+      "hurt_chance": [ 0.5 ],
+      "hurt_chance_bot": [ 2 ],
+      "stim_min": [ 1 ],
+      "thirst_min": [ 1 ],
+      "thirst_chance": [ -1 ]
+    }
+  }
+]

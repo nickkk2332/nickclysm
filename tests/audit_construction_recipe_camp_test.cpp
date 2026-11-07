@@ -236,12 +236,8 @@ TEST_CASE( "craft-j01_recipe_copy_from_extends_and_deletes_proficiencies",
             "components": [ [ [ "2x4", 1 ] ] ],
             "delete": { "proficiencies": [ "prof_tempering" ] }
         })" ), JsonError );
-        // Inline requirements are never inherited, so they can't be extended or deleted.
-        CHECK_THROWS_AS( load_craft_j01_child( R"({
-            "type": "recipe", "result": "cudgel", "id_suffix": "audit_craft_j01_bad_comps",
-            "components": [ [ [ "2x4", 1 ] ] ],
-            "extend": { "components": [ [ [ "rock", 1 ] ] ] }
-        })" ), JsonError );
+        // Deleting a tool the recipe doesn't have (inline requirements are inherited and take
+        // extend and delete since, see tests/audit_partial_loading_test.cpp).
         CHECK_THROWS_AS( load_craft_j01_child( R"({
             "type": "recipe", "result": "cudgel", "id_suffix": "audit_craft_j01_bad_tools",
             "components": [ [ [ "2x4", 1 ] ] ],

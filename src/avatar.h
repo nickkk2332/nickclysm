@@ -483,6 +483,9 @@ class avatar : public Character
         bool death_finalized_ = false;
         death_presentation death_presentation_ = death_presentation::pending;
         bool death_finalizing_ = false; // NOLINT(cata-serialize)
+        // EVT-B01: while the AVATAR_DEATH EOCs run, the player may take over a follower's body
+        // (the death switch); control_npc refuses at any other point of a death
+        bool death_switch_open_ = false; // NOLINT(cata-serialize)
         void on_move( const tripoint_abs_ms &old_pos ) override;
         // where the avatar has stood around since relocated_at; not serialized
         std::optional<tripoint_abs_ms> relocation_anchor;

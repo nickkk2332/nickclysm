@@ -153,7 +153,7 @@
     "qualities": [ [ { "id": "HAMMER", "level": 2 } ] ],
     "components": [ [ [ "everburning_sconce", 1 ] ] ],
     "pre_flags": "WALL",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -189,7 +189,7 @@
     "using": [ [ "mag_wildwood_construction", 2 ] ],
     "dark_craftable": true,
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   }
 ]

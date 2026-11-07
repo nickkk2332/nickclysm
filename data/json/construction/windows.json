@@ -871,7 +871,13 @@
     "components": [ [ [ "2x4", 4 ] ], [ [ "nails", 8, "LIST" ] ] ],
     "pre_flags": "BARRICADABLE_WINDOW_CURTAINS",
     "post_terrain": "t_window_boarded",
-    "post_special": "done_window_curtains"
+    "byproducts": [ { "item": "nail", "charges": 4 }, { "item": "sheet", "count": 2 }, { "item": "stick" }, { "item": "string_36" } ],
+    "post_eocs": [
+      {
+        "id": "EOC_constr_window_boarded_curtains_left",
+        "effect": [ { "message": "After boarding up the window the curtains and curtain rod are left." } ]
+      }
+    ]
   },
   {
     "type": "construction",

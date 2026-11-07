@@ -2,6 +2,7 @@
   {
     "id": "fd_dust_storm",
     "type": "field_type",
+    "//": "No scent_neutralization: the dust storm doesn't spread, and only a spreading gas lowers scent.",
     "intensity_levels": [
       {
         "name": "gust of dust",
@@ -36,8 +37,7 @@
             "chance_inside_vehicle": 5,
             "chance_outside_vehicle": 5
           }
-        ],
-        "scent_neutralization": 5
+        ]
       },
       {
         "name": "cloud of dust",
@@ -72,8 +72,7 @@
             "chance_inside_vehicle": 5,
             "chance_outside_vehicle": 5
           }
-        ],
-        "scent_neutralization": 5
+        ]
       },
       {
         "name": "wall of dust",
@@ -98,8 +97,7 @@
             "chance_inside_vehicle": 1,
             "chance_outside_vehicle": 1
           }
-        ],
-        "scent_neutralization": 5
+        ]
       }
     ],
     "decay_amount_factor": 5,
