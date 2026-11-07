@@ -36,7 +36,6 @@ struct const_dialogue;
 struct dream;
 template <typename E> struct enum_traits;
 
-extern std::vector<dream> dreams;
 extern std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
 
 struct dream {
@@ -46,14 +45,22 @@ struct dream {
     public:
         std::vector<std::string> messages() const;
 
+        // A dream without an "id" in its JSON gets one no JSON can name, so it can't be changed.
+        string_id<dream> id;
+        bool was_loaded = false;
         mutation_category_id category; // The category that will trigger the dream
-        int strength; // The category strength required for the dream
+        int strength = 0; // The category strength required for the dream
 
-        dream() {
-            strength = 0;
-        }
-
-        static void load( const JsonObject &jsobj );
+        /** Loads one "dream" object: through the dream factory if it has an id or is abstract. */
+        static void load_all( const JsonObject &jsobj, const std::string &src );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jsobj, std::string_view src );
+        /** Every dream, in the order they were first defined */
+        static const std::vector<dream> &get_all();
+        /** Loads the dreams whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
+        static void reset();
 };
 
 struct mut_attack {
@@ -549,6 +556,8 @@ struct mutation_category_trait {
         bool skip_test = false;
         // Mutation category i.e "BIRD", "CHIMERA"
         mutation_category_id id;
+        bool was_loaded = false;
+        std::vector<std::pair<mutation_category_id, mod_id>> src;
         // The trait that you gain when you break the threshold for this category
         trait_id threshold_mut;
         // Amount of vitamin necessary to attempt breaking the threshold
@@ -566,7 +575,13 @@ struct mutation_category_trait {
         static void reset();
         static void check_consistency();
 
-        static void load( const JsonObject &jsobj );
+        /** Loads one "mutation_category" object through the category factory. */
+        static void load_all( const JsonObject &jsobj, const std::string &src_name );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jsobj, std::string_view src_name );
+        /** Loads the categories whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
 };
 
 void load_mutation_type( const JsonObject &jsobj );

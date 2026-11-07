@@ -1695,11 +1695,21 @@ void game::set_critter_died()
     critter_died = true;
 }
 
-static int maptile_field_intensity( maptile &mt, field_type_id fld )
+// The most heat a field on the tile radiates: its intensity level's heat_radiation (for
+// fd_fire, its intensity)
+static int maptile_field_heat( maptile &mt )
 {
-    const field_entry *field_ptr = mt.find_field( fld );
-
-    return field_ptr == nullptr ? 0 : field_ptr->get_field_intensity();
+    const field &fields = mt.get_field();
+    if( !fields.displayed_field_type() ) {
+        return 0;
+    }
+    int heat = 0;
+    for( const auto &fd : fields ) {
+        if( fd.second.is_field_alive() ) {
+            heat = std::max( heat, fd.first->heat_radiation( fd.second.get_field_intensity() ) );
+        }
+    }
+    return heat;
 }
 
 units::temperature_delta get_heat_radiation( const tripoint_bub_ms &location )
@@ -1707,14 +1717,12 @@ units::temperature_delta get_heat_radiation( const tripoint_bub_ms &location )
     units::temperature_delta temp_mod = units::from_kelvin_delta( 0 );
     Character &player_character = get_player_character();
     map &here = get_map();
-    // Convert it to an int id once, instead of 139 times per turn
-    const field_type_id fd_fire_int = fd_fire.id();
     for( const tripoint_bub_ms &dest : here.points_in_radius( location, 6 ) ) {
         int heat_intensity = 0;
 
         maptile mt = here.maptile_at( dest );
 
-        int ffire = maptile_field_intensity( mt, fd_fire_int );
+        int ffire = maptile_field_heat( mt );
         if( ffire > 0 ) {
             heat_intensity = ffire;
         } else  {
@@ -1750,14 +1758,12 @@ int get_best_fire( const tripoint_bub_ms &location )
     int best_fire = 0;
     Character &player_character = get_player_character();
     map &here = get_map();
-    // Convert it to an int id once, instead of 139 times per turn
-    const field_type_id fd_fire_int = fd_fire.id();
     for( const tripoint_bub_ms &dest : here.points_in_radius( location, 6 ) ) {
         int heat_intensity = 0;
 
         maptile mt = here.maptile_at( dest );
 
-        int ffire = maptile_field_intensity( mt, fd_fire_int );
+        int ffire = maptile_field_heat( mt );
         if( ffire > 0 ) {
             heat_intensity = ffire;
         } else  {

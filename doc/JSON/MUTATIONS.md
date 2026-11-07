@@ -482,6 +482,12 @@ A Mutation Category identifies a set of interrelated mutations that as a whole e
 | `wip`                   | A flag indicating that a mutation category is unfinished and shouldn't have consistency tests run on it. See tests/mutation_test.cpp.
 | `skip_test`             | If true, this mutation category will be skipped in consistency tests; this should only be used if you know what you're doing. See tests/mutation_test.cpp.
 
+A category can `copy-from` another category (or an `abstract` one), and a later mod changes a category by copying it under the same id: it keeps every member it doesn't name, and the numbers take `relative` and `proportional`.  A second definition of an id without `copy-from` replaces the first one entirely.
+
+```jsonc
+{ "type": "mutation_category", "id": "LIZARD", "copy-from": "LIZARD", "relative": { "threshold_min": 400 } }
+```
+
 ## Trait Migrations
 
 A mutation migration can be used to migrate a mutation that formerly existed gracefully into a proficiency, another mutation (potentially a specific variant), or to simply remove it without any fuss.

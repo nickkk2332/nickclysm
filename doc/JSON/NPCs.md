@@ -505,9 +505,9 @@ For mod usage to insert dialogue above the `TALK_DONE` and `TALK_NONE` lines. De
 ```
 
 #### `id`
-The topic id can be one of the built-in topics or a new id. However, if several talk topics *in json* have the same id, the last topic definition will override the previous ones.
+The topic id can be one of the built-in topics or a new id. If several talk topics *in json* have the same id, they are merged in load order: each definition adds its `responses`, `repeat_responses` and `speaker_effect`, and the `dynamic_line`, `portrait_override` and `replace_built_in_responses` it has replace the earlier ones.
 
-The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once.
+The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line`, the `portrait_override` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once (see [Changing the responses of an earlier definition](#changing-the-responses-of-an-earlier-definition) to remove or replace them).
 
 This example adds the "I'm going now!" response to all the listed topics.
 ```jsonc
@@ -534,7 +534,7 @@ This example adds the "I'm going now!" response to all the listed topics.
   }
 ```
 
-Portrait_override will force the dialogue window to display the given portrait ID while on that topic, overriding any portrait that may normally be displayed.
+Portrait_override will force the dialogue window to display the given portrait ID while on that topic, overriding any portrait that may normally be displayed.  A later definition of the same topic that has no `portrait_override` keeps the portrait an earlier one gave.
 
 #### `dynamic_line`
 The `dynamic_line` is the line spoken by the NPC.  It is optional.  If it is not defined and the topic has the same id as a built-in topic, the `dynamic_line` from that built-in topic will be used.  Otherwise the NPC will say nothing.  [See the chapter about Dynamic Lines below](#dynamic-lines) for more details.
@@ -549,6 +549,21 @@ The `responses` entry is an array with possible responses.  It must not be empty
 
 #### `replace_built_in_responses`
 `replace_built_in_responses` is an optional boolean that defines whether to dismiss the built-in responses for that topic (default is `false`). If there are no built-in responses, this won't do anything. If `true`, the built-in responses are ignored and only those from this definition in the current json are used. If `false`, the responses from the current json are used along with the built-in responses (if any).
+
+#### Changing the responses of an earlier definition
+Each definition of a topic adds its `responses` to those of the earlier definitions (from vanilla or an earlier mod).  Two optional members change that:
+
+* `"replace_responses": true` drops every response the earlier definitions gave, so the topic has only the `responses` of this definition.  It doesn't touch `repeat_responses`, `speaker_effect` or the built-in responses (see `replace_built_in_responses`).
+* `"delete": { "responses": [ ... ] }` removes earlier responses before this definition's are added.  Each entry selects responses by `"text"` (the response's `text`, or the `true` text of a `truefalsetext`, compared as written in the JSON, with its `ctxt` if it has one), by `"topic"` (the topic the response leads to), or by both.  Every response that matches is removed, and an entry that matches none is an error.
+
+```jsonc
+  {
+    "type": "talk_topic",
+    "id": "TALK_REFUGEE_Draco_1a",
+    "delete": { "responses": [ { "text": "Have you seen anything that could help me?" }, { "topic": "TALK_DONE" } ] },
+    "responses": [ { "text": "I have to go.", "topic": "TALK_DONE" } ]
+  }
+```
 
 ---
 
@@ -1361,6 +1376,7 @@ Mutator Name | Required Keys | Description
 `"valid_technique`" | `blacklist`: array of String or [variable object](#variable-object). <br/> `crit`: bool <br/> `dodge_counter`: bool <br/> `block_counter`: bool <br/> `grab_counter`: bool | Returns a random valid technique for the alpha talker to use against the beta talker with the provided specifications.
 `"u_/npc_loc_relative"` | `target`: String or [variable object](#variable-object). | target should be a string like "(x,y,z)" where x,y,z are coordinates relative to the player. Returns the abs_ms coordinates as a string (ready to store as a location variable), in the form "(x,y,z)" of the provided point relative to the alpha/beta talker respectively. So `"target":"(0,1,0)"` would return the point south of the talker.
 `"topic_item"` | | Returns current topic_item as a string. See [Repeat Responses](#repeat-responses)
+`"u_/npc_vehicle_type"` | | Returns the [vehicle prototype](VEHICLES_JSON.md) id the alpha/beta talker was spawned from (`none` for a vehicle built in the game or split off another), or an empty string when the talker isn't a vehicle. See also the `u_vehicle_type` condition.
 
 ### Math
 A `math` object lets you evaluate math expressions and assign them to dialogue variables or compare them for conditions. It takes the form
@@ -1607,9 +1623,9 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | vehicle_max_speed() |  ✅  |  ❌  | u, n | Return the vehicle's top speed with its current engines and fuel, in miles per hour. Talker must be a vehicle. |
 | vehicle_power() |  ✅  |  ❌  | u, n | Return the combined power of the vehicle's switched-on engines that have fuel, less what the alternators take, in watts. Talker must be a vehicle. |
 | vehicle_locked() |  ✅  |  ✅  | u, n | Return 1 if the vehicle is locked (it has to be hotwired), 0 otherwise. Can be set. Talker must be a vehicle.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_locked() = 0" ] }` |
-| vehicle_part_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many working parts with a vehicle part flag the vehicle has. Broken parts and parts of a racked vehicle are not counted. Argument is the flag; an unknown flag is an error. Talker must be a vehicle.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_count('WHEEL') < 4" ] }` |
-| vehicle_part_broken_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many broken parts with a vehicle part flag the vehicle has. Argument is the flag. Talker must be a vehicle.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_broken_count('ENGINE') > 0" ] }` |
-| vehicle_part_hp(`s`/`v`) |  ✅  |  ❌  | u, n | Return the health of the vehicle's parts with a vehicle part flag, in percent (100 is undamaged, 0 is broken). Argument is the flag. Returns 0 when the vehicle has no such part. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`aggregate`: `s`/`v` - how the parts are combined: `min` (default), `max` or `average`.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_hp('WHEEL') < 50" ] }`<br/>`{ "math": [ "u_vehicle_part_hp('ENGINE', 'aggregate': 'average') > 90" ] }` |
+| vehicle_part_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many working parts with a vehicle part flag the vehicle has. Broken parts and parts of a racked vehicle are not counted. Argument is the flag; an unknown flag is an error. The flag can be left out, to count every part, or to count by part id alone. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`part`: `s`/`v` - only parts of this vehicle part id; an unknown id is an error.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_count('WHEEL') < 4" ] }`<br/>`{ "math": [ "u_vehicle_part_count('part': 'wheel_wide') == 4" ] }` |
+| vehicle_part_broken_count(`s`/`v`) |  ✅  |  ❌  | u, n | Return how many broken parts with a vehicle part flag the vehicle has. Argument is the flag; it can be left out, as for `vehicle_part_count()`. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`part`: `s`/`v` - only parts of this vehicle part id.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_broken_count('ENGINE') > 0" ] }` |
+| vehicle_part_hp(`s`/`v`) |  ✅  |  ❌  | u, n | Return the health of the vehicle's parts with a vehicle part flag, in percent (100 is undamaged, 0 is broken) or in hit points. Argument is the flag; it can be left out, as for `vehicle_part_count()`. Parts of a racked vehicle are not counted. Returns 0 when the vehicle has no such part. Talker must be a vehicle.<br/><br/>Optional kwargs:<br/>`aggregate`: `s`/`v` - how the parts are combined: `min` (default), `max` or `average`.<br/>`format`: `s`/`v` - `percent` (default) or `hp`, the part's hit points (its durability when undamaged).<br/>`part`: `s`/`v` - only parts of this vehicle part id.<br/><br/>Example:<br/>`{ "math": [ "u_vehicle_part_hp('WHEEL') < 50" ] }`<br/>`{ "math": [ "u_vehicle_part_hp('ENGINE', 'aggregate': 'average') > 90" ] }`<br/>`{ "math": [ "u_vehicle_part_hp('part': 'frame', 'format': 'hp') < 100" ] }` |
 
 #### List of Character and item aspects
 These can be read or written to with `val()`. Weight and volume are not aspects: use the `weight()` and `volume()` functions.

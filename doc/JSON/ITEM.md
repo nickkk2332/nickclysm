@@ -41,6 +41,8 @@
 - [Milling](#milling)
 - [Artifacts](#artifacts)
 - [Use Actions](#use-actions)
+  - [Use action ids](#use-action-ids)
+  - [Use action types](#use-action-types)
 - [Drop Actions](#drop-actions)
 - [Tick Actions](#tick-actions)
   - [Delayed Item Actions](#delayed-item-actions)
@@ -1138,7 +1140,39 @@ For the enchantment syntax see [Enchantments](MAGIC.md#enchantments), and for `c
 
 ### Use Actions
 
-The contents of `use_action` fields can either be a string indicating a built-in function to call when the item is activated (defined in iuse.cpp), or one of several special definitions that invoke a more structured function.
+The contents of `use_action` fields can either be a string indicating a built-in function to call when the item is activated (defined in iuse.cpp), or one of several special definitions that invoke a more structured function.  `use_action` takes one action or a list of them; a string or `[ "type", ammo_scale ]` array names a built-in action with its default data.
+
+#### Use action ids
+
+Every use action of an item has an id, which the item's use menu, the item action menu, `u_activate`, `ammo_scale` and an `effect_on_conditions` action's `_method` know it by.  By default it is the action's type (the `item_action_type` of a `repair_item` action), so an item has one action of each type unless its actions say otherwise.  Every object-form use action (in `use_action`, `tick_action`, `countdown_action` or `drop_action`) takes these fields:
+
+- `"id"`: (optional) the action's id among the item's use actions.  Give actions of the same type different ids to have several of them: a staff that casts two spells, an amulet with separate Pray and Curse actions, a tool with low and high transform modes.  It can't be empty or the name of another use action type (both are load errors).
+- `"menu_text"`: (optional) the action's name in the item's use menu, the item action menu and the item's list of actions.  Without it, the action's own name (`"name"` of `message` and `sound` actions, for example) or that of its type in `item_actions.json`, so give each of several actions of one type its own.
+- `"ammo_scale"`: (optional) the action's factor of `charges_per_use`: it needs that many uses' worth of charges to be used, and a `transform` spends that many uses.  It is kept by the action's id.
+
+```jsonc
+"use_action": [
+  { "type": "cast_spell", "id": "staff_fire", "menu_text": "Cast fireball", "spell_id": "fireball", "level": 3, "no_fail": true, "ammo_scale": 2 },
+  { "type": "cast_spell", "id": "staff_heal", "menu_text": "Cast healing", "spell_id": "light_healing", "level": 2, "no_fail": true }
+]
+```
+
+Each action with an id of its own gets its own entry in the item action menu (when its type is listed in `item_actions.json`), without a key binding.  Code and saves that name an action by its type, such as `{ "u_activate": "cast_spell" }`, the C++ that looks for an item's `heal` or `firestarter` action, or an activity saved before ids existed, get the item's action with that id, or else its first action of that type in id order.
+
+A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more actions and `delete` actions by id.  In `delete`, a string is an action's id (its type when it has no id); an object or array names the action it would load as, by its `"id"` or else its type, and nothing else of it is read.  Deleting an action also removes its `ammo_scale`.  An item that redefines an inherited action keeps the `ammo_scale` it inherited for that id; give the new action another id to set its own.
+
+```jsonc
+{
+  "id": "staff_of_flames",
+  "copy-from": "staff_of_two_spells",
+  "type": "ITEM",
+  "name": { "str": "staff of flames", "str_pl": "staves of flames" },
+  "delete": { "use_action": [ "staff_heal" ] },
+  "extend": { "use_action": [ { "type": "cast_spell", "id": "staff_flame_wall", "menu_text": "Cast flame wall", "spell_id": "flame_wall", "level": 2, "no_fail": true } ] }
+}
+```
+
+#### Use action types
 
 ```jsonc
 "use_action": {
@@ -1146,7 +1180,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "target": "gasoline_lantern_on",          // The item to transform to
   "target_group": "twisted_geometry",       // If used instead of target, the item becomes a random item from this item group
   "variant_type": "condom_plain",           // (optional) Defaults to `<any>`. Specific variant type to set for the transformed item. Special string `<any>` will pick a random variant from all available variants, based on the variant's defined weight
-  "ammo_scale": 0,                          // For use when an item automatically transforms into another when its ammo drops to 0, or to allow guns to transform with 0 ammo.  Any use_action object takes this
+  "ammo_scale": 0,                          // For use when an item automatically transforms into another when its ammo drops to 0, or to allow guns to transform with 0 ammo.  Any use_action object takes this, see "Use action ids"
   "msg": "You turn the lamp on.",           // Message to display when activated
   "sound_volume": 0,                        // (optional) Loudness of the activation, heard with "msg" as its description.  Default 0, no sound
   "damage_failure_msg": "Activation of your damaged %s fails.", // (optional) Message when activating the damaged item fails
@@ -1527,7 +1561,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
 
 Like `use_action`, `drop_action` runs when the item is placed on the map through the drop/placement path, including ordinary drops and thrown items. It runs before insertion or charge merging.
 
-For an EOC drop action, alpha is the actual dropping Character when the caller supplies one; unattended or environmental placement has no alpha. Beta is the dropped item, and `use_location` and `item_pos` are the absolute destination (`method` is the action type, `effect_on_conditions`). A callback returning zero or cancelling preserves the item; a positive consumption result destroys it during placement. For an EOC action, `consume` controls this result. Do not assume that the item is already on the ground, or that the avatar caused the drop.
+For an EOC drop action, alpha is the actual dropping Character when the caller supplies one; unattended or environmental placement has no alpha. Beta is the dropped item, and `use_location` and `item_pos` are the absolute destination (`method` is the action's id: its `"id"`, else its type, `effect_on_conditions`). A callback returning zero or cancelling preserves the item; a positive consumption result destroys it during placement. For an EOC action, `consume` controls this result. Do not assume that the item is already on the ground, or that the avatar caused the drop.
 
 ```jsonc
 "drop_action": {                  
@@ -1541,7 +1575,7 @@ For an EOC drop action, alpha is the actual dropping Character when the caller s
 
 `"tick_action"` of active tools is executed once on every turn. This action can be any use action or iuse but some of them may not work properly when not executed by player.
 
-If `"tick_action"` is defined as array of multiple actions they all are executed in order. Multiple use actions of same type cannot be used at once.
+If `"tick_action"` is defined as array of multiple actions they all are executed, in order of their ids. Several actions of the same type need different `"id"`s (see [Use action ids](#use-action-ids)); an `effect_on_conditions` tick action's EOCs see its id as `_method`.
   
 #### Delayed Item Actions
 

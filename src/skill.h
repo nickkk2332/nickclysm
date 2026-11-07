@@ -3,11 +3,14 @@
 #define CATA_SRC_SKILL_H
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "calendar.h"
@@ -33,7 +36,6 @@ struct time_info_t {
 class Skill
 {
         friend class string_id<Skill>;
-        skill_id _ident;
 
         translation _name;
         translation _description;
@@ -54,9 +56,26 @@ class Skill
         bool consumes_focus = true;
         std::set<std::string> _requires_all_traits;
         std::set<std::string> _requires_any_traits;
+        // When the definition this skill holds was loaded: `skills` keeps that order, so a
+        // redefinition moves the skill to the end as it always did.
+        uint64_t _load_order = 0;
+
+        // Rebuilds `skills` and `contextual_skills` from the skill factory.
+        static void update_skill_lists();
     public:
+        skill_id id;
+        bool was_loaded = false;
+        std::vector<std::pair<skill_id, mod_id>> src;
+
+        // The skills that aren't contextual, in load order (see _load_order).
         static std::vector<Skill> skills;
-        static void load_skill( const JsonObject &jsobj );
+        /** Loads one "skill" object through the skill factory. */
+        static void load_skill( const JsonObject &jsobj, const std::string &src_name );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jsobj, std::string_view src );
+        /** Loads the skills whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
         // For loading old saves that still have integer-based ids.
         static skill_id from_legacy_int( int legacy_id );
         static skill_id random_skill();
@@ -76,7 +95,7 @@ class Skill
                const std::set<std::string> &tags, skill_displayType_id display_type );
 
         const skill_id &ident() const {
-            return _ident;
+            return id;
         }
         std::string name() const {
             return _name.translated();
@@ -111,10 +130,10 @@ class Skill
         }
 
         bool operator==( const Skill &b ) const {
-            return this->_ident == b._ident;
+            return this->id == b.id;
         }
         bool operator< ( const Skill &b ) const {
-            return this->_ident < b._ident;    // Only here for the benefit of std::map<Skill,T>
+            return this->id < b.id;    // Only here for the benefit of std::map<Skill,T>
         }
 
         bool operator!=( const Skill &b ) const {

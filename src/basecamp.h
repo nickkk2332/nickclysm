@@ -38,6 +38,7 @@ class JsonOut;
 class basecamp;
 class character_id;
 class faction;
+class faction_mission;
 class inventory_filter_preset;
 class item;
 class npc;
@@ -305,25 +306,28 @@ class basecamp
         void form_crafting_inventory( map &target_map );
         std::list<item> use_charges( const itype_id &fake_id, int &quantity );
         /**
-         * spawn items or corpses based on search attempts
+         * items found by search attempts, added to @ref found
          * @param skill skill level of the search
          * @param group_id name of the item_group that provides the items
          * @param attempts number of skill checks to make
          * @param difficulty a random number from 0 to difficulty is created for each attempt, and
-         * if skill is higher, an item or corpse is spawned
+         * if skill is higher, an item is rolled from the group
          */
-        void search_results( int skill, const item_group_id &, int attempts, int difficulty );
+        static void search_results( int skill, const item_group_id &group_id, int attempts,
+                                    int difficulty, std::vector<item> &found );
         /**
-         * spawn items or corpses based on search attempts
+         * corpses found by hunting attempts, added to @ref found
          * @param skill skill level of the search
-         * @param task string to identify what types of corpses to provide ( _faction_camp_hunting
-         * or _faction_camp_trapping )
+         * @param groups the monster groups the corpses come from; each successful attempt picks
+         * one, weighted by its total frequency
          * @param attempts number of skill checks to make
          * @param difficulty a random number from 0 to difficulty is created for each attempt, and
-         * if skill is higher, an item or corpse is spawned
+         * if skill is higher, a corpse is found
          */
-        void hunting_results( int skill, const mission_id &miss_id, int attempts, int difficulty );
-        void make_corpse_from_group( const std::vector<MonsterGroupResult> &group );
+        static void hunting_results( int skill, const std::vector<mongroup_id> &groups, int attempts,
+                                     int difficulty, std::vector<item> &found );
+        static void make_corpse_from_group( const std::vector<MonsterGroupResult> &group,
+                                            std::vector<item> &found );
         inline const tripoint_abs_ms &get_dumping_spot() const {
             return dumping_spot;
         }
@@ -352,8 +356,8 @@ class basecamp
 
         std::string recruit_description( int npc_count ) const;
         /// Provides a "guess" for some of the things your gatherers will return with
-        /// to upgrade the camp
-        std::vector<std::string> gathering_description() const;
+        /// from @ref group
+        static std::vector<std::string> gathering_description( const item_group_id &group );
         /// Returns a string for the number of plants that are harvestable, plots ready to plant,
         /// and ground that needs tilling
         std::vector<std::string> farm_description( const point_rel_omt &dir, size_t &plots_count,
@@ -365,12 +369,27 @@ class basecamp
         // main mission description collection
         void get_available_missions( mission_data &mission_key, map &here );
         void get_available_missions_by_dir( mission_data &mission_key, const point_rel_omt &dir );
+        /// Whether the expansion at @ref dir has every provide camp mission @ref def requires
+        bool has_mission_provides( const faction_mission &def, const point_rel_omt &dir ) const;
+        /// Adds the entries of the JSON camp missions (not the base-only ones) offered at @ref dir
+        void offer_camp_missions( mission_data &mission_key, const point_rel_omt &dir );
+        /// Adds the entry that sends a companion on @ref def at @ref dir (startable only if
+        /// @ref can_start) and, if any are out on it, the one that brings them back
+        void offer_camp_mission( mission_data &mission_key, const faction_mission &def,
+                                 const point_rel_omt &dir, bool can_start = true );
         void choose_new_leader();
         // available companion list manipulation
         void reset_camp_workers();
         comp_list get_mission_workers( const mission_id &miss_id, bool contains = false );
         // main mission start/return dispatch function
         bool handle_mission( const ui_mission_id &miss_id );
+        /// starts, or returns a companion from, the JSON camp mission @ref def, by its behaviour
+        void handle_camp_mission( const faction_mission &def, const ui_mission_id &miss_id );
+        /// sends a companion on @ref def for its duration (generic and the fixed-time behaviours)
+        npc_ptr start_camp_mission( const faction_mission &def, const mission_id &miss_id,
+                                    const npc_ptr &preselected_choice = nullptr );
+        /// brings back a companion from the generic camp mission @ref def with its results
+        bool camp_mission_return( const faction_mission &def, const mission_id &miss_id );
 
         // mission start functions
         /// generic mission start function that wraps individual mission
@@ -396,7 +415,7 @@ class basecamp
         void start_upgrade( const mission_id &miss_id );
         std::string om_upgrade_description( const std::string &bldg, const mapgen_arguments &,
                                             bool trunc = false ) const;
-        void start_menial_labor();
+        void start_menial_labor( const faction_mission &def );
         void worker_assignment_ui();
         void job_assignment_ui();
         // Assembles a dummy NPC with all available recipes and uses player input on the regular crafting GUI to
@@ -404,10 +423,10 @@ class basecamp
         void start_crafting( const mission_id &miss_id );
 
         /// Called when a companion is sent to cut logs
-        void start_cut_logs( const mission_id &miss_id, float exertion_level );
-        void start_clearcut( const mission_id &miss_id, float exertion_level );
-        void start_setup_hide_site( const mission_id &miss_id, float exertion_level );
-        void start_relay_hide_site( const mission_id &miss_id, float exertion_level );
+        void start_cut_logs( const mission_id &miss_id, const faction_mission &def );
+        void start_clearcut( const mission_id &miss_id, const faction_mission &def );
+        void start_setup_hide_site( const mission_id &miss_id, const faction_mission &def );
+        void start_relay_hide_site( const mission_id &miss_id, const faction_mission &def );
         /// Called when a companion is sent to start fortifications
         void start_fortifications( const mission_id &miss_id, float exertion_level );
         /// Called when a companion is sent to start digging down salt water pipes
@@ -416,9 +435,9 @@ class basecamp
                 int segment_number ); //  Code factored out from the two following operation, not intended to be used elsewhere.
         void start_salt_water_pipe( const mission_id &miss_id );
         void continue_salt_water_pipe( const mission_id &miss_id );
-        void start_combat_mission( const mission_id &miss_id, float exertion_level );
+        void start_combat_mission( const mission_id &miss_id, const faction_mission &def );
         void start_farm_op( const point_rel_omt &dir, const mission_id &miss_id,
-                            float exertion_level );
+                            const faction_mission &def );
         ///Display items listed in @ref equipment to let the player pick what to give the departing
         ///NPC, loops until quit or empty.
         drop_locations give_basecamp_equipment( inventory_filter_preset &preset, const std::string &title,
@@ -436,7 +455,8 @@ class basecamp
         npc_ptr companion_choose_return( const mission_id &miss_id, time_duration min_duration );
         npc_ptr companion_crafting_choose_return( const mission_id &miss_id );
         /// called with a companion @ref comp who is not the camp manager, finishes updating their
-        /// skills, consuming food, and returning them to the base.
+        /// skills (none if @ref skill is empty), consuming food, and returning them to the base,
+        /// then runs the return_eocs of its camp mission
         void finish_return( npc &comp, bool fixed_time, const std::string &return_msg,
                             const std::string &skill, int difficulty, bool cancel = false );
         /// a wrapper function for @ref companion_choose_return and @ref finish_return
@@ -458,8 +478,6 @@ class basecamp
         /// Choose which expansion you should start, called when a survey mission is completed
         bool survey_return( const mission_id &miss_id );
         bool menial_return( const mission_id &miss_id );
-        /// Called when a companion completes a gathering @ref task mission
-        bool gathering_return( const mission_id &miss_id, time_duration min_time );
         void recruit_return( const mission_id &miss_id, int score );
         /**
         * Perform any mix of the three farm tasks.

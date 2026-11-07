@@ -613,7 +613,7 @@ bool avatar::read( item_location &book, item_location ereader )
     }
 
     int learner_id = -1;
-    const bool is_martialarts = book->type->use_methods.count( "MA_MANUAL" );
+    const bool is_martialarts = book->type->can_use( "MA_MANUAL" );
 
     //only show the menu if there's useful information or multiple options
     if( ( skill || !nonlearners.empty() || !fun_learners.empty() ) && !is_martialarts ) {
@@ -864,7 +864,7 @@ void avatar::identify( const item &item )
         add_msg( m_info, _( "Reading this book affects your morale by %d." ), book_fun_for( book, *this ) );
     }
 
-    if( book.type->use_methods.count( "MA_MANUAL" ) ) {
+    if( book.type->can_use( "MA_MANUAL" ) ) {
         const matype_id style_to_learn = martial_art_learned_from( *book.type );
         add_msg( m_info, _( "You can learn %s style from it." ), style_to_learn->name );
         add_msg( m_info, _( "This fighting style is %s to learn." ),

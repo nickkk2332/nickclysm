@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <list>
 #include <memory>
 #include <numeric>
@@ -72,9 +71,8 @@
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"
+#include "veh_type.h"
 #include "vehicle.h"
-#include "vpart_position.h"
-#include "vpart_range.h"
 #include "weather.h"
 #include "weather_gen.h"
 #include "weather_type.h"
@@ -3040,27 +3038,65 @@ void vehicle_locked_ass( double val, dialogue &d, char scope,
     mutable_vehicle_talker( d, scope, "vehicle_locked" )->is_locked = is_true( val );
 }
 
+// The parts vehicle_part_count(), vehicle_part_broken_count() and vehicle_part_hp() look at:
+// those with the flag given as the argument and of the vehicle part id given as the "part"
+// kwarg (VINT-J01); with neither, every part. Parts of a racked vehicle never count.
+struct vehicle_part_query {
+    std::string flag;
+    std::optional<vpart_id> part;
+
+    bool matches( const vehicle_part &vp ) const {
+        return !vp.removed && !vp.is_fake && !vp.has_flag( vp_flag::carried_flag ) &&
+               ( flag.empty() || vp.info().has_flag( flag ) ) && ( !part || vp.info().id == *part );
+    }
+};
+
+vehicle_part_query vehicle_part_query_params( const_dialogue const &d, std::string_view func,
+        std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    if( params.size() > 1 ) {
+        throw math::runtime_error( "%s() takes at most one argument, a vehicle part flag", func );
+    }
+    vehicle_part_query query;
+    if( !params.empty() ) {
+        query.flag = vehicle_part_flag_param( d, params[0] );
+    }
+    if( kwargs.kwargs.count( "part" ) != 0 ) {
+        diag_value const part_val = kwargs.kwarg_or( "part" );
+        const vpart_id part( part_val.str( d ) );
+        if( !part.is_valid() ) {
+            throw math::runtime_error( R"(Unknown vehicle part "%s" for %s())", part.str(), func );
+        }
+        query.part = part;
+    }
+    return query;
+}
+
 double vehicle_part_count_eval( const_dialogue const &d, char scope,
-                                std::vector<diag_value> const &params,
-                                diag_kwargs const & /* kwargs */ )
+                                std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_count" );
-    const vehicle_part_with_feature_range<std::string> parts =
-        veh->get_avail_parts( vehicle_part_flag_param( d, params[0] ) );
-    return static_cast<double>( std::distance( parts.begin(), parts.end() ) );
+    const vehicle_part_query query = vehicle_part_query_params( d, "vehicle_part_count", params,
+                                     kwargs );
+    int count = 0;
+    for( int idx = 0; idx < veh->part_count(); idx++ ) {
+        const vehicle_part &vp = veh->part( idx );
+        count += query.matches( vp ) && !vp.is_broken() ? 1 : 0;
+    }
+    return count;
 }
 
 double vehicle_part_broken_count_eval( const_dialogue const &d, char scope,
                                        std::vector<diag_value> const &params,
-                                       diag_kwargs const & /* kwargs */ )
+                                       diag_kwargs const &kwargs )
 {
     vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_broken_count" );
+    const vehicle_part_query query = vehicle_part_query_params( d, "vehicle_part_broken_count",
+                                     params, kwargs );
     int broken = 0;
-    for( const vpart_reference &vp : veh->get_any_parts( vehicle_part_flag_param( d,
-            params[0] ) ) ) {
-        if( vp.part().is_broken() && !vp.part().has_flag( vp_flag::carried_flag ) ) {
-            ++broken;
-        }
+    for( int idx = 0; idx < veh->part_count(); idx++ ) {
+        const vehicle_part &vp = veh->part( idx );
+        broken += query.matches( vp ) && vp.is_broken() ? 1 : 0;
     }
     return broken;
 }
@@ -3069,16 +3105,24 @@ double vehicle_part_hp_eval( const_dialogue const &d, char scope,
                              std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_hp" );
-    std::string const &flag = vehicle_part_flag_param( d, params[0] );
+    const vehicle_part_query query = vehicle_part_query_params( d, "vehicle_part_hp", params,
+                                     kwargs );
     diag_value const agg_val = kwargs.kwarg_or( "aggregate", "min" );
     std::string const &agg = agg_val.str( d );
     if( agg != "min" && agg != "max" && agg != "average" ) {
         throw math::runtime_error( R"(Unknown aggregate "%s" for vehicle_part_hp())", agg );
     }
+    // VINT-J01: "hp" gives the hit points themselves rather than the share of the durability
+    diag_value const format_val = kwargs.kwarg_or( "format", "percent" );
+    std::string const &format = format_val.str( d );
+    if( format != "percent" && format != "hp" ) {
+        throw math::runtime_error( R"(Unknown format "%s" for vehicle_part_hp())", format );
+    }
     std::vector<double> health;
-    for( const vpart_reference &vp : veh->get_any_parts( flag ) ) {
-        if( !vp.part().has_flag( vp_flag::carried_flag ) ) {
-            health.push_back( vp.part().health_percent() * 100.0 );
+    for( int idx = 0; idx < veh->part_count(); idx++ ) {
+        const vehicle_part &vp = veh->part( idx );
+        if( query.matches( vp ) ) {
+            health.push_back( format == "hp" ? vp.hp() : vp.health_percent() * 100.0 );
         }
     }
     if( health.empty() ) {
@@ -3455,9 +3499,9 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "vehicle_fuel_capacity", { "un", 1, vehicle_fuel_capacity_eval } },
     { "vehicle_locked", { "un", 0, vehicle_locked_eval, vehicle_locked_ass } },
     { "vehicle_max_speed", { "un", 0, vehicle_max_speed_eval } },
-    { "vehicle_part_broken_count", { "un", 1, vehicle_part_broken_count_eval } },
-    { "vehicle_part_count", { "un", 1, vehicle_part_count_eval } },
-    { "vehicle_part_hp", { "un", 1, vehicle_part_hp_eval, {}, { "aggregate" } } },
+    { "vehicle_part_broken_count", { "un", -1, vehicle_part_broken_count_eval, {}, { "part" } } },
+    { "vehicle_part_count", { "un", -1, vehicle_part_count_eval, {}, { "part" } } },
+    { "vehicle_part_hp", { "un", -1, vehicle_part_hp_eval, {}, { "aggregate", "format", "part" } } },
     { "vehicle_power", { "un", 0, vehicle_power_eval } },
     { "vehicle_velocity", { "un", 0, vehicle_velocity_eval, vehicle_velocity_ass } },
 };

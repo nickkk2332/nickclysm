@@ -511,10 +511,15 @@ int Character::available_assistant_count( const recipe &rec ) const
 
 int64_t Character::expected_time_to_craft( const recipe &rec, int batch_size ) const
 {
+    return expected_time_to_craft( rec, batch_size, crafting_cost_context::for_recipe( *this, rec ) );
+}
+
+int64_t Character::expected_time_to_craft( const recipe &rec, int batch_size,
+        const crafting_cost_context &ctx ) const
+{
     const size_t assistants = available_assistant_count( rec );
     float modifier = crafting_speed_multiplier( rec );
-    return rec.batch_time( *this, batch_size, modifier, assistants,
-                           crafting_cost_context::for_recipe( *this, rec ) );
+    return rec.batch_time( *this, batch_size, modifier, assistants, ctx );
 }
 
 bool Character::check_eligible_containers_for_crafting( const recipe &rec, int batch_size ) const

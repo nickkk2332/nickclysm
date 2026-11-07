@@ -5589,7 +5589,7 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
     }
 
     // Reject tainted/poisonous items (saprophages/saprovores can handle it)
-    if( it.type->use_methods.count( "POISON" ) && !can_consume_rot ) {
+    if( it.type->can_use( "POISON" ) && !can_consume_rot ) {
         return 0.0f;
     }
 

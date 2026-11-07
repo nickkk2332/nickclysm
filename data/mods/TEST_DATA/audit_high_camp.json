@@ -1,0 +1,115 @@
+[
+  {
+    "type": "recipe",
+    "result": "test_camp_fishing_dock",
+    "//": "CAMP-J02: an expansion that provides a fishing dock.  Its requirement is never provided, so no camp offers it as an upgrade; tests add it with add_expansion.",
+    "description": "Test data only.",
+    "activity_level": "NO_EXERCISE",
+    "category": "CC_BUILDING",
+    "subcategory": "CSC_BUILDING_BASES",
+    "autolearn": false,
+    "never_learn": true,
+    "time": "1 h",
+    "construction_blueprint": "test_stove_update",
+    "blueprint_name": "fishing dock",
+    "blueprint_provides": [ { "id": "fishing_dock" } ],
+    "blueprint_requires": [ { "id": "test_camp_not_an_upgrade" } ],
+    "check_blueprint_needs": false
+  },
+  {
+    "type": "item_group",
+    "id": "test_camp_catch_summer",
+    "//": "CAMP-J02: what the test fishing missions catch in summer.",
+    "subtype": "distribution",
+    "items": [ [ "fish", 100 ] ]
+  },
+  {
+    "type": "item_group",
+    "id": "test_camp_catch_default",
+    "//": "CAMP-J02: what the test fishing missions bring back out of summer: driftwood.",
+    "subtype": "distribution",
+    "items": [ [ "2x4", 100 ] ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CAMP_FISHING_START",
+    "//": "CAMP-J02: a start_eoc; the companion is alpha.",
+    "effect": [
+      { "math": [ "test_camp_j02_started = 1" ] },
+      { "copy_var": { "context_val": "camp_mission" }, "target_var": { "global_val": "test_camp_j02_start_mission" } },
+      { "math": [ "u_test_camp_j02_alpha = 1" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CAMP_MISSION_EVENT",
+    "//": "CAMP-J02: records the camp_mission of the last companion_mission_started event.",
+    "eoc_type": "EVENT",
+    "required_event": "companion_mission_started",
+    "effect": [ { "copy_var": { "context_val": "camp_mission" }, "target_var": { "global_val": "test_camp_j02_event_mission" } } ]
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_camp_fishing",
+    "//": "CAMP-J02: a camp mission entirely from JSON, gated on a provide, with a seasonal catch.",
+    "name": "Fishing",
+    "desc": "Send a companion to fish from the dock.",
+    "skill": "survival",
+    "activity": "LIGHT_EXERCISE",
+    "positions": 2,
+    "required_provides": [ "fishing_dock" ],
+    "duration": "5 h",
+    "action_name": "Go Fishing",
+    "return_name": "Recover Fisher",
+    "progress": "Fishing off the dock.",
+    "depart_message": "heads to the dock with a rod…",
+    "return_message": "comes back from the dock smelling of fish…",
+    "train": { "skill": "survival", "difficulty": 2 },
+    "items_label": "Fishing",
+    "results": {
+      "item_group": "test_camp_catch_default",
+      "seasonal_item_groups": { "summer": "test_camp_catch_summer" },
+      "attempts": 3
+    },
+    "start_eocs": [ "EOC_TEST_CAMP_FISHING_START" ],
+    "return_eocs": [
+      {
+        "id": "EOC_TEST_CAMP_FISHING_RETURN",
+        "effect": [
+          { "math": [ "test_camp_j02_returned = 1" ] },
+          {
+            "copy_var": { "context_val": "camp_mission" },
+            "target_var": { "global_val": "test_camp_j02_return_mission" }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_camp_fishing_all_day",
+    "//": "CAMP-J02: a repeatable camp mission: the catch of each 2 h the companion stays out.",
+    "name": "Fishing All Day",
+    "desc": "Send a companion to fish from the dock until called back.",
+    "skill": "survival",
+    "activity": "LIGHT_EXERCISE",
+    "positions": 1,
+    "required_provides": [ { "id": "fishing_dock", "amount": 1 } ],
+    "duration": "2 h",
+    "repeatable": true,
+    "results": {
+      "item_group": "test_camp_catch_default",
+      "seasonal_item_groups": { "summer": "test_camp_catch_summer" },
+      "attempts": 2
+    }
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_camp_deep_sea_fishing",
+    "//": "CAMP-J02: needs two fishing docks at one expansion, so the test camp never offers it.",
+    "name": "Deep Sea Fishing",
+    "desc": "Send a companion out past the second dock.",
+    "required_provides": [ { "id": "fishing_dock", "amount": 2 } ],
+    "duration": "8 h"
+  }
+]
