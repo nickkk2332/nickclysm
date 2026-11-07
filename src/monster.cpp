@@ -1,5 +1,4 @@
 #include "monster.h"
-#include "power_actor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,6 +12,7 @@
 #include <tuple>
 #include <unordered_map>
 
+#include "ability_runtime.h"
 #include "ascii_art.h"
 #include "avatar.h"
 #include "basecamp.h"
@@ -25,6 +25,7 @@
 #include "creature_tracker.h"
 #include "cursesdef.h"
 #include "damage.h"
+#include "damage_transaction.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
@@ -34,11 +35,9 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "damage_transaction.h"
-#include "ability_runtime.h"
-#include "execution_combat.h"
 #include "explosion.h"
 #include "faction.h"
 #include "field.h"
@@ -56,7 +55,6 @@
 #include "item_location.h"
 #include "item_pocket.h"
 #include "itype.h"
-#include "iuse.h"
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "map.h"
@@ -82,6 +80,7 @@
 #include "pimpl.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "power_actor.h"
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"

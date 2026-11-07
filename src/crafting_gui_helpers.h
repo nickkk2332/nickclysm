@@ -15,6 +15,7 @@
 #include "color.h"
 #include "coordinates.h"
 #include "item.h"
+#include "point.h"
 #include "proficiency.h"
 #include "translation.h"
 
@@ -22,7 +23,6 @@ class Character;
 class recipe;
 class recipe_subset;
 class temp_crafting_inventory;
-
 struct crafting_cost_context;
 struct tool_comp;
 

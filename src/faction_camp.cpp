@@ -4,6 +4,7 @@
 #include <array>
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <map>
@@ -11,7 +12,6 @@
 #include <numeric>
 #include <optional>
 #include <set>
-#include <cstddef>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -39,6 +39,7 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
@@ -97,13 +98,12 @@
 #include "skill.h"
 #include "stomach.h"
 #include "string_formatter.h"
-#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translation.h"
 #include "translations.h"
 #include "type_id.h"
-#include "uilist.h"
 #include "ui_manager.h"
+#include "uilist.h"
 #include "units.h"
 #include "value_ptr.h"
 #include "vehicle.h"

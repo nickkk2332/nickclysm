@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <tuple>
@@ -16,7 +17,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_oracle.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -44,15 +44,19 @@
 #include "options_helpers.h"
 #include "overmap.h"
 #include "overmap_test_helper.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
 #include "visitable.h"
 #include "weather.h"
+
+class Character;
 
 // The rest of four audit items: MONDT-B04 (a signal looks only at the hordes in its reach),
 // MAGIC-P01 (casterless casts share one fake caster), INV-P02 (the header-level visit steps) and

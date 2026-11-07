@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "avatar.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
 #include "map.h"

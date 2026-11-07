@@ -1,4 +1,9 @@
+#include <stddef.h>
+#include <functional>
+#include <initializer_list>
 #include <list>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -15,6 +20,7 @@
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "inventory_ui.h"
@@ -25,6 +31,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "map_selector.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
@@ -35,6 +42,7 @@
 #include "ret_val.h"
 #include "talker.h"
 #include "type_id.h"
+#include "units.h"
 #include "veh_type.h"
 #include "veh_utils.h"
 #include "vehicle.h"

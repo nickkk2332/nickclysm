@@ -1,5 +1,6 @@
 #include <bitset>
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
 #include <list>
 #include <map>
@@ -13,10 +14,10 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "construction.h"
 #include "coordinates.h"
 #include "debug.h"
+#include "dialogue_chatbin.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"

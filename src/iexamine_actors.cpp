@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <set>
+#include <string_view>
 #include <utility>
 
 #include "ammo_effect.h"
 #include "calendar.h"
 #include "character.h"
+#include "clone_ptr.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -27,6 +30,7 @@
 #include "generic_factory.h"
 #include "inventory_ui.h"
 #include "item.h"
+#include "item_components.h"
 #include "item_location.h"
 #include "itype.h"
 #include "map.h"

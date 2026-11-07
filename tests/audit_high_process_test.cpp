@@ -1,4 +1,6 @@
 #include <cmath>
+#include <functional>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <utility>
@@ -9,6 +11,7 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "clone_ptr.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "enum_conversions.h"
@@ -26,6 +29,7 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "mtype.h"
 #include "output.h"

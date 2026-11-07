@@ -2,27 +2,27 @@
 #ifndef CATA_SRC_IEXAMINE_ACTORS_H
 #define CATA_SRC_IEXAMINE_ACTORS_H
 
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
 #include <vector>
-#include <functional>
 
 #include "coords_fwd.h"
+#include "dialogue_helpers.h"
 #include "enums.h"
 #include "iexamine.h"
-#include "dialogue_helpers.h"
-#include "type_id.h"
 #include "translation.h"
+#include "type_id.h"
 #include "units_fwd.h"
 
 class Character;
+class JsonObject;
 class JsonValue;
 class item;
 class item_location;
 class time_duration;
-
 struct const_dialogue;
 struct dialogue;
 struct furn_t;

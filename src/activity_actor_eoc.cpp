@@ -13,6 +13,7 @@
 #include <initializer_list>
 #include <list>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -70,8 +71,7 @@
 #include "temp_crafting_inventory.h"
 #include "translations.h"
 #include "type_id.h"
-#include "units.h"
-#include "veh_type.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "weather.h"

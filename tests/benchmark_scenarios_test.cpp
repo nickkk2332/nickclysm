@@ -70,6 +70,8 @@
 #include "weather.h"
 #include "weather_type.h"
 
+class Character;
+
 static const faction_id faction_your_followers( "your_followers" );
 
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );

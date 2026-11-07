@@ -17,7 +17,6 @@
 #include <utility>
 #include <vector>
 
-#include "calendar.h"
 #include "cata_imgui.h"
 #include "cata_utility.h"
 #include "catacharset.h"
@@ -25,7 +24,6 @@
 #include "character_id.h"
 #include "color.h"
 #include "crafting.h"
-#include "crafting_enums.h"
 #include "crafting_gui_helpers.h"
 #include "flat_set.h"
 #include "flexbuffer_json.h"

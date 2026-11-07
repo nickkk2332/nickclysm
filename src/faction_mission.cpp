@@ -1,7 +1,7 @@
-#include "faction_camp.h"
-
+#include <stdint.h>
 #include <array>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <string>
@@ -9,17 +9,20 @@
 #include <utility>
 #include <vector>
 
+#include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
+#include "coordinates.h"
 #include "debug.h"
 #include "display.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "faction_camp.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "item_group.h"
-#include "mongroup.h"
+#include "mission_companion.h"
 #include "skill.h"
 #include "string_formatter.h"
 #include "translation.h"

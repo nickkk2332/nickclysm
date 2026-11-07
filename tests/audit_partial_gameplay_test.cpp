@@ -1,6 +1,10 @@
+#include <functional>
+#include <map>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "bionics.h"
@@ -9,11 +13,11 @@
 #include "character.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "enum_bitset.h"
 #include "flexbuffer_json.h"
 #include "item.h"
 #include "item_location.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "map.h"
@@ -23,7 +27,6 @@
 #include "melee.h"
 #include "messages.h"
 #include "monster.h"
-#include "mutation.h"
 #include "options_helpers.h"
 #include "pimpl.h"
 #include "player_helpers.h"

@@ -17,7 +17,6 @@
 #include "weighted_list.h"
 
 class JsonObject;
-class VehicleGroup;
 class VehicleSpawn;
 class map;
 

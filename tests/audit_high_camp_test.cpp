@@ -1,17 +1,21 @@
+#include <plf/list.h>
 #include <algorithm>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
-#include "avatar.h"
 #include "basecamp.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -20,11 +24,12 @@
 #include "global_vars.h"
 #include "item.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_iterator.h"
 #include "map_scale_constants.h"
+#include "mapgendata.h"
 #include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "mission_companion.h"
@@ -34,6 +39,7 @@
 #include "point.h"
 #include "skill.h"
 #include "stomach.h"
+#include "translation.h"
 #include "type_id.h"
 
 static const faction_id faction_your_followers( "your_followers" );

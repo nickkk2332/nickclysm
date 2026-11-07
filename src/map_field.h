@@ -2,7 +2,6 @@
 #ifndef CATA_SRC_MAP_FIELD_H
 #define CATA_SRC_MAP_FIELD_H
 
-#include <cstdint>
 #include <optional>
 #include <set>
 #include <vector>

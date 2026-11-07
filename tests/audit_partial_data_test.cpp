@@ -1,4 +1,6 @@
-#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <list>
 #include <memory>
 #include <optional>
 #include <set>
@@ -8,7 +10,6 @@
 #include <vector>
 
 #include "avatar.h"
-#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
@@ -16,6 +17,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "effect_source.h"
+#include "enums.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "item.h"
@@ -26,7 +28,6 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_scale_constants.h"
-#include "mapdata.h"
 #include "mapgen.h"
 #include "mutation.h"
 #include "npc.h"
@@ -37,9 +38,9 @@
 #include "pocket_type.h"
 #include "point.h"
 #include "profession.h"
+#include "ret_val.h"
 #include "scenario.h"
 #include "scent_map.h"
-#include "string_id.h"
 #include "type_id.h"
 
 static const efftype_id effect_audit_partial_data_chances( "audit_partial_data_chances" );

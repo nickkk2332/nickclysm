@@ -1,5 +1,6 @@
 #include "harvest.h"
 
+#include <stddef.h>
 #include <algorithm>
 #include <cmath>
 #include <iterator>
@@ -10,7 +11,6 @@
 #include "creature.h"
 #include "debug.h"
 #include "enum_conversions.h"
-#include "flag.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
@@ -8,13 +9,13 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "coordinates.h"
-#include "game.h"
+#include "enums.h"
 #include "global_vars.h"
 #include "item.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "messages.h"
 #include "monster.h"
 #include "options.h"
@@ -27,7 +28,6 @@
 #include "units.h"
 #include "veh_type.h"
 #include "vehicle.h"
-#include "vpart_position.h"
 #include "weather.h"
 #include "weather_type.h"
 

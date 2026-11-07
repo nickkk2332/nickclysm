@@ -1,3 +1,4 @@
+#include <functional>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -12,12 +13,14 @@
 #include "condition.h"
 #include "coordinates.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_iterator.h"
 #include "math_parser.h"
 #include "math_parser_diag_value.h"
 #include "player_helpers.h"

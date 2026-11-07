@@ -1,5 +1,6 @@
 #include <array>
 #include <cstddef>
+#include <initializer_list>
 #include <map>
 #include <string>
 #include <vector>
@@ -9,14 +10,13 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
 #include "coordinates.h"
-#include "field.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
 #include "item.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_field.h"
@@ -27,7 +27,9 @@
 #include "math_parser_diag_value.h"
 #include "monster.h"
 #include "options_helpers.h"
+#include "overmap_ui.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
 #include "type_id.h"
 #include "units.h"

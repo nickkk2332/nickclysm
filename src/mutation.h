@@ -33,7 +33,6 @@ class Trait_group;
 class item;
 class nc_color;
 struct const_dialogue;
-struct dream;
 template <typename E> struct enum_traits;
 
 extern std::map<mutation_category_id, std::vector<trait_id> > mutations_category;

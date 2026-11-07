@@ -30,7 +30,6 @@
 #include "math_parser_diag_value.h"
 #include "player_activity.h"
 #include "player_helpers.h"
-#include "talker.h"
 #include "type_id.h"
 
 static const activity_id ACT_SPELLCASTING( "ACT_SPELLCASTING" );

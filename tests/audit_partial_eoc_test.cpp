@@ -1,4 +1,5 @@
 #include <functional>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -14,14 +15,18 @@
 #include "city.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
+#include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
+#include "horde_map.h"
 #include "item.h"
 #include "item_location.h"
-#include "iuse.h"
 #include "itype.h"
+#include "iuse.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
@@ -31,7 +36,6 @@
 #include "messages.h"
 #include "monster.h"
 #include "npc.h"
-#include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "player_activity.h"
