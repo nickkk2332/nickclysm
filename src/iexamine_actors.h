@@ -4,20 +4,28 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 #include <functional>
 
 #include "coords_fwd.h"
+#include "enums.h"
 #include "iexamine.h"
 #include "dialogue_helpers.h"
 #include "type_id.h"
 #include "translation.h"
+#include "units_fwd.h"
 
 class Character;
+class JsonValue;
+class item;
 class item_location;
+class time_duration;
 
 struct const_dialogue;
+struct dialogue;
+struct furn_t;
 
 class appliance_convert_examine_actor : public iexamine_actor
 {
@@ -90,6 +98,135 @@ class eoc_examine_actor : public iexamine_actor
         void call_with_context( Character &you, const tripoint_bub_ms &examp,
                                 const map_data_common_t &data ) const override;
         void finalize() const override;
+
+        std::unique_ptr<iexamine_actor> clone() const override;
+};
+
+// Which items a process takes. An item matches when it matches one of the lists given (any item
+// when none is given), and is not rotten / is a CBM where `fresh` / `bionic` ask for it.
+struct process_item_filter {
+    std::set<material_id> materials;
+    std::vector<flag_id> flags;
+    std::vector<itype_id> items;
+    bool fresh = false;
+    bool bionic = false;
+
+    bool matches( const item &it ) const;
+    bool empty() const;
+    void deserialize( const JsonObject &jo );
+    void check( const std::string &owner ) const;
+};
+
+// A message for the log, of a kind ("good", "bad"...).
+struct process_message {
+    translation text;
+    game_message_type type = m_neutral;
+
+    process_message() = default;
+    explicit process_message( game_message_type type ) : type( type ) {}
+
+    // The text is a format string: the arguments fill its %s, %d...
+    void print() const;
+    void print( const std::string &arg ) const;
+    void print( int arg ) const;
+    void print( const std::string &arg1, const std::string &arg2 ) const;
+    void deserialize( const JsonValue &jv );
+};
+
+// How a process says how long it still needs: the exact time in one message, or about how
+// many hours or minutes.
+struct process_time_message {
+    // With %s for the time left.
+    translation exact;
+    // Plural forms with %d.
+    translation hours;
+    translation less_than_an_hour;
+    translation minutes;
+
+    void print( const time_duration &left ) const;
+    void deserialize( const JsonValue &jv );
+};
+
+// Starts a batch process: checks the items on the tile, turns them into an intermediate item
+// or leaves them to age, and switches the furniture to its working state.
+class process_start_examine_actor : public iexamine_actor
+{
+    private:
+        process_item_filter accepts;
+        process_item_filter reject_if_contains;
+        std::vector<process_message> contains_message;
+        process_message reject_message = process_message( m_bad );
+        process_message empty_message;
+        bool requires_outside = false;
+        process_message outside_message;
+        std::optional<skill_id> skill;
+        dbl_or_var yield_percent;
+        itype_id intermediate = itype_id::NULL_ID();
+        process_message too_small_message;
+        std::optional<dbl_or_var> energy;
+        process_message no_energy_message;
+        std::optional<requirement_id> requirements;
+        bool firestarter = false;
+        process_message ready_message;
+        translation query;
+        bool reset_age = false;
+        process_message success_message;
+        furn_str_id furn_set;
+        std::vector<effect_on_condition_id> eocs;
+
+        dialogue make_dialogue( Character &you, const tripoint_bub_ms &examp,
+                                const units::volume &total ) const;
+        bool begin( Character &you, const tripoint_bub_ms &examp, bool ask ) const;
+
+    public:
+        explicit process_start_examine_actor( const std::string &type = "process_start" )
+            : iexamine_actor( type ) {}
+
+        // Checks the items on the tile and the place, and says what's wrong.
+        bool prep( Character &you, const tripoint_bub_ms &examp ) const;
+        // Starts the process without asking; what a lit firestarter does.
+        bool fire( Character &you, const tripoint_bub_ms &examp ) const;
+        bool needs_firestarter() const {
+            return firestarter;
+        }
+        // The process_start action of the furniture that is lit with a firestarter, if any.
+        static const process_start_examine_actor *firestarter_process( const furn_t &furn );
+
+        void load( const JsonObject &jo, const std::string &src ) override;
+        void call( Character &you, const tripoint_bub_ms &examp ) const override;
+        void finalize() const override;
+        void check( const std::string &owner ) const override;
+
+        std::unique_ptr<iexamine_actor> clone() const override;
+};
+
+// Finishes a batch process once its time is up: turns the contents into the output and switches
+// the furniture back.
+class process_finish_examine_actor : public iexamine_actor
+{
+    private:
+        duration_or_var duration;
+        furn_str_id furn_set;
+        process_message empty_message;
+        process_item_filter accepts;
+        process_message reject_message = process_message( m_bad );
+        process_message examine_message;
+        process_time_message time_left_message;
+        itype_id output = itype_id::NULL_ID();
+        std::vector<itype_id> output_from;
+        bool convert_to_smoking_result = false;
+        bool sterilize_cbms = false;
+        process_message done_message;
+        std::vector<effect_on_condition_id> eocs;
+
+    public:
+        explicit process_finish_examine_actor( const std::string &type = "process_finish" )
+            : iexamine_actor( type ) {}
+
+        void load( const JsonObject &jo, const std::string &src ) override;
+        void call( Character &you, const tripoint_bub_ms &examp ) const override;
+        void finalize() const override;
+        void check( const std::string &owner ) const override;
 
         std::unique_ptr<iexamine_actor> clone() const override;
 };

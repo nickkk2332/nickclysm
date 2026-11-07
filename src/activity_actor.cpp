@@ -321,14 +321,9 @@ static const flag_id json_flag_NO_RELOAD( "NO_RELOAD" );
 static const furn_str_id furn_f_crate_o( "f_crate_o" );
 static const furn_str_id furn_f_gunsafe_mj( "f_gunsafe_mj" );
 static const furn_str_id furn_f_gunsafe_ml( "f_gunsafe_ml" );
-static const furn_str_id furn_f_kiln_empty( "f_kiln_empty" );
-static const furn_str_id furn_f_kiln_metal_empty( "f_kiln_metal_empty" );
-static const furn_str_id furn_f_kiln_portable_empty( "f_kiln_portable_empty" );
-static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 static const furn_str_id furn_f_safe_c( "f_safe_c" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
-static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
 
 static const gun_mode_id gun_mode_DEFAULT( "DEFAULT" );
 
@@ -13151,19 +13146,8 @@ void fire_start_activity_actor::finish( player_activity &act, Character &who )
 
     who.practice( skill_survival, potential_skill_gain, 5 );
 
-    const furn_id &f_id = here.furn( here.get_bub( fire_placement ) );
-    const bool is_smoking_rack = f_id == furn_f_metal_smoking_rack ||
-                                 f_id == furn_f_smoking_rack;
-    const bool is_kiln = f_id == furn_f_kiln_empty ||
-                         f_id == furn_f_kiln_metal_empty || f_id == furn_f_kiln_portable_empty;
-
-    firestarter_actor::start_type st = firestarter_actor::start_type::FIRE;
-
-    if( is_smoking_rack ) {
-        st = firestarter_actor::start_type::SMOKER;
-    } else if( is_kiln ) {
-        st = firestarter_actor::start_type::KILN;
-    }
+    const firestarter_actor::start_type st = firestarter_actor::furniture_start_type(
+                here.furn( here.get_bub( fire_placement ) ) );
 
     it.activation_consume( 1, who.pos_bub(), &who );
 

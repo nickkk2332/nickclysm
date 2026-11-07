@@ -575,6 +575,9 @@ struct map_data_common_t {
         bool has_examine( const std::string &action ) const;
         void set_examine( const iexamine_functions &func );
         std::vector<cata::clone_ptr<iexamine_actor>> get_examine() const;
+        const std::vector<cata::clone_ptr<iexamine_actor>> &get_examine_actors() const {
+            return examine_actor;
+        }
         void examine( Character &, const tripoint_bub_ms & ) const;
 
         int light_emitted = 0;

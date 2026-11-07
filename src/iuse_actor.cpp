@@ -46,6 +46,7 @@
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "iexamine.h"
+#include "iexamine_actors.h"
 #include "input_popup.h"
 #include "item.h"
 #include "item_components.h"
@@ -127,9 +128,6 @@ static const efftype_id effect_stunned( "stunned" );
 
 static const fault_id fault_bionic_salvaged( "fault_bionic_salvaged" );
 
-static const furn_str_id furn_f_kiln_empty( "f_kiln_empty" );
-static const furn_str_id furn_f_kiln_metal_empty( "f_kiln_metal_empty" );
-static const furn_str_id furn_f_kiln_portable_empty( "f_kiln_portable_empty" );
 static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
 static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
 
@@ -1489,16 +1487,18 @@ firestarter_actor::start_type firestarter_actor::prep_firestarter_use( Character
         return start_type::NONE;
     }
 
-    const furn_id &f_id = here->furn( pos );
-    const bool is_smoking_rack = f_id == furn_f_metal_smoking_rack ||
-                                 f_id == furn_f_smoking_rack;
-    const bool is_kiln = f_id == furn_f_kiln_empty ||
-                         f_id == furn_f_kiln_metal_empty || f_id == furn_f_kiln_portable_empty;
-
-    if( is_smoking_rack ) {
-        return iexamine::smoker_prep( p, pos ) ? start_type::SMOKER : start_type::NONE;
-    } else if( is_kiln ) {
-        return iexamine::kiln_prep( p, pos ) ? start_type::KILN : start_type::NONE;
+    switch( furniture_start_type( here->furn( pos ) ) ) {
+        case start_type::SMOKER:
+            return iexamine::smoker_prep( p, pos ) ? start_type::SMOKER : start_type::NONE;
+        case start_type::KILN:
+            return iexamine::kiln_prep( p, pos ) ? start_type::KILN : start_type::NONE;
+        case start_type::PROCESS: {
+            const process_start_examine_actor *process =
+                process_start_examine_actor::firestarter_process( here->furn( pos ).obj() );
+            return process != nullptr && process->prep( p, pos ) ? start_type::PROCESS : start_type::NONE;
+        }
+        default:
+            break;
     }
 
     if( here->get_field( pos, fd_fire ) ) {
@@ -1567,6 +1567,21 @@ void firestarter_actor::resolve_firestarter_use( Character *p, map *here,
     }
 }
 
+firestarter_actor::start_type firestarter_actor::furniture_start_type( const furn_id &furn )
+{
+    if( furn == furn_f_metal_smoking_rack || furn == furn_f_smoking_rack ) {
+        return start_type::SMOKER;
+    }
+    if( process_start_examine_actor::firestarter_process( furn.obj() ) != nullptr ) {
+        return start_type::PROCESS;
+    }
+    // a mod's furniture that still names the old kiln action
+    if( furn.obj().has_examine( iexamine::kiln_empty ) ) {
+        return start_type::KILN;
+    }
+    return start_type::FIRE;
+}
+
 bool firestarter_actor::resolve_start( Character *p, map *here,
                                        const tripoint_bub_ms &pos, start_type type )
 {
@@ -1577,6 +1592,11 @@ bool firestarter_actor::resolve_start( Character *p, map *here,
             return iexamine::smoker_fire( *p, pos );
         case start_type::KILN:
             return iexamine::kiln_fire( *p, pos );
+        case start_type::PROCESS: {
+            const process_start_examine_actor *process =
+                process_start_examine_actor::firestarter_process( here->furn( pos ).obj() );
+            return process != nullptr && process->fire( *p, pos );
+        }
         case start_type::NONE:
         default:
             return false;
