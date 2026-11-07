@@ -1766,7 +1766,6 @@ std::optional<timed_event_type> spell_effect::timed_event_from_effect_str(
         { "amigara", timed_event_type::AMIGARA },
         { "artifact_light", timed_event_type::ARTIFACT_LIGHT },
         { "dim", timed_event_type::DIM },
-        { "help", timed_event_type::HELP },
         { "roots_die", timed_event_type::ROOTS_DIE },
         { "spawn_wyrms", timed_event_type::SPAWN_WYRMS },
         { "temple_flood", timed_event_type::TEMPLE_FLOOD },

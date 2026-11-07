@@ -5,16 +5,95 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "coordinates.h"
 #include "flat_set.h" // IWYU pragma: keep
 #include "itype.h"
 #include "mapdata.h"
 #include "mtype.h"
+#include "mutation.h"
 #include "omdata.h"
 #include "overmapbuffer.h"
 #include "point.h"
 #include "type_id.h"
+
+// The item category of an item type (the one its items are listed under), if it has one
+static std::vector<cata_variant> category_of_itype( const cata_variant &v )
+{
+    const itype_id type = v.get<itype_id>();
+    if( type.is_empty() || !type.is_valid() || !type->category_force.is_valid() ) {
+        return {};
+    }
+    return { cata_variant::make<cata_variant_type::item_category_id>( type->category_force ) };
+}
+
+static std::vector<cata_variant> flags_of_furniture( const cata_variant &v )
+{
+    const furn_str_id furn = v.get<furn_str_id>();
+    if( furn.is_empty() || !furn.is_valid() ) {
+        return {};
+    }
+    std::vector<cata_variant> result;
+    for( const std::string &s : furn->get_flags() ) {
+        result.push_back( cata_variant::make<cata_variant_type::string>( s ) );
+    }
+    return result;
+}
+
+static std::vector<cata_variant> flags_of_monster( const cata_variant &v )
+{
+    const mtype_id type = v.get<mtype_id>();
+    if( type.is_empty() || !type.is_valid() ) {
+        return {};
+    }
+    std::vector<cata_variant> result;
+    for( const mon_flag &flag : mon_flag::get_all() ) {
+        if( type->has_flag( flag.id.id() ) ) {
+            result.push_back( cata_variant::make<cata_variant_type::string>( flag.id.str() ) );
+        }
+    }
+    return result;
+}
+
+static std::vector<cata_variant> flags_of_terrain_str( const cata_variant &v )
+{
+    const ter_str_id ter = v.get<ter_str_id>();
+    if( ter.is_empty() || !ter.is_valid() ) {
+        return {};
+    }
+    std::vector<cata_variant> result;
+    for( const std::string &s : ter->get_flags() ) {
+        result.push_back( cata_variant::make<cata_variant_type::string>( s ) );
+    }
+    return result;
+}
+
+static std::vector<cata_variant> materials_of_itype( const cata_variant &v )
+{
+    const itype_id type = v.get<itype_id>();
+    if( type.is_empty() || !type.is_valid() ) {
+        return {};
+    }
+    std::vector<cata_variant> result;
+    for( const std::pair<const material_id, int> &mat : type->materials ) {
+        result.push_back( cata_variant::make<cata_variant_type::material_id>( mat.first ) );
+    }
+    return result;
+}
+
+static std::vector<cata_variant> mutation_category_of_trait( const cata_variant &v )
+{
+    const trait_id trait = v.get<trait_id>();
+    if( trait.is_empty() || !trait.is_valid() ) {
+        return {};
+    }
+    std::vector<cata_variant> result;
+    for( const mutation_category_id &category : trait->category ) {
+        result.push_back( cata_variant::make<cata_variant_type::mutation_category_id>( category ) );
+    }
+    return result;
+}
 
 static std::vector<cata_variant> flags_of_itype( const cata_variant &v )
 {
@@ -102,6 +181,33 @@ static std::vector<cata_variant> species_of_monster( const cata_variant &v )
 }
 
 const std::unordered_map<std::string, event_field_transformation> event_field_transformations = {
+    {
+        "category_of_itype",
+        { category_of_itype, cata_variant_type::item_category_id, { cata_variant_type::itype_id } }
+    },
+    {
+        "flags_of_furniture",
+        { flags_of_furniture, cata_variant_type::string, { cata_variant_type::furn_str_id } }
+    },
+    {
+        "flags_of_monster",
+        { flags_of_monster, cata_variant_type::string, { cata_variant_type::mtype_id } }
+    },
+    {
+        "flags_of_terrain_str",
+        { flags_of_terrain_str, cata_variant_type::string, { cata_variant_type::ter_str_id } }
+    },
+    {
+        "materials_of_itype",
+        { materials_of_itype, cata_variant_type::material_id, { cata_variant_type::itype_id } }
+    },
+    {
+        "mutation_category_of_trait",
+        {
+            mutation_category_of_trait, cata_variant_type::mutation_category_id,
+            { cata_variant_type::trait_id }
+        }
+    },
     {
         "flags_of_itype",
         { flags_of_itype, cata_variant_type::flag_id, { cata_variant_type::itype_id } }

@@ -12,6 +12,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 
 #include "ammo_effect.h"
 #include "anatomy.h"
@@ -1691,6 +1692,12 @@ damage_type_id applied_damage_type_scope::of( const Creature &target )
     return applied_damage_target == &target ? applied_damage_type : damage_type_id();
 }
 
+// EVT-J08: the damage events read the type through the same scope
+damage_type_id Creature::applying_damage_type( const Creature &target )
+{
+    return applied_damage_type_scope::of( target );
+}
+
 dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam, const weakpoint_attack &attack, const weakpoint &wp )
 {
@@ -1766,7 +1773,7 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
     transaction.arm_hp_capture();
     execution_damage.arm_hp_capture( bp, dealt_dams );
     {
-        // MONDT-J05: monster_takes_damage reports the type that dealt the most
+        // MONDT-J05, EVT-J08: the damage events report the type that dealt the most
         const applied_damage_type_scope type_scope( *this, main_damage_type( d, dealt_dams ) );
         apply_damage( source, bp, total_damage );
     }

@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -219,6 +220,11 @@ class stats_tracker : public event_subscriber
         // and too varied to keep in a save (npc_goal_changed).  EVENT EOCs still get them;
         // statistics, scores and achievements can't use them.
         static bool records( event_type type );
+        // The fields of an event type stats_tracker leaves out of what it keeps and of what its
+        // watchers see: the locations, which would make every event a summary of its own, kept
+        // for good, and the details of monster_takes_damage, which would multiply its
+        // summaries by every monster and damage type.  EVENT EOCs still get them.
+        static const std::vector<std::string> &unrecorded_fields( event_type type );
 
         void serialize( JsonOut & ) const;
         void deserialize( const JsonObject &jo );

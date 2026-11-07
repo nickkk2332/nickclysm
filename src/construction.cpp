@@ -1587,6 +1587,10 @@ void build_construction_activity_actor::complete_construction( player_activity &
 
     add_msg( m_info, _( "%s finished construction: %s." ), you.disp_name( true ),
              built.group->name() );
+    // The construction is done, not canceled: the activity's completion hooks (completion_eoc,
+    // character_finished_activity) run once it is built. They are taken first, since the
+    // activity ends here and never runs out of moves.
+    activity_end_hooks ended = act.take_end_hooks();
     // clear the activity
     act.set_to_null();
     you.recoil = MAX_RECOIL;
@@ -1604,6 +1608,7 @@ void build_construction_activity_actor::complete_construction( player_activity &
     built.run_eocs( built.post_eocs, you, site_abs );
     get_event_bus().send<event_type::character_finishes_construction>( you.getID(),
             built.id.str(), site_abs.raw() );
+    ended.run( you, false );
     // Players will not automatically resume backlog, other Characters will.
     if( you.is_avatar() && !you.backlog.empty() &&
         you.backlog.front().id() == ACT_MULTIPLE_CONSTRUCTION ) {

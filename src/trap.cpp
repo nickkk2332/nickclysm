@@ -342,7 +342,8 @@ void trap::trigger( const tripoint_bub_ms &pos, Creature *creature, item *item )
         bool triggered = act( pos, creature, item );
         if( triggered && is_real_creature ) {
             if( Character *ch = creature->as_character() ) {
-                get_event_bus().send<event_type::character_triggers_trap>( ch->getID(), id );
+                get_event_bus().send<event_type::character_triggers_trap>( ch->getID(), id,
+                        get_map().get_abs( pos ).raw() );
             }
         }
     }

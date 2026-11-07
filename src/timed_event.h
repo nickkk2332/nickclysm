@@ -113,6 +113,10 @@ class timed_event_manager
         timed_event *get( timed_event_type type, const std::string &key );
         std::list<timed_event> const &get_all() const;
         void set_all( const std::string &key, time_duration time_in_future );
+        /// @returns How many queued events have this key.
+        int count_keyed( const std::string &key ) const;
+        /// Removes the queued events with this key; @returns how many there were.
+        int cancel_all( const std::string &key );
         /// Process all queued events, potentially altering the game state and
         /// modifying the event queue.
         void process();

@@ -28,6 +28,7 @@
 #include "bionics.h"
 #include "bodypart.h"
 #include "calendar.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_id.h"
 #include "clzones.h"
@@ -42,6 +43,8 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "errand.h"
+#include "event.h"
+#include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "faction.h"
@@ -95,6 +98,7 @@
 #include "string_formatter.h"
 #include "talker.h"
 #include "temp_crafting_inventory.h"
+#include "timed_event.h"
 #include "translation.h"
 #include "type_id.h"
 #include "units.h"
@@ -329,6 +333,52 @@ var_info read_var_info( const JsonObject &jo )
     return temp;
 }
 
+// A number is written in full, as trigger_event passes it (1000000, not 1e+06)
+static std::string var_changed_value( const diag_value &v )
+{
+    if( v.is_dbl() ) {
+        const double d = v.dbl();
+        if( std::isfinite( d ) && d == std::trunc( d ) && std::fabs( d ) < 1e15 ) {
+            return std::to_string( static_cast<long long>( d ) );
+        }
+    }
+    return v.to_string();
+}
+
+void notify_var_written( const std::string &name, const diag_value &value, talker *owner )
+{
+    const std::set<std::string> &watched = get_globals().watched;
+    // set while var_changed's EOCs run: what they write sends nothing
+    static bool sending = false;
+    if( sending || watched.empty() || watched.count( name ) == 0 ) {
+        return;
+    }
+    character_id owner_id;
+    std::string scope = "global";
+    if( owner != nullptr ) {
+        if( Character *ch = owner->get_character() ) {
+            owner_id = ch->getID();
+            scope = "character";
+        } else if( owner->get_monster() != nullptr ) {
+            scope = "monster";
+        } else if( owner->get_item() != nullptr ) {
+            scope = "item";
+        } else if( owner->get_vehicle() != nullptr ) {
+            scope = "vehicle";
+        } else {
+            scope = "other";
+        }
+    }
+    const cata::event e = cata::event::make<event_type::var_changed>( owner_id, scope, name,
+                          var_changed_value( value ) );
+    sending = true;
+    const on_out_of_scope done( []() {
+        sending = false;
+    } );
+    // a global's EOCs run on the avatar, as for any event that names no character
+    get_event_bus().send_with_talkers( owner, nullptr, e );
+}
+
 namespace
 {
 
@@ -342,6 +392,9 @@ void _write_var_value( var_type type, const std::string &name, dialogue *d,
     switch( type ) {
         case var_type::global:
             globvars.set_global_value( name, value );
+            if( !globvars.watched.empty() ) {
+                notify_var_written( name, diag_value( value ), nullptr );
+            }
             break;
         case var_type::var:
             ret = d->get_value( name ).str();
@@ -358,6 +411,9 @@ void _write_var_value( var_type type, const std::string &name, dialogue *d,
         case var_type::u:
             if( d->has_alpha ) {
                 d->actor( false )->set_value( name, value );
+                if( !globvars.watched.empty() ) {
+                    notify_var_written( name, diag_value( value ), d->actor( false ) );
+                }
             } else {
                 debugmsg( "Tried to use an invalid alpha talker.  %s", d->get_callstack() );
             }
@@ -365,6 +421,9 @@ void _write_var_value( var_type type, const std::string &name, dialogue *d,
         case var_type::npc:
             if( d->has_beta ) {
                 d->actor( true )->set_value( name, value );
+                if( !globvars.watched.empty() ) {
+                    notify_var_written( name, diag_value( value ), d->actor( true ) );
+                }
             } else {
                 debugmsg( "Tried to use an invalid beta talker.  %s", d->get_callstack() );
             }
@@ -2456,6 +2515,16 @@ conditional_t::func f_mod_is_loaded( const JsonObject &jo, std::string_view memb
     };
 }
 
+// Whether a timed event with this key is queued: the key an EOC gave mapgen_update,
+// revert_location, copy_location, transform_radius, place_override or custom_light_level
+conditional_t::func f_timed_event_queued( const JsonObject &jo, std::string_view member )
+{
+    str_or_var key = get_str_or_var( jo.get_member( member ), member, true );
+    return [key]( const_dialogue const & d ) {
+        return get_timed_events().count_keyed( key.evaluate( d ) ) > 0;
+    };
+}
+
 conditional_t::func f_has_faction_trust( const JsonObject &jo, std::string_view member )
 {
     dbl_or_var dov = get_dbl_or_var( jo, member );
@@ -3782,6 +3851,7 @@ parsers = {
     {"map_is_outside", jarg::member, &conditional_fun::f_map_is_outside },
     {"map_in_city", jarg::member, &conditional_fun::f_map_in_city },
     {"mod_is_loaded", jarg::member, &conditional_fun::f_mod_is_loaded },
+    {"timed_event_queued", jarg::member, &conditional_fun::f_timed_event_queued },
     {"u_has_faction_trust", jarg::member | jarg::array, &conditional_fun::f_has_faction_trust },
     {"math", jarg::member, &conditional_fun::f_math },
     {"overmap_at_point", jarg::member, &conditional_fun::f_overmap_at_point },

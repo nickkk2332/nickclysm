@@ -124,7 +124,15 @@ void timed_event::actualize()
 
     switch( type ) {
         case timed_event_type::HELP:
-            debugmsg( "Currently disabled while NPC and monster factions are being rewritten." );
+            // Does nothing (disabled while NPC and monster factions are rewritten); old saves can
+            // still have one queued
+            break;
+
+        case timed_event_type::ROBOT_ATTACK:
+            // An eyebot photographed the avatar here (mattack::photograph). What follows is
+            // content's: an EVENT EOC on becomes_wanted spawns the robots.
+            get_event_bus().send<event_type::becomes_wanted>( player_character.getID(),
+                    map_square.raw() );
             break;
 
         case timed_event_type::SPAWN_WYRMS: {
@@ -513,6 +521,39 @@ void timed_event_manager::set_all( const std::string &key, time_duration time_in
             e.when = calendar::turn + time_in_future;
         }
     }
+}
+
+int timed_event_manager::count_keyed( const std::string &key ) const
+{
+    int count = 0;
+    // the events the game queues itself have no key: an empty one names none
+    if( key.empty() ) {
+        return 0;
+    }
+    for( const timed_event &e : events ) {
+        count += e.key == key ? 1 : 0;
+    }
+    return count;
+}
+
+int timed_event_manager::cancel_all( const std::string &key )
+{
+    int cancelled = 0;
+    if( key.empty() ) {
+        return 0;
+    }
+    // Not erased: an EOC run while process() goes through the list (by an explosion's deaths,
+    // say) can cancel the very event being processed. A cancelled event does nothing and is
+    // removed the next time the list is processed.
+    for( timed_event &e : events ) {
+        if( e.key == key && e.type != timed_event_type::NONE ) {
+            e.type = timed_event_type::NONE;
+            e.key.clear();
+            e.when = calendar::turn_zero;
+            ++cancelled;
+        }
+    }
+    return cancelled;
 }
 
 bool you_know_where_you_are()

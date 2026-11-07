@@ -2858,7 +2858,7 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
                 get_event_bus().send<event_type::spellcasting_finish>( who.getID(), false, sp,
                         spell_being_cast.spell_class(), spell_being_cast.get_difficulty( who ),
                         spell_being_cast.energy_cost( who ), spell_being_cast.casting_time( who ),
-                        spell_being_cast.damage( who ) );
+                        spell_being_cast.damage( who ), get_map().get_abs( *target ).raw() );
                 return;
             }
 
@@ -2912,7 +2912,7 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
             get_event_bus().send<event_type::spellcasting_finish>( who.getID(), true, sp,
                     spell_being_cast.spell_class(), spell_being_cast.get_difficulty( who ),
                     spell_being_cast.energy_cost( who ), spell_being_cast.casting_time( who ),
-                    spell_being_cast.damage( who ) );
+                    spell_being_cast.damage( who ), get_map().get_abs( *target ).raw() );
         }
         who.last_magic_target_pos = get_map().get_abs( *target );
         if( spell_being_cast.is_channeling_spell() ) {
@@ -10840,7 +10840,7 @@ void chop_tree_activity_actor::finish( player_activity &act, Character &who )
     here.collapse_at( pos, false, true, false );
     sfx::play_variant_sound( "misc", "timber",
                              sfx::get_heard_volume( here.get_bub( act.placement ) ) );
-    get_event_bus().send<event_type::cuts_tree>( who.getID() );
+    get_event_bus().send<event_type::cuts_tree>( who.getID(), act.placement.raw() );
     act.set_to_null();
 }
 

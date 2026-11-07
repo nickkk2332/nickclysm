@@ -4424,11 +4424,20 @@ talk_effect_fun_t::func f_add_var( const JsonObject &jo, std::string_view member
     return [is_npc, var_name, possible_values, time_check, var_base_name]( dialogue const & d ) {
         talker *actor = d.actor( is_npc );
         if( time_check ) {
-            actor->set_value( var_name, string_format( "%d", to_turn<int>( calendar::turn ) ) );
+            const std::string now = string_format( "%d", to_turn<int>( calendar::turn ) );
+            actor->set_value( var_name, now );
+            notify_var_written( var_name, diag_value( now ), actor );
         } else {
             int index = rng( 0, possible_values.size() - 1 );
             actor->set_value( var_name, possible_values[index] );
-            get_event_bus().send<event_type::u_var_changed>( var_base_name, possible_values[index] );
+            // u_var_changed is about the avatar's variables: an NPC's, a monster's or an item's
+            // looked like the avatar's. var_changed covers them all.
+            const Character *owner = actor->get_character();
+            if( owner != nullptr && owner->is_avatar() ) {
+                get_event_bus().send<event_type::u_var_changed>( var_base_name,
+                        possible_values[index] );
+            }
+            notify_var_written( var_name, diag_value( possible_values[index] ), actor );
         }
     };
 }
@@ -5858,6 +5867,16 @@ talk_effect_fun_t::func f_alter_timed_events( const JsonObject &jo, std::string_
                                      0_seconds );
     return [key, time_in_future]( dialogue & d ) {
         get_timed_events().set_all( key.evaluate( d ), time_in_future.evaluate( d ) );
+    };
+}
+
+// Removes the queued timed events with this key, before they happen
+talk_effect_fun_t::func f_cancel_timed_events( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var key = get_str_or_var( jo.get_member( member ), member, true );
+    return [key]( dialogue & d ) {
+        get_timed_events().cancel_all( key.evaluate( d ) );
     };
 }
 
@@ -12446,6 +12465,7 @@ parsers = {
     { "set_weather", jarg::member, &talk_effect_fun::f_set_weather },
     { "clear_weather_override", jarg::member, &talk_effect_fun::f_clear_weather_override },
     { "alter_timed_events", jarg::member, &talk_effect_fun::f_alter_timed_events },
+    { "cancel_timed_events", jarg::member, &talk_effect_fun::f_cancel_timed_events },
     { "revert_location", jarg::member, &talk_effect_fun::f_revert_location },
     { "copy_location", jarg::member, &talk_effect_fun::f_copy_location },
     { "place_override", jarg::member, &talk_effect_fun::f_place_override },
