@@ -530,6 +530,9 @@ TEST_CASE( "uiinv-j04_vision_penalty_and_crafting_stat_from_skills", "[audit][cr
     CHECK( skill_fabrication->vision_penalty() == 0.0f );
     // shipped skills keep the old rule: intelligence / 4
     for( const Skill &sk : Skill::skills ) {
+        if( sk.ident() == skill_test_m29a_skill ) {
+            continue;
+        }
         CAPTURE( sk.ident().str() );
         CHECK( sk.crafting_stat() == STAT_INT );
         CHECK( sk.crafting_stat_divisor() == 4.0f );

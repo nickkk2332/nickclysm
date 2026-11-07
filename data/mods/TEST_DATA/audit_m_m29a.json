@@ -10,12 +10,11 @@
   {
     "type": "skill",
     "id": "test_m29a_skill",
-    "//": "UIINV-J04. Contextual, so it isn't in Skill::skills and other tests don't see it.",
+    "//": "UIINV-J04. Not contextual: a recipe's skill_used is read as a skill level (a new character's autolearn check).",
     "name": { "str": "audit crafting stat skill" },
     "description": "Crafting with it uses perception / 2, and farsightedness costs 3.",
     "display_category": "display_crafting",
     "sort_rank": 900291,
-    "tags": [ "contextual_skill" ],
     "vision_penalty": 3,
     "crafting_stat": "per",
     "crafting_stat_divisor": 2
@@ -77,7 +76,7 @@
     "move_cost_mod": -1,
     "required_str": -1,
     "examine_action": "workbench",
-    "workbench": { "multiplier": 1.1, "mass": 10000, "volume": "50L", "recipe_filter": "p:fabrication" }
+    "workbench": { "multiplier": 1.1, "mass": "10 kg", "volume": "50 L", "recipe_filter": "p:fabrication" }
   },
   {
     "type": "effect_on_condition",
