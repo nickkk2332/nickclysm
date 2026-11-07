@@ -28,6 +28,7 @@
 #include "generic_factory.h"
 #include "global_vars.h"
 #include "item.h"
+#include "item_location.h"
 #include "json.h"
 #include "map.h"
 #include "math_parser_diag_value.h"
@@ -266,26 +267,42 @@ bool string_id<enchantment>::is_valid() const
     return spell_factory.is_valid( *this );
 }
 
+// MAGIC-B16: a value listed twice with "add" (or "multiply") in one object counted only the
+// first time; now that is a load error
+[[noreturn]] static void throw_repeated_enchantment_value( const JsonObject &value_obj,
+        const std::string_view array_key, const std::string &type_key, const std::string_view op )
+{
+    value_obj.throw_error_at( op, string_format(
+                                  R"(%s lists "%s" with "%s" more than once; list it once, with the values combined)",
+                                  array_key, value_obj.get_string( type_key, "" ), op ) );
+}
+
 template<typename TKey>
 static void load_add_and_multiply_dbl_or_var( const JsonObject &jo, std::string_view array_key,
         const std::string &type_key, std::map<TKey, dbl_or_var> &add_map,
         std::map<TKey, dbl_or_var> &mult_map )
 {
     if( jo.has_array( array_key ) ) {
+        // the values this object lists; each replaces the one a copy-from parent gave
+        std::set<TKey> added;
+        std::set<TKey> multiplied;
         for( const JsonObject value_obj : jo.get_array( array_key ) ) {
 
             TKey value;
             mandatory( value_obj, false, type_key, value );
 
             if( value_obj.has_member( "add" ) ) {
-                dbl_or_var add = get_dbl_or_var( value_obj, "add" );
-                add_map.emplace( value, add );
+                if( !added.insert( value ).second ) {
+                    throw_repeated_enchantment_value( value_obj, array_key, type_key, "add" );
+                }
+                add_map.insert_or_assign( value, get_dbl_or_var( value_obj, "add" ) );
             }
 
             if( value_obj.has_member( "multiply" ) ) {
-                dbl_or_var mult = get_dbl_or_var( value_obj, "multiply" );
-
-                mult_map.emplace( value, mult );
+                if( !multiplied.insert( value ).second ) {
+                    throw_repeated_enchantment_value( value_obj, array_key, type_key, "multiply" );
+                }
+                mult_map.insert_or_assign( value, get_dbl_or_var( value_obj, "multiply" ) );
             }
 
         }
@@ -317,12 +334,13 @@ static void load_add_and_multiply( const JsonObject &jo, std::string_view array_
             const double add = value_obj.get_float( "add", 0.0 );
             const double mult = value_obj.get_float( "multiply", 0.0 );
 
-            if( add != 0.0 ) {
-                add_map.emplace( value, add );
+            // a relic's enchantment is built fresh, so a key already there was listed before
+            if( add != 0.0 && !add_map.emplace( value, add ).second ) {
+                throw_repeated_enchantment_value( value_obj, array_key, type_key, "add" );
             }
 
-            if( mult != 0.0 ) {
-                mult_map.emplace( value, mult );
+            if( mult != 0.0 && !mult_map.emplace( value, mult ).second ) {
+                throw_repeated_enchantment_value( value_obj, array_key, type_key, "multiply" );
             }
 
         }
@@ -586,28 +604,68 @@ void enchantment::load_enchantment_list( const JsonObject &jo, const bool was_lo
     }
 }
 
-bool enchantment::is_active( const Character &guy, const item &parent ) const
+// MAGIC-J08: the dialogue an enchantment's condition and values are evaluated in: the character,
+// the item it is on as beta, and context vals naming the effect, bionic or trait it comes from
+static const_dialogue enchantment_dialogue( const Character &guy,
+        const enchantment_source &source )
+{
+    const_dialogue d( get_const_talker_for( guy ),
+                      source.item != nullptr ? get_const_talker_for( *source.item ) : nullptr );
+    if( !source.effect.empty() ) {
+        d.set_value( "source_effect", source.effect );
+        d.set_value( "source_intensity", static_cast<double>( source.intensity ) );
+    }
+    if( !source.bionic.empty() ) {
+        d.set_value( "source_bionic", source.bionic );
+    }
+    if( !source.trait.empty() ) {
+        d.set_value( "source_trait", source.trait );
+    }
+    return d;
+}
+
+// Whether the character has the item where the enchantment needs it, and its condition holds
+static bool enchantment_active_on_item( const enchantment &ench, const Character &guy,
+                                        const item &parent, const enchantment_source &source )
 {
     if( !guy.has_item( parent ) ) {
         return false;
     }
 
-    if( active_conditions.first == has::HELD &&
-        active_conditions.second == condition::ALWAYS ) {
+    if( ench.active_conditions.first == enchantment::has::HELD &&
+        ench.active_conditions.second == enchantment::condition::ALWAYS ) {
         return true;
     }
 
-    if( !( active_conditions.first == has::HELD ||
-           ( active_conditions.first == has::WIELD && guy.is_wielding( parent ) ) ||
-           ( active_conditions.first == has::WORN &&
+    if( !( ench.active_conditions.first == enchantment::has::HELD ||
+           ( ench.active_conditions.first == enchantment::has::WIELD && guy.is_wielding( parent ) ) ||
+           ( ench.active_conditions.first == enchantment::has::WORN &&
              ( guy.is_worn( parent ) || guy.is_worn_module( parent ) ) ) ) ) {
         return false;
     }
 
-    return is_active( guy, parent.active );
+    return ench.is_active( guy, parent.active, source );
+}
+
+bool enchantment::is_active( const Character &guy, const item &parent ) const
+{
+    return enchantment_active_on_item( *this, guy, parent, enchantment_source() );
+}
+
+bool enchantment::is_active( const Character &guy, const item_location &parent ) const
+{
+    enchantment_source source;
+    source.item = &parent;
+    return enchantment_active_on_item( *this, guy, *parent, source );
 }
 
 bool enchantment::is_active( const Character &guy, const bool active ) const
+{
+    return is_active( guy, active, enchantment_source() );
+}
+
+bool enchantment::is_active( const Character &guy, const bool active,
+                             const enchantment_source &source ) const
 {
     if( active_conditions.second == condition::ACTIVE ) {
         return active;
@@ -622,7 +680,7 @@ bool enchantment::is_active( const Character &guy, const bool active ) const
     }
 
     if( active_conditions.second == condition::DIALOG_CONDITION ) {
-        const_dialogue d( get_const_talker_for( guy ), nullptr );
+        const const_dialogue d = enchantment_dialogue( guy, source );
         return dialog_condition( d );
     }
     return false;
@@ -792,6 +850,39 @@ void enchantment::bodypart_changes::serialize( JsonOut &jsout ) const
     jsout.end_object();
 }
 
+// MAGIC-B16: in a copy-from child, "extend" adds spells to the parent's hit_you_effect or
+// hit_me_effect and "delete" removes the parent's ones with the given spell ids
+static void extend_and_delete_fake_spells( const JsonObject &jo, const std::string &name,
+        const bool was_loaded, std::vector<fake_spell> &spells )
+{
+    if( !was_loaded || jo.has_member( name ) ) {
+        return;
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject deleted = jo.get_object( "delete" );
+        deleted.allow_omitted_members();
+        if( deleted.has_member( name ) ) {
+            for( const std::string &spell_name : deleted.get_as_string_array( name ) ) {
+                spells.erase( std::remove_if( spells.begin(), spells.end(),
+                [&spell_name]( const fake_spell & sp ) {
+                    return sp.id.str() == spell_name;
+                } ), spells.end() );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject extended = jo.get_object( "extend" );
+        extended.allow_omitted_members();
+        if( extended.has_array( name ) ) {
+            for( const JsonObject spell_obj : extended.get_array( name ) ) {
+                fake_spell sp;
+                sp.load( spell_obj );
+                spells.push_back( sp );
+            }
+        }
+    }
+}
+
 void enchantment::load( const JsonObject &jo, std::string_view,
                         const std::optional<std::string> &inline_id, bool is_child )
 {
@@ -799,6 +890,8 @@ void enchantment::load( const JsonObject &jo, std::string_view,
 
     jo.read( "hit_you_effect", hit_you_effect );
     jo.read( "hit_me_effect", hit_me_effect );
+    extend_and_delete_fake_spells( jo, "hit_you_effect", was_loaded, hit_you_effect );
+    extend_and_delete_fake_spells( jo, "hit_me_effect", was_loaded, hit_me_effect );
     jo.read( "emitter", emitter );
 
     if( jo.has_object( "intermittent_activation" ) ) {
@@ -821,7 +914,10 @@ void enchantment::load( const JsonObject &jo, std::string_view,
         }
     }
 
-    active_conditions.first = io::string_to_enum<has>( jo.get_string( "has", "HELD" ) );
+    // MAGIC-B16: a copy-from child keeps its parent's "has" and "condition" unless it gives its own
+    if( jo.has_member( "has" ) || !was_loaded ) {
+        active_conditions.first = io::string_to_enum<has>( jo.get_string( "has", "HELD" ) );
+    }
     if( jo.has_string( "condition" ) ) {
         std::string condit;
         optional( jo, was_loaded, "condition", condit );
@@ -833,15 +929,22 @@ void enchantment::load( const JsonObject &jo, std::string_view,
         }
     } else if( jo.has_member( "condition" ) ) {
         active_conditions.second = condition::DIALOG_CONDITION;
-    } else {
+    } else if( !was_loaded ) {
         active_conditions.second = condition::ALWAYS;
     }
-    if( active_conditions.second == condition::DIALOG_CONDITION ) {
+    if( active_conditions.second == condition::DIALOG_CONDITION && jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", dialog_condition, false );
     }
 
+    // each effect once; an entry replaces the intensity a copy-from parent gave
+    std::set<efftype_id> listed_effects;
     for( JsonObject jsobj : jo.get_array( "ench_effects" ) ) {
-        ench_effects.emplace( efftype_id( jsobj.get_string( "effect" ) ), jsobj.get_int( "intensity" ) );
+        const efftype_id effect( jsobj.get_string( "effect" ) );
+        if( !listed_effects.insert( effect ).second ) {
+            jsobj.throw_error_at( "effect", string_format(
+                                      R"(ench_effects lists "%s" more than once)", effect.str() ) );
+        }
+        ench_effects.insert_or_assign( effect, jsobj.get_int( "intensity" ) );
     }
 
     optional( jo, was_loaded, "modified_bodyparts", modified_bodyparts );
@@ -931,16 +1034,18 @@ void enchant_cache::load( const JsonObject &jo, std::string_view,
         static const std::set<std::string> legacy_values = { };
 
         for( const JsonObject value_obj : jo.get_array( "values" ) ) {
+            // MAGIC-B16: listed before with the same operation (thrown outside the catch below)
+            std::optional<std::string> repeated;
             try {
                 const enchant_vals::mod value = io::string_to_enum<enchant_vals::mod>
                                                 ( value_obj.get_string( "value" ) );
                 const double add = value_obj.get_float( "add", 0 );
-                if( add != 0 ) {
-                    values_add.emplace( value, add );
+                if( add != 0 && !values_add.emplace( value, add ).second ) {
+                    repeated = "add";
                 }
                 const double multiply = value_obj.get_float( "multiply", 0.0 );
-                if( !float_equals( multiply, 0.0 ) ) {
-                    values_multiply.emplace( value, multiply );
+                if( !float_equals( multiply, 0.0 ) && !values_multiply.emplace( value, multiply ).second ) {
+                    repeated = "multiply";
                 }
             } catch( ... ) {
                 value_obj.allow_omitted_members();
@@ -948,6 +1053,9 @@ void enchant_cache::load( const JsonObject &jo, std::string_view,
                     debugmsg( "A relic attempted to load invalid enchantment %s.", value_obj.get_string( "value",
                               "" ) );
                 }
+            }
+            if( repeated ) {
+                throw_repeated_enchantment_value( value_obj, "values", "value", *repeated );
             }
         }
     }
@@ -1260,6 +1368,12 @@ void enchant_cache::force_add( const enchantment &rhs, const Character &guy )
 {
     const_dialogue d( get_const_talker_for( guy ), nullptr );
     force_add_with_dialogue( rhs, d );
+}
+
+void enchant_cache::force_add( const enchantment &rhs, const Character &guy,
+                               const enchantment_source &source )
+{
+    force_add_with_dialogue( rhs, enchantment_dialogue( guy, source ) );
 }
 
 void enchant_cache::force_add( const enchantment &rhs, const monster &mon )

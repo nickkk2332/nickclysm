@@ -59,23 +59,53 @@ void magic_type::load( const JsonObject &jo, std::string_view src )
         optional( jo_energy, was_loaded, "vitamin", vitamin_energy_source_ );
         optional( jo_energy, was_loaded, "color", energy_color_, nc_color_reader{}, c_cyan );
     }
-    if( jo.has_array( "cannot_cast_flags" ) ) {
-        for( auto &cannot_cast_flag : jo.get_string_array( "cannot_cast_flags" ) ) {
-            cannot_cast_flags.insert( cannot_cast_flag );
-        }
-    } else if( jo.has_string( "cannot_cast_flags" ) ) {
-        const std::string cannot_cast_flag = jo.get_string( "cannot_cast_flags" );
-        cannot_cast_flags.insert( cannot_cast_flag );
-    }
+    // MAGIC-B16: a string or an array; a copy-from child's list replaces its parent's, and
+    // "extend" and "delete" change it
+    optional( jo, was_loaded, "cannot_cast_flags", cannot_cast_flags, string_reader{} );
     optional( jo, was_loaded, "cannot_cast_message", cannot_cast_message );
     optional( jo, was_loaded, "max_book_level", max_book_level );
     optional( jo, was_loaded, "failure_cost_percent", failure_cost_percent, 0.0f );
     optional( jo, was_loaded, "failure_exp_percent", failure_exp_percent, 0.2f );
 
-    if( !was_loaded ) {
+    // MAGIC-B16: a copy-from child used to keep its parent's failure_eocs whatever it gave
+    if( jo.has_member( "failure_eocs" ) ) {
+        failure_eocs.clear();
         for( JsonValue jv : jo.get_array( "failure_eocs" ) ) {
             failure_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
         }
+    }
+
+    if( jo.has_object( "encumbrance" ) ) {
+        encumbrance.load( jo.get_object( "encumbrance" ) );
+    }
+}
+
+void spell_encumbrance::load( const JsonObject &jo )
+{
+    // members it doesn't give keep their values: the defaults, or a copy-from parent's
+    optional( jo, true, "hands_free", hands_free );
+    optional( jo, true, "hands_cost", hands_cost );
+    optional( jo, true, "legs_free", legs_free );
+    optional( jo, true, "legs_time", legs_time );
+    optional( jo, true, "arms_free", arms_free );
+    optional( jo, true, "arms_time", arms_time );
+    optional( jo, true, "arms_fail", arms_fail );
+    optional( jo, true, "mouth_free", mouth_free );
+    optional( jo, true, "mouth_fail", mouth_fail );
+}
+
+int spell_encumbrance::cost_per_hand_point( const magic_energy_type source ) const
+{
+    if( hands_cost.has_value() ) {
+        return *hands_cost;
+    }
+    switch( source ) {
+        case magic_energy_type::hp:
+            return 1;
+        case magic_energy_type::stamina:
+            return 100;
+        default:
+            return 10;
     }
 }
 

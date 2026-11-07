@@ -25,9 +25,22 @@ class JsonObject;
 class JsonOut;
 class JsonValue;
 class item;
+class item_location;
 class monster;
 class vehicle;
 struct const_dialogue;
+
+// MAGIC-J08: what gives a character an enchantment, so that its condition and values can read
+// it. An item is the dialogue's beta talker (its variables are n_ variables); an effect, bionic or
+// trait sets the context vals source_effect (and source_intensity), source_bionic or source_trait.
+struct enchantment_source {
+    const item_location *item = nullptr;
+    std::string effect;
+    // the effect's highest intensity on any body part
+    int intensity = 0;
+    std::string bionic;
+    std::string trait;
+};
 
 namespace enchant_vals
 {
@@ -267,10 +280,14 @@ class enchantment
 
         // this enchantment has a valid condition and is in the right location
         bool is_active( const Character &guy, const item &parent ) const;
+        // the same, with the item as its dialog condition's beta talker (MAGIC-J08)
+        bool is_active( const Character &guy, const item_location &parent ) const;
 
         // this enchantment has a valid item independent conditions
         // @active means the container for the enchantment is active, for comparison to active flag.
         bool is_active( const Character &guy, bool active ) const;
+        // the same, with its dialog condition seeing @p source (MAGIC-J08)
+        bool is_active( const Character &guy, bool active, const enchantment_source &source ) const;
 
         // same as above except for monsters. Much more limited.
         bool is_active( const monster &mon ) const;
@@ -417,6 +434,9 @@ class enchant_cache : public enchantment
                                    double value ) const;
         // adds two enchantments together and ignores their conditions
         void force_add( const enchantment &rhs, const Character &guy );
+        // with its values seeing @p source (MAGIC-J08)
+        void force_add( const enchantment &rhs, const Character &guy,
+                        const enchantment_source &source );
         void force_add( const enchantment &rhs, const monster &mon );
         void force_add( const enchantment &rhs, const vehicle &veh );
         void force_add( const enchantment &rhs );

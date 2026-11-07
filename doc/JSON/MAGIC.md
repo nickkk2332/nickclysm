@@ -272,6 +272,8 @@ The following JSON fields are also used in spells and, while optional, greatly e
 
 All fields that are numeric also support a "variable object" (see [NPCs.md](NPCs.md) for full details).  Some fields are ignored by monsters and items.
 
+A spell's numeric fields (and its `caster_condition` and target `condition`) are evaluated with the caster as `u` and the context values `spell_id` (the spell's id) and `spell_level` (the level it is cast at).  Write `_spell_level` rather than `u_spell_level('the_spell_id')`: that is also right for item, enchantment, monster and EOC casts (which cast the spell at a level of their own, whether or not the caster knows it) and for a spell made with `copy-from`, which would otherwise read its parent's level.  For example `"min_damage": { "math": [ "_spell_level * 1.25 + 18" ] }`.
+
 Field group | Description | Example
 ---  | --- | ---
 `min_X`, `max_X`, ``X_increment`` | Minimum value, maximum value, and the value increase per level. <br>Note: a spell is not _set_ to have max_X at max lvl, max_X is the ceiling for the value: a spell with `min_damage: 0, max_damage: 100, damage_increment: 5` and `max_level: 10`, will deal 5 damage at lvl 1, 10 at lvl 2 and 50 at lvl 10, as [ 0 + ( 5 \* 10 ) ].  Similarly, if `max_damage` is instead 25, the damage will cap at spell lvl 5, as [ 0 + ( 5 \* 5 ) ] | `"min_damage": { "math": [ "u_skill('dodge') + u_val('intelligence')" ] },`,<br> `"min_range": 24,`,<br> `"min_aoe": { "math": [ "( VAR_1 / 3 )" ] },`.
@@ -292,7 +294,7 @@ Field group | Description | Example
 `multiple_projectiles` | If value is bigger than one, instead of shooting single spell with damage X, you will shoot `multiple_projectiles` amount of projectiles with damage `damage/multiple_projectiles`, which may damage different body parts (each projectile has 75% chance to hit torso still). Doesn't interact with affected_body_parts | "multiple_projectiles": 2,
 `affected_body_parts` | `body_part` where the `attack`, `dot` or `effect_str` will occur.  For effects, set at `torso` by default. For attack and dot, picks a random bodypart, weighted by it's hit_size | "affected_body_parts": [ "head" ] 
 `extra_effects` | Allows to cast a secondary spell `id` immediately after the primary spell.  Allows for multiple `id`s. | "extra_effects": [ <br> { <br> "id": "fireball", <br> "hit_self": false, <br> "max_level": 3 <br> }, <br> { "id": "storm_chain_1" } <br>]
-`learn_spells` | Allow user to learn the spell `id` when they reach that spell level  (e.g. `"create_atomic_light": 5` means user will learn create_atomic_light when they reach level 5 of the primary spell).  Allows for multiple `id`s. | "learn_spells": { "create_atomic_light": 5, "megablast": 10 }
+`learn_spells` | Allow user to learn the spell `id` when they reach that spell level  (e.g. `"create_atomic_light": 5` means user will learn create_atomic_light when they reach level 5 of the primary spell).  Allows for multiple `id`s.  Works for NPCs as well as the avatar: whoever levels the spell learns them. | "learn_spells": { "create_atomic_light": 5, "megablast": 10 }
 `teachable` | Whether it's possible to teach this spell between characters.  Default is true. | `"teachable": true`
 `npc_use` | How the NPC AI casts the spell in a fight.  `role`: `"attack"` (default) rates it by the damage it deals to the creatures it would hit, as spells without `npc_use` are; `"self"` casts it on the caster (a spell that can't target the caster but can target the ground, such as a summons, goes on the first free tile next to it); `"ally"` casts it on the caster or a friend it sees in range (the avatar too, for a follower); `"never"` keeps NPCs from casting it on their own.  `condition` (optional): the NPC casts it only while this holds, with u the caster and npc the creature it is cast on (for `"attack"`, the creature it fights).  Give a buff a condition such as `{ "not": { "npc_has_effect": "the_buff" } }`, or the NPC casts it again whenever it rates best.  `priority` (`"self"` and `"ally"` only; a number, a [variable object](EFFECT_ON_CONDITION.md#variable-object) or math, with the same u and npc; default 10): what the spell is worth against the NPC's attacks, less a point per second of casting time (and 3 more if it must put its weapon away).  An attack rates about 3 points per point of damage per second it deals to a hostile, so 10 is worth about a 3-damage-per-second attack.  NPCs weigh these spells only in a fight. | "npc_use": { "role": "ally", "condition": { "math": [ "n_hp('torso') < 30" ] }, "priority": 40 }
 `training_time`, `training_cost` | How long a lesson in this spell from an NPC (or to one) takes, and what it costs in cents.  Each is a value, a [variable object](EFFECT_ON_CONDITION.md#variable-object) or math (time in seconds), with u the student and npc the teacher, and the context values `spell` (this spell's id), `known` (1 if the student knows the spell already), `level` (the teacher's level in it) and `difficulty` (its difficulty for the student).  The time is at least one turn and the cost not below 0; a follower teaches for free whatever the cost says.  Default: 1 hour if the student knows the spell, otherwise the time to learn it from a book / 50, between 2 and 6 hours; the cost is 100 x `difficulty` x `level` (each at least 1), twice that for a spell the student doesn't know. | "training_time": "2 h", <br>"training_cost": { "math": [ "_known ? 500 : 5000" ] }
@@ -303,6 +305,7 @@ Field group | Description | Example
 `ignored_monster_species` | The opposite of `targeted_monster_species`: you can target everything except the specified monster `SPECIES`. | "ignored_monster_species": [ "ZOMBIE", "NETHER" ],
 `condition` | Dynamic field that takes conditions for spell targeting.  These conditions will apply after more specific targeting criteria, such as "valid_targets" or "ignored_monster_species".  The caster is the alpha talker and the target is the beta talker.  Note: Since targeting the ground will not pass a beta talker, make sure any condition tree from a spell with "ground" as a valid target first checks for the presence of a beta talker if it wants to check against it.
 `magic_type` | Optional field indicating which type of magic this spell is part of.  Separate from spell class, this field links to a magic_type object that can define several shareable parts of spells, such as xp required to level or flags that make the spell not castable.
+`failure_eocs` | EOCs (ids or inline) run when a cast of this spell fails, after its magic type's `failure_eocs`, with the caster as `u` and the context values `spell_id` and `spell_level`.  Unknown ids are a load error. | "failure_eocs": [ "EOC_backfire" ]
 
 ### Channeled Spell fields
 Channeled spells trigger their effects whenever you manually wait a turn after casting. They interrupt if you do ANYTHING but manually wait.  They also break if you are involved in melee combat.
@@ -341,6 +344,8 @@ Spells may have any number of flags, for example:
     "flags": [ "VERBAL", "SOMATIC", "NO_LEGS" ]
   }
 ```
+
+A spell made with `copy-from` keeps its parent's flags: unlike most fields, its own `flags` are added to them.  `"extend": { "flags": [ ... ] }` also adds flags, and `"delete": { "flags": [ ... ] }` removes the parent's.
 
 Flag                       | Description
 -------------------------  | ---
@@ -777,6 +782,30 @@ Magic Type Example:
 
 At load, every formula id must name an existing `jmath_function` with the right number of arguments (`get_level_formula_id` and `exp_for_level_formula_id` take 1, `casting_xp_formula_id` and `failure_chance_formula_id` take none), and the energy `vitamin` and `failure_eocs` ids must exist; anything else is a load error.
 
+`cannot_cast_flags` is a flag or a list of flags.  A magic type made with `copy-from` keeps its parent's `cannot_cast_flags` and `failure_eocs` unless it gives its own, and `"extend": { "cannot_cast_flags": [ ... ] }` and `"delete": { "cannot_cast_flags": [ ... ] }` change the parent's flags.
+
+The `failure_eocs` (the magic type's, then the spell's own, see [Common fields](#common-fields)) run with the caster as `u` and the context values `spell_id` and `spell_level` (the level the spell was cast at).
+
+#### Encumbrance
+
+The caster's encumbrance makes spells cost more, take longer and fail more often.  A magic type's optional `encumbrance` object changes how much, for its spells; the members it doesn't give keep these defaults (which spells without a magic type use).  Each limb type's encumbrance is the average of its limbs, and only the points above the `_free` ones count.
+
+```jsonc
+"encumbrance": {
+  "hands_free": 5,  // energy cost, unless the spell has NO_HANDS
+  "hands_cost": 10, // energy per point; without it 10, or 1 for an HP and 100 for a stamina energy source
+  "legs_free": 10,  // casting time, unless the spell has NO_LEGS
+  "legs_time": 3,   // moves per point
+  "arms_free": 10,  // casting time and failure chance of SOMATIC spells
+  "arms_time": 2,   // moves per point
+  "arms_fail": 0.5, // percent failure chance per point
+  "mouth_free": 5,  // failure chance of VERBAL spells
+  "mouth_fail": 1   // percent failure chance per point
+}
+```
+
+The failure chance part doesn't apply to `PSIONIC` spells, and the `SUBTLE_SPELL` and `SILENT_SPELL` character flags still remove the hand, arm and mouth penalties.
+
 
 ## Enchantments
 
@@ -800,6 +829,8 @@ Identifier                  | Description
 `ench_effects`              | Grants the effect_id.  Requires the `intensity` for the effect.
 
 All fields except for `type` and `id` are optional.  This includes the otherwise obligatory `name` and `description`.  If a name and description are set, they will be displayed in the EFFECTS tab.
+
+List each value (each skill, body part or damage type) once in an enchantment with `add` and once with `multiply`, and each `ench_effects` effect once: listing one twice is a load error (only the first used to count).  An enchantment made with `copy-from` keeps its parent's `has`, `condition` and everything else it doesn't give.  Its `values`, `skills`, `encumbrance_modifier`, `melee_damage_bonus`, `incoming_damage_mod`, `incoming_damage_mod_post_absorbed` and `ench_effects` entries replace the parent's entries for the same value (or effect) and keep the parent's others.  A `hit_you_effect` or `hit_me_effect` it gives replaces the parent's list, `"extend": { "hit_you_effect": [ ... ] }` adds spells to it and `"delete": { "hit_you_effect": [ "spell_id" ] }` removes the spells with those ids.
 
 The ids an enchantment names are checked when the game loads, for enchantments defined on their own and inline ones (in mutations, bionics, effects and vehicle parts): the mutations, `ench_effects` effects, emitter, skills, body parts (`encumbrance_modifier` also takes `"all"`, and `modified_bodyparts`), damage types (`melee_damage_bonus`, `incoming_damage_mod`, `incoming_damage_mod_post_absorbed`) and the spells of `hit_you_effect`, `hit_me_effect` and `intermittent_activation` must exist.  An item's inline relic `passive_effects` are not checked.
 
@@ -1029,6 +1060,29 @@ First, the custom variable IS_UNDER_THE_MOON is set behind the scenes, it checks
     "values": [ { "value": "STRENGTH", "add": 5 } ]
   }
 ```
+
+#### What an enchantment comes from
+
+A character's enchantment can read what gives it, in its `condition` and its `values` (and the other value lists):
+
+Source | What it can read
+---|---
+An item (a relic's enchantments) | The item is the `npc` talker: its variables are `n_` variables, such as `n_kills`.
+An effect | The context values `source_effect` (the effect's id) and `source_intensity` (its highest intensity on any body part).
+A bionic | The context value `source_bionic` (the bionic's id).
+A mutation | The context value `source_trait` (the trait's id).
+
+```jsonc
+  {
+    "type": "enchantment",
+    "id": "BLOODTHIRSTY_BLADE",
+    "has": "WIELD",
+    "condition": "ALWAYS",
+    "values": [ { "value": "MELEE_DAMAGE", "add": { "math": [ "n_kills / 10" ] } } ]
+  }
+```
+
+This holds for the enchantments on the character as the game works them out each turn.  Where the game shows or predicts an item's enchantment values without the character holding it (an item's attack speed, say), the item is missing: its `n_` variables read 0, so use only variables of the item, not `n_` functions.
 
 ### ID values
 

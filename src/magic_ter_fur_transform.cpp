@@ -3,10 +3,12 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
@@ -18,6 +20,7 @@
 #include "map.h"
 #include "mapdata.h"
 #include "point.h"
+#include "rng.h"
 #include "submap.h"
 #include "translation.h"
 #include "trap.h"
@@ -179,6 +182,24 @@ void ter_furn_data<T>::load( const JsonObject &jo )
     load_transform_results( jo, "result", list );
     jo.read( "message", message, false );
     message_good = jo.get_bool( "message_good", true );
+    chance = jo.get_int( "chance", 100 );
+    if( chance < 0 || chance > 100 ) {
+        jo.throw_error_at( "chance", "chance is a percent, from 0 to 100" );
+    }
+    if constexpr( std::is_same_v<T, field_type_id> ) {
+        if( jo.has_member( "intensity" ) ) {
+            intensity = jo.get_int( "intensity" );
+            if( *intensity < 1 ) {
+                jo.throw_error_at( "intensity", "intensity is at least 1" );
+            }
+        }
+    }
+}
+
+// MAGIC-J06: whether an entry with this chance changes the tile; 0 and 100 draw no random number
+static bool transform_entry_applies( const int chance )
+{
+    return chance >= 100 || ( chance > 0 && x_in_y( chance, 100 ) );
 }
 
 void ter_furn_transform::load( const JsonObject &jo, std::string_view )
@@ -261,7 +282,7 @@ std::optional<std::pair<T, std::pair<translation, bool>>> ter_furn_transform::ne
         const K &key ) const
 {
     const std::optional<ter_furn_data<T>> result = find_transform( list, key );
-    if( result.has_value() ) {
+    if( result.has_value() && transform_entry_applies( result->chance ) ) {
         return std::make_pair( result.value().pick().value(), std::make_pair( result->message,
                                result->message_good ) );
     }
@@ -324,18 +345,47 @@ void ter_furn_transform::transform( map &m, const tripoint_bub_ms &location ) co
     std::optional<std::pair<trap_str_id, std::pair<translation, bool>>> trap_potential = next_trap(
                 trap_at_loc );
 
-    const field &field_at_loc = m.field_at( location );
-    for( const auto &fld : field_at_loc ) {
-        std::optional<std::pair<field_type_id, std::pair<translation, bool>>> field_potential = next_field(
-                    fld.first );
-        if( field_potential ) {
-            m.add_field( location, field_potential->first, fld.second.get_field_intensity(),
-                         fld.second.get_field_age(), true );
-            m.remove_field( location, fld.first );
-            if( you.sees( m, location ) && !field_potential->second.first.empty() ) {
-                you.add_msg_if_player( field_potential->second.first.translated(),
-                                       field_potential->second.second ? m_good : m_bad );
-            }
+    // MAGIC-J06: the changes are found first, as adding and removing fields while going through
+    // them broke the loop; an entry's "intensity" replaces the old field's
+    struct field_change {
+        field_type_id from;
+        field_type_id to;
+        int intensity = 0;
+        time_duration age;
+        translation message;
+        bool message_good = false;
+    };
+    std::vector<field_change> field_changes;
+    for( const auto &fld : m.field_at( location ) ) {
+        const std::optional<ter_furn_data<field_type_id>> data = find_transform( field_transform,
+                fld.first );
+        if( !data || !transform_entry_applies( data->chance ) ) {
+            continue;
+        }
+        const std::optional<field_type_id> picked = data->pick();
+        if( !picked ) {
+            continue;
+        }
+        field_change change;
+        change.from = fld.first;
+        change.to = *picked;
+        change.intensity = data->intensity.value_or( fld.second.get_field_intensity() );
+        change.age = fld.second.get_field_age();
+        change.message = data->message;
+        change.message_good = data->message_good;
+        field_changes.push_back( change );
+    }
+    for( const field_change &change : field_changes ) {
+        if( change.to != change.from ) {
+            m.add_field( location, change.to, change.intensity, change.age, true );
+            m.remove_field( location, change.from );
+        } else {
+            // a field turned into itself used to be removed
+            m.set_field_intensity( location, change.from, change.intensity );
+        }
+        if( you.sees( m, location ) && !change.message.empty() ) {
+            you.add_msg_if_player( change.message.translated(),
+                                   change.message_good ? m_good : m_bad );
         }
     }
 

@@ -54,6 +54,7 @@
 #include "item_pocket.h"
 #include "itype.h"
 #include "magic.h"
+#include "magic_enchantment.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "melee.h"
@@ -2840,6 +2841,78 @@ double spell_cast_time_eval( const_dialogue const &d, char scope,
     } );
 }
 
+// MAGIC-J10: the rest of what a cast of the spell would do now, as spell_fail() and the others
+double spell_damage_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_damage",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.damage( guy ) );
+    } );
+}
+
+double spell_range_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_range",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.range( guy ) );
+    } );
+}
+
+double spell_aoe_eval( const_dialogue const &d, char scope,
+                       std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_aoe",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.aoe( guy ) );
+    } );
+}
+
+// in turns
+double spell_duration_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_duration",
+    []( const spell & sp, const Character & guy ) {
+        return to_turns<double>( sp.duration_turns( guy ) );
+    } );
+}
+
+double spell_max_level_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_max_level",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.get_max_level( guy ) );
+    } );
+}
+
+// MAGIC-J10: the sum of the talker's enchantments' "add" (or, with 'type': 'multiply', their
+// "multiply") for an enchantment value, as the game last cached them; 0 for a talker that isn't
+// a creature
+double enchantment_value_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const std::string &name = params[0].str( d );
+    const std::optional<enchant_vals::mod> value =
+        io::string_to_enum_optional<enchant_vals::mod>( name );
+    if( !value.has_value() ) {
+        throw math::runtime_error( R"(enchantment_value(): unknown enchantment value "%s")", name );
+    }
+    const std::string type = kwargs.kwarg_or( "type", "add" ).str( d );
+    if( type != "add" && type != "multiply" ) {
+        throw math::runtime_error(
+            R"(enchantment_value(): 'type' is "add" or "multiply", not "%s")", type );
+    }
+    const Creature *critter = d.const_actor( is_beta( scope ) )->get_const_creature();
+    if( critter == nullptr ) {
+        return 0.0;
+    }
+    return type == "add" ? critter->enchantment_cache->get_value_add( *value ) :
+           critter->enchantment_cache->get_value_multiply( *value );
+}
+
 // XP still needed for the next level of a spell the character knows; -1 otherwise, as
 // spell_exp() reads
 double spell_exp_to_next_level_eval( const_dialogue const &d, char scope,
@@ -4679,6 +4752,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "health", { "un", 0, health_eval, health_ass } },
     { "hunger", { "un", 0, hunger_eval, hunger_ass } },
     { "encumbrance", { "un", 1, encumbrance_eval } },
+    { "enchantment_value", { "un", 1, enchantment_value_eval, {}, { "type" } } },
     { "energy", { "g", 1, energy_eval } },
     { "event_statistic", { "g", 1, event_statistic_eval } },
     { "achievement_state", { "g", 1, achievement_state_eval } },
@@ -4799,6 +4873,11 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "spell_sound", { "un", 1, spell_sound_eval, {}, { "baseline" } } },
     { "spell_energy_cost", { "un", 1, spell_energy_cost_eval, {}, { "baseline" } } },
     { "spell_cast_time", { "un", 1, spell_cast_time_eval, {}, { "baseline" } } },
+    { "spell_damage", { "un", 1, spell_damage_eval, {}, { "baseline" } } },
+    { "spell_range", { "un", 1, spell_range_eval, {}, { "baseline" } } },
+    { "spell_aoe", { "un", 1, spell_aoe_eval, {}, { "baseline" } } },
+    { "spell_duration", { "un", 1, spell_duration_eval, {}, { "baseline" } } },
+    { "spell_max_level", { "un", 1, spell_max_level_eval, {}, { "baseline" } } },
     { "spell_exp_for_level", { "g", 2, spell_exp_for_level_eval } },
     { "spell_level", { "un", 1, spell_level_eval, spell_level_ass } },
     { "spell_level_adjustment", { "un", 1, spell_level_adjustment_eval, spell_level_adjustment_ass } },
@@ -4898,6 +4977,12 @@ bool is_known_school( std::string const &id )
     return id == "NONE" || is_known_id<trait_id>( id );
 }
 
+// an enchantment "values" name, such as MAX_MANA
+bool is_known_enchant_value( std::string const &id )
+{
+    return id.empty() || io::string_to_enum_optional<enchant_vals::mod>( id ).has_value();
+}
+
 struct literal_id_kind {
     std::string_view name;
     bool ( *is_known )( std::string const & );
@@ -4911,6 +4996,7 @@ const literal_id_kind id_bodypart_or_all{ "body part", &is_known_bodypart_or_all
 const literal_id_kind id_damage_type{ "damage type", &is_known_id<damage_type_id> };
 const literal_id_kind id_damage_type_or_all{ "damage type", &is_known_damage_type_or_all };
 const literal_id_kind id_effect{ "effect", &is_known_id<efftype_id> };
+const literal_id_kind id_enchant_value{ "enchantment value", &is_known_enchant_value };
 const literal_id_kind id_eoc{ "effect_on_condition", &is_known_id<effect_on_condition_id> };
 const literal_id_kind id_event_statistic{ "event_statistic", &is_known_id<string_id<event_statistic>> };
 const literal_id_kind id_field_type{ "field type", &is_known_id<field_type_str_id> };
@@ -4967,6 +5053,7 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "coverage", { id_arg( 0, id_bodypart ) } },
     { "effect_duration", { id_arg( 0, id_effect ), id_kwarg( "bodypart", id_bodypart ) } },
     { "effect_intensity", { id_arg( 0, id_effect ), id_kwarg( "bodypart", id_bodypart ) } },
+    { "enchantment_value", { id_arg( 0, id_enchant_value ) } },
     { "encumbrance", { id_arg( 0, id_bodypart ) } },
     { "event_statistic", { id_arg( 0, id_event_statistic ) } },
     { "faction_food_supply", { id_kwarg( "vitamin", id_vitamin ) } },
@@ -5000,10 +5087,13 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "skill_rust", { id_arg( 0, id_skill ) } },
     { "skill_rusty", { id_arg( 0, id_skill ) } },
     { "skill_time_since_practice", { id_arg( 0, id_skill ) } },
+    { "spell_aoe", { id_arg( 0, id_spell ) } },
     { "spell_cast_time", { id_arg( 0, id_spell ) } },
     { "spell_casting_exp", { id_arg( 0, id_spell ) } },
     { "spell_count", { id_kwarg( "school", id_school ) } },
+    { "spell_damage", { id_arg( 0, id_spell ) } },
     { "spell_difficulty", { id_arg( 0, id_spell ) } },
+    { "spell_duration", { id_arg( 0, id_spell ) } },
     { "spell_energy_cost", { id_arg( 0, id_spell ) } },
     { "spell_exp", { id_arg( 0, id_spell ) } },
     { "spell_exp_for_level", { id_arg( 0, id_spell ) } },
@@ -5012,6 +5102,8 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "spell_level", { id_arg( 0, id_spell ) } },
     { "spell_level_adjustment", { id_arg( 0, id_spell ) } },
     { "spell_level_sum", { id_kwarg( "school", id_school ) } },
+    { "spell_max_level", { id_arg( 0, id_spell ) } },
+    { "spell_range", { id_arg( 0, id_spell ) } },
     { "spell_sound", { id_arg( 0, id_spell ) } },
     { "spellcasting_adjustment", { id_kwarg( "school", id_school ), id_kwarg( "spell", id_spell ) } },
     { "sum_traits_of_category", { id_arg( 0, id_mutation_category ) } },

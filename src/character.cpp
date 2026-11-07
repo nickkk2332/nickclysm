@@ -5352,9 +5352,12 @@ void Character::recalculate_enchantment_cache()
                 enchantment_cache->force_add( ench );
             }
         }
+        // MAGIC-J08: the item's enchantments read it as their beta talker (n_ variables)
+        enchantment_source source;
+        source.item = &it;
         for( const enchantment &ench : it->get_defined_enchantments() ) {
-            if( ench.is_active( *this, *it ) ) {
-                enchantment_cache->force_add( ench, *this );
+            if( ench.is_active( *this, it ) ) {
+                enchantment_cache->force_add( ench, *this, source );
             }
         }
     } );
@@ -5362,21 +5365,34 @@ void Character::recalculate_enchantment_cache()
 
     for( const bionic &bio : *my_bionics ) {
         const bionic_id &bid = bio.id;
+        if( bid->enchantments.empty() ) {
+            continue;
+        }
+        enchantment_source source;
+        source.bionic = bid.str();
 
         for( const enchantment_id &ench_id : bid->enchantments ) {
             const enchantment &ench = ench_id.obj();
             if( ench.is_active( *this, bio.powered &&
-                                bid->has_flag( json_flag_BIONIC_TOGGLED ) ) ) {
-                enchantment_cache->force_add( ench, *this );
+                                bid->has_flag( json_flag_BIONIC_TOGGLED ), source ) ) {
+                enchantment_cache->force_add( ench, *this, source );
             }
         }
     }
 
     for( const auto &elem : *effects ) {
+        if( elem.first->enchantments.empty() ) {
+            continue;
+        }
+        enchantment_source source;
+        source.effect = elem.first.str();
+        for( const auto &part_effect : elem.second ) {
+            source.intensity = std::max( source.intensity, part_effect.second.get_intensity() );
+        }
         for( const enchantment_id &ench_id : elem.first->enchantments ) {
             const enchantment &ench = ench_id.obj();
-            if( ench.is_active( *this, true ) ) {
-                enchantment_cache->force_add( ench, *this );
+            if( ench.is_active( *this, true, source ) ) {
+                enchantment_cache->force_add( ench, *this, source );
             }
         }
     }
@@ -5396,13 +5412,18 @@ void Character::recalculate_enchantment_cache()
     for( const std::pair<const trait_id, trait_data> &mut_map : my_mutations ) {
         if( mut_map.second.corrupted == 0 ) {
             const mutation_branch &mut = mut_map.first.obj();
+            if( mut.enchantments.empty() ) {
+                continue;
+            }
             // cached_mutations holds the live powered state: (de)activation updates it first.
             const auto cached = cached_mutations.find( mut_map.first );
             const bool powered = cached != cached_mutations.end() ? cached->second.powered :
                                  mut_map.second.powered;
+            enchantment_source source;
+            source.trait = mut_map.first.str();
             for( const enchantment_id &ench_id : mut.enchantments ) {
                 const enchantment &ench = ench_id.obj();
-                if( ench.is_active( *this, mut.activated && powered ) ) {
+                if( ench.is_active( *this, mut.activated && powered, source ) ) {
                     enchantment_cache->force_add_mutation( ench );
                 }
             }
@@ -5413,10 +5434,15 @@ void Character::recalculate_enchantment_cache()
     for( const std::pair<const trait_id, trait_data> &mut_map : cached_mutations ) {
         if( mut_map.second.corrupted == 0 ) {
             const mutation_branch &mut = mut_map.first.obj();
+            if( mut.enchantments.empty() ) {
+                continue;
+            }
+            enchantment_source source;
+            source.trait = mut_map.first.str();
             for( const enchantment_id &ench_id : mut.enchantments ) {
                 const enchantment &ench = ench_id.obj();
-                if( ench.is_active( *this, mut.activated && mut_map.second.powered ) ) {
-                    enchantment_cache->force_add( ench, *this );
+                if( ench.is_active( *this, mut.activated && mut_map.second.powered, source ) ) {
+                    enchantment_cache->force_add( ench, *this, source );
                 }
             }
         }

@@ -261,6 +261,8 @@ class spell_type
         skill_id skill;
 
         std::optional<magic_type_id> magic_type;
+        // MAGIC-J10: run when a cast of this spell fails, after its magic_type's failure_eocs
+        std::vector<effect_on_condition_id> failure_eocs;
 
         requirement_id spell_components;
 

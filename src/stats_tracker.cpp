@@ -397,6 +397,8 @@ bool stats_tracker::records( const event_type type )
         case event_type::deactivates_mutation:
         case event_type::monster_uses_special:
         case event_type::avatar_trades:
+        // every monster's every cast (MAGIC-J10)
+        case event_type::monster_casts_spell:
             return false;
         default:
             return true;
@@ -407,7 +409,8 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
 {
     static const std::vector<std::string> none;
     static const std::vector<std::string> pos = { "pos" };
-    static const std::vector<std::string> target = { "target" };
+    // where and at what level (MAGIC-J10) a spell was cast
+    static const std::vector<std::string> target = { "target", "level" };
     // every monster type times every damage amount and type: thousands of summaries in a
     // long game, where there were a few hundred
     static const std::vector<std::string> monster_hurt = {
