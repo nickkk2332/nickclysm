@@ -123,10 +123,12 @@ int talker_item_const::get_hp_max( const bodypart_id & ) const
     return it != nullptr ? it->max_damage() : 0;
 }
 
+// Item power is battery charges, counted as 1 mJ each. Only battery is power: a lamp-oil or
+// arrow tool has none, as power_max() says.
 units::energy talker_item_const::power_cur() const
 {
     const item *it = alive( me_it_const );
-    return it != nullptr ? 1_mJ * it->ammo_remaining( ) : 0_mJ;
+    return it != nullptr ? 1_mJ * it->ammo_remaining_of( itype_battery ) : 0_mJ;
 }
 
 units::energy talker_item_const::power_max() const
@@ -146,6 +148,12 @@ int talker_item_const::get_artifact_resonance() const
         ret += this_ench.get_value_add( enchant_vals::mod::ARTIFACT_RESONANCE );
     }
     return ret;
+}
+
+int talker_item_const::charges_of( const itype_id &item_id ) const
+{
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->charges_of( item_id ) : 0;
 }
 
 int talker_item_const::get_count() const
@@ -199,9 +207,12 @@ void talker_item::remove_value( const std::string &var_name )
 
 void talker_item::set_power_cur( units::energy value )
 {
-    if( item *it = alive( me_it ) ) {
-        it->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0,
-                                            it->ammo_capacity( ammo_battery ) ) );
+    item *it = alive( me_it );
+    // Only an item that can hold battery charges now: ammo_set() would replace the lamp oil or
+    // arrows of any other item.
+    const int capacity = it != nullptr ? it->ammo_capacity( ammo_battery ) : 0;
+    if( capacity > 0 ) {
+        it->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0, capacity ) );
     }
 }
 

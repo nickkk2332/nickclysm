@@ -2409,6 +2409,24 @@ int item::ammo_remaining_in_pocket( const std::string &id ) const
     return 0;
 }
 
+int item::ammo_remaining_of( const itype_id &ammo ) const
+{
+    int total = 0;
+    for( const item_pocket *p : get_pockets( []( const item_pocket & pk ) {
+    return pk.is_type( pocket_type::MAGAZINE_WELL ) || pk.is_type( pocket_type::MAGAZINE );
+    } ) ) {
+        const bool well = p->is_type( pocket_type::MAGAZINE_WELL );
+        for( const item *e : p->all_items_top() ) {
+            if( well ) {
+                total += e->ammo_remaining_of( ammo );
+            } else if( e->typeId() == ammo && !e->has_flag( flag_CASING ) ) {
+                total += e->charges;
+            }
+        }
+    }
+    return total;
+}
+
 int item::ammo_consume_in_pocket( const std::string &id, int qty, map &here,
                                   const tripoint_bub_ms &pos )
 {

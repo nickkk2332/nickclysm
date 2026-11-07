@@ -1707,11 +1707,13 @@ class Character : public Creature, public visitable
          * infect - chance to remove infection
          * bandage_power - quality of bandage
          * disinfectant_power - quality of disinfectant
+         * also_treats - true for a part with another effect the item removes (a heal action's cures)
          */
         bodypart_id body_window( const std::string &menu_header,
                                  bool show_all, bool precise,
                                  int normal_bonus, int head_bonus, int torso_bonus,
-                                 int bleed, float bite, float infect, float bandage_power, float disinfectant_power ) const;
+                                 int bleed, float bite, float infect, float bandage_power, float disinfectant_power,
+                                 const std::function<bool( const bodypart_id & )> &also_treats = nullptr ) const;
 
         static const std::vector<material_id> fleshy;
         bool made_of( const material_id &m ) const override;

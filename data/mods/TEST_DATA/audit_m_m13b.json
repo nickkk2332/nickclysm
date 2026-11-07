@@ -1,0 +1,147 @@
+[
+  {
+    "type": "effect_type",
+    "id": "test_m13b_venom",
+    "name": [ "Test Venom" ],
+    "desc": [ "Test effect: what the test antivenom pad removes." ],
+    "rating": "bad"
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m13b_recovering",
+    "name": [ "Test Recovering" ],
+    "desc": [ "Test effect: what the test venom is replaced with." ],
+    "rating": "good"
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m13b_herb_puff",
+    "name": [ "Test Herbal Smoke" ],
+    "desc": [ "Test effect: a puff of the test herbal cigarette." ],
+    "rating": "good"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M13B_AFTER_HEAL",
+    "effect": [
+      { "math": [ "u_m13b_healed = 1" ] },
+      {
+        "if": { "compare_string": [ "arm_l", { "context_val": "bodypart" } ] },
+        "then": [ { "math": [ "u_m13b_healed_arm = 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M13B_PUFF",
+    "effect": [ { "math": [ "u_m13b_puffs += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M13B_BURNT_OUT",
+    "effect": [ { "math": [ "u_m13b_burnt_out = 1" ] } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_m13b_antivenom",
+    "name": { "str": "test antivenom pad" },
+    "description": "Test item: a heal action with its own skill, proficiency, cure and EOC.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "cotton" ],
+    "symbol": ",",
+    "color": "white",
+    "use_action": {
+      "type": "heal",
+      "move_cost": 1000,
+      "skill": "survival",
+      "proficiencies": [ { "id": "prof_wound_care", "time_mult": 0.25, "bonus": 3 } ],
+      "cures": [
+        {
+          "effect": "test_m13b_venom",
+          "chance": 1.0,
+          "replace_with": "test_m13b_recovering",
+          "message": "The test venom is drawn out."
+        }
+      ],
+      "finish_eocs": [ "EOC_M13B_AFTER_HEAL" ]
+    }
+  },
+  {
+    "type": "ITEM",
+    "id": "test_m13b_part_heal",
+    "name": { "str": "test part salve" },
+    "description": "Test item: heals heads, torsos and other parts by different amounts.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "cotton" ],
+    "symbol": ",",
+    "color": "white",
+    "use_action": {
+      "type": "heal",
+      "move_cost": 100,
+      "limb_power": 10,
+      "head_power": 2,
+      "torso_power": 20,
+      "limb_scaling": 0,
+      "head_scaling": 0,
+      "torso_scaling": 0
+    }
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "test_m13b_herb_cig",
+    "name": { "str": "test herbal cigarette" },
+    "description": "Test item: a modded smokable lit with the smoke action.",
+    "comestible_type": "MED",
+    "weight": "1 g",
+    "volume": "4 ml",
+    "material": [ "paper" ],
+    "symbol": "!",
+    "color": "green",
+    "flags": [ "NO_INGEST" ],
+    "use_action": { "type": "smoke", "lit_item": "test_m13b_herb_cig_lit", "burn_time": "2 m", "hunger": -1, "thirst": 1 }
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "id": "test_m13b_herb_cig_lit",
+    "name": { "str": "test herbal cigarette" },
+    "description": "Test item: the lit test herbal cigarette, with its own puffs.",
+    "weight": "1 g",
+    "volume": "4 ml",
+    "symbol": "!",
+    "color": "green",
+    "revert_to": "cig_butt",
+    "material": [ "paper" ],
+    "flags": [ "LITCIG", "TRADER_AVOID", "OVERSIZE" ],
+    "smoke": {
+      "puff_effect": "test_m13b_herb_puff",
+      "puff_duration": "20 s",
+      "puff_eocs": [ "EOC_M13B_PUFF" ],
+      "burn_out_eocs": [ "EOC_M13B_BURNT_OUT" ]
+    },
+    "armor": [
+      {
+        "material": [ { "type": "paper", "covered_by_mat": 100, "thickness": 0.1 } ],
+        "encumbrance": 0,
+        "coverage": 25,
+        "covers": [ "mouth" ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "id": "test_m13b_quick_rod",
+    "name": { "str": "test quick fishing rod" },
+    "description": "Test item: a fishing rod whose FISH_ROD action takes a duration.",
+    "weight": "500 g",
+    "volume": "1 L",
+    "material": [ "wood" ],
+    "symbol": ";",
+    "color": "brown",
+    "use_action": [ { "type": "FISH_ROD", "duration": "1 h" } ]
+  }
+]

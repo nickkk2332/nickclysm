@@ -255,6 +255,9 @@ class Item_factory
         static void add_iuse( const std::string &type, use_function_pointer f );
         static void add_iuse( const std::string &type, use_function_pointer f,
                               const translation &info );
+        /** A function an object-form use action can pass the declared JSON parameters to. */
+        static void add_iuse_with_params( const std::string &type, use_function_pointer_with_params f,
+                                          const std::vector<iuse_params::param> &declared );
         static void add_actor( std::unique_ptr<iuse_actor> ptr );
 
         std::map<itype_id, std::vector<migration>> migrations;

@@ -620,7 +620,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.
 - ```PROZAC``` Adds disease `took_prozac` if not currently present, otherwise acts as a minor stimulant.  Rarely has the `took_prozac_bad` adverse effect.
 - ```PURIFY_SMART``` Remove a mutation of your choice (and maybe a random second one) that isn't a starting trait; leaves a `syringe`.
 - ```SEWAGE``` Causes vomiting.
-- ```SMOKING``` Light a cigarette, cigar or joint (turns it into its lit version), using a fire source.
+- ```SMOKING``` Light a cigarette, cigar or joint (turns it into its lit version), using a fire source.  It knows only the vanilla `cig`, `handrolled_cig`, `cigar` and `joint`: other smokables use the `smoke` use action (see [ITEM.md](ITEM.md#use-actions)).
 - ```STIMPACK``` While worn, inject stimulants: adds effect `stimpack`, restores stamina and reduces sleepiness.
 - ```STRONG_ANTIBIOTIC``` Adds effect `strong_antibiotic` for 12 hours, which fights `infected`.
 - ```THORAZINE``` Removes diseases `hallu`, `visuals`, `high`.  Additionally removes disease `formication` if disease `dermatik` isn't also present.  Has a chance of a negative reaction which increases sleepiness.
@@ -1530,7 +1530,7 @@ These are added programatically when the game is running, not by JSON.  These ar
 - ```HIDDEN_ITEM``` This item cannot be seen in AIM.
 - ```HOT``` Item is hot.  See also `EATEN_HOT`.
 - ```IRRADIATED``` Item has been irradiated and will spoil at a much reduced rate.
-- ```LITCIG``` Marks a lit smoking item (cigarette, joint etc.).
+- ```LITCIG``` Marks a lit smoking item (cigarette, joint etc.).  It burns while worn or wielded until its item counter (the `smoke` action's `burn_time`) runs out, then turns into its `revert_to`; it goes out when put away.  Each puff gives `cig` to a `TOBACCO` item and `weed_high` to others, unless the item has a `smoke` block (see [ITEM.md](ITEM.md)).
 - ```MUSHY``` `FREEZERBURN` item was frozen and is now mushy and tasteless and will go bad after freezing again.
 - ```NO_PARASITES``` Invalidates parasites count set in food -> type -> comestible -> parasites
 - ```QUARTERED``` Corpse was quartered into parts.  Affects butcher results, weight, volume.
@@ -1632,7 +1632,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.  Many
 - ```EXTINGUISHER``` Put out fires.
 - ```FILL_PIT``` Fill a pit or tamp the ground: opens the construction menu for it.
 - ```FIRECRACKER_PACK_ACT``` Keep the change you filthy animal.
-- ```FISH_ROD``` Fish in an adjacent fishable tile.
+- ```FISH_ROD``` Fish in an adjacent fishable tile.  Takes an optional `"duration"` (a time string or turns, default `"5 h"`): how long the fishing lasts, in object form: `{ "type": "FISH_ROD", "duration": "3 h" }`.
 - ```FISH_TRAP``` Place this baited fish trap in water; in about three hours it may catch some fish.
 - ```FISH_TRAP_TICK``` Tick action of a placed fish trap: after three hours, catches fish depending on its bait and your survival skill.
 - ```FITNESS_CHECK``` Shows your heart rate and how active you were today.
@@ -1662,7 +1662,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.  Many
 - ```MA_MANUAL``` Learn the martial art style this manual teaches.
 - ```MACE``` Spray an adjacent creature, which may blind it.
 - ```MAGIC_8_BALL``` Ask a question and get a random answer.
-- ```MAKEMOUND``` Make a mound of dirt.
+- ```MAKEMOUND``` Make a mound of dirt.  Takes an optional `"moves"` (default 18000): how many moves churning up the soil takes, in object form: `{ "type": "MAKEMOUND", "moves": 9000 }`.
 - ```MANAGE_EXOSUIT``` Manage the modules in this exosuit's pockets.
 - ```MEASURE_RESONANCE``` Find the resonant (artifact) items you carry and scan one.
 - ```MEDITATE``` Meditate, for `SPIRITUAL` characters.

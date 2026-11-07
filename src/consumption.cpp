@@ -913,8 +913,10 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
         }
     }
 
-    const use_function *smoking = food.type->get_use( "SMOKING" );
-    if( smoking != nullptr ) {
+    // a smokable: the SMOKING function or a smoke action
+    const bool smoking = food.type->get_use( "SMOKING" ) != nullptr ||
+                         food.type->get_use( "smoke" ) != nullptr;
+    if( smoking ) {
         std::optional<std::string> litcig = iuse::can_smoke( *this );
         if( litcig.has_value() ) {
             return ret_val<edible_rating>::make_failure( NO_TOOL, _( litcig.value_or( "" ) ) );
@@ -1923,7 +1925,9 @@ time_duration Character::get_consume_time( const item &it ) const
                                           ( fun->get_actor_ptr() )->move_cost );
     } else if( it.is_medication() ) {
         const use_function *consume_drug = it.type->get_use( "consume_drug" );
-        const use_function *smoking = it.type->get_use( "SMOKING" );
+        // a smokable: the SMOKING function or a smoke action
+        const bool smoking = it.type->get_use( "SMOKING" ) != nullptr ||
+                             it.type->get_use( "smoke" ) != nullptr;
         const use_function *adrenaline_injector = it.type->get_use( "ADRENALINE_INJECTOR" );
         if( consume_drug != nullptr ) { //its a drug
             const consume_drug_iuse *consume_drug_use = dynamic_cast<const consume_drug_iuse *>
@@ -1942,7 +1946,7 @@ time_duration Character::get_consume_time( const item &it ) const
             } else {
                 time = time_duration::from_seconds( 5 );//popping a pill is quick
             }
-        } else if( smoking != nullptr ) {
+        } else if( smoking ) {
             time = time_duration::from_minutes( 1 );//about five minutes for a cig or joint so 1 minute a charge
         } else if( adrenaline_injector != nullptr ) {
             //epi-pens, and disinfectant are fairly quick
