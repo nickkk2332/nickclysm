@@ -3266,6 +3266,16 @@ Unless specified as optional, the following fields are mandatory for parts with 
                               // and it needs to have consumable charges.
 ```
 
+#### The following fields are specific to REACTORs.
+A `REACTOR` part makes battery charge on demand, when the vehicle's (or grid's) batteries are not full. With `PERPETUAL` it needs no fuel. Without it, it burns `fuel_type` held in the part itself (its base item's tank or magazine):
+```jsonc
+"epower": "3000 W",           // Most power it makes.
+"power": "7 W",               // Not watts here: the battery charge, in kJ, made from one unit
+                              // (charge or mL) of fuel_type.  Must be positive unless PERPETUAL.
+"fuel_type": "gasoline",      // What it burns.  A spawned vehicle's reactors start with some of it,
+                              // like its tanks.
+```
+
 #### The following optional fields are specific to WHEELs.
 ```jsonc
 "wheel_offroad_rating": 0.5,  // multiplier of wheel performance offroad
@@ -3284,11 +3294,15 @@ Unless specified as optional, the following fields are mandatory for parts with 
 
 The key is one of the terrain flags, the list of flags can be found in [JSON_FLAGS.md](JSON_FLAGS.md#furniture-and-terrain).
 
-The value expects an array of length 2. The first element is a modifier override applied when wheel is on the flagged terrain, the second element is an additive modifier penalty applied when wheel is NOT on flagged terrain, values of 0 are ignored. The modifier is applied over a base value provided by `map::move_cost_ter_furn`.
+The value expects an array of length 2. The first element is a move cost override applied when the wheel is on the flagged terrain, the second element is a move cost penalty added when the wheel is NOT on the flagged terrain; values of 0 are ignored. They work on the tile's move cost from `map::move_cost_ter_furn` (2 on most open ground), and the wheel's traction is `2 * contact_area / move cost`, so a higher move cost means less traction.
+
+The entries are combined the same way whatever order they are written in:
+* If the tile has the flag of an entry with an override, that override is the move cost and no penalty applies. If several overrides apply, the lowest is used.
+* Otherwise, of the entries whose flag the tile lacks, the largest penalty is added. Penalties don't stack.
 
 Examples:
-* Standard `wheel` has the field set to `{ "FLAT": [ 0, 4 ], "ROAD": [ 0, 2 ] }`. If wheel is not on terrain flagged `FLAT` then the traction is 1/4 of base value. If not on terrain flagged `ROAD` then it's 1/2 of base value. If neither flag is present then traction will be 1/6 of base value. If terrain is flagged with both `ROAD` and `FLAT` then the base value from `map::move_cost_ter_furn` is used.
-* `rail_wheel` has the field set to `{ "RAIL": [ 2, 8 ] }`. If wheel is on terrain flagged `RAIL` the traction is overridden to be 1/2 of value calculated by `map::move_cost_ter_furn`, this value is the first element and considered an override, so if there had been modifiers applied prior to this they are ignored. If on terrain not flagged with `RAIL` then traction will be 1/8 of base value.
+* Standard `wheel` has the field set to `{ "FLAT": [ 0, 4 ], "ROAD": [ 0, 2 ] }`. On terrain that is not `FLAT` the move cost is base + 4 (the larger penalty; the `ROAD` one is not added on top). On `FLAT` terrain that is not `ROAD` it is base + 2. On terrain with both flags it is the base move cost.
+* `rail_wheel` has the field set to `{ "RAIL": [ 2, 8 ] }`. On terrain flagged `RAIL` the move cost is 2, whatever the terrain's own move cost. On terrain without `RAIL` it is base + 8.
 
 
 #### The following optional fields are specific to ROTORs.

@@ -120,7 +120,6 @@ static const itype_id fuel_type_plutonium_cell( "plut_cell" );
 static const itype_id fuel_type_wind( "wind" );
 static const itype_id itype_battery( "battery" );
 static const itype_id itype_generic_folded_vehicle( "generic_folded_vehicle" );
-static const itype_id itype_plut_cell( "plut_cell" );
 static const itype_id itype_plut_slurry_dense( "plut_slurry_dense" );
 static const itype_id itype_seed_buckwheat( "seed_buckwheat" );
 static const itype_id itype_wall_wiring( "wall_wiring" );
@@ -544,7 +543,9 @@ void vehicle::init_state( map &placed_on, int init_veh_fuel, veh_spawn_status in
         }
 
         if( pt.is_reactor() ) {
-            rng_fuel_amount( pt, itype_plut_cell );
+            // Its own fuel: a gasoline generator used to be filled with plutonium cells,
+            // which its tank can't hold, so it spawned empty.
+            rng_fuel_amount( pt, vp.info().fuel_type );
         } else if( pt.is_battery() ) {
             rng_fuel_amount( pt, itype_battery );
         } else if( pt.is_tank() || pt.is_fuel_store() ) {
@@ -645,7 +646,11 @@ void vehicle::init_state( map &placed_on, int init_veh_fuel, veh_spawn_status in
 
             if( one_in( 2 ) ) {
                 // if vehicle has immobilizer 50% chance to add additional fault
-                pt.fault_set( fault_engine_immobiliser );
+                // The fault belongs on the engines (start_engine() and unlock() look for it
+                // there); the alarm part can't take it, so it used to be lost.
+                for( const int e : engines ) {
+                    parts[e].fault_set( fault_engine_immobiliser );
+                }
             }
         }
     }
@@ -2120,8 +2125,10 @@ bool vehicle::merge_appliance_into_grid( map *here, vehicle &veh_target )
     const point_bub_ms min = { std::min( veh_pos.x() + vehicle_box.p1.x(), target_pos.x() + target_vehicle_box.p1.x() ),
                                std::min( veh_pos.y() + vehicle_box.p1.y(), target_pos.y() + target_vehicle_box.p1.y() )
                              };
-    const point_bub_ms max = { std::max( veh_pos.x() + vehicle_box.p1.x(), target_pos.x() + target_vehicle_box.p1.x() ),
-                               std::max( veh_pos.y() + vehicle_box.p1.y(), target_pos.y() + target_vehicle_box.p1.y() )
+    // The far corners (p2): with p1 here the size check compared the two grids' top-left
+    // corners, so a grid could grow without limit up and to the left.
+    const point_bub_ms max = { std::max( veh_pos.x() + vehicle_box.p2.x(), target_pos.x() + target_vehicle_box.p2.x() ),
+                               std::max( veh_pos.y() + vehicle_box.p2.y(), target_pos.y() + target_vehicle_box.p2.y() )
                              };
     point_rel_ms size;
     size.x() = std::abs( ( max - min ).x() ) + 1;
@@ -2691,6 +2698,13 @@ bool vehicle::split_vehicles( map &here,
             new_vehicle->engine_on = engine_on;
             new_vehicle->tracking_on = tracking_on;
             new_vehicle->camera_on = camera_on;
+            // A piece of a summoned vehicle is still summoned: it vanishes with the rest and
+            // drops nothing when its parts break.
+            new_vehicle->magic = magic;
+            new_vehicle->summon_time_limit = summon_time_limit;
+            new_vehicle->is_locked = is_locked;
+            new_vehicle->effects = effects;
+            new_vehicle->values = values;
 
             // If we were splitting appliances the resulting vehicles are still appliances
             if( is_appliance ) {
@@ -3942,8 +3956,8 @@ int64_t vehicle::fuel_left( map &here, const itype_id &ftype,
     if( ftype == fuel_type_muscle ) {
         Character *driver = get_driver( here );
         if( !driver ) {
-            // FIXME: Should return fl, not arbitrarily assume player
-            driver = &get_player_character();
+            // Nobody at the controls powers the pedals
+            return fl;
         }
         const optional_vpart_position vp = here.veh_at( driver->pos_bub() );
 
@@ -5338,8 +5352,10 @@ float vehicle::handling_difficulty( map &here ) const
     // TestVehicle but on fungal bed (0.5 friction) and bad steering = 10
     // TestVehicle but turned 90 degrees during this turn (0 align) = 10
     const float diff_mod = ( 1.0f - steer ) + ( 1.0f - ktraction ) + ( 1.0f - aligned );
+    // Speed, not velocity: reversing is as hard to handle as going forward, not easier than
+    // standing still.
     return enchantment_cache.modify_value( enchant_vals::mod::TURNING_DIFFICULTY,
-                                           velocity * diff_mod / vehicles::vmiph_per_tile );
+                                           std::abs( velocity ) * diff_mod / vehicles::vmiph_per_tile );
 }
 
 units::power vehicle::engine_fuel_usage( const vehicle_part &vp ) const
@@ -5395,15 +5411,26 @@ void vehicle::consume_fuel( map &here, int load, bool idling )
             continue;
         }
 
+        // An engine left on with none of its fuel makes no power (total_power() skips it), so
+        // it uses none. It used to show as consumption and build a debt without limit, all
+        // taken at once from the next refuel.
+        if( fuel_left( here, ft ) <= 0 ) {
+            continue;
+        }
+
         units::energy to_consume = fuel_pr.second * 1_seconds;
         to_consume *= load * ( 1 + st * st * 100 ) / 1000;
         auto inserted = fuel_used_last_turn.insert( { ft, 0_J } );
         inserted.first->second += to_consume;
-        units::energy remainder = fuel_remainder[ ft ];
+        // What could not be drained is owed, but never more than this turn's use and one unit
+        // of the fuel: a debt from an old save, or battery charge counted in a connected
+        // vehicle that drain_energy() can't reach, would otherwise still grow.
+        const units::energy max_debt = std::max( to_consume, 0_J ) + item( ft ).fuel_energy();
+        units::energy remainder = std::max( fuel_remainder[ ft ], -max_debt );
         to_consume -= remainder;
 
         if( to_consume > 0_J ) {
-            fuel_remainder[ ft ] = drain_energy( ft, to_consume ) - to_consume;
+            fuel_remainder[ ft ] = std::max( drain_energy( ft, to_consume ) - to_consume, -max_debt );
         } else {
             fuel_remainder[ ft ] = -to_consume;
         }
@@ -5415,11 +5442,10 @@ void vehicle::consume_fuel( map &here, int load, bool idling )
     Character *driver = get_driver( here );
 
     // Only process muscle power and training things when someone is actually driving.
-    // Note that the vehicle can be moving even if nobody is driving it.
+    // Note that the vehicle can be moving even if nobody is driving it (autopilot, following,
+    // patrolling): the player used to stand in, and trained driving from anywhere.
     if( !driver ) {
-        // FIXME: Should return early, not arbitrarily assume player
-        // Make our pointer valid so we don't dereference nullptr and crash in the upcoming code
-        driver = &get_player_character();
+        return;
     }
 
     // if engine is under load, player is actively piloting a vehicle, so train appropriate vehicle proficiency
@@ -5853,9 +5879,11 @@ void vehicle::power_parts( map &here )
                 } else if( vp.info().has_flag( flag_PERPETUAL.str() ) ) {
                     reactor_working = true;
                     delta_energy_bat += std::min( storage_deficit_bat, gen_energy_bat );
-                } else if( vp.ammo_remaining( ) > 0 ) {
+                } else if( vp.ammo_remaining( ) > 0 && vp.info().power > 0_W ) {
                     // Efficiency: one unit of fuel is this many units of battery
                     // Note: One battery is 1 kJ
+                    // vpart_info::check() reports a fueled reactor without a positive power;
+                    // it is a divisor here, so such a part makes nothing rather than crash.
                     const int efficiency = units::to_watt( vp.info().power );
                     const int avail_fuel = vp.ammo_remaining( ) * efficiency;
                     const int elem_energy_bat = std::min( gen_energy_bat, avail_fuel );
@@ -7914,6 +7942,10 @@ int vehicle::damage( map &here, int p, int dmg, const damage_type_id &type, bool
     }
 
     vehicle_part &vp_armor = part( armor_part );
+    if( armor_part == target_part ) {
+        // The hit landed on the armor itself: it takes the hit once, not as both armor and part
+        return damage_direct( here, vp_armor, dmg, type );
+    }
     const vpart_info &vpi_armor = vp_armor.info();
     // Covered by armor -- hit both armor and part, but reduce damage by armor's reduction
     const int protection = type->no_resist ? 0 : vpi_armor.damage_reduction.at( type );

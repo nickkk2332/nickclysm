@@ -469,6 +469,29 @@ void vpslot_wheel::deserialize( const JsonObject &jo )
     was_loaded = true;
 }
 
+int vpslot_wheel::terrain_move_cost( const std::set<std::string> &ter_flags,
+                                     const int move_cost ) const
+{
+    // The entries used to be tried in turn, stopping at the first that applied. JSON objects
+    // are read in sorted key order, so that was alphabetical, not the order written: a wheel
+    // whose ROAD penalty was bigger than its FLAT one did better off-road than on dirt.
+    std::optional<int> override_cost;
+    std::optional<int> penalty;
+    for( const veh_ter_mod &mod : terrain_modifiers ) {
+        if( ter_flags.count( mod.terrain_flag ) > 0 ) {
+            if( mod.move_override != 0 && ( !override_cost || mod.move_override < *override_cost ) ) {
+                override_cost = mod.move_override;
+            }
+        } else if( mod.move_penalty != 0 && ( !penalty || mod.move_penalty > *penalty ) ) {
+            penalty = mod.move_penalty;
+        }
+    }
+    if( override_cost ) {
+        return *override_cost;
+    }
+    return move_cost + penalty.value_or( 0 );
+}
+
 void vpslot_rotor::deserialize( const JsonObject &jo )
 {
     optional( jo, was_loaded, "rotor_diameter", rotor_diameter, 1 );
@@ -955,6 +978,12 @@ void vpart_info::check() const
             debugmsg( "engine part '%s' powered by '%s' must define non zero 'power'",
                       id.str(), fuel_type.str() );
         }
+    }
+    // A fueled reactor makes "power" (as a number of watts) kJ of battery charge per unit of
+    // fuel, and divides by it.
+    if( has_flag( VPFLAG_REACTOR ) && !has_flag( "PERPETUAL" ) && power <= 0_W ) {
+        debugmsg( "reactor part %s needs a positive 'power' (kJ of battery charge per unit of "
+                  "fuel) or the PERPETUAL flag", id.str() );
     }
     // Parts with non-zero epower must have a flag that affects epower usage
     static const std::vector<std::string> handled = {{

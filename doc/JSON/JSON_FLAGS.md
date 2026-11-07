@@ -1887,7 +1887,7 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```PLOW``` Tills the soil underneath the part while active.  Takes damage from unsuitable terrain at a level proportional to the speed of the vehicle.
 - ```POWER_TRANSFER``` Transmits power to and from an attached thingy (probably a vehicle).
 - ```PROTRUSION``` Part sticks out so no other parts can be installed over it.
-- ```REACTOR``` When enabled, part consumes fuel to generate epower.
+- ```REACTOR``` When enabled, part consumes fuel to generate epower (see the REACTOR fields in [JSON_INFO.md](JSON_INFO.md); `power` is the kJ of battery charge per unit of fuel and must be positive unless the part is `PERPETUAL`).
 - ```REAPER``` Cuts down mature crops, depositing them on the square.
 - ```RECHARGE``` Recharge items with the same flag (currently only the rechargeable battery mod).
 - ```REMOTE_CONTROLS``` Once installed, allows using vehicle through remote controls.

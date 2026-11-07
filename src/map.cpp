@@ -1028,6 +1028,24 @@ void map::vehmove()
     const tripoint_abs_ms player_pos = get_player_character().pos_abs();
     // An avatar carried (or flung) to another OMT is reported once, when the vehicles are done.
     cata_event_dispatch::avatar_move_scope moving;
+    // A summoned vehicle's time runs down once per turn, before anything moves (it used to run
+    // in vehicle::act_on_map(), once per tile moved). One whose time is up winks out, which
+    // takes it off the vehicle lists, so they are gathered first.
+    std::vector<vehicle *> summoned;
+    for( int zlev = minz; zlev <= maxz; ++zlev ) {
+        const level_cache *cache_lazy = get_cache_lazy( zlev );
+        if( !cache_lazy ) {
+            continue;
+        }
+        for( vehicle *veh : cache_lazy->vehicle_list ) {
+            if( veh->summon_time_limit ) {
+                summoned.push_back( veh );
+            }
+        }
+    }
+    for( vehicle *veh : summoned ) {
+        veh->decrement_summon_timer( *this );
+    }
     for( int zlev = minz; zlev <= maxz; ++zlev ) {
         level_cache *cache_lazy = get_cache_lazy( zlev );
         if( !cache_lazy ) {

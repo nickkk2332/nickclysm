@@ -519,7 +519,9 @@ void vehicle::thrust( map &here, int thd, int z )
     }
 
     int accel = current_acceleration( here ) * traction;
-    if( accel < 200 && velocity > 0 && is_towing() ) {
+    // Only pulling forward struggles: braking (no acceleration with the engine off) must still
+    // reach the brakes below.
+    if( thrusting && accel < 200 && velocity > 0 && is_towing() ) {
         if( pl_ctrl ) {
             add_msg( _( "The %s struggles to pull the %s on this surface!" ), name,
                      tow_data.get_towed()->name );
@@ -2012,9 +2014,8 @@ vehicle *vehicle::act_on_map( map &here )
         is_falling = false;
         return this;
     }
-    if( decrement_summon_timer( here ) ) {
-        return nullptr;
-    }
+    // A summoned vehicle's timer runs down once per turn in map::vehmove(), not here: this runs
+    // once for every tile the vehicle moves.
     const bool pl_ctrl = player_is_driving_this_veh( &here );
     // TODO: Remove this hack, have vehicle sink a z-level
     if( in_deep_water && !can_float( here ) ) {
@@ -2342,16 +2343,7 @@ float map::vehicle_wheel_traction( const vehicle &veh, bool ignore_movement_modi
             continue; // Ignore the movement modifier if caller specifies a bool
         }
 
-        for( const veh_ter_mod &mod : vpi.wheel_info->terrain_modifiers ) {
-            const bool ter_has_flag = tr.has_flag( mod.terrain_flag );
-            if( ter_has_flag && mod.move_override ) {
-                move_mod = mod.move_override;
-                break;
-            } else if( !ter_has_flag && mod.move_penalty ) {
-                move_mod += mod.move_penalty;
-                break;
-            }
-        }
+        move_mod = vpi.wheel_info->terrain_move_cost( tr.get_flags(), move_mod );
 
         move_mod = std::max( move_mod, move_mod + vp.move_penalty() );
 
@@ -2407,16 +2399,7 @@ float map::vehicle_wheel_traction( const vehicle &veh, const tripoint_bub_ms &at
             continue;
         }
 
-        for( const veh_ter_mod &mod : vpi.wheel_info->terrain_modifiers ) {
-            const bool ter_has_flag = tr.has_flag( mod.terrain_flag );
-            if( ter_has_flag && mod.move_override ) {
-                move_mod = mod.move_override;
-                break;
-            } else if( !ter_has_flag && mod.move_penalty ) {
-                move_mod += mod.move_penalty;
-                break;
-            }
-        }
+        move_mod = vpi.wheel_info->terrain_move_cost( tr.get_flags(), move_mod );
 
         move_mod = std::max( move_mod, move_mod + vp.move_penalty() );
 
