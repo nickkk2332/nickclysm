@@ -65,6 +65,21 @@ void ammunition_type::load_ammunition_type( const JsonObject &jsobj )
     ammunition_type &res = all_ammunition_types()[ ammotype( jsobj.get_string( "id" ) ) ];
     jsobj.read( "name", res.name_ );
     jsobj.read( "default", res.default_ammotype_, true );
+    if( jsobj.has_object( "fire_sound" ) ) {
+        res.fire_sound_.emplace();
+        res.fire_sound_->load( jsobj.get_object( "fire_sound" ) );
+    }
+    jsobj.read( "satisfies_pyromania", res.satisfies_pyromania_ );
+    jsobj.read( "pyromania_message", res.pyromania_message_ );
+}
+
+void gun_fire_sound::load( const JsonObject &jo )
+{
+    if( jo.has_member( "volume" ) ) {
+        volume = jo.get_int( "volume" );
+    }
+    jo.read( "message", message );
+    jo.read( "burst_message", burst_message );
 }
 
 /** @relates string_id */

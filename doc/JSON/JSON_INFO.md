@@ -1469,6 +1469,9 @@ When adding a new bionic, if it's not included with another one, you must also a
 | `derived_from`      | _(optional)_ An array that determines how this damage type should be calculated in terms of armor protection and monster resistance values. The first value is the source damage type and the second value is the modifier applied to source damage type calculations.
 | `onhit_eocs`        | _(optional)_ An array of effect-on-conditions that activate when a monster or character hits another monster or character with this damage type. In this case, `u` refers to the damage source and `npc` refers to the damage target.
 | `ondamage_eocs`        | _(optional)_ An array of effect-on-conditions that activate when a monster or character takes damage from another monster or character with this damage type. In this case, `u` refers to the damage source and `npc` refers to the damage target. Also have access to some [context vals](EFFECT_ON_CONDITION.md#context-variables-for-other-eocs)
+| `melee_crit`        | _(optional)_ What a character's melee critical hit does with this damage type (for `melee_only` types).  An object with `damage_mult` (the damage is multiplied by 1 + `damage_mult` + `damage_mult_per_skill` times the attack's skill), `damage_mult_per_skill`, `armor_ignored` (the share of the target's armor ignored, 0 to 1) and `arpen` (flat armor penetration added), all default 0; each is scaled by the critical factor of the body part hit (1 for most).  Bash has `{ "damage_mult": 0.5, "armor_ignored": 0.5 }`, cut `{ "damage_mult": 0.25, "armor_ignored": 0.25, "arpen": 5 }` and stab `{ "damage_mult_per_skill": 0.1, "armor_ignored": 0.34 }`.  Without it, criticals give this type no bonus.
+| `weakpoint_attack`  | _(optional)_ The kind of melee attack this damage type makes when it is the main damage of a hit: `"bash"`, `"cut"`, `"stab"` or `"none"` (default).  Weak points' `difficulty` for `bash`, `cut` and `stab` attacks and a character's melee weak point skill go by it; with `"none"` a character has no weak point skill for the hit.  Bash, cut and stab have their own.
+| `embed_weight`      | _(optional)_ How much each point of this damage a thrown or fired item deals helps it embed in the monster it hit (default 0; negative hinders).  The item embeds if the sum (each type's share rounded toward zero) is more than 3 for each 250 ml of the item plus a roll of 0 to 5.  Cut has 0.5, stab 1 and bash -1.
 
 ```jsonc
   {
@@ -1484,7 +1487,10 @@ When adding a new bionic, if it's not included with another one, you must also a
     "skill": "stabbing",
     "//2": "derived from cut only for monster defs",
     "derived_from": [ "cut", 0.8 ],
-    "immune_flags": { "character": [ "STAB_IMMUNE" ] }
+    "immune_flags": { "character": [ "STAB_IMMUNE" ] },
+    "melee_crit": { "damage_mult_per_skill": 0.1, "armor_ignored": 0.34 },
+    "weakpoint_attack": "stab",
+    "embed_weight": 1
   },
   {
     "//": "e.g. electrical discharge",

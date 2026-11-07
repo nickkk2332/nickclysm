@@ -3735,6 +3735,14 @@ void islot_gun::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "reload", reload_time, not_negative, 100 );
     optional( jo, was_loaded, "reload_noise", reload_noise, to_translation( "click." ) );
     optional( jo, was_loaded, "reload_noise_volume", reload_noise_volume, not_negative );
+    // CMBT-J09
+    if( jo.has_object( "fire_sound" ) ) {
+        fire_sound.emplace();
+        fire_sound->load( jo.get_object( "fire_sound" ) );
+    }
+    if( jo.has_member( "cycle_time" ) ) {
+        cycle_time = std::max( 0, jo.get_int( "cycle_time" ) );
+    }
     optional( jo, was_loaded, "barrel_volume", barrel_volume, units_bound_reader<units::volume> {0_ml} );
     optional( jo, was_loaded, "barrel_length", barrel_length, units_bound_reader<units::length> {0_mm} );
     optional( jo, was_loaded, "built_in_mods", built_in_mods, auto_flags_reader<itype_id> {} );

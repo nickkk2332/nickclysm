@@ -49,6 +49,7 @@
   - ["fear_triggers", "anger_triggers", "placate_triggers"](#fear_triggers-anger_triggers-placate_triggers)
   - ["chat_topics"](#chat_topics)
   - ["revert_to_itype"](#revert_to_itype)
+  - ["emp_deactivate_one_in"](#emp_deactivate_one_in)
   - ["starting_ammo"](#starting_ammo)
   - ["upgrades"](#upgrades)
   - ["reproduction"](#reproduction)
@@ -151,6 +152,7 @@ Property                 | Description
 `placate_triggers`       | (array of strings) Triggers that lower monster aggression (same flags as fear)
 `chat_topics`            | (array of strings) Conversation topics if dialog is opened with the monster
 `revert_to_itype`        | (string) Item monster can be converted to when friendly (ex. to deconstruct turrets)
+`emp_deactivate_one_in`  | (integer) One in this many EMP blasts switch an `ELECTRONIC` monster with a `revert_to_itype` off, dropping it as that item (otherwise the blast fries it); 0 never.  Default: 6 for tiny monsters, 3 for small ones, never for bigger ones
 `broken_itype`           | (string) Item that will spawn when the monster dies with `corpse_type` set to `BROKEN`. Can be left empty to create a `broken_` item based on the monster's `id`.
 `mech_weapon`            | (string) If this monster is a rideable mech with built-in weapons, this is the weapons id
 `mech_str_bonus`         | (integer) If this monster is a rideable mech with enhanced strength, this is the strength it gives to the player when ridden
@@ -616,6 +618,11 @@ Lists possible chat topics that will be used as dialogue display when talking to
 (string, optional)
 
 If not empty and a valid item id, the monster can be converted into this item by the player, when it's friendly. This is usually used for turrets and similar to revert the turret monster back into the turret item, which can be picked up and placed elsewhere.
+
+## "emp_deactivate_one_in"
+(integer, optional)
+
+How an EMP blast can switch off an `ELECTRONIC` monster that has a `revert_to_itype`: one in this many blasts turn it into that item (with its ammo), and the others fry it (10d10 damage and a 1 in 6 chance to make it friendly).  0 means it is never switched off.  Without it, tiny monsters are switched off one time in 6, small ones one time in 3, and bigger ones never.
 
 ## "starting_ammo"
 (object, optional)

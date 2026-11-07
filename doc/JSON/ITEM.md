@@ -340,9 +340,19 @@ ammunition_type represents a category of ammo items that can fit certain magazin
     "type": "ammunition_type",
     "id": "22",
     "name": ".22 LR", // Name displayed on guns/magazines that hold this ammunition type along with their specified capacity. Aall items in the category are also shown as possible variants.
-    "default": "22_lr" // Default AMMO item of this category to be used for migration and to determine expected traits of items in the category eg whether they're liquid
+    "default": "22_lr", // Default AMMO item of this category to be used for migration and to determine expected traits of items in the category eg whether they're liquid
+    "fire_sound": { "volume": 8, "message": "Thunk!", "burst_message": "Thunk-thunk!" }, // Optional: how guns of this type sound when they fire (see below)
+    "satisfies_pyromania": true, // Optional, default false: firing a gun of this type satisfies a character with the pyromania trait (flamethrowers, rocket launchers)
+    "pyromania_message": "You feel a surge of euphoria as flames roar out of the %s!" // Optional: what the pyromaniac feels then, %s being the gun's name; without it the usual message
   },
 ```
+
+`fire_sound` (on an ammunition type, or a gun's own, which comes first) replaces the sound a gun makes when it fires:
+- `volume`: optional fixed volume.  The gun's, its ammo's and its mods' loudness (a suppressor too) no longer change it.  Without it the volume is the usual loudness.
+- `message`: what is heard, and shown when you fire.  Without it, the usual sound for the volume and the ammo's effects ("bang!", "Pew!"...).
+- `burst_message`: what a burst sounds like; without it `message`.
+
+A gun with several ammunition types uses the first of them, by id, that has a `fire_sound`.  Grenade launchers, railguns, rocket launchers, flamethrowers, bows, crossbows and atlatls get theirs from their ammunition types.
 
 ### Armor
 
@@ -893,6 +903,8 @@ Guns can be defined like this:
 "reload": 450,             // Amount of time to reload, 100 = 1 second = 1 "turn"
 "reload_noise": "Ping!",   // Sound, that would be produced, when the gun is reloaded; seems to not work
 "reload_noise_volume": 4,  // how loud the reloading is
+"fire_sound": { "message": "Crack!" }, // Optional: how the gun sounds when it fires, before its ammunition type's `fire_sound` (see Ammunition type)
+"cycle_time": 120,         // Optional: moves spent working the action after each shot (bolt, pump, lever...), cut by up to 50% with skill; it also costs 10 MOA of aim a move, cut by up to 80% with skill and less what the gun's recoil already took. Without it, 80 for LEVER_ACTION, 100 for SINGLE_ACTION, 120 for PUMP_ACTION, 160 for BOLT_ACTION, else 0
 "built_in_mods": ["m203"], //An array of mods that will be integrated in the weapon using the IRREMOVABLE tag.
 "default_mods": ["m203"]   //An array of mods that will be added to a weapon on spawn.
 "barrel_volume": "30 mL",  // Amount of volume lost when the barrel is sawn. Approximately 250 ml per inch is a decent approximation.

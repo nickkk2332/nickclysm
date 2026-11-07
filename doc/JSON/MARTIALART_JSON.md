@@ -43,8 +43,10 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "force_unarmed": true,                 // You never use the equipped item to make attacks with this MA, and will use only your fist, legs or another limbs you have
   "prevent_weapon_blocking": true,       // You never block using weapon with this MA
   "strictly_melee": true,                // This style can only be used with weapons, it can't be used with bare hands
-  "arm_block_with_bio_armor_arms": true, // Enables blocking damage using the Arms Alloy Plating CBM
-  "leg_block_with_bio_armor_legs": true, // Enables blocking damage using the Legs Alloy Plating CBM
+  "arm_block_char_flags": [ "ARMORED_ARMS" ], // A character with any of these character flags can arm block at any unarmed skill (the "arm_block" level isn't needed)
+  "leg_block_char_flags": [ "ARMORED_LEGS" ], // The same for leg blocks
+  "arm_block_with_bio_armor_arms": true, // Shorthand for adding ARMORED_ARMS to arm_block_char_flags: blocking with the Subcutaneous Protective Mesh - Arms CBM
+  "leg_block_with_bio_armor_legs": true, // Shorthand for adding ARMORED_LEGS to leg_block_char_flags: the Legs CBM
   "autolearn": [ [ "melee", 1 ] ],       // The style is autolearned once you reach this level in specific skill or skills
   "primary_skill": "bashing",            // The difficulty and effectiveness of this MA scales from this skill (Default is "unarmed")
   "learn_difficulty": 5,                 // Difficulty to learn the style from a book based on "primary_skill". Total chance to learn a style from a single read of the book is equal to one in (10 + learn_difficulty - primary_skill)

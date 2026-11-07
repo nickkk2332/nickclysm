@@ -1019,6 +1019,8 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
         light_color.b = jarr.get_int( 2 ) / 255.0f;
     }
     optional( jo, was_loaded, "revert_to_itype", revert_to_itype, itype_id() );
+    optional( jo, was_loaded, "emp_deactivate_one_in", emp_deactivate_one_in,
+              numeric_bound_reader<int> { -1 }, -1 );
     optional( jo, was_loaded, "broken_itype", broken_itype, itype_id() );
     optional( jo, was_loaded, "mech_weapon", mech_weapon, itype_id() );
     optional( jo, was_loaded, "mech_str_bonus", mech_str_bonus, 0 );

@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "ammo.h"
 #include "body_part_set.h"
 #include "bodypart.h"
 #include "calendar.h"
@@ -847,6 +848,16 @@ struct islot_gun : common_ranged_data {
      * Volume of the noise made when reloading this weapon.
      */
     int reload_noise_volume = 0;
+    /**
+     * Sound of firing (CMBT-J09); unset: its ammunition type's, or the usual one.
+     */
+    std::optional<gun_fire_sound> fire_sound;
+    /**
+     * Moves spent working the action after a shot, before skill (CMBT-J09); it also sets the aim
+     * lost (10 MOA a move). Unset: 80 for LEVER_ACTION, 100 SINGLE_ACTION, 120 PUMP_ACTION,
+     * 160 BOLT_ACTION, else 0.
+     */
+    std::optional<int> cycle_time;
 
     /** Maximum aim achievable using base weapon sights */
     int sight_dispersion = 30;

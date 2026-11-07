@@ -36,7 +36,7 @@
     "description": "a robot",
     "footsteps": "mechanical whirring.",
     "bleeds": "fd_mechanical_fluid",
-    "flags": [ "TEEP_IMMUNE" ]
+    "flags": [ "TEEP_IMMUNE", "FLASHBANGPROOF" ]
   },
   {
     "type": "SPECIES",

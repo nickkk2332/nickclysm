@@ -96,7 +96,6 @@
 
 static const anatomy_id anatomy_human_anatomy( "human_anatomy" );
 
-static const bionic_id bio_cqb( "bio_cqb" );
 static const bionic_id bio_heat_absorb( "bio_heat_absorb" );
 static const bionic_id bio_shock( "bio_shock" );
 
@@ -140,9 +139,11 @@ static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_TAKE_DAMAGE( "CANNOT_TAKE_DAMAGE" );
 static const json_character_flag json_flag_CBQ_LEARN_BONUS( "CBQ_LEARN_BONUS" );
+static const json_character_flag json_flag_CQB_LEARNING( "CQB_LEARNING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_HARDTOHIT( "HARDTOHIT" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
+static const json_character_flag json_flag_NO_MELEE_PRACTICE( "NO_MELEE_PRACTICE" );
 static const json_character_flag json_flag_PSEUDOPOD_GRASP( "PSEUDOPOD_GRASP" );
 
 static const limb_score_id limb_score_block( "block" );
@@ -369,12 +370,8 @@ float Character::get_hit_weapon( const item &weap ) const
     /** @EFFECT_BASHING improves hit chance for bashing weapons */
     /** @EFFECT_CUTTING improves hit chance for cutting weapons */
     /** @EFFECT_STABBING improves hit chance for piercing weapons */
+    // An enchantment's "skill_floor" (the CQB bionic's, for one) is part of the skill level
     float skill = get_skill_level( weap.melee_skill() );
-
-    // CQB bionic acts as a lower bound providing item uses a weapon skill
-    if( skill < BIO_CQB_LEVEL && has_active_bionic( bio_cqb ) ) {
-        skill = BIO_CQB_LEVEL;
-    }
 
     /** @EFFECT_MELEE improves hit chance for all items (including non-weapons) */
     return ( skill / 3.0f ) + ( get_skill_level( skill_melee ) / 2.0f ) + weap.get_to_hit();
@@ -880,9 +877,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     const int skill_training_cap = t.is_monster() ? t.as_monster()->type->melee_training_cap :
                                    MAX_SKILL;
-    // Practice melee and relevant weapon skill (if any) except when using CQB bionic, if the creature is a hallucination, if the creature cannot move,
+    // Practice melee and relevant weapon skill (if any) except with NO_MELEE_PRACTICE (the CQB bionic), if the creature is a hallucination, if the creature cannot move,
     // if the creature cannot take damage, or if the monster has already trained someone an excessive number of times.
-    const bool can_train_melee = !has_active_bionic( bio_cqb ) &&
+    const bool can_train_melee = !has_flag( json_flag_NO_MELEE_PRACTICE ) &&
                                  !t.is_hallucination() &&
                                  !t.has_flag( json_flag_CANNOT_MOVE ) &&
                                  !t.has_flag( json_flag_CANNOT_TAKE_DAMAGE ) &&
@@ -1029,7 +1026,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         }
 
         //player has a very small chance, based on their intelligence, to learn a style whilst using the CQB bionic
-        if( has_active_bionic( bio_cqb ) && !martial_arts_data->knows_selected_style() ) {
+        if( has_flag( json_flag_CQB_LEARNING ) && !martial_arts_data->knows_selected_style() ) {
             /** @EFFECT_INT slightly increases chance to learn techniques when using CQB bionic */
             // Enhanced Memory Banks bionic doubles chance to learn martial art
             const int learn_boost = has_flag( json_flag_CBQ_LEARN_BONUS ) ? 2 : 1;
@@ -1393,9 +1390,6 @@ double Character::crit_chance( float roll_hit, float target_dodge, const item &w
     /** @EFFECT_STABBING increases critical chance with piercing weapons */
     /** @EFFECT_UNARMED increases critical chance with unarmed weapons */
     float sk = get_skill_level( weap.melee_skill() );
-    if( has_active_bionic( bio_cqb ) ) {
-        sk = std::max( sk, static_cast<float>( BIO_CQB_LEVEL ) );
-    }
 
     /** @EFFECT_MELEE slightly increases critical chance with any item */
     sk += get_skill_level( skill_melee ) / 2.5;
@@ -1529,10 +1523,6 @@ static void roll_melee_damage_internal( const Character &u, const damage_type_id
 
     float skill = u.get_skill_level( unarmed ? skill_unarmed : dt->skill );
 
-    if( u.has_active_bionic( bio_cqb ) ) {
-        skill = BIO_CQB_LEVEL;
-    }
-
     // FIXME: Hardcoded damage type effects (bash)
     if( dt == damage_bash ) {
         /** @ARM_STR increases bashing damage */
@@ -1595,22 +1585,16 @@ static void roll_melee_damage_internal( const Character &u, const damage_type_id
 
     float armor_mult = 1.0f;
     if( crit ) {
-        // FIXME: Hardcoded damage type effects (stab, cut, bash)
-        if( dt == damage_stab ) {
-            // Critical damage bonus for stabbing scales with skill
-            dmg_mul *= 1.0 + ( skill / 10.0 ) * crit_mod;
-            // Stab criticals have extra %arpen
-            armor_mult = 1.f - 0.34f * crit_mod;
-        } else if( dt == damage_cut ) {
-            dmg_mul *= 1.f + 0.25f * crit_mod;
-            arpen += static_cast<int>( 5.f * crit_mod );
-            // 25% armor penetration
-            armor_mult = 1.f - 0.25f * crit_mod;
-        } else if( dt == damage_bash ) {
-            dmg_mul *= 1.f + 0.5f * crit_mod;
-            // 50% armor penetration
-            armor_mult = 1.f - 0.5f * crit_mod;
+        // CMBT-J12: the damage type's "melee_crit" (bash: +50% damage, 50% of armor ignored;
+        // cut: +25%, 25% and 5 arpen; stab: +10% per skill level and 34%)
+        const melee_crit_data &crit_data = dt->melee_crit;
+        if( crit_data.damage_mult_per_skill != 0.0 ) {
+            dmg_mul *= 1.0 + ( crit_data.damage_mult + crit_data.damage_mult_per_skill * skill ) * crit_mod;
+        } else {
+            dmg_mul *= 1.f + static_cast<float>( crit_data.damage_mult ) * crit_mod;
         }
+        arpen += static_cast<int>( static_cast<float>( crit_data.arpen ) * crit_mod );
+        armor_mult = 1.f - static_cast<float>( crit_data.armor_ignored ) * crit_mod;
     }
 
     di.add_damage( dt, dmg, arpen, armor_mult, dmg_mul );
@@ -2454,7 +2438,7 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
 
     // Melee skill and reaction score governs if you can react in time
     // Skill of 5 without relevant encumbrance guarantees a block attempt
-    float melee_skill = has_active_bionic( bio_cqb ) ? 5 : get_skill_level( skill_melee );
+    float melee_skill = get_skill_level( skill_melee );
     if( !x_in_y( melee_skill * 20.0 * get_limb_score( limb_score_reaction ), 100 ) ) {
         add_msg_debug( debugmode::DF_MELEE, "Block roll failed" );
         return false;
@@ -3147,8 +3131,7 @@ void player_hit_message( Character *attacker, const std::string &message,
 int Character::attack_speed( const item &weap ) const
 {
     const int base_move_cost = weap.attack_time( *this ) / 2;
-    const float melee_skill = has_active_bionic( bionic_id( bio_cqb ) ) ? BIO_CQB_LEVEL :
-                              get_skill_level( skill_melee );
+    const float melee_skill = get_skill_level( skill_melee );
     /** @EFFECT_MELEE increases melee attack speed */
     const int skill_cost = static_cast<int>( ( base_move_cost * ( 15 - melee_skill ) / 15 ) );
     /** @EFFECT_DEX increases attack speed */

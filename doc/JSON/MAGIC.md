@@ -787,6 +787,7 @@ Identifier                  | Description
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
 `skills`                    | A bonus or penalty to skills. Syntax is the same as for values, using the id of the skill name.
+`skill_floor`               | The least each skill counts as, for example `"skill_floor": { "melee": 5, "unarmed": 5 }`: a lower skill counts as that level wherever the skill is used (combat, crafting, reading, practice caps...), and a higher one is unchanged.  Applied after `skills` adds and multiplies; with several enchantments the highest floor counts.  Values can be numbers or math expressions.  The skills screen shows a skill the floor holds up locked, at the floor.  The CQB bionic sets 5 for its combat skills.
 `spell_values`              | Changes the damage, range, area, duration, cost, casting time, fail chance, difficulty, casting XP or sound of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
 `emitter`                   | Grants the emit_id.
 `modified_bodyparts`        | Modifies the body plan (standard is human).  `gain` adds body_part_id, `lose` removes body_part_id.
@@ -811,6 +812,7 @@ There are two possible syntaxes.  The first is by defining an enchantment object
     "hit_me_effect": [ { "id": "AEA_HEAL" } ],
     "values": [ { "value": "STRENGTH", "multiply": 1.1, "add": -5 } ],
     "skills": [ { "value": "computer", "add": 3 } ],
+    "skill_floor": { "melee": 5 },
     "emitter": "emit_AEP_SMOKE",
     "modified_bodyparts": [ { "gain": "test_corvid_beak" }, { "lose": "torso" } ],
     "mutations": [ "GILLS", "MEMBRANE", "AMPHIBIAN", "WAYFARER", "WILDSHAPE:FISH" ],

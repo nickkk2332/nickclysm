@@ -95,13 +95,13 @@ static const itype_id itype_e_handcuffs( "e_handcuffs" );
 
 static const json_character_flag json_flag_EMP_ENERGYDRAIN_IMMUNE( "EMP_ENERGYDRAIN_IMMUNE" );
 static const json_character_flag json_flag_EMP_IMMUNE( "EMP_IMMUNE" );
+static const json_character_flag json_flag_FLASH_RESIST_ERRATIC( "FLASH_RESIST_ERRATIC" );
+static const json_character_flag json_flag_FLASH_RESIST_RETRACTABLE( "FLASH_RESIST_RETRACTABLE" );
 static const json_character_flag json_flag_GLARE_RESIST( "GLARE_RESIST" );
 static const json_character_flag json_flag_HIGH_GLARE( "HIGH_GLARE" );
 static const json_character_flag json_flag_IMMUNE_HEARING_DAMAGE( "IMMUNE_HEARING_DAMAGE" );
 
 static const mongroup_id GROUP_NETHER( "GROUP_NETHER" );
-
-static const species_id species_ROBOT( "ROBOT" );
 
 static const ter_str_id ter_t_card_industrial( "t_card_industrial" );
 static const ter_str_id ter_t_card_military( "t_card_military" );
@@ -112,8 +112,6 @@ static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_open_air( "t_open_air" );
 
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
-static const trait_id trait_PER_SLIME( "PER_SLIME" );
-static const trait_id trait_PER_SLIME_OK( "PER_SLIME_OK" );
 
 static const trap_str_id tr_goo( "tr_goo" );
 static const trap_str_id tr_portal( "tr_portal" );
@@ -661,11 +659,12 @@ void flashbang( const tripoint_bub_ms &p, bool player_immune, const int radius )
             if( here.sees( guy.pos_bub(), p, radius, true, los_trace::physical ) ) {
                 int flash_mod = 0;
                 int dur_mod = 1;
-                if( guy.has_trait( trait_PER_SLIME ) ) {
+                // CMBT-J11: flags, given by the Sensory Disintegration and Distributed Senses traits
+                if( guy.has_flag( json_flag_FLASH_RESIST_ERRATIC ) ) {
                     if( one_in( 2 ) ) {
                         flash_mod = radius / 2.6f; // Yay, you weren't looking!
                     }
-                } else if( guy.has_trait( trait_PER_SLIME_OK ) ) {
+                } else if( guy.has_flag( json_flag_FLASH_RESIST_RETRACTABLE ) ) {
                     flash_mod = radius; // Just retract those and extrude fresh eyes
                 } else if( guy.has_flag( json_flag_GLARE_RESIST ) ) {
                     flash_mod = radius / 1.3f;
@@ -696,7 +695,8 @@ void flashbang( const tripoint_bub_ms &p, bool player_immune, const int radius )
     }
 
     for( monster &critter : g->all_monsters() ) {
-        if( critter.type->in_species( species_ROBOT ) || critter.has_flag( mon_flag_FLASHBANGPROOF ) ) {
+        // CMBT-J11: robots are immune through their species' FLASHBANGPROOF flag
+        if( critter.has_flag( mon_flag_FLASHBANGPROOF ) ) {
             continue;
         }
         // TODO: can the following code be called for all types of creatures
@@ -826,19 +826,22 @@ void emp_blast( const tripoint_bub_ms &p )
     if( monster *const mon_ptr = get_creature_tracker().creature_at<monster>( p ) ) {
         monster &critter = *mon_ptr;
         if( critter.has_flag( mon_flag_ELECTRONIC ) ) {
-            int deact_chance = 0;
+            // CMBT-J11: the monster's "emp_deactivate_one_in", else by size
+            int deact_chance = critter.type->emp_deactivate_one_in;
             const itype_id mon_item_id = critter.type->revert_to_itype;
-            switch( critter.get_size() ) {
-                case creature_size::tiny:
-                    deact_chance = 6;
-                    break;
-                case creature_size::small:
-                    deact_chance = 3;
-                    break;
-                default:
-                    // Currently not used, I have no idea what chances bigger bots should have,
-                    // Maybe export this to json?
-                    break;
+            if( deact_chance < 0 ) {
+                deact_chance = 0;
+                switch( critter.get_size() ) {
+                    case creature_size::tiny:
+                        deact_chance = 6;
+                        break;
+                    case creature_size::small:
+                        deact_chance = 3;
+                        break;
+                    default:
+                        // bigger bots are never switched off, unless their JSON says so
+                        break;
+                }
             }
             if( !mon_item_id.is_empty() && deact_chance != 0 && one_in( deact_chance ) ) {
                 if( sight ) {
@@ -883,32 +886,38 @@ void emp_blast( const tripoint_bub_ms &p )
             add_msg( _( "The %s is unaffected by the EMP blast." ), critter.name() );
         }
     }
-    if( player_character.pos_bub() == p ) {
-        if( player_character.get_power_level() > 0_kJ &&
-            !player_character.has_flag( json_flag_EMP_IMMUNE ) &&
-            !player_character.has_flag( json_flag_EMP_ENERGYDRAIN_IMMUNE ) ) {
-            add_msg( m_bad, _( "The EMP blast drains your power." ) );
-            int max_drain = ( player_character.get_power_level() > 1000_kJ ? 1000 : units::to_kilojoule(
-                                  player_character.get_power_level() ) );
-            player_character.mod_power_level( units::from_kilojoule( static_cast<std::int64_t>( -rng(
-                                                  1 + max_drain / 3, max_drain ) ) ) );
+    // CMBT-J11: whoever is on the tile, NPCs too (it used to be the avatar only)
+    if( Character *const guy_ptr = get_creature_tracker().creature_at<Character>( p ) ) {
+        Character &guy = *guy_ptr;
+        if( guy.get_power_level() > 0_kJ &&
+            !guy.has_flag( json_flag_EMP_IMMUNE ) &&
+            !guy.has_flag( json_flag_EMP_ENERGYDRAIN_IMMUNE ) ) {
+            guy.add_msg_player_or_npc( m_bad, _( "The EMP blast drains your power." ),
+                                       _( "The EMP blast drains <npcname>'s power." ) );
+            int max_drain = ( guy.get_power_level() > 1000_kJ ? 1000 : units::to_kilojoule(
+                                  guy.get_power_level() ) );
+            guy.mod_power_level( units::from_kilojoule( static_cast<std::int64_t>( -rng(
+                                     1 + max_drain / 3, max_drain ) ) ) );
         }
         // TODO: More effects?
         //e-handcuffs effects
-        item_location weapon = player_character.get_wielded_item();
+        item_location weapon = guy.get_wielded_item();
         if( weapon && weapon->typeId() == itype_e_handcuffs && weapon->charges > 0 ) {
             weapon->unset_flag( json_flag_NO_UNWIELD );
             weapon->charges = 0;
             weapon->active = false;
-            add_msg( m_good, _( "The %s on your wrists spark briefly, then release your hands!" ),
-                     weapon->tname() );
+            guy.add_msg_player_or_npc( m_good,
+                                       _( "The %s on your wrists spark briefly, then release your hands!" ),
+                                       _( "The %s on <npcname>'s wrists spark briefly, then release their hands!" ),
+                                       weapon->tname() );
         }
 
-        if( !player_character.has_flag( json_flag_EMP_IMMUNE ) ) {
-            player_character.visit_carried( []( item_location it ) {
-                // Render any electronic stuff in player's possession non-functional
+        if( !guy.has_flag( json_flag_EMP_IMMUNE ) ) {
+            guy.visit_carried( [&guy]( item_location it ) {
+                // Render any electronic stuff in their possession non-functional
                 if( it->has_flag( flag_ELECTRONIC ) && !it->is_broken() ) {
-                    add_msg( m_bad, _( "The EMP blast fries your %s!" ), it->tname() );
+                    guy.add_msg_player_or_npc( m_bad, _( "The EMP blast fries your %s!" ),
+                                               _( "The EMP blast fries <npcname>'s %s!" ), it->tname() );
                     it->deactivate();
                     if( get_option<bool>( "GAME_EMP" ) ) {
                         it->set_fault( fault_emp_reboot );
@@ -939,7 +948,6 @@ void emp_blast( const tripoint_bub_ms &p )
             here.make_active( loc );
         }
     }
-    // TODO: Drain NPC energy reserves
 }
 void resonance_cascade( const tripoint_bub_ms &p )
 {

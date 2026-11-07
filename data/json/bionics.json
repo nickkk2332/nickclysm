@@ -70,7 +70,7 @@
       [ "hand_r", { "bash": 3, "cut": 3, "bullet": 3, "stab": 3 } ]
     ],
     "encumbrance": [ [ "arm_l", 1 ], [ "arm_r", 1 ], [ "hand_l", 1 ], [ "hand_r", 1 ] ],
-    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF" ],
+    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF", "ARMORED_ARMS" ],
     "mutation_conflicts": [
       "AMORPHOUS",
       "BENDY2",
@@ -131,7 +131,7 @@
       [ "foot_r", { "bash": 3, "cut": 3, "bullet": 3, "stab": 3 } ]
     ],
     "encumbrance": [ [ "leg_l", 1 ], [ "leg_r", 1 ], [ "foot_l", 1 ], [ "foot_r", 1 ] ],
-    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF" ],
+    "flags": [ "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF", "ARMORED_LEGS" ],
     "mutation_conflicts": [
       "AMORPHOUS",
       "BENDY2",
@@ -388,6 +388,8 @@
       "style_wingchun",
       "style_zui_quan"
     ],
+    "enchantments": [ { "condition": "ACTIVE", "skill_floor": { "melee": 5, "unarmed": 5, "bashing": 5, "cutting": 5, "stabbing": 5 } } ],
+    "active_flags": [ "NO_MELEE_PRACTICE", "CQB_LEARNING" ],
     "flags": [ "BIONIC_TOGGLED" ]
   },
   {
