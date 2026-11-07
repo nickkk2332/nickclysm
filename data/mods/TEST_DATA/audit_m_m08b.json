@@ -1,0 +1,124 @@
+[
+  {
+    "type": "pp_generator",
+    "id": "test_m08b_pp_burn",
+    "//": "MGEN-J05: pre_burn writes the terrain given, only where its condition holds",
+    "sub_generators": [
+      {
+        "type": "pre_burn",
+        "attempts": 1,
+        "min_intensity": 100,
+        "max_intensity": 100,
+        "scaling_days_start": 0,
+        "scaling_days_end": 1,
+        "burnt_wall_ter": "t_concrete_wall",
+        "burnt_floor_ter": "t_thconc_floor",
+        "burnt_ground_ter": "t_sand",
+        "condition": { "compare_string": [ "yes", { "global_val": "test_m08b_pp_on" } ] }
+      }
+    ]
+  },
+  {
+    "type": "pp_generator",
+    "id": "test_m08b_pp_fields",
+    "//": "MGEN-J05: add_fire and place_blood place the field given",
+    "sub_generators": [
+      {
+        "type": "add_fire",
+        "attempts": 50,
+        "min_intensity": 1,
+        "max_intensity": 1,
+        "scaling_days_end": 1000,
+        "field": "fd_smoke"
+      },
+      { "type": "place_blood", "attempts": 576, "chance": 1000, "field": "fd_acid" }
+    ]
+  },
+  {
+    "type": "pp_generator",
+    "id": "test_m08b_pp_copy",
+    "//": "MGEN-J05: a copy drops some inherited sub-generators and adds its own",
+    "copy-from": "test_pp_riot",
+    "delete": { "sub_generators": [ "place_blood", "add_fire" ] },
+    "extend": { "sub_generators": [ { "type": "place_blood", "attempts": 10, "chance": 5, "field": "fd_acid" } ] }
+  },
+  {
+    "type": "pp_generator",
+    "id": "test_m08b_pp_ruin",
+    "//": "MGEN-J05: the ruin generator's ids",
+    "sub_generators": [
+      {
+        "type": "aftershock_ruin",
+        "ruin_oter": "field",
+        "ruin_wall_ter": "t_concrete_wall",
+        "ruin_floor_ter": "t_thconc_floor",
+        "ruin_ground_floor_ter": "t_dirt",
+        "ruin_cover_ter": "t_sand",
+        "wreckage_furn": "f_rubble"
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M08B_MARK",
+    "//": "MGEN-J06: run on a mapgen monster or NPC once it is placed",
+    "effect": [ { "math": [ "u_test_m08b_mark = 1" ] } ]
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_m08b_npc",
+    "//": "MGEN-J06: an NPC with variables and an EOC",
+    "object": {
+      "place_npcs": [
+        {
+          "class": "test_talker",
+          "unique_id": "test_m08b_npc",
+          "x": 6,
+          "y": 6,
+          "variables": { "test_m08b_tag": "boss", "test_m08b_level": 3 },
+          "eocs": [ "EOC_TEST_M08B_MARK" ]
+        }
+      ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_m08b_condition",
+    "//": "MGEN-J07: placements with a condition, and a terrain read from a variable",
+    "object": {
+      "place_furniture": [
+        { "furn": "f_chair", "x": 3, "y": 3, "condition": { "compare_string": [ "yes", { "global_val": "test_m08b_gate" } ] } },
+        {
+          "furn": "f_table",
+          "x": 4,
+          "y": 3,
+          "condition": { "compare_string": [ "field", { "context_val": "oter_id" } ] }
+        },
+        {
+          "furn": "f_stool",
+          "x": 5,
+          "y": 3,
+          "condition": { "compare_string": [ "forest", { "context_val": "oter_id" } ] }
+        }
+      ],
+      "place_terrain": [ { "ter": { "var": { "global_val": "test_m08b_ter" }, "fallback": "t_dirt" }, "x": 6, "y": 3 } ]
+    }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_m08b_place_on",
+    "//": "MGEN-J08: placements that go only on some tiles",
+    "object": {
+      "place_furniture": [
+        { "furn": "f_chair", "x": [ 10, 12 ], "y": [ 10, 12 ], "place_on": { "ter": [ "t_grass" ], "attempts": 300 } },
+        {
+          "furn": "f_table",
+          "x": [ 14, 16 ],
+          "y": [ 10, 12 ],
+          "place_on": { "ter_flags": [ "DIGGABLE" ], "no_furniture": true, "near": { "ter_flags": [ "LIQUID" ] }, "attempts": 300 }
+        },
+        { "furn": "f_stool", "x": 20, "y": 20, "place_on": { "passable": true } }
+      ]
+    }
+  }
+]

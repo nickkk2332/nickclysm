@@ -670,8 +670,8 @@ void oter_type_t::check() const
     }
     if( !post_process_generators.empty() && has_flag( oter_flags::road ) ) {
         debugmsg( "'%s' has post_process_generators but road flag; "
-                  "road OMTs use hardcoded dispatch and the field will be ignored",
-                  id.str() );
+                  "roads in cities get their region's road_post_process, and the field will be "
+                  "ignored", id.str() );
     }
     if( has_flag( oter_flags::pp_generate_riot_damage ) && post_process_generators.empty() ) {
         DebugLog( D_WARNING, D_MAP_GEN ) <<

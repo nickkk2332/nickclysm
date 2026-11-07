@@ -289,7 +289,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `power_projection` | copy-from |
 | `power_resource` | copy-from |
 | `power_summon` | copy-from |
-| `pp_generator` | copy-from |
+| `pp_generator` | copy-from; `extend`/`delete` on `sub_generators` (see OVERMAP.md) |
 | `practice` | copy-from |
 | `profession` | copy-from |
 | `profession_blacklist` | none |

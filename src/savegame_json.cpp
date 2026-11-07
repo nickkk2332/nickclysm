@@ -5290,8 +5290,19 @@ void spawn_data::serialize_saved( JsonOut &jsout ) const
         }
         jsout.end_array();
     }
-    if( !patrol_points_rel_ms.empty() ) {
-        jsout.member( "patrol", patrol_points_rel_ms );
+    if( !patrol.empty() ) {
+        // MGEN-J06: kept as ranges, rolled when the monster is placed
+        jsout.member( "patrol_ranges" );
+        jsout.start_array();
+        for( const spawn_patrol_point &pt : patrol ) {
+            jsout.start_array();
+            jsout.write( pt.x.val );
+            jsout.write( pt.x.valmax );
+            jsout.write( pt.y.val );
+            jsout.write( pt.y.valmax );
+            jsout.end_array();
+        }
+        jsout.end_array();
     }
     if( !effects.empty() ) {
         jsout.member( "effects" );
@@ -5317,6 +5328,9 @@ void spawn_data::serialize_saved( JsonOut &jsout ) const
     if( !faction.is_empty() ) {
         jsout.member( "faction", faction );
     }
+    if( !eocs.empty() ) {
+        jsout.member( "eocs", eocs );
+    }
     jsout.end_object();
 }
 
@@ -5328,7 +5342,23 @@ void spawn_data::deserialize_saved( const JsonObject &jo )
         const int val = a.next_int();
         ammo.emplace( id, jmapgen_int( val, a.next_int() ) );
     }
-    jo.read( "patrol", patrol_points_rel_ms );
+    // saves before MGEN-J06 keep the points already rolled
+    std::vector<point_rel_ms> rolled_points;
+    jo.read( "patrol", rolled_points );
+    for( const point_rel_ms &pt : rolled_points ) {
+        spawn_patrol_point fixed;
+        fixed.x = jmapgen_int( pt.x() );
+        fixed.y = jmapgen_int( pt.y() );
+        patrol.push_back( fixed );
+    }
+    for( JsonArray a : jo.get_array( "patrol_ranges" ) ) {
+        spawn_patrol_point pt;
+        const int x = a.next_int();
+        pt.x = jmapgen_int( x, a.next_int() );
+        const int y = a.next_int();
+        pt.y = jmapgen_int( y, a.next_int() );
+        patrol.push_back( pt );
+    }
     for( JsonArray e : jo.get_array( "effects" ) ) {
         spawn_effect eff;
         eff.id = efftype_id( e.next_string() );
@@ -5342,6 +5372,7 @@ void spawn_data::deserialize_saved( const JsonObject &jo )
     jo.read( "str_variables", str_variables );
     jo.read( "num_variables", num_variables );
     jo.read( "faction", faction );
+    jo.read( "eocs", eocs );
 }
 
 void submap::store_spawns( JsonOut &jsout ) const

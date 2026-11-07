@@ -51,9 +51,21 @@ struct spawn_effect {
     bool permanent = false;
 };
 
+// A patrol point of spawn_data "patrol", relative to the overmap tile the monster spawns in.
+// Either coordinate can be a range: MGEN-J06, it is rolled for each monster as it is placed.
+struct spawn_patrol_point {
+    jmapgen_int x{ 0, 0 };
+    jmapgen_int y{ 0, 0 };
+
+    friend bool operator==( const spawn_patrol_point &l, const spawn_patrol_point &r ) {
+        return l.x.val == r.x.val && l.x.valmax == r.x.valmax && l.y.val == r.y.val &&
+               l.y.valmax == r.y.valmax;
+    }
+};
+
 struct spawn_data {
     std::map<itype_id, jmapgen_int> ammo;
-    std::vector<point_rel_ms> patrol_points_rel_ms;
+    std::vector<spawn_patrol_point> patrol;
     // MONDT-J01: what a monster spawned with this data starts with
     std::vector<spawn_effect> effects;
     // its variables, text and numbers
@@ -61,14 +73,18 @@ struct spawn_data {
     std::map<std::string, double> num_variables;
     // empty: the monster type's own
     mfaction_str_id faction;
+    // MGEN-J06: run on the monster (as u) once it is placed, after everything else here
+    std::vector<effect_on_condition_id> eocs;
 
     bool empty() const;
     void deserialize( const JsonObject &jo );
     // as kept with a pending spawn in a submap's save
     void serialize_saved( JsonOut &jsout ) const;
     void deserialize_saved( const JsonObject &jo );
+    // The patrol route, each point rolled within its ranges
+    std::vector<point_rel_ms> rolled_patrol() const;
     // Adds what this data gives a monster once it is placed: patrol route, effects, variables,
-    // faction (ammo is set before it is placed)
+    // faction, then runs its EOCs (ammo is set before it is placed)
     void apply( monster &placed ) const;
 };
 

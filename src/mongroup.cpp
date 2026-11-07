@@ -668,6 +668,12 @@ static void check_group_def( const mongroup_id &g )
             debugmsg( "monster group %s gives the unknown monster faction %s in its spawn_data",
                       g.c_str(), m.data.faction.c_str() );
         }
+        for( const effect_on_condition_id &eoc : m.data.eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "monster group %s runs the unknown effect_on_condition %s in its "
+                          "spawn_data", g.c_str(), eoc.c_str() );
+            }
+        }
         if( m.is_group() ) {
             if( !m.group.is_valid() ) {
                 debugmsg( "monster group %s contains unknown subgroup %s", g.c_str(), m.group.c_str() );
