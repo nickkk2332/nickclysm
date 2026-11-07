@@ -926,6 +926,14 @@ class overmap
         void build_connection( const point_om_omt &source, const point_om_omt &dest, int z,
                                const overmap_connection &connection, bool must_be_unexplored,
                                cube_direction initial_dir = cube_direction::last );
+        // OMAP-J11: builds an overmap special's connection to dest, from the source its route
+        // picks. special_omts (the special's own tiles) are never a nearest_existing source.
+        void build_special_connection( const overmap_connection &connection,
+                                       const special_connection_route &route,
+                                       const tripoint_om_omt &dest, cube_direction initial_dir,
+                                       const city &cit,
+                                       const std::vector<tripoint_om_omt> &special_omts,
+                                       bool must_be_unexplored );
         void connect_closest_points( const std::vector<point_om_omt> &points, int z,
                                      const overmap_connection &connection );
         // Polishing

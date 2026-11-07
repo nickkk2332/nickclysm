@@ -193,6 +193,20 @@ Two noise functions with values between 0 and 1 are generated over the entire ma
 | `river_floodplain_buffer_distance_max` | Maximum buffer distance in overmap terrains for river floodplains.     |
 | `forest_threshold_limit`               | Number. Maximum increase in forest threshold value due to distance from overmap (0,0) |
 | `forest_threshold_increase`               | Array of numbers. [ north, east, south, west ] change in forest noise threshold per overmap from overmap (0,0) |
+| `forest_ter`                           | Overmap terrain id placed for forest. Default `forest`.                |
+| `forest_thick_ter`                     | Overmap terrain id placed for thick forest. Default `forest_thick`.    |
+| `swamp_ter`                            | Overmap terrain id placed for swamp. Default `forest_water`. Forest trails are laid through these three terrains, swamps grow only on the first two, and swamp monsters spawn where there's a lot of `swamp_ter`. |
+| `noise`                                | Optional [noise shape](#noise-shapes) of the forest noise. Default `{ "octaves": 4, "persistence": 0.5, "scale": 0.03, "exponent": 2 }`. |
+| `noise_detail`                         | Optional [noise shape](#noise-shapes) subtracted, at half strength, from `noise`. Default `{ "octaves": 6, "persistence": 0.5, "scale": 0.07, "exponent": 3 }`. |
+| `floodplain_noise`                     | Optional [noise shape](#noise-shapes) tested against the swamp thresholds. Default `{ "octaves": 4, "persistence": 0.5, "scale": 0.05, "exponent": 2 }`. |
+
+### Noise shapes
+
+A noise shape is an object with any of `octaves` (int, at least 1), `persistence`, `scale` (positive)
+and `exponent`; members left out keep their default (or the `copy-from` value). The noise is octave
+simplex noise in [0, 1] raised to `exponent`: a smaller `scale` makes bigger features, a bigger
+`exponent` makes high values rarer, more `octaves` add finer detail with `persistence` setting how
+much each one adds.
 
 ### Example
 
@@ -208,6 +222,41 @@ Two noise functions with values between 0 and 1 are generated over the entire ma
     "river_floodplain_buffer_distance_max": 15
 }
 ```
+
+## Region Ocean Settings
+
+**region_settings_ocean** defines how oceans are generated.
+
+### Fields
+
+|      Identifier       |                                     Description                                      |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `noise_threshold_ocean` | [0, 1], x > value (plus the distance gradient from the ocean start) spawns ocean.   |
+| `ocean_size_min`      | Minimum size of an ocean in overmap terrains for it to actually spawn.                |
+| `ocean_depth`         | Depth of oceans, expressed in Z-levels.                                              |
+| `ocean_start_north`, `ocean_start_east`, `ocean_start_west`, `ocean_start_south` | Optional. Distance in overmaps from overmap (0,0) at which the ocean starts in that direction; with none of them, no oceans. |
+| `sandy_beach_width`   | Width of the sand on ocean shore maps.                                               |
+| `surface_ter`         | Overmap terrain id of the surface, placed on z = 0. Default `ocean_surface`.         |
+| `shore_ter`           | Overmap terrain id of the shore, placed on the boundary with land. Default `ocean_shore`. |
+| `interior_ter`        | Overmap terrain id placed between the surface and the bed. Default `ocean_water_cube`. |
+| `bed_ter`             | Overmap terrain id of the bed, placed at the bottom. Default `ocean_bed`.            |
+
+## Region Ravine Settings
+
+**region_settings_ravine** defines how ravines are generated.
+
+### Fields
+
+|           Identifier            |                                  Description                                  |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `num_ravines`                   | Number of ravines per overmap.                                                |
+| `ravine_range`                  | Maximum distance between a ravine's two ends.                                 |
+| `ravine_width`                  | Width of the ravine.                                                          |
+| `ravine_depth`                  | Z-level of the ravine's bottom.                                               |
+| `ravine_bottom_terrain_id`      | Overmap terrain id of the bottom's inner tiles. Default `ravine_floor`.       |
+| `ravine_floor_edge_terrain_id`  | Overmap terrain id of the bottom's edge tiles. Default `ravine_floor_edge`.   |
+| `ravine_terrain_id`             | Overmap terrain id of the inner tiles above the bottom. Default `ravine`.     |
+| `ravine_edge_terrain_id`        | Overmap terrain id of the edge tiles above the bottom. Default `ravine_edge`. |
 
 ## Region Forest Map Generation Settings
 
@@ -456,6 +505,8 @@ relative placements of various classes of buildings.
 | `city_size`            | Required Setting. Size of cities. Larger number = bigger cities. 0 = no cities. Range: 0 - 16   |
 | `city_spacing`         | Space between cities. Larger number = more space between cities. Range: 0 - 8 |
 | `is_megacity`          | Special flag to trigger special map generation. Generates a megacity.         |
+| `manhole_chance`       | One in this many four-way `road` crossings of a city street get a manhole. Default 2; 0 for none. |
+| `manhole_terrain`      | Overmap terrain id placed for a manhole. Default `road_nesw_manhole`; its `below` rule (see [OVERMAP.md](OVERMAP.md#vertical-terrain-rules)) makes the sewer under it. |
 
 ### Placing shops, parks, and houses
 

@@ -27,8 +27,16 @@ void print_noise_maps( const tripoint_abs_omt &curs )
     constexpr int WIDTH = 900;
     point_rel_omt offset( WIDTH / 2, WIDTH / 2 );
     const region_settings &settings = overmap_buffer.get_settings( curs );
-    om_noise::om_noise_layer_forest forest( curs.xy() - offset, g->get_seed() );
-    om_noise::om_noise_layer_floodplain floodplain( curs.xy() - offset, g->get_seed() );
+    // OMAP-J10: the region's noise shapes, as worldgen uses them.
+    const bool has_forest = settings.overmap_forest.has_value();
+    om_noise::om_noise_layer_forest forest( curs.xy() - offset, g->get_seed(),
+                                            has_forest ? settings.overmap_forest->obj().forest_noise :
+                                            om_noise::om_noise_params::forest(),
+                                            has_forest ? settings.overmap_forest->obj().forest_detail_noise :
+                                            om_noise::om_noise_params::forest_detail() );
+    om_noise::om_noise_layer_floodplain floodplain( curs.xy() - offset, g->get_seed(),
+            has_forest ? settings.overmap_forest->obj().floodplain_noise :
+            om_noise::om_noise_params::floodplain() );
     om_noise::om_noise_layer_lake lake( curs.xy() - offset, g->get_seed() );
     om_noise::om_noise_layer_ocean ocean( curs.xy() - offset, g->get_seed() );
     std::vector<std::pair<om_noise::om_noise_layer *, std::string>> layers{

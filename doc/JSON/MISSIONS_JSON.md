@@ -259,6 +259,10 @@ value as well--otherwise, the game will not know how to spawn the entire special
   id, but may occur at the beginning, end, or middle and does not have any rules
   about underscore delimiting.
 
+* `FLAG` - The provided string is an overmap terrain flag (an engine flag such as
+  `SOURCE_FOOD`, or a mod's own flag); any overmap terrain with it matches. Don't
+  combine it with `om_terrain_replace`, which needs a terrain id.
+
 If an `om_special` must be placed, it will follow the same placement rules as defined in its
 overmap special definition, respecting allowed terrains, distance from cities, road connections,
 and so on. Consequently, the more restrictive the rules, the less likely this placement will

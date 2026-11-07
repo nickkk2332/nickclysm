@@ -1683,6 +1683,10 @@ No talker is needed.
 - type: string or [variable object](#variable-object)
 - return true if the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) is part of the given overmap special, e.g. `{ "map_in_overmap_special": "Necropolis", "loc": { "context_val": "loc" } }`
 
+### `map_omt_has_flag`
+- type: string or [variable object](#variable-object)
+- return true if the overmap terrain at `loc` (a location [variable object](#variable-object); default: alpha talker's position) has this overmap terrain flag: an engine flag (`SOURCE_FOOD`, `RISK_HIGH`, `WATER`...) or a mod's own flag from the terrain's `flags`, e.g. `{ "map_omt_has_flag": "SOURCE_FOOD", "loc": { "context_val": "loc" } }`
+
 ### `map_omt_seen`
 - type: `unseen`, `vague`, `outlines`, `details` or `full`
 - return true if the player has seen the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) at least at this level, e.g. `{ "map_omt_seen": "outlines", "loc": { "context_val": "loc" } }`

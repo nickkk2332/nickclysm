@@ -26,7 +26,8 @@
     "color": "yellow",
     "extras": "road_nesw_manhole",
     "//": "It replaces a road (overmap_city.cpp) and keeps the predecessor that road was placed over.",
-    "flags": [ "KNOWN_DOWN", "NO_ROTATE", "REQUIRES_PREDECESSOR", "ROAD" ]
+    "flags": [ "KNOWN_DOWN", "NO_ROTATE", "REQUIRES_PREDECESSOR", "ROAD" ],
+    "below": { "terrain": "sewer_isolated", "network": "sewer" }
   },
   {
     "type": "overmap_terrain",
@@ -44,7 +45,13 @@
     "copy-from": "generic_bridge",
     "color": "blue",
     "travel_cost_type": "water",
-    "flags": [ "RIVER", "REQUIRES_PREDECESSOR" ]
+    "flags": [ "RIVER", "REQUIRES_PREDECESSOR" ],
+    "bridge": {
+      "overpass": "bridge_road",
+      "support": "bridge",
+      "bridgehead_ground": "bridgehead_ground",
+      "bridgehead_ramp": "bridgehead_ramp"
+    }
   },
   {
     "type": "overmap_terrain",
@@ -61,7 +68,7 @@
     "sym": "v",
     "travel_cost_type": "road",
     "extras": "bridgehead_ground",
-    "extend": { "flags": [ "REQUIRES_PREDECESSOR" ] }
+    "extend": { "flags": [ "REQUIRES_PREDECESSOR", "RAMP" ] }
   },
   {
     "type": "overmap_terrain",
@@ -69,7 +76,8 @@
     "copy-from": "generic_bridge",
     "travel_cost_type": "road",
     "name": "bridgehead (ramp)",
-    "sym": "^"
+    "sym": "^",
+    "extend": { "flags": [ "RAMP" ] }
   },
   {
     "type": "overmap_terrain",

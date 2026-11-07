@@ -39,6 +39,13 @@ class overmap_test_helper
         static int signal_hordes( overmap &om, const tripoint_abs_ms &p, int sig_power ) {
             return om.signal_hordes( p, sig_power );
         }
+        // The generation passes for the z-levels above and below the ground.
+        static bool generate_over( overmap &om, int z ) {
+            return om.generate_over( z );
+        }
+        static bool generate_sub( overmap &om, int z ) {
+            return om.generate_sub( z );
+        }
         // Forgets that a special was placed at @p p: its placement, its mapgen arguments and its
         // post-process decisions, with their storage once no other tile uses it.
         static void forget_special_at( overmap &om, const tripoint_om_omt &p ) {

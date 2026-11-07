@@ -6,6 +6,7 @@
 #include <numeric>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "avatar.h"
@@ -168,6 +169,33 @@ overmap_special_terrain::overmap_special_terrain(
 {}
 
 
+namespace io
+{
+template<>
+std::string enum_to_string<special_connection_target>( special_connection_target data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case special_connection_target::city: return "city";
+        case special_connection_target::nearest_existing: return "nearest_existing";
+        // *INDENT-ON*
+        case special_connection_target::last:
+            break;
+    }
+    cata_fatal( "Invalid special_connection_target" );
+}
+} // namespace io
+
+void special_connection_route::load( const JsonObject &jo )
+{
+    if( jo.has_member( "target" ) ) {
+        target = jo.get_enum_value<special_connection_target>( "target" );
+    }
+    if( jo.has_member( "max_length" ) ) {
+        max_length = jo.get_int( "max_length" );
+    }
+}
+
 void overmap_special_connection::deserialize( const JsonObject &jo )
 {
     optional( jo, false, "point", p );
@@ -175,6 +203,7 @@ void overmap_special_connection::deserialize( const JsonObject &jo )
     optional( jo, false, "existing", existing, false );
     optional( jo, false, "connection", connection );
     optional( jo, false, "from", from );
+    route.load( jo );
 }
 
 overmap_special::overmap_special( const overmap_special_id &i, const overmap_special_terrain &ter )

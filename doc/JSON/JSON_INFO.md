@@ -4591,6 +4591,12 @@ If it is an object - it has following attributes:
   id, but may occur at the beginning, end, or middle and does not have any rules
   about underscore delimiting.
 
+* `FLAG` - The provided string is an overmap terrain flag, an engine flag such as
+  `SOURCE_FOOD` or a mod's own flag (see `Overmap terrains` in
+  [JSON_FLAGS.md](JSON_FLAGS.md)); any overmap terrain with that flag matches.
+  The same values work for mission and EOC `target_params` (`om_terrain_replace`
+  needs a terrain id, so it can't be used with `FLAG`).
+
 `parameters` is an object containing one or more keys to set to a specific value provided, say to pick a safe variant of a map.
 The keys and values must be valid for the overmap terrains in question.
 This can also be used with 0 weight values to provide unique starting map variations that don't spawn normally.
