@@ -328,7 +328,8 @@ static std::optional<decision_category> danger_reaction_category( const danger_r
 
 namespace
 {
-// The installed bionics whose JSON "npc_use" is `use`, each id once, in installation order.
+// The installed bionics whose JSON "npc_use" is `use`, each id once, highest "priority" first,
+// then in installation order.
 // Ids rather than references: switching one on runs its EOCs, which may add or remove bionics.
 std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
 {
@@ -339,6 +340,9 @@ std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
             ret.push_back( bio.id );
         }
     }
+    std::stable_sort( ret.begin(), ret.end(), []( const bionic_id & a, const bionic_id & b ) {
+        return a->npc_use_priority > b->npc_use_priority;
+    } );
     return ret;
 }
 
@@ -369,10 +373,14 @@ std::vector<bionic_id> npc_weapon_cbms( const Character &guy )
 }
 
 // Switches on the NPC's bionics with this "npc_use"; true if any of them is on afterwards.
+// A spell CBM casts its spell (bionic::activate_spell()); only the first one that can.
 bool use_npc_cbms( npc &guy, bionic_npc_use use )
 {
     bool any_on = false;
     for( const bionic_id &bio_id : npc_cbms_for( guy, use ) ) {
+        if( bio_id->spell_on_activate && guy.Character::has_activity( ACT_SPELLCASTING ) ) {
+            continue;
+        }
         if( guy.use_bionic_by_id( bio_id ) ) {
             any_on = true;
         }
@@ -2315,7 +2323,10 @@ void npc::execute_action( npc_action action )
             if( can_use_offensive_cbm() ) {
                 use_npc_cbms( *this, bionic_npc_use::melee );
             }
-            reach_attack( tar );
+            // A spell CBM it started casting is its attack this turn
+            if( !Character::has_activity( ACT_SPELLCASTING ) ) {
+                reach_attack( tar );
+            }
             break;
         case npc_melee:
             update_path( tar );
@@ -2326,7 +2337,10 @@ void npc::execute_action( npc_action action )
                     if( can_use_offensive_cbm() ) {
                         use_npc_cbms( *this, bionic_npc_use::melee );
                     }
-                    melee_attack( *cur, true );
+                    // A spell CBM it started casting is its attack this turn
+                    if( !Character::has_activity( ACT_SPELLCASTING ) ) {
+                        melee_attack( *cur, true );
+                    }
                 }
             } else {
                 look_for_player( player_character );
@@ -5984,8 +5998,8 @@ void npc::mug_player( Character &mark )
     }
     double best_value = minimum_item_value() * value_mod;
     item *to_steal = nullptr;
-    std::vector<const item *> pseudo_items = mark.get_pseudo_items();
-    const auto inv_valuables = mark.items_with( [this, pseudo_items]( const item & itm ) {
+    const std::vector<const item *> &pseudo_items = mark.get_pseudo_items();
+    const auto inv_valuables = mark.items_with( [this, &pseudo_items]( const item & itm ) {
         return std::find( pseudo_items.begin(), pseudo_items.end(), &itm ) == pseudo_items.end() &&
                !craft_reservation::contains_reserved( itm ) &&
                !itm.has_flag( flag_INTEGRATED ) && !itm.has_flag( flag_NO_TAKEOFF ) && value( itm ) > 0;

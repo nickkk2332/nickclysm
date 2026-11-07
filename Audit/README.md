@@ -186,7 +186,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 
 **Group 4 (performance).** Seven of the eight quick wins are in; MAP-P01 was reverted because it broke a wakeup test and gained little. Before-and-after numbers are in [benchmarks/README.md](benchmarks/README.md).
 
-**Group 5 (modding gaps).** All six are in. EOC-J01 and OMAP-J01 cover the core of each finding; what is left is listed in each row.
+**Group 5 (modding gaps).** All six are in. EOC-J01 and OMAP-J01 were finished later, in PR B and PR D.
 
 | ID | Status | Commit | Regression test |
 |---|---|---|---|
@@ -195,7 +195,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | ACT-J01 | fixed | `cbbf71f0` | `tests/audit_activity_type_test.cpp`. The new EOC check found a misspelled `completion_eoc` in Limb_WIP |
 | MAGIC-J01 | fixed | `c9fdb7d1` | `tests/audit_spell_context_test.cpp`. Also fixes MAGIC-B19 (vehicle check on the wrong tile) |
 | EOC-J01 | fixed | `3ce1e2f5`, PR B | `tests/audit_spawned_eocs_test.cpp`, `tests/audit_eoc_handles_test.cpp`. Adds `spawned_eocs`, `npc_variables` and `item_variables`, then `u_set_talker` handles to monsters, items and vehicles (vehicles get a persistent uid). Limit: most ways of moving an item copy it, and the copy has a new uid, so an item's handle stops finding it once it is picked up, dropped or wielded |
-| OMAP-J01 | partial | `917f2c3c` | `tests/audit_overmap_eoc_test.cpp`. Adds `set_overmap_terrain`, `place_overmap_special`, `add_overmap_note`, `delete_overmap_note`, `reveal_map` levels, `map_in_overmap_special` and `map_omt_seen`. Still open: overmap hordes, `closest_city` filters, overmap math functions |
+| OMAP-J01 | fixed | `917f2c3c`, PR D | `tests/audit_overmap_eoc_test.cpp`, `tests/audit_partial_eoc_test.cpp`. Adds `set_overmap_terrain`, `place_overmap_special`, `add_overmap_note`, `delete_overmap_note`, `reveal_map` levels, `map_in_overmap_special` and `map_omt_seen`. PR D adds `spawn_overmap_horde` (a monster group placed as an overmap horde at a location), `closest_city` filters (`min_size`, `max_size`, `name`, `max_distance`, with `true_eocs`/`false_eocs` and a `city_distance` context value; the defaults pick the same city as before) and the math functions `horde_size`, `omt_distance`, `city_distance` and `city_size`. `closest_city` also stored the city's overmap tile coordinates as if they were map squares; it now stores the city's center |
 
 **Remaining small high-severity bugs.** All 48 small-effort critical and high bugs left after "Fix first" are in: 44 fixed, 4 partial. Agents fixed them in nine batches, each in its own worktree. A separate reviewer read each batch's diff, and review comments were applied before merging (10 of 48 needed changes). The batches were made against `master`, so they were cherry-picked onto this branch, with two conflicts resolved by hand: NPC-B02 with NPC-B01 in `npc_attack.cpp`, and LOOP-B02 with LOOP-P01 in `weather.cpp`. Running the new tests found two more real bugs, fixed here, and two test mistakes.
 
@@ -206,7 +206,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | MATH-B02 | fixed | `8e063988` | `tests/audit_eoc_math_test.cpp` |
 | PROG-B01 | fixed | `43d8122f` | `tests/audit_progression_test.cpp` |
 | PROG-B02 | fixed | `811496ae` | `tests/audit_progression_test.cpp` |
-| PROG-B03 | partial | `2e3e06e6` | `tests/audit_progression_test.cpp`. Still open: NPC professions and hobbies still come from different scenario sources |
+| PROG-B03 | fixed | `2e3e06e6`, PR D | `tests/audit_progression_test.cpp`, `tests/audit_partial_data_test.cpp`. NPC hobbies now come from the generic scenario, as their professions do (the player's scenario hobby limits, such as Mind Over Matter's challenge scenarios, no longer apply to every NPC); the avatar keeps its own scenario |
 | ITEM-B01 | fixed | `fe9050ad`, `494287b0` | `tests/audit_items_terrain_test.cpp` |
 | IINF-B02 | fixed | `ff1bb2f9` | `tests/audit_items_terrain_test.cpp` |
 | INV-B01 | fixed | `538d692f` | `tests/audit_items_terrain_test.cpp` |
@@ -223,7 +223,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | MONAI-B03 | fixed | `bd329db5`, `128718b5` | `tests/audit_monsters_test.cpp`. The test then showed absorb_meat never used the meat up (a range-0 flood fill returned no tiles); fixed in `128718b5` |
 | MONDT-B01 | fixed | `d9408762` | `tests/audit_monsters_test.cpp` |
 | MONDT-B03 | fixed | `9266be1f` | `tests/audit_monsters_test.cpp` |
-| MONDT-B04 | partial | `956ea6d4` | `tests/audit_monsters_test.cpp`. Still open: signals still visit every horde bucket (performance only) |
+| MONDT-B04 | fixed | `956ea6d4`, PR D | `tests/audit_monsters_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`. A signal looks up only the horde buckets within its reach (volume - 1 submaps in x, y and z, clipped to the overmap) when that box holds fewer submaps than the map has buckets, and walks the map otherwise. `overmap::signal_hordes` walks only the zone-group columns within reach, in the same sorted order, so the same groups get the same random numbers. Every entity ends the same as before; when one signal wakes idle entities in several buckets, the order they join the active map can differ, as hash-map order already differs between platforms |
 | NPC-B02 | fixed | `c3fdf56f`, `c7f4aafa` | `tests/audit_npc_magic_test.cpp` |
 | NPC-B03 | fixed | `5320ff5d` | `tests/audit_npc_magic_test.cpp` |
 | MAGIC-B02 | fixed | `75ebd188`, `a55bad1a` | `tests/audit_npc_magic_test.cpp` |
@@ -243,7 +243,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | VEH-B02 | fixed | `c618107c`, `93ff7b93` | `tests/audit_vehicles_activities_test.cpp` |
 | VINT-B01 | fixed | `f77455b7` | none: the bug only happens inside uilist's interactive filter loop (uilist asserts !test_mode), and veh_menu_cb lives in an anonymous namespace |
 | VINT-B02 | fixed | `38eacff3` | none: control_engines() is only reached through the interactive veh_menu (uilist asserts !test_mode); a testable helper would have meant changing vehicle.h |
-| ACT-B02 | partial | `d996679a` | `tests/audit_vehicles_activities_test.cpp`. Still open: repair_part's clear-path check is not mirrored in the zone check |
+| ACT-B02 | fixed | `d996679a`, PR D | `tests/audit_vehicles_activities_test.cpp`, `tests/audit_partial_activities_test.cpp`. The zone check now asks what `repair_part` repairs with (`veh_utils::repair_inventory`): next to the part, from where the worker stands, within `PICKUP_RANGE`, along a clear path unless it's an NPC. A part whose tools lie near it but out of the repair's reach is skipped, since the fetch counts them as there. The crafting inventory cache now tells clear-path inventories apart |
 | UIHUD-B01 | fixed | `180c285f` | `tests/audit_ui_render_test.cpp` |
 | UIHUD-B02 | fixed | `53f628dd` | `tests/audit_ui_render_test.cpp` |
 | UIHUD-B03 | fixed | `1669b081` | none: draw_ascii() is a file-static function reachable only from the interactive overmap UI loop (needs input and a window); exposing it would mean changing overmap_ui.h, which 31 files include |
@@ -265,7 +265,7 @@ Four fixes have no regression test, because the code is only reachable through i
 - Blast spells aimed past a wall explode on the near side (MAGIC-B02). Spell armor penetration works (MAGIC-B04). Killing an NPC with a split or multi-projectile spell credits the caster (MAGIC-B03).
 - Monster group entries limited to NIGHT spawn at night (MONDT-B01). Off-screen hordes stop losing zombies (MONDT-B03). Meat-absorbing monsters use up the meat (MONAI-B03).
 - Vehicle fuel tanks with explosive fuel can explode (VEH-B02). "Control individual engines" no longer starts a stopped vehicle without the normal start checks (VINT-B02).
-- Zone vehicle repair takes time per damage level and fetches enough materials (ACT-B02).
+- Zone vehicle repair takes time per damage level and fetches enough materials, and counts only the tools and materials the repair itself can reach: none behind a wall for the player, and everything within reach of where the worker stands (ACT-B02).
 - Camp missions charge food once, about half what they did. Camp fuel no longer multiplies each time the board opens, planting takes the right seeds once, and leftover seeds come back once (CAMP-B01 to B04).
 - New characters get every proficiency their profession or hobby lists (PROG-B02). Random NPCs no longer get player-only professions such as psionic knacks (PROG-B03).
 - In math, `u_addiction_turns(...) =`, `u_pain('type': 'perceived') +=` and the stat bonus setters now set or add as written. Sleeping pill withdrawal is prolonged instead of shortened (MATH-B02).
@@ -278,10 +278,10 @@ Four fixes have no regression test, because the code is only reachable through i
 | CHAR-B04 | fixed | `a5a4b6e1` | `tests/audit_character_effects_test.cpp` |
 | HLTH-J01 | fixed | `291add8b` | `tests/audit_character_effects_test.cpp` |
 | CHAR-J01 | fixed | `30c665af`, PR C | `tests/audit_character_effects_test.cpp`, `tests/audit_modding_gaps_test.cpp`. `u_add_body_part` / `u_lose_body_part` (with npc_ forms): the change outlasts body rebuilds and saves; losing a part takes the parts connected through it, the root, vital parts and parts holding a bionic (unless `force`) can't be lost, and worn items left covering nothing fall off |
-| MUT-B05 | partial | `a9089239`, `846840db` | `tests/audit_mutation_towards_test.cpp`. Still open: filtering mutation candidates with unmet thresholds (would change mutation pacing) |
+| MUT-B05 | fixed | `a9089239`, `846840db`, PR D | `tests/audit_mutation_towards_test.cpp`, `tests/audit_partial_gameplay_test.cpp`. Random mutation (`mutate`, its upgrade roll, `mutate_category`) no longer picks a trait behind a threshold the character lacks; a trait still missing a prerequisite stays a candidate, since picking it mutates towards the prerequisite. Such a pick used to fail at the threshold check (after straining against, or destroying, a CBM that conflicts with the trait), and with two picks per attempt, an attempt came to nothing when both landed on such traits; filtering alone would have sped mutation up, most just before a threshold. So the attempt still comes to nothing ("You feel something straining…") with that old chance, and the pace stays the same |
 | MUT-J01 | fixed | `b65fd9a9`, PR C | `tests/audit_mutation_towards_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. Categories, `allowed_category` and dream categories are checked at load. Data: the Marloss traits lose their undefined MARLOSS category (and its dream, which could never play), Xedra defines GRACKEN, and the BombasticPerks and Isolation Protocol perks drop categories that were never defined |
 | EOC-B05 | fixed | `2f8d333f`, `0aad6359` | `tests/audit_items_npc_loading_test.cpp` |
-| UIINV-B02 | partial | `edcb168d` | none: the move goes through a uilist. Still open: routing the move through the AIM insert activity |
+| UIINV-B02 | fixed | `edcb168d`, PR D | `tests/audit_partial_activities_test.cpp`. The drag and drop starts the insert activity AIM uses (`drag_drop_start_move`), which can now put the item in the pocket chosen; the move takes its time once the menu closes |
 | ACT-B03 | fixed | `4d5bffa7`, `9c9df48a` | `tests/audit_items_npc_loading_test.cpp` |
 | NPC-B04 | fixed | `67a6f426`, `4f9a1228` | `tests/audit_items_npc_loading_test.cpp` |
 | DATA-B03 | fixed | `4862b868` | `tests/audit_items_npc_loading_test.cpp` |
@@ -290,7 +290,7 @@ Four fixes have no regression test, because the code is only reachable through i
 | CRAFT-P01 | fixed | `6fdaa74c`, `9805272f` | benchmark `craft_unattended_wait`. A tool or heat source lost during a waiting step is noticed at the next one-minute poll, as with other steps |
 | ACT-P02 | fixed | `81616d1d`, `6917bd82`, `4ad151f9` | `tests/audit_perf_world_activities_test.cpp`; benchmark `farm_scan` can't show it |
 | TERR-P01 | fixed | `a0fce99f`, `1d0f11f6` | benchmark `blueprint_build_reqs` |
-| MAGIC-P01 | partial | `d3f7852b`, `7738db12` | `tests/audit_perf_ui_test.cpp`; benchmark `spellbook_damage_preview`. Still open: one shared fake caster for casterless spell casts |
+| MAGIC-P01 | fixed | `d3f7852b`, `7738db12`, PR D | `tests/audit_perf_ui_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`; benchmark `spellbook_damage_preview`. A cast with no caster builds one fake caster and shares it with every spell it casts in turn (a spell with two extra spells built nine). Once a spell's effect has run, the caster is put back as built (place, moves, hit points, pain, stamina, effects and variables) before the next spell uses it. Each fake avatar drew one random number for its blood type, so a casterless WONDER spell's picks follow another random sequence for the same seed |
 | UIHUD-P01 | fixed | `5521c271` | none: needs a display |
 | REND-P01 | fixed | `32187d3e` | none: tiles renderer; compile-checked with `-DTILES` |
 
@@ -302,7 +302,7 @@ Four fixes have no regression test, because the code is only reachable through i
 - Body parts from an effect or worn item (e.g. Xedra's Wings of Gossamer) go away when it ends (CHAR-J01).
 - Missions that take items (GodCo, Isherwood, robofac and others) take exactly what they need, including part of a stack (EOC-B05).
 - Zone sorting no longer carries off your own matching ammo, nails or pills (ACT-B03).
-- Inventory drag-and-drop refuses moves that used to crash or duplicate (UIINV-B02).
+- Inventory drag-and-drop refuses moves that used to crash or duplicate (UIINV-B02). It moves the item through the insert activity, as the advanced inventory does: the inventory closes and the move takes its time.
 - Previewing a spell scroll no longer teaches follow-up spells (MAGIC-P01).
 - A mod's redefinition of a core item is no longer overwritten by the core version at load (DATA-B03).
 
@@ -332,15 +332,15 @@ Bug sweep:
 | SPAT-B07 | fixed | `042a6fc0`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
 | SPAT-B08 | fixed | `cdaa9b92`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
 | SPAT-B09 | fixed | `9012c702` | `tests/audit_spatial_sweep_test.cpp` |
-| SPAT-B10 | partial | `0d52b78c` | `tests/audit_spatial_sweep_test.cpp`. Still open: an optional `scent_neutralization_radius`, and a load warning for scent-neutralizing fields that do not spread |
+| SPAT-B10 | fixed | `0d52b78c`, PR D | `tests/audit_spatial_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. Adds `scent_neutralization_radius` (0 to 3, default 1) and a load error for scent neutralization on a field that doesn't spread as a gas; removed the dead values from Xedra Evolved's two fogs (no gas phase) and Desert Region's dust storm (no spread) |
 | MGEN-B02 | fixed | `efa28db1`, `f99a8cbf` | `tests/audit_mapgen_test.cpp` |
-| MGEN-B03 | partial | `2bfdf130`, `f24378f3` | `tests/audit_mapgen_test.cpp`. Still open: validating `remove_npcs` classes (the robofac intercom map removes NPC classes that no longer exist on purpose, as a save migration) |
+| MGEN-B03 | fixed | `2bfdf130`, `f24378f3`, PR D | `tests/audit_mapgen_test.cpp`, `tests/audit_partial_data_test.cpp`. `remove_npcs` checks its class at load; the robofac intercom migration marks its two gone classes `"obsolete_class": true`, which is itself an error on a class that exists |
 | MGEN-B04 | fixed | `30fae9f2` | `tests/audit_mapgen_test.cpp` |
 | MGEN-B05 | fixed | `9ff01839`, `359d63d0`, `737dcfd6` | `tests/audit_mapgen_test.cpp` |
-| MGEN-B06 | partial | `d34e62ee` | `tests/audit_mapgen_test.cpp`. Still open: the consistency check between variable-weight mapgens and their predecessors (`road_nesw_manhole` needs its own data fix first) |
+| MGEN-B06 | fixed | `d34e62ee`, PR D | `tests/audit_mapgen_test.cpp`, `tests/audit_partial_data_test.cpp`. The predecessor check covers variable-weight mapgens. `road_nesw_manhole` gets `REQUIRES_PREDECESSOR`, and a road needing a predecessor placed over another such road takes over its predecessor (as a road of the same type did), so the manhole doesn't generate the road under it twice. Aftershock's bridge and bridgehead get the flag vanilla's have (vanilla's bridge mapgens, weight 0 there, expect one) |
 | MGEN-B07 | fixed | `38d80875`, `6755a3ea` | `tests/audit_mapgen_test.cpp` |
 | OMAP-B01 | fixed in working tree | `5322035b` + follow-up | `tests/audit_overmap_worldgen_test.cpp` and `tests/audit_worldgen_correctness_test.cpp`. Non-root mutable pieces now honor unexplored-only placement; see [scope](correctness-fixes.md). |
-| OMAP-B02 | partial | `e1f926a7` | `tests/audit_overmap_worldgen_test.cpp`. Still open: generating overmaps to find a mission target that does not exist yet (too costly) |
+| OMAP-B02 | fixed | `e1f926a7`, PR D | `tests/audit_overmap_worldgen_test.cpp`, `tests/audit_partial_data_test.cpp`. A special search allowed to make overmaps (the mission target retry) makes the missing overmaps next to the origin's, nearest first and only those within range (8 at most), when no existing one holds the special; `find_all` (random targets) too. A match on existing overmaps still makes none |
 | OMAP-B03 | fixed | `ab91d69d` | `tests/audit_overmap_worldgen_test.cpp` |
 | OMAP-B04 | fixed | `1d3f3350`, `3d7bce37` | `tests/audit_overmap_worldgen_test.cpp` |
 | OMAP-B05 | fixed | `75c6455b` | `tests/audit_overmap_worldgen_test.cpp` |
@@ -355,11 +355,11 @@ Bug sweep:
 | ITEM-B09 | fixed | `755dc3f8`, `3aba34c5` | `tests/audit_items_sweep_test.cpp` |
 | IINF-B03 | fixed | `032ba713` | `tests/audit_items_sweep_test.cpp` |
 | IINF-B04 | fixed | `fc6dbacb` | `tests/audit_items_sweep_test.cpp` |
-| IINF-B05 | partial | `459fe6a2` | `tests/audit_items_sweep_test.cpp`. Still open: filtering the summed `ammo_remaining()` by ammo type |
+| IINF-B05 | fixed | `459fe6a2`, PR D | `tests/audit_items_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. `is_reloadable()` reads the pocket itself (`459fe6a2`). The suggested ammo-type filter on the summed `ammo_remaining()` is not done, on purpose: the multimag design counts every well (`multimag_integral_pocket_skips_casings` pins it), and `ammo_remaining_in_pocket()` gives a per-type count. The PR D test pins both |
 | HLTH-B02 | fixed | `dd7947b4` | `tests/audit_health_test.cpp` |
 | HLTH-B03 | fixed | `69cc6806` | `tests/audit_health_test.cpp` |
 | HLTH-B04 | fixed | `56649dbb` | `tests/audit_health_test.cpp` |
-| HLTH-B05 | partial | `7dbca179`, `87629287` | `tests/audit_health_test.cpp`. Still open: clamping a defined chance to at least 1 (vanilla effects use negative chances to mean "never") |
+| HLTH-B05 | fixed | `7dbca179`, `87629287`, PR D | `tests/audit_health_test.cpp`, `tests/audit_partial_data_test.cpp`. A chance an effect gives works as written: 0 or less never fires, a positive one is at least 1; only a chance left out fires every time (documented). Changes TropiCataclysm's termite glue pain at intensity 68-74 (normal) and 64 (reduced) from every turn to never, as it already was above that, and vanilla fungus and Deadly Bites' zombie virus at intensity 4 (reduced) from never to 1 in 10015 |
 | HLTH-B06 | fixed | `a6bbbcaa` | `tests/audit_health_test.cpp` |
 | HLTH-B07 | fixed | `f83a3649` | `tests/audit_health_test.cpp` |
 | HLTH-B08 | fixed | `99a20b73`, `f8b2a332`, `cd38b39a` | `tests/audit_health_test.cpp` |
@@ -370,15 +370,15 @@ Modding features:
 
 | ID | Status | Commits | Regression test |
 |---|---|---|---|
-| ACT-J02 | partial | `06f6c4a4`, `13973129` | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading. Still open: the other activities that need a target |
+| ACT-J02 | fixed | `06f6c4a4`, `13973129`, PR D | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`, `tests/audit_partial_activities_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading, and now 38 more: items (eat, wield, drop, pick up, move, insert, first aid, gunmod removal, toolmod), places with an optional tool (pry, bolt cut, saw, torch, lockpick, dig, chop, fish, hack, crack a safe, clear rubble, harvest, plant, fertilize, pulp, build, tents, mop, forage, smash, fold a vehicle), recipe books, and pets and robots (`target_monster`: milk, shear, play, deactivate). The rest are listed in `doc/JSON/EFFECT_ON_CONDITION.md` with why they can't be started |
 | ACT-J03 | fixed | `2d596bc0`, `b53594ec`, PR B | `tests/audit_activities_crafting_test.cpp`. `character_finished_activity` and the completion/cancel EOCs get `outcome` (`completed`, `canceled`, `interrupted`); `u_assign_activity` takes a saved `context` for the activity's EOCs |
 | CRAFT-J02 | fixed | `e7222c8a`, PR B | `tests/audit_activities_crafting_test.cpp`. Recipe `start_eocs` and `fail_eocs`; events `character_crafts_item`, `character_disassembles_item` and `character_learns_recipe`. A failure has no event of its own; `fail_eocs` cover it per recipe |
-| TERR-J01 | partial | `33e6f99a`, `f93e4745` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: moving the hardcoded vanilla `post_special` functions to JSON |
-| CRAFT-J01 | partial | `b33ebcb7` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: inheriting inline requirements and extending or deleting component, tool and quality groups |
+| TERR-J01 | fixed | `33e6f99a`, `f93e4745`, PR D | `tests/audit_construction_recipe_camp_test.cpp`, `tests/audit_partial_loading_test.cpp`. Vanilla and the shipped mods no longer use the post_specials JSON can express: `done_appliance` (90 constructions) became the new `"place_appliance": true`; `done_window_curtains` became `byproducts` and a message; `done_extract_maybe_revert_to_dirt` became the shared `EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT`; the firewood and practice-target marks, ramps, wooden stairs and `remove_above` became `post_eocs` (`set_trap`, `set_terrain` on the tile above). Every post_special still loads for mods. The ones left in C++ (grave digging and burial, stairs dug into rock, vehicles, wiring, deconstruction, tree planks, roof and matching-down) do what JSON can't; doc/JSON/JSON_INFO.md says why for each |
+| CRAFT-J01 | fixed | `b33ebcb7`, PR D | `tests/audit_construction_recipe_camp_test.cpp`, `tests/audit_partial_loading_test.cpp`. A recipe with `copy-from` inherits its parent's inline `components`, `tools` and `qualities` (an abstract parent's too) unless it gives its own; `extend` adds groups and `delete` removes ids from every group. A copy of itself replaces the stored groups; other redefinitions of an id still keep the earlier groups they leave out, as before. No shipped recipe relied on the clearing: every copy-from child either restated each group its parent has or the old load check reported it |
 | CAMP-J01 | fixed | `bda202de` | `tests/audit_construction_recipe_camp_test.cpp` |
-| MUT-J02 | partial | `baea3c27` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: a refund channel for cancelled activations, and a menu pre-check before the activation message |
+| MUT-J02 | fixed | `baea3c27`, PR D | `tests/audit_mutation_bionic_activation_test.cpp`, `tests/audit_partial_eoc_test.cpp`. PR D: an activation that its EOC cancels (turns the mutation back off) gets its kcal, thirst, sleepiness, mana or stamina cost and its cooldown back (documented in MUTATIONS.md; no shipped mutation that cancels this way has a cost), and `bio_remote` shows its menu first: the activation message only comes once a function is picked, and cancelling refunds the power and runs no activation EOCs |
 | MUT-J03 | fixed | `eceb79dd`, `e3212448`, PR C | `tests/audit_mutation_bionic_activation_test.cpp`, `tests/audit_modding_gaps_test.cpp`. Math `bionic_count`, `has_active_bionic`, `bionic_charge`, `bionic_incapacitated`, `bionic_safe_fuel` (the last three assignable), `bionic_cost`, `bionic_power` (assignable), `bionic_power_max`; `u_activate_bionic`'s `ignore_cost`. Running costs (`react_cost`) are still paid |
-| NPC-J01 | partial | `90eb6d45` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: giving other toggled bionics an `npc_use` (a content decision), priorities, and NPC use of spell bionics |
+| NPC-J01 | fixed | `90eb6d45`, PR D | `tests/audit_mutation_bionic_activation_test.cpp`, `tests/audit_partial_eoc_test.cpp`. PR D: `npc_use` can be `{ "when": ..., "priority": ... }`, and NPCs switch on the bionics of one use highest priority first; a spell CBM with an `npc_use` (or one switched on by `npc_activate_bionic`) is cast by the NPC at the creature it fights, or at itself for a spell that can target its caster, and fails before anything is paid when it can't be cast. No shipped bionic got an `npc_use`: for the toggled NPC-usable ones without one (the stat enhancers, `bio_speed`, `bio_metabolics`, `bio_torsionratchet`, `bio_nl_blood_factory`, `bio_creeyncaggii`, Aftershock's `bio_cold_absorber` and flame and shock blades, Mind Over Matter's `bio_metabolics_fifth_sun`) and for `bio_taser`, it would change how followers and hostile NPCs fight and spend power, a balance call for that content |
 | CMBT-J01 | fixed | `7dfdc8e4`, PR B | `tests/audit_martial_art_events_test.cpp`. `ongethit_eocs` also run for projectile, shrapnel and explosion hits, with `hit_by`; technique `eocs` get the attack's context. Technique EOCs still can't change the hit's damage |
 | HLTH-J03 | partly fixed | `79ed5939`, PR C | `tests/audit_diet_rules_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. VEGAN is an `eat_condition` now and RUMINANT uses the `HERBIVORE_DIET` flag; the six allergy traits and the animal thresholds already were data. Still C++, because the fields can't express them: PICKYEATER, GOURMAND, SAPROPHAGE, SAPROVORE, EATDEAD, PROBOSCIS, M_DEPENDENT and the Mycus traits, PROJUNK (doc/JSON/MUTATIONS.md lists why) |
 | MAGIC-J02 | fixed | `5c4fb57a`, PR C | `tests/audit_spell_enchant_test.cpp`, `tests/audit_modding_gaps_test.cpp`. `spell_values` kinds `FAIL`, `DIFFICULTY`, `EXP` and `SOUND`; math `spell_fail`, `spell_casting_exp`, `spell_sound`, `spell_energy_cost`, `spell_cast_time`, `spell_exp_to_next_level` |
@@ -387,13 +387,13 @@ Modding features:
 | VINT-J02 | fixed | `f28f99e1`, `743f2e40` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
 | LOOP-J01 | fixed | `a17a8639`, `ccfba742`, `374ce76a` | `tests/audit_weather_eoc_test.cpp` |
 | MAP-J01 | fixed | `210feefe`, `85598110`, `f4d64d6b`, PR B | `tests/audit_bash_eoc_test.cpp`. Every bash has a `cause` (`smash`, `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, `other`), and destroying terrain or furniture sends `tile_destroyed`. `character_smashes_tile` is unchanged: still sent before the bash, without its outcome |
-| MONAI-J01 | partial | `e08fb87c`, `54d15f8c`, `530d442b` | `tests/audit_monster_eoc_test.cpp`. Still open: forcing a monster's target or destination (the monster AI replaces both every turn) |
+| MONAI-J01 | fixed | `e08fb87c`, `54d15f8c`, `530d442b`, PR D | `tests/audit_monster_eoc_test.cpp`, `tests/audit_partial_eoc_test.cpp`. PR D adds `u_set_monster_destination` (with a `range`), `u_set_monster_target` (the creature at a location) and `u_clear_monster_goal`, with an optional `duration`. The goal is saved with the monster, and `monster::plan()` follows it instead of making its own plans until the destination is reached, the time is up or the target is gone |
 | INV-J02 | fixed | `ca101f02`, `0dcb820a` | `tests/audit_mod_overrides_test.cpp` |
 | HLTH-J02 | fixed | `c47dbf59`, `58e3fada`, PR C | `tests/audit_mod_overrides_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. The resist, remove and block lists are checked at load, after fixing the 16 stale ids shipped data had (core: cureall, rat_bite_fever, smoke_eyes, the star vampire effects; Magiclysm, MindOverMatter, Xedra Evolved and Aftershock) |
-| NPC-J02 | partial | `92f0de07` | `tests/audit_mod_overrides_test.cpp`. Still open: moving NPC templates and factions onto `generic_factory`, and `extend`/`delete` on their lists |
+| NPC-J02 | fixed | `92f0de07`, PR D | `tests/audit_mod_overrides_test.cpp`, `tests/audit_partial_loading_test.cpp`. NPC templates load through `generic_factory` (the template no longer holds an `npc`, which can't be copied, but the fields it gives one). Faction templates do too, each in a factory entry: a `faction_template` is the base of the saved `faction` and its id is the live faction's id. Both get abstracts and `copy-from` of an object defined later; `mission_offered`, `death_eocs`, `price_rules`, `epilogues` and `relations` take `extend` and `delete` |
 | MONDT-J01 | fixed | `eb828cdb`, PR C | `tests/audit_mod_validation_test.cpp`, `tests/audit_modding_gaps_test.cpp`. Group entry `spawn_data` takes `effects`, `variables` and `faction` (and mapgen's `patrol`, which nothing applied before); a mapgen group adds its own spawn data on top of the entry's instead of replacing it; a pending spawn keeps its spawn data in a save; entry conditions get `loc`, the spawn location, for mapgen spawns. Hordes and overmap spawns still ignore spawn_data |
-| MAGIC-J03 | partial | `9c38b68a`, `e15db0f0`, `12c7974f` | `tests/audit_mod_validation_test.cpp`. Still open: enchantment and terrain-transform consistency checks (MAGIC-J06) |
-| USE-J01 | partial | `9ee18e2d`, `4cbf0b89` | `tests/audit_mod_validation_test.cpp`. Still open: `_method` and `_item_pos` context values (they need USE-J02, several use actions per item) |
+| MAGIC-J03 | fixed | `9c38b68a`, `e15db0f0`, `12c7974f`, PR D | `tests/audit_mod_validation_test.cpp`, `tests/audit_partial_data_test.cpp`. Adds `ter_furn_transform` checks (every id, terrain and furniture flags nothing has, trap json flags) and enchantment checks (mutations, effects, emitter, skills, body parts, damage types, spells), both registered. Data fixed: the vitrified farm's doll and bookcase transforms (furniture listed as terrain, now work), dead `FLOWER`/`GRAZEABLE`/furniture `WALL` flags and terrain ids among furniture (vanilla, Magiclysm, Xedra Evolved, XedraWood), XedraWood's Magiclysm-only plants, Xedra's fungicide (`t_dirt`, Magiclysm's barren dirt through mod_interactions), Mind Over Matter's unused transform to undefined furniture, and typos `head`→`heat` (Mind Over Matter), `pierce`→`stab` (Aftershock), `computers`→`computer` and the revenant's `BLEED_IMMUNE` given as a mutation (now a flag; Xedra Evolved). Relic passive enchantments (not in the factory) are still unchecked |
+| USE-J01 | fixed | `9ee18e2d`, `4cbf0b89`, PR D | `tests/audit_mod_validation_test.cpp`, `tests/audit_partial_eoc_test.cpp`. PR D adds the `_method` (the action's key among the item's use actions, as the use menu and `u_activate` name it) and `_item_pos` (where the item is: its carrier's tile when carried) context values. Items still have one use action of each type (USE-J02 is open), so `_method` is the action type, `effect_on_conditions`, until use actions get ids |
 
 **Gameplay changes from the third round:**
 
@@ -451,7 +451,7 @@ For modders, everything is documented in `doc/JSON/EFFECT_ON_CONDITION.md` and `
 
   The walk is saved with the character. An NPC walks it through the existing "player order" node of its decision tree, so a fight or an urgent need still comes first. `u_cancel_walk` ends a walk. `u_is_walking_to` reads one.
 - **Items.** `u_pickup_item`, `u_wield_item`, `u_wear_item` and `u_drop_item` act on the item talker, optionally walking to it first (`"walk": true`). The item talker follows the item, so "pick up, then wield" works in one EOC. Taking someone else's item counts as theft unless `allow_theft` is false.
-- **Activities with a target** (ACT-J02). `u_assign_activity` takes `target_item`, `target_loc`, `recipe` and `butcher_type` for reading, butchery, disassembly, crafting (new or in progress), wearing, unloading and reloading. `true_eocs`/`false_eocs` now work with every activity.
+- **Activities with a target** (ACT-J02). `u_assign_activity` takes `target_item`, `target_loc`, `target_monster`, `recipe` and `butcher_type` for reading, butchery, disassembly, crafting (new or in progress), wearing, unloading and reloading, and for 38 more activities on items, places and pets. `true_eocs`/`false_eocs` now work with every activity.
 - **Examine.** `u_examine` / `npc_examine` operate an adjacent tile on the same level:
   - Doors, gates and hatches open or close.
   - The avatar otherwise gets the normal examine.
@@ -464,7 +464,7 @@ For modders, everything is documented in `doc/JSON/EFFECT_ON_CONDITION.md` and `
 |---|---|---|---|
 | NPC-B17 | fixed | `4bfe5f91`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
 | NPC-B14 | fixed | `b537b04e`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
-| ACT-J02 | partial | see the third-round table above | `tests/eoc_errands_activity_test.cpp` |
+| ACT-J02 | fixed | see the third-round table above | `tests/eoc_errands_activity_test.cpp`, `tests/audit_partial_activities_test.cpp` |
 
 Gameplay changes players will notice:
 - **"Move there!" orders** (NPC-B14):
@@ -490,7 +490,7 @@ With this batch the full suite passes, 2656 of 2656 test cases with seed 4242 an
 | EVT-P01 | fixed | `209d2263`, `b3fb580f` | `tests/audit_perf_load_test.cpp`; benchmark `stats_overmap_special_history` |
 | MAP-P03 | fixed | `334b707a`, `74477812` | `tests/audit_perf_load_test.cpp`; benchmarks `mapbuffer_save_uniform`, `mapbuffer_lookup_missing` |
 | INV-P01 | fixed | `baed3534`, `e0f68119`, `0555b3a8` | `tests/audit_perf_load_test.cpp`; benchmark `item_nested_deserialize` |
-| INV-P02 | partial | `445dec4e`, `380292c3` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `inventory_queries`. Still open: the header-level steps (a bitmask pocket set in the visit APIs, `get_pseudo_items()` by reference, a public raw visitor). After this change they would gain little, and they need a near-full rebuild |
+| INV-P02 | fixed | `445dec4e`, `380292c3`, PR D | `tests/audit_perf_world_inventory_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`; benchmark `inventory_queries`. The visit APIs and `item_pocket::is_type` take a `pocket_type_set` bitmask, built from the same braced lists, so callers are unchanged; `get_pseudo_items()` returns the cached list by reference; `visit_items_raw()` is the public raw visitor, which `has_item` and `has_item_with` use |
 | MGEN-P01 | fixed | `fdaaf2e6`, `8f06ed83` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `phase_change_lake_thawed`, `phase_change_lake_frozen` |
 | OMAP-P02 | fixed | `e30b243a`, `5e472856` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `omt_find_closest_miss`, `omt_find_npc_goals` |
 | ACT-P03 | fixed | `fbabc40e` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `zone_job_missing_tool` |
@@ -594,13 +594,13 @@ For modders (documented in `doc/JSON/EFFECT_ON_CONDITION.md`, `NPCs.md`, `NPC_BE
 |---|---|---|---|
 | NPC-J04 | fixed | `c1e9b5fa`, `6ba4f89e`, `3b3f2823` | `tests/npc_ai_events_test.cpp` |
 | NPC-J05 | fixed | `e58bc280` (section H), `e0be4807`, `dbaf7c8b` | `tests/npc_ai_eoc_test.cpp` |
-| NPC-J10 | partial | `28437d7e` | `tests/npc_ai_tuning_test.cpp`. Still open: custom needs (the need set is a fixed enum), and the embark urgency, noise-wake window and temperature predicate |
+| NPC-J10 | fixed | `28437d7e`, PR D | `tests/npc_ai_tuning_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`. `ai_tuning` also sets `urgency.embark` and `urgency.embark_seated` (0.6 and 0.15), `cold_body_temperature` (31 C) and `sleep.restless_window` (30 minutes); vanilla classes keep these. The new type `npc_need` adds a need: an urgency (a number, a variable or math), the urgency it acts from, a condition and a JSON goal's hooks. Each becomes a leaf under `npc_needs` (or a parent it names) next to the built-in needs, which stay as they were, and `npc_need_urgency()` reads it |
 | EOC-B06 to EOC-B15 | fixed | `8c0da604` to `ff0b0985`, follow-ups `dae7c28f` to `db21dfb9` | `tests/audit_eoc_dialogue_test.cpp` (EOC-B09's UI path and EOC-B10's hotkey read are checked by reading) |
 | MATH-B03 to MATH-B11, LOOP-B10 | fixed | `eb2fd836` to `94250384`, follow-ups `242c90f2` to `a4106430` | `tests/audit_math_talkers_test.cpp` |
 | MATH-B12 | already fixed | by LOOP-J01 (`a17a8639`, `e1b3f7ef`) | existing `loop-j01_eoc_weather_overrides_hold_until_they_run_out` |
 | EVT-B03 to EVT-B10 | fixed | `6c203ba4` to `cbe83093`, follow-ups `3218e2c6`, `8c7b137f`, `5cc75dd7`, `94ea0bb4` | `tests/audit_events_sweep_test.cpp` (EVT-B06 needs a full game setup and is checked by reading) |
 | DATA-B04, DATA-B06, DATA-B07, DATA-B08 | fixed | `ef1af991`, `70395ba2`, `5e336317`, `42771b3b`, follow-ups `28d1c58b`, `bbc9087d`, `423cafa9`, `bb3e39f4` | `tests/audit_data_sweep_test.cpp` |
-| DATA-B05 | partial | `108c2b82` | `tests/audit_data_sweep_test.cpp`. Still open: mutation types and the charge/temperature removal blacklists still carry over between worlds in one session (the fix needs widely included headers; no shipped content shows it) |
+| DATA-B05 | fixed | `108c2b82`, PR D | `tests/audit_data_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. Unloading data clears the mutation types and both removal blacklists |
 | DATA-B09 | fixed | `3cbe8ccc`, `f67fe1f3` | `tests/audit_data_sweep_test.cpp` |
 | LOOP-B05, LOOP-B12 | already fixed | by EVT-B01 (`90c08ef9`) and MAP-B03 | existing tests |
 | LOOP-B06 to LOOP-B09, LOOP-B13 to LOOP-B15 | fixed | `12247a06` to `d27488aa`, follow-ups `858c62d4` to `e37c37f7` | `tests/audit_loop_sweep_test.cpp` (LOOP-B07 is a menu and is checked by reading) |
@@ -654,15 +654,15 @@ For modders, mod settings are documented in the new `doc/JSON/MOD_SETTINGS.md`:
 | INV-B02 to INV-B06, INV-B08, INV-B09 | fixed | `33fcfd60` to `a13640bc`, follow-ups `f787c1b0`, `402e7eb6`, `98a55f2b` | `tests/audit_containers_inventory_test.cpp` |
 | INV-B07 | already fixed | — | an item's quality includes its contents, so a pipe in a backpack counts |
 | USE-B05 to USE-B07, USE-B09 to USE-B11 | fixed | `b2add1ad` to `2ac75c2c`, follow-ups `873961e2`, `a6d42c22`, `a615c6bd`, `03455f41` | `tests/audit_item_use_actions_test.cpp` (USE-B05 is a menu; checked by reading) |
-| USE-B08 | partial | `a11ea763` | Still open: `"consume": true` removes a plain item only when it is single-use (always removing it would consume Sky Island's warp beacon twice) |
+| USE-B08 | fixed | `a11ea763`, PR D | `tests/audit_partial_gameplay_test.cpp`. `"consume": true` (or `_charges` above 0) uses up an item with no charges to spend: the item, carried or where it lies, or one of a stack counted by charges. The double consumption came from items whose EOC already removes them and that set `consume` anyway, while it did nothing: Sky Island's skyward beacon (removed when the warp completes, after the activity and the query) and flotation stone, the core serums, contact lenses and saline kits, Mind Over Matter's matrix crystals and Xedra Evolved's revenant effigy. They no longer set it, so nothing changes for them. Mind Over Matter's black (drained) crystal relied on `consume` alone and is now used up when gazed into |
 | CHAR-B05 to CHAR-B08, CHAR-B10, HLTH-B11 | fixed | `e92cd5d2` to `b25844ab`, follow-ups `b721a3c3`, `f1be6837`, `4bf70127` | `tests/audit_char_sweep_test.cpp` |
 | CHAR-B09 | already fixed | by the grappling port; follow-up `0b3b3d74` covers a grabber directly above or below | `grapple_monster_grab_at_range_is_not_an_orphan`, `tests/audit_char_sweep_test.cpp` |
 | PROG-B04 to PROG-B11 | fixed | `a206241a` to `ab86dc0b`, follow-ups `0ce1d2ae`, `0bf913d6` | `tests/audit_progression_sweep_test.cpp` (PROG-B08's popups checked by reading) |
 | MUT-B06 to MUT-B09, MUT-B11, MUT-B12 | fixed | `6a14aab0` to `83e9c0b9`, follow-ups `178141ee` to `e11c1867` | `tests/audit_mutations_bionics_sweep_test.cpp` (MUT-B12 is a menu; checked by reading) |
-| MUT-B10 | partial | `cdc146af`, `aa81f2c6`, `c8896f6f` | Still open: a spell known before a CBM raised it keeps the raised level (needs saved per-bionic XP) |
+| MUT-B10 | fixed | `cdc146af`, `aa81f2c6`, `c8896f6f`, PR D | `tests/audit_mutations_bionics_sweep_test.cpp`, `tests/audit_partial_gameplay_test.cpp`. Each CBM saves the experience it added to raise a spell the character already knew (`raised_spell_xp` in the bionic's save data). Removing it takes back exactly that, keeping experience gained since; if another installed CBM teaches the spell at a higher level, the spell stays there and that CBM takes over the record. An upgrade takes over the record for the spells it also teaches. CBMs from older saves have no record and leave the raised level, as before |
 | CMBT-B04, CMBT-B06 to CMBT-B12, CMBT-B14 to CMBT-B17 | fixed | `0b68fd71` to `ea35a4ad`, `e018a3ae`, follow-ups `08d4845b` to `c0c49dff` | `tests/audit_combat_test.cpp` |
 | CMBT-B05 | already fixed | by the grappling port (`165f6fc8`) | `knockback_follow_steps_into_the_tile` |
-| CMBT-B13 | partial | `4f35c8ee` | Still open: guns and thrown weapons never fire `hit_you_effect` (the docs only promise melee) |
+| CMBT-B13 | fixed | `4f35c8ee`, PR D | `tests/audit_combat_test.cpp`, `tests/audit_partial_gameplay_test.cpp`. A character's gunshots (once a shot for each creature hit, however many pellets) and thrown hits cast its enchantments' `hit_you_effect` too, not against hallucinations; EOC spells get the kind of hit as the context value `hit_type`. Each spell can be limited with `"hit_types"` (`melee`, `ranged`, `thrown`; default all), and the 26 shipped spells that are effects of contact are marked melee-only: melee weapons' WIELD enchantments, Aftershock's melee optimization and electric bionic blade, Xedra's electric fist, claws, auras, burning weapon and erosion, and powers described as melee or strikes (Mind Over Matter, Magiclysm's mana siphon and Ice Elemental, Xedra's sylph and chronomancer). Now also on ranged and thrown hits, within their spell's range: Blinding Radiance and Blue Elixir (Mind Over Matter), the Blood, Glacier, Void and Wither Mage attunements and Electric Waves (Magiclysm). Monsters still cast theirs on melee hits only. A weapon from an older save carries its saved inline enchantment, without the melee-only mark, until a game is loaded with it wielded or worn |
 
 The owner signed off on the balance changes: CMBT-B04, CMBT-B12, CMBT-B16 and the weak-point defaults.
 

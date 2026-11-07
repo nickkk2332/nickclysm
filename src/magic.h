@@ -138,6 +138,20 @@ struct enum_traits<spell_flag> {
     static constexpr spell_flag last = spell_flag::LAST;
 };
 
+// The kinds of hit that cast an enchantment's hit_you_effect.
+enum class hit_type : int {
+    melee,
+    // guns, bows and other fired weapons
+    ranged,
+    thrown,
+    last
+};
+
+template<>
+struct enum_traits<hit_type> {
+    static constexpr hit_type last = hit_type::last;
+};
+
 struct fake_spell {
     spell_id id;
 
@@ -162,6 +176,11 @@ struct fake_spell {
     // a message when the enchantment is triggered and is on npc
     translation npc_trigger_message; // NOLINT(cata-serialize)
 
+    // every kind of hit
+    static constexpr enum_bitset<hit_type> hit_types_default{ ~0ULL };
+    // the hits that cast it, as an enchantment's hit_you_effect
+    enum_bitset<hit_type> hit_types = hit_types_default;
+
     fake_spell() = default;
     explicit fake_spell( const spell_id &sp_id, bool hit_self = false,
                          const std::optional<int> &max_level = std::nullopt ) : id( sp_id ),
@@ -174,7 +193,8 @@ struct fake_spell {
                self == rhs.self &&
                trigger_once_in == rhs.trigger_once_in &&
                trigger_message == rhs.trigger_message &&
-               npc_trigger_message == rhs.npc_trigger_message;
+               npc_trigger_message == rhs.npc_trigger_message &&
+               hit_types == rhs.hit_types;
     }
 
     // gets the spell with an additional override for minimum level (default 0)
@@ -705,6 +725,8 @@ class spell
         int heal( const tripoint_bub_ms &target, Creature &caster ) const;
 
         // casts the spell effect from an item.  less functionality compared to creature casting.
+        // The casts without a caster below build one fake caster at the target, which the spell
+        // and every spell it casts in turn share.
         void cast_spell_effect( const tripoint_bub_ms &target ) const;
         // casts the spell effect. returns true if successful
         void cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const;
@@ -716,6 +738,8 @@ class spell
         void cast_extra_spell_effects( const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_extra_spell_effects( Creature &source, const tripoint_bub_ms &target ) const;
+        // how many fake casters the casts without a caster have built so far (for tests)
+        static int casterless_casters_built();
         // uses up the components in @guy's inventory
         void use_components( Character &guy ) const;
         // checks if the spell's component is in the @guy's hand

@@ -1,8 +1,15 @@
 #include "magic_enchantment.h"
 
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_utility.h"
@@ -17,12 +24,15 @@
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "item.h"
 #include "json.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "mod_tracker.h"
 #include "monster.h"
 #include "rng.h"
+#include "spell_cast_context.h"
 #include "talker.h"
 #include "units.h"
 #include "vehicle.h"
@@ -387,6 +397,89 @@ void enchantment::check_spell_values() const
             debugmsg( "enchantment %s: spell_values names unknown damage_type %s", id.str(),
                       f.damage_type->str() );
         }
+    }
+}
+
+void enchantment::check_consistency()
+{
+    spell_factory.check();
+}
+
+template<typename K, typename V>
+static void check_enchantment_keys( const enchantment_id &ench, const std::string_view what,
+                                    const std::map<K, V> &values,
+                                    const std::function<bool( const K & )> &is_valid )
+{
+    for( const std::pair<const K, V> &entry : values ) {
+        if( !is_valid( entry.first ) ) {
+            debugmsg( R"(enchantment %s has unknown %s "%s")", ench.str(), what, entry.first.str() );
+        }
+    }
+}
+
+void enchantment::check() const
+{
+    for( const trait_id &mut : mutations ) {
+        if( !mut.is_valid() ) {
+            debugmsg( R"(enchantment %s gives unknown mutation "%s")", id.str(), mut.str() );
+        }
+    }
+    if( emitter && !emitter->is_valid() ) {
+        debugmsg( R"(enchantment %s has unknown emitter "%s")", id.str(), emitter->str() );
+    }
+    check_enchantment_keys<efftype_id, int>( id, "ench_effects effect", ench_effects,
+    []( const efftype_id & eff ) {
+        return eff.is_valid();
+    } );
+    const std::function<bool( const skill_id & )> skill_valid = []( const skill_id & sk ) {
+        return sk.is_valid();
+    };
+    check_enchantment_keys( id, "skill", skill_values_add, skill_valid );
+    check_enchantment_keys( id, "skill", skill_values_multiply, skill_valid );
+    // "all" stands for every body part
+    const std::function<bool( const bodypart_str_id & )> part_valid = [](
+    const bodypart_str_id & bp ) {
+        return bp == body_part_all || bp.is_valid();
+    };
+    check_enchantment_keys( id, "encumbrance_modifier part", encumbrance_values_add, part_valid );
+    check_enchantment_keys( id, "encumbrance_modifier part", encumbrance_values_multiply,
+                            part_valid );
+    const std::function<bool( const damage_type_id & )> damage_valid = [](
+    const damage_type_id & dt ) {
+        return dt.is_valid();
+    };
+    check_enchantment_keys( id, "melee_damage_bonus type", damage_values_add, damage_valid );
+    check_enchantment_keys( id, "melee_damage_bonus type", damage_values_multiply, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod type", armor_values_add, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod type", armor_values_multiply, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod_post_absorbed type", extra_damage_add,
+                            damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod_post_absorbed type", extra_damage_multiply,
+                            damage_valid );
+    for( const bodypart_changes &change : modified_bodyparts ) {
+        for( const bodypart_str_id &bp : {
+                 change.gain, change.lose
+             } ) {
+            if( !bp.is_empty() && !bp.is_valid() ) {
+                debugmsg( R"(enchantment %s has unknown modified_bodyparts body part "%s")", id.str(),
+                          bp.str() );
+            }
+        }
+    }
+    const auto check_spells = [this]( const std::string_view what,
+    const std::vector<fake_spell> &spells ) {
+        for( const fake_spell &sp : spells ) {
+            if( !sp.id.is_valid() ) {
+                debugmsg( R"(enchantment %s has unknown %s spell "%s")", id.str(), what,
+                          sp.id.str() );
+            }
+        }
+    };
+    check_spells( "hit_me_effect", hit_me_effect );
+    check_spells( "hit_you_effect", hit_you_effect );
+    for( const std::pair<const time_duration, std::vector<fake_spell>> &activation :
+         intermittent_activation ) {
+        check_spells( "intermittent_activation", activation.second );
     }
 }
 
@@ -1542,7 +1635,9 @@ void enchant_cache::activate_passive( Character &guy ) const
 void enchant_cache::cast_hit_you( Creature &caster, const Creature &target ) const
 {
     for( const fake_spell &sp : hit_you_effect ) {
-        cast_enchantment_spell( caster, &target, sp );
+        if( sp.hit_types[hit_type::melee] ) {
+            cast_enchantment_spell( caster, &target, sp, hit_type::melee );
+        }
     }
 }
 
@@ -1553,10 +1648,13 @@ void enchant_cache::cast_hit_me( Creature &caster, const Creature *target ) cons
     }
 }
 
-void enchant_cache::cast_hit_you( Character &caster, const Creature &target ) const
+void enchant_cache::cast_hit_you( Character &caster, const Creature &target,
+                                  const hit_type hit ) const
 {
     for( const fake_spell &sp : hit_you_effect ) {
-        cast_enchantment_spell( caster, &target, sp );
+        if( sp.hit_types[hit] ) {
+            cast_enchantment_spell( caster, &target, sp, hit );
+        }
     }
 }
 
@@ -1568,22 +1666,28 @@ void enchant_cache::cast_hit_me( Character &caster, const Creature *target ) con
 }
 
 void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *target,
-        const fake_spell &sp ) const
+        const fake_spell &sp, const std::optional<hit_type> hit ) const
 {
     // check the chances
     if( !one_in( sp.trigger_once_in ) ) {
         return;
     }
 
+    global_variables::impl_t context;
+    if( hit ) {
+        context.emplace( "hit_type", diag_value( io::enum_to_string( *hit ) ) );
+    }
     if( sp.self ) {
         caster.add_msg_player_or_npc( m_good,
                                       sp.trigger_message,
                                       sp.npc_trigger_message,
                                       caster.get_name() );
-        sp.get_spell( caster, sp.level ).cast_all_effects( caster, caster.pos_bub() );
+        const spell spell_lvl = sp.get_spell( caster, sp.level );
+        const spell_cast_context scope( spell_lvl, context );
+        spell_lvl.cast_all_effects( caster, caster.pos_bub() );
     } else if( target != nullptr ) {
         const Creature &trg_crtr = *target;
-        const spell &spell_lvl = sp.get_spell( caster, sp.level );
+        const spell spell_lvl = sp.get_spell( caster, sp.level );
         if( !spell_lvl.is_valid_target( caster, trg_crtr.pos_bub() ) ||
             !spell_lvl.is_target_in_range( caster, trg_crtr.pos_bub() ) ) {
             return;
@@ -1594,6 +1698,7 @@ void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *ta
                                       sp.npc_trigger_message,
                                       caster.get_name(), trg_crtr.disp_name() );
 
+        const spell_cast_context scope( spell_lvl, context );
         spell_lvl.cast_all_effects( caster, trg_crtr.pos_bub() );
     }
 }

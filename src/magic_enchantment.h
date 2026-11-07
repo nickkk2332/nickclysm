@@ -213,7 +213,12 @@ class enchantment
 
         static void load_enchantment( const JsonObject &jo, const std::string &src );
         static void finalize_all();
+        // Checks every enchantment, inline ones too (a mutation's, an effect's, ...)
+        static void check_consistency();
         static void reset();
+        // Reports the mutations, effects, spells, emitter, skills, body parts and damage types
+        // it names that don't exist
+        void check() const;
         void load( const JsonObject &jo, std::string_view src = {},
                    const std::optional<std::string> &inline_id = std::nullopt, bool is_child = false );
 
@@ -405,14 +410,17 @@ class enchant_cache : public enchantment
         bool add( const enchant_cache &rhs );
         // checks if the enchantments have the same active_conditions
         bool stacks_with( const enchantment &rhs ) const;
-        // performs cooldown and distance checks before casting enchantment spells
+        // performs cooldown and distance checks before casting enchantment spells; a hit_you_effect
+        // spell gets the kind of hit, which its EOCs read as the context value "hit_type"
         void cast_enchantment_spell( Creature &caster, const Creature *target,
-                                     const fake_spell &sp ) const;
+                                     const fake_spell &sp, std::optional<hit_type> hit = std::nullopt ) const;
         //Clears all the maps and vectors in the cache.
         void clear();
 
-        // casts all the hit_you_effects on the target
-        void cast_hit_you( Character &caster, const Creature &target ) const;
+        // casts the hit_you_effects for this kind of hit (see fake_spell::hit_types) on the target
+        void cast_hit_you( Character &caster, const Creature &target,
+                           hit_type hit = hit_type::melee ) const;
+        // monsters cast them on their melee hits
         void cast_hit_you( Creature &caster, const Creature &target ) const;
         // casts all the hit_me_effects on self or a target depending on the enchantment definition
         void cast_hit_me( Character &caster, const Creature *target ) const;

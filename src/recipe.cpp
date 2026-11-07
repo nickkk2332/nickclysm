@@ -436,6 +436,19 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
                                     "step recipes must not have root-level '%s'", field ) );
             }
         }
+        // nor add them to the root by extending what they inherit (CRAFT-J01)
+        if( jo.has_object( "extend" ) ) {
+            JsonObject jext = jo.get_object( "extend" );
+            jext.allow_omitted_members();
+            for( const char *field : {
+                     "tools", "qualities"
+                 } ) {
+                if( jext.has_member( field ) ) {
+                    jo.throw_error_at( "extend", string_format(
+                                           "step recipes must not extend root-level '%s'", field ) );
+                }
+            }
+        }
     }
 
     // Clear state for finalize rebuild.
@@ -584,18 +597,12 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "using", reqs_external,
               weighted_string_id_reader<requirement_id, int> { 1 } );
 
-    bool inherited_tools = false;
-    bool inherited_qualities = false;
-    bool inherited_components = false;
-
+    // A copy starts from its parent's inline components, tools and qualities (CRAFT-J01);
+    // a step recipe that gives its own steps has already dropped them
+    requirement_data inherited_reqs;
     if( !reqs_internal.empty() ) {
-        requirement_data r_data = reqs_internal.front().first.obj();
-        inherited_tools = !r_data.get_tools().empty();
-        inherited_qualities = !r_data.get_qualities().empty();
-        inherited_components = !r_data.get_components().empty();
+        inherited_reqs = reqs_internal.front().first.obj();
     }
-
-    // inline requirements are always replaced (cannot be inherited)
     reqs_internal.clear();
 
     // These cannot be inherited
@@ -725,18 +732,9 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         jo.throw_error_at( "type", "unknown recipe type" );
     }
 
-    // Inline requirements are read whole and not inherited, so extend and delete can't apply
-    // to them; say so instead of dropping them
-    for( const char *member : {
-             "components", "tools", "qualities"
-         } ) {
-        warn_disabled_feature( jo, "extend", member, "restate the whole list instead" );
-        warn_disabled_feature( jo, "delete", member, "restate the whole list instead" );
-    }
+    // Inherited unless given, and a copy takes "extend" and "delete" for each of them
     const requirement_id req_id( "inline_" + type + "_" + id.str() );
-    // Step recipes legitimately have root-level components; suppress abstract
-    // debugmsg for them (tools/qualities are already caught by field validation).
-    requirement_data::load_requirement( jo, req_id, false, abstract && !effectively_step_recipe );
+    requirement_data::load_inline_requirement( jo, req_id, inherited_reqs, was_loaded );
     reqs_internal.emplace_back( req_id, 1 );
 
     // Parse recipe steps
@@ -750,22 +748,6 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         if( steps_.empty() ) {
             jo.throw_error( "steps array must not be empty" );
         }
-    }
-
-    if( !effectively_step_recipe ) {
-        if( inherited_tools && !jo.has_member( "tools" ) ) {
-            debugmsg( "Recipe %s inherits from recipe that has tools, but does not have any of its own.  "
-                      "This is probably an error.", id.str() );
-        }
-
-        if( inherited_qualities && !jo.has_member( "qualities" ) ) {
-            debugmsg( "Recipe %s inherits from recipe that has qualities, but does not have any of its own.  "
-                      "This is probably an error.", id.str() );
-        }
-    }
-    if( inherited_components && !jo.has_member( "components" ) ) {
-        debugmsg( "Recipe %s inherits from recipe that has components, but does not have any of its own.  "
-                  "This is probably an error.", id.str() );
     }
 }
 
@@ -800,7 +782,7 @@ void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, in
     // Load inline tools/qualities for this step
     const requirement_id step_req_id( "inline_recipe_" + recipe_name + "_step_"
                                       + std::to_string( step_index ) );
-    requirement_data::load_requirement( jo, step_req_id, false, false );
+    requirement_data::load_requirement( jo, step_req_id );
     reqs_internal.emplace_back( step_req_id, 1 );
 
     if( jo.has_member( "attention" ) ) {

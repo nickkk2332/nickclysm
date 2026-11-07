@@ -100,6 +100,7 @@ struct pick_info;
 } // namespace Pickup
 
 enum action_id : int;
+enum class hit_type : int;
 enum class magic_energy_type : int;
 enum class recipe_filter_flags : int;
 enum class steed_type : int;
@@ -1410,8 +1411,10 @@ class Character : public Creature, public visitable
         /** Handles special defenses from melee attack that hit us (source can be null) */
         void on_hit( map *here, Creature *source, bodypart_id bp_hit,
                      float difficulty = INT_MIN, dealt_projectile_attack const *proj = nullptr ) override;
-        // any side effects that might happen when the Character hits a Creature
+        // any side effects that might happen when the Character hits a Creature: its
+        // enchantments' hit_you_effect for this kind of hit (melee by default)
         void did_hit( Creature &target );
+        void did_hit( Creature &target, hit_type hit );
 
         /** Actually hurt the player, hurts a body_part directly, no armor reduction */
         void apply_damage( Creature *source, bodypart_id hurt, int dam,
@@ -1885,7 +1888,10 @@ class Character : public Creature, public visitable
         bool activate_bionic( bionic &bio, bool eff_only = false, bool *close_bionics_ui = nullptr,
                               bool ignore_cost = false );
         std::vector<bionic_id> get_bionics() const;
-        std::vector<const item *> get_pseudo_items() const;
+        // The pseudo items the installed bionics expose, cached until invalidate_pseudo_items().
+        // The reference stays valid until the next call after an invalidation, so don't hold it
+        // across code that can install, remove, activate or deactivate a bionic.
+        const std::vector<const item *> &get_pseudo_items() const;
         // Innate items a craft can draw: exposed pseudo items plus the hard-coded
         // digging pair.
         std::vector<item> crafting_pseudo_items() const;
@@ -4518,6 +4524,8 @@ class Character : public Creature, public visitable
             int moves;
             tripoint_bub_ms position;
             int radius;
+            // built with only what a clear path reaches
+            bool clear_path = true;
             // cache built earlier in the turn can't see a later acquire or release
             uint64_t reservation_generation = 0;
             pimpl<temp_crafting_inventory> crafting_inventory;

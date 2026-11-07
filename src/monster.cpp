@@ -1664,6 +1664,84 @@ void monster::wander_to( const tripoint_abs_ms &p, int f )
     wandf = f;
 }
 
+void monster::force_destination( const tripoint_abs_ms &p, int range, const time_point &until )
+{
+    forced_target = creature_ref();
+    forced_dest = p;
+    forced_dest_range = std::max( range, 0 );
+    forced_goal_until = until;
+    set_dest( p );
+}
+
+void monster::force_target( const Creature &target, const time_point &until )
+{
+    forced_dest = std::nullopt;
+    forced_dest_range = 0;
+    forced_target = creature_ref::bind( target );
+    forced_goal_until = until;
+    set_dest( target.pos_abs() );
+}
+
+void monster::clear_forced_goal()
+{
+    if( !has_forced_goal() ) {
+        return;
+    }
+    forced_dest = std::nullopt;
+    forced_dest_range = 0;
+    forced_target = creature_ref();
+    forced_goal_until = calendar::turn_max;
+    unset_dest();
+}
+
+bool monster::has_forced_goal() const
+{
+    return forced_dest.has_value() || forced_target.type != creature_ref::kind::none;
+}
+
+std::optional<tripoint_abs_ms> monster::get_forced_destination() const
+{
+    return forced_dest;
+}
+
+Creature *monster::get_forced_target() const
+{
+    if( forced_target.type == creature_ref::kind::none ) {
+        return nullptr;
+    }
+    Creature *target = forced_target.resolve();
+    return target == this ? nullptr : target;
+}
+
+bool monster::follow_forced_goal()
+{
+    if( !has_forced_goal() ) {
+        return false;
+    }
+    if( calendar::turn >= forced_goal_until ) {
+        clear_forced_goal();
+        return false;
+    }
+    if( forced_target.type != creature_ref::kind::none ) {
+        const Creature *target = get_forced_target();
+        if( target == nullptr ) {
+            clear_forced_goal();
+            return false;
+        }
+        set_dest( target->pos_abs() );
+        return true;
+    }
+    const tripoint_abs_ms at = pos_abs();
+    if( at.z() == forced_dest->z() &&
+        square_dist( at.xy(), forced_dest->xy() ) <= forced_dest_range ) {
+        // Got there
+        clear_forced_goal();
+        return false;
+    }
+    set_dest( *forced_dest );
+    return true;
+}
+
 Creature *monster::attack_target()
 {
     const map &here = get_map();

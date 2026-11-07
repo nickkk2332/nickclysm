@@ -96,6 +96,8 @@ struct bionic_data {
     translation activation_fail_message;
     /** When NPCs switch this bionic on (weapon CBMs are picked by their flags instead) */
     bionic_npc_use npc_use = bionic_npc_use::none;
+    /** NPCs switch on the bionics of one npc_use highest priority first */
+    int npc_use_priority = 0;
     /** bionic enchantments */
     std::vector<enchantment_id> enchantments;
     /** kown martial arts styles */
@@ -237,6 +239,12 @@ struct bionic {
         bool        auto_shutdown = true;
         /* An amount of time during which this bionic has been rendered inoperative. */
         time_duration        incapacitated_time;
+        /**
+         * Experience this bionic added to spells the character already knew, raising them to
+         * the level it teaches. Removing the bionic takes it back. Empty for bionics installed
+         * before this was recorded: removing those leaves the raised level.
+         */
+        std::map<spell_id, int> raised_spell_xp;
 
         bionic() : bionic( bionic_id( "bio_batteries" ), 'a', 0 ) { }
         bionic( bionic_id pid, char pinvlet, bionic_uid pbionic_uid,
@@ -312,5 +320,11 @@ int bionic_manip_cos( float adjusted_skill, int bionic_difficulty );
 
 std::vector<bionic_id> bionics_cancelling_trait( const std::vector<bionic_id> &bios,
         const trait_id &tid );
+
+namespace bionic_menus
+{
+/** In tests, where no menu can be shown: the bio_remote function picked (below 0 cancels). */
+extern std::function<int()> remote_test_choice;
+} // namespace bionic_menus
 
 #endif // CATA_SRC_BIONICS_H

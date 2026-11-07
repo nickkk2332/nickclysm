@@ -1294,5 +1294,9 @@ class effect_on_conditions_actor : public iuse_actor
         std::unique_ptr<iuse_actor> clone() const override;
         std::string get_name() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+        // "consume" (or "_charges") on an item with no charges uses up the item.
+        bool uses_up_item_without_charges() const override {
+            return true;
+        }
 };
 #endif // CATA_SRC_IUSE_ACTOR_H

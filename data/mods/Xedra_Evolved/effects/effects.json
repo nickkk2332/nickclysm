@@ -3021,7 +3021,10 @@
       {
         "condition": "u_has_weapon",
         "values": [ { "value": "LUMINATION", "add": 25 } ],
-        "hit_you_effect": [ { "id": "changeling_noble_burning_weapon_fire_damage" }, { "id": "changeling_noble_burning_weapon_anti_nether" } ]
+        "hit_you_effect": [
+          { "id": "changeling_noble_burning_weapon_fire_damage", "hit_types": [ "melee" ] },
+          { "id": "changeling_noble_burning_weapon_anti_nether", "hit_types": [ "melee" ] }
+        ]
       }
     ]
   },
@@ -3770,7 +3773,7 @@
     "rating": "good",
     "max_intensity": 1,
     "show_in_info": true,
-    "enchantments": [ { "hit_you_effect": [ { "id": "xedra_eater_erosion_attack" } ] } ]
+    "enchantments": [ { "hit_you_effect": [ { "id": "xedra_eater_erosion_attack", "hit_types": [ "melee" ] } ] } ]
   },
   {
     "type": "effect_type",
@@ -3808,7 +3811,7 @@
     "max_intensity": 1,
     "show_in_info": true,
     "enchantments": [
-      { "hit_you_effect": [ { "id": "xedra_chronomancer_destabilizing_strikes_attack" } ] },
+      { "hit_you_effect": [ { "id": "xedra_chronomancer_destabilizing_strikes_attack", "hit_types": [ "melee" ] } ] },
       {
         "values": [
           {

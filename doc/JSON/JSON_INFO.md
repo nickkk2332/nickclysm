@@ -1347,11 +1347,11 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `stat_bonus`                 | (_optional_) List of passive stat bonus. Stat are designated as follow: "DEX", "INT", "STR", "PER".
 | `activation_condition`       | (_optional_) Dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the CBM to activate, with the character as `u` and the context variable `this` (the bionic id).  Checked before any power is spent: when false, nothing happens except `activation_fail_message`.  Example: `"activation_condition": { "not": { "u_has_effect": "riding" } }`.
 | `activation_fail_message`    | (_optional_) Message shown when `activation_condition` is false, e.g. `"You cannot activate Time Dilation while mounted."` (default: none).
-| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.  They run after the activation has succeeded, so an activation that fails or is cancelled (no target picked, not enough power to fire, ...) runs none of them.
+| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.  They run after the activation has succeeded, so an activation that fails or is cancelled (no target picked, no function picked from `bio_remote`'s menu, not enough power to fire, ...) runs none of them.
 | `processed_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate each turn this CBM is active.  A passive CBM (one that can't be activated from the bionics menu) runs them every turn while it is installed, like a passive mutation.
 | `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.  All three lists get the context variable `this` (the bionic id), so one EOC can serve several CBMs; EOCs can read and switch a CBM's state with `u_has_active_bionic`, `u_activate_bionic` and `u_deactivate_bionic` (see EFFECT_ON_CONDITION.md).
 | `enchantments`               | (_optional_) List of enchantments applied by this CBM (see MAGIC.md for instructions on enchantment. NB: enchantments are not necessarily magic.) Values can either be the enchantment's id or an inline definition of the enchantment.
-| `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.  Uninstalling only takes away spells this CBM taught: one you knew before installing it, or that another installed CBM also teaches, stays.  A spell you knew at a lower level keeps the level the CBM raised it to.  Spells taught by its `included_bionics` go with it too.
+| `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.  Uninstalling only takes away spells this CBM taught: one you knew before installing it, or that another installed CBM also teaches, stays.  A spell you knew at a lower level loses the experience the CBM added to raise it, and keeps what you gained since; if another installed CBM teaches it at a higher level, it stays at that level.  CBMs installed in older saves did not record that experience, so the spell keeps the raised level.  Spells taught by its `included_bionics` go with it too.
 | `learned_proficiencies`      | (_optional_) Array of proficiency ids you gain when installing this CBM, and lose when uninstalling.  As with `learned_spells`, only proficiencies this CBM taught are lost, and practice you had put into one before the CBM taught it comes back.  CBMs installed in older saves did not record what they taught, so they take away everything they list (unless another installed CBM teaches it).
 | `installation_requirement`   | (_optional_) Requirement id pointing to a requirement defining the tools and components necessary to install this CBM.  A CBM with one can be installed by the character on themselves; that still needs free bionic slots (`occupied_bodyparts`) and a body the CBM suits (`mutation_conflicts`, `required_bionic`, `replaced_bodyparts`), as with an autodoc, and asks before removing `canceled_mutations`.
 | `dupes_allowed`              | (_optional_) Boolean to determine if multiple copies of this bionic can be installed.  Defaults to false.
@@ -1368,7 +1368,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `toggled_pseudo_items`       | (_optional_) Activation of this bionic spawn an irremovable tool in your hands.  Require `BIONIC_TOGGLED` flag
 | `spell_on_activation`        | (_optional_) Activation of this bionic allow you to cast a spell
 | `activated_close_ui`         | (_optional_) Activation of this bionic closes the bionic menu
-| `npc_use`                    | (_optional_) When NPCs switch this bionic on and off; needs the `BIONIC_NPC_USABLE` flag.  One of `"combat"` (on when preparing for a fight, off once the danger is gone), `"melee"` (on right before a melee or reach attack while the follower's CBM reserve allows it, off once the danger is gone), `"wounds"` (on while the NPC needs healing; it then doesn't use healing items), `"pain"` (on while in pain; it then doesn't take painkillers), `"radiation"` (on while badly irradiated, off once clean), `"upkeep"` (on during the NPC's hourly idle upkeep) or `"sleep"` (on when lying down to sleep, off during the hourly upkeep).  Default `"none"`: NPCs never switch it themselves.  Weapon CBMs don't use this: NPCs extend or fire every `BIONIC_NPC_USABLE` bionic with `BIONIC_WEAPON` or `BIONIC_GUN` when it beats their wielded weapon, guns first.  Example: `"npc_use": "combat"`.
+| `npc_use`                    | (_optional_) When NPCs switch this bionic on and off; needs the `BIONIC_NPC_USABLE` flag.  One of `"combat"` (on when preparing for a fight, off once the danger is gone), `"melee"` (on right before a melee or reach attack while the follower's CBM reserve allows it, off once the danger is gone), `"wounds"` (on while the NPC needs healing; it then doesn't use healing items), `"pain"` (on while in pain; it then doesn't take painkillers), `"radiation"` (on while badly irradiated, off once clean), `"upkeep"` (on during the NPC's hourly idle upkeep) or `"sleep"` (on when lying down to sleep, off during the hourly upkeep).  Default `"none"`: NPCs never switch it themselves.  Weapon CBMs don't use this: NPCs extend or fire every `BIONIC_NPC_USABLE` bionic with `BIONIC_WEAPON` or `BIONIC_GUN` when it beats their wielded weapon, guns first.  Example: `"npc_use": "combat"`.  It can also be an object with a priority: `"npc_use": { "when": "combat", "priority": 10 }`.  When it is time for one `npc_use`, NPCs switch on all their bionics with it, the highest `priority` first (default 0; equal ones in the order they were installed), so when power runs short the important ones are on.  The string form keeps the priority of a `copy-from` bionic.  A bionic with a `spell_on_activation` is cast instead of switched on: at the creature the NPC is fighting if the spell can reach and target it from where the NPC stands, otherwise at the NPC itself if the spell can target its caster (`"valid_targets": [ "self" ]`); with neither, or when the NPC can't cast it right now (hands full, not enough energy, ...), the activation fails before anything is paid.  The NPC casts one spell CBM at a time, taking the spell's casting time, and for `"melee"` the cast replaces that turn's attack.  This also applies to `npc_activate_bionic`.
 
 ```jsonc
 {
@@ -2167,6 +2167,7 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "activity_level": "EXTRA_EXERCISE",                                 // Activity level of the activity, harder activities consume more calories over time. Valid values are, from easiest to most demanding of the body: `NO_EXERCISE`, `LIGHT_EXERCISE`, `MODERATE_EXERCISE`, `BRISK_EXERCISE`, `ACTIVE_EXERCISE`, `EXTRA_EXERCISE`, `EXPLOSIVE_EXERCISE`.
 "do_turn_special": "do_turn_shovel",                                // Special effect, that occur, when you perform a construction. Can be either `do_turn_shovel` (cause "hsh!" message every minute, may trigger a buried trap, if there is one) or `do_turn_exhume` (applied mood effect for gravedigging related to your traits)
 "vehicle_start": true,                                              // Hardcoded check for construction recipe, that result into vehicle frame; Can be used only with `done_vehicle`
+"place_appliance": true,                                            // The construction's one component is placed on the tile as an appliance once it is finished (default false). Not together with the post_special `done_appliance`, which does the same
 "time": "30 m",                                                     // Time required to complete construction. Integers will be read as minutes or a time string can be used.
 "components": [ [ [ "spear_wood", 4 ], [ "pointy_stick", 4 ] ] ],   // Items used in construction
 "pre_special": [ "check_empty", "check_up_OK" ],                    // Required something that isn't terrain. The syntax also allows for a square bracket enclosed list of specials which all have to be fulfilled
@@ -2262,9 +2263,29 @@ When a construction is finished, the `character_finishes_construction` event is 
 | `done_mark_practice_target`| Sets a target practice trap at the location
 | `done_ramp_low`        | Sets a t_ramp_down_low at the tile above the target
 | `done_ramp_high`       | Sets a t_ramp_down_high at the tile above the target
-| `done_matching_down_above`| The terrain on the Z level above is set to the corresponding terrain at this level, but with the "down" suffix instead
+| `add_matching_down_above`| The terrain on the Z level above is set to the corresponding terrain at this level, but with the "down" suffix instead
 | `remove_above`         | Remove the terrain at the Z level above and replace it with t_open_air
 | `add_roof`             | Add the roof specified for the terrain at the site to the tile above
+
+Every `post_special` still works, but vanilla uses JSON for the ones JSON can express:
+
+| post_special | What vanilla uses instead
+|---           |---
+| `done_appliance` | `"place_appliance": true`
+| `done_window_curtains` | `byproducts` (4 nails, 2 sheets, a stick and a string) and a `message` in `post_eocs`, see `constr_window_boarded_curtains`
+| `done_extract_maybe_revert_to_dirt` | `"post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ]`: one time in ten the tile becomes `t_dirt`, then a message says what was gathered
+| `done_mark_firewood`, `done_mark_practice_target` | `post_eocs` with `set_trap` at `pos` (`"radius": 0`), see `constr_firewood_source`
+| `done_ramp_low`, `done_ramp_high`, `done_wood_stairs`, `remove_above` | `post_eocs` that `set_terrain` on the tile above: `location_variable_adjust` of `pos` with `"z_adjust": 1` into another variable, then `set_terrain` there with `"radius": 0`, see `constr_concrete_ramp_low`
+
+The others stay in C++ because they do what JSON can't:
+
+- `done_trunk_plank` cuts logs into planks with the same code as cutting a log item, whose yield depends on the character.
+- `done_grave` goes through each corpse on the tile: a message naming it, funeral morale for the `SPIRITUAL` trait and a `buries_corpse` event for each, then the prompt to inscribe the grave.
+- `done_vehicle` asks for a name and makes a new vehicle from the component; `done_wiring` places the wiring and offers to reveal all wiring nearby.
+- `done_deconstruct` drops and replaces what the furniture's or terrain's `deconstruct` data says, with the code deconstruction uses everywhere.
+- `done_dig_grave` and `done_dig_grave_nospawn` send the `exhumes_grave` event, and `done_dig_grave` also damages and soils each piece of clothing it finds by that item's own durability.
+- `done_dig_stair`, `done_mine_downstair` and `done_mine_upstair` look for lava or water beyond the rock, ask whether to go on, give back the materials when they stop, and pick stairs or a ladder by what is below.
+- `add_matching_down_above` and `add_roof` work out the terrain above from the terrain built (its `down` counterpart by id, or its `roof`), so they follow that terrain's JSON; a fixed id in an EOC wouldn't.
 
 
 ### Scent_types
@@ -4293,6 +4314,8 @@ A list of allowed hobbies that can be chosen when using this scenario. If this i
 
 When set to false, the hobbies in `hobbies` are hobbies that _cannot_ be chosen when using this scenario. This value defaults to true.
 
+`professions`, `hobbies` and `whitelist_hobbies` limit the player's own character. Randomly generated NPCs take both their profession and their hobbies from the generic scenario (the `GENERIC_SCENARIO_ID` external option, `evacuee` by default, or the first scenario not blacklisted if that one is), whatever scenario the player picked.
+
 ## `map_special`
 (optional, string)
 
@@ -4605,7 +4628,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "concentration": 1, // How concentrated this intensity of gas is. Generally the thin/hazy cloud intensity will be 1, the standard gas will be 2, and thick gas will be 4. The amount of time a gas mask filter will last will be divided by this value.
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
-        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on its tile and the 8 around it by this value
+        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on the tiles within scent_neutralization_radius of it by this value. Only a field with the gas phase and a percent_spread does this; on any other field it is an error at load
     ],
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below
@@ -4617,6 +4640,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     "outdoor_age_speedup": "20 minutes", // Increase the field's age by this duration if it's on an outdoor tile
     "accelerated_decay": true, // If the field should use a more simple decay calculation, used for cosmetic fields like gibs
     "percent_spread": 90, // The field must succeed on a `rng( 1, 100 - local windpower ) > percent_spread` roll to spread. The field must have a non-zero spread percent and the GAS phase to be eligible to spread in the first place
+    "scent_neutralization_radius": 1, // How far, in tiles, the field's scent_neutralization reaches: 0 is only its own tile, the default 1 its tile and the 8 around it. At most 3
     "phase": "gas", // Phase of the field. Gases can spread after spawning and can be spawned out of emitters through impassable terrain with the PERMEABLE flag
     "apply_slime_factor": 10, // Each turn the field raises the scent on its tile to at least its intensity times this value (of the scent map's single scent type, normally the player's)
     "gas_absorption_factor": "80m", // Length a full 100 charge gas mask filter will last in this gas. Will be divided by the concentration of the gas, and should be 80m for concentration 1 toxic gas or similar. The worst gas should still be kept out for 20 minutes in a concentration 4 thick gas.

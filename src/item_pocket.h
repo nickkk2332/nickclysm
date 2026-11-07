@@ -135,7 +135,7 @@ class item_pocket
         bool has_any_with( const std::function<bool( const item & )> &filter ) const;
 
         bool is_type( pocket_type ptype ) const;
-        bool is_type( const std::set<pocket_type> &ptype ) const;
+        bool is_type( pocket_type_set ptype ) const;
         bool is_ablative() const;
         bool is_holster() const;
         // checks if the pocket is a holster and if it has something in it
@@ -385,9 +385,9 @@ class item_pocket
         // @relates visitable
         // the "parent is the item location who's contents you're visiting.
         VisitResponse visit_contents( const std::function<VisitResponse( const item_location & )> &func,
-                                      const item_location &parent, const std::set<pocket_type> &allowed_pockets );
+                                      const item_location &parent, pocket_type_set allowed_pockets );
         VisitResponse visit_contents_legacy( const std::function<VisitResponse( item *, item * )> &func,
-                                             item *parent, const std::set<pocket_type> &allowed_pockets = { pocket_type::CONTAINER } );
+                                             item *parent, pocket_type_set allowed_pockets = { pocket_type::CONTAINER } );
 
         void general_info( std::vector<iteminfo> &info, int pocket_number, bool disp_pocket_number ) const;
         void contents_info( std::vector<iteminfo> &info, int pocket_number, bool disp_pocket_number ) const;

@@ -570,6 +570,8 @@ struct mutation_category_trait {
 };
 
 void load_mutation_type( const JsonObject &jsobj );
+// Forgets every mutation type, so they don't carry over to the next world loaded
+void reset_mutation_types();
 bool mutation_category_is_valid( const mutation_category_id &cat );
 bool mutation_type_exists( const std::string &id );
 std::vector<trait_id> get_mutations_in_types( const std::set<std::string> &ids );

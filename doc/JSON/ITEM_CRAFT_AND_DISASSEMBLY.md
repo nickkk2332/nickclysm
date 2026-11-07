@@ -180,7 +180,28 @@ When both are given, `extend` is applied before `delete`. Neither is allowed wit
 }
 ```
 
-`using` can be extended and deleted too. The inline `components`, `tools` and `qualities` of a recipe are not inherited, so a recipe with `copy-from` must restate them; `extend` or `delete` of them is a load error.
+`using` can be extended and deleted too.
+
+#### Inheriting and changing `components`, `tools` and `qualities` with `copy-from`
+
+A recipe with `copy-from` inherits its parent's inline `components`, `tools` and `qualities`, an `abstract` parent's too. Each of the three that the recipe gives replaces the inherited list whole. `extend` and `delete` change one:
+
+- `"extend": { "components": [ ... ] }` (or `tools`, `qualities`) takes groups in the same format as the member and adds them at the end. Each group is one more requirement, not more alternatives for a group the recipe already has. (The `extend` of a `"type": "requirement"` object is different: it adds alternatives to its groups.)
+- `"delete": { "components": [ ... ] }` takes item ids (for `tools` tool ids, for `qualities` quality ids; a `LIST` entry is deleted by its requirement id) and removes every entry with that id from every group. A group left empty is dropped. Deleting an id that no group has is a load error.
+
+`extend` is applied before `delete`. Neither is allowed without `copy-from`. A recipe that gives its own `steps` doesn't inherit its parent's root `components`.
+
+```jsonc
+{
+  "type": "recipe",
+  "result": "my_mod_nailed_club",
+  "copy-from": "club_wooden",                   // a 2x4 and a CUT 1 quality
+  "extend": { "components": [ [ [ "nail", 6 ] ] ], "tools": [ [ [ "hammer", -1 ] ] ] },
+  "delete": { "qualities": [ "CUT" ] }          // a 2x4, 6 nails and a hammer
+}
+```
+
+Inline requirements are stored by recipe id. A recipe that copies itself (a mod changing a recipe with `"copy-from"` naming that same recipe) replaces them: a group it empties stays empty. A definition of a recipe id that doesn't copy that same id keeps, for each of the three that it leaves out or empty, the list of the earlier definition of the id, as it always has; give `"copy-from"` the recipe's own id to drop one.
 
 #### `batch_time_factors`
 
@@ -218,7 +239,7 @@ Step recipes support `"copy-from"` and `"abstract"`.
 
 - If a child recipe uses `"copy-from"` pointing to a step recipe and does **not** include a `"steps"` array, it inherits the base's steps.  The child can override root-level fields like `"difficulty"`, `"skill_used"`, `"components"`, etc.
 - If the child **does** include a `"steps"` array, its steps replace the base's.  Root-level `"using"` from the base is preserved; the child can override it by providing its own `"using"`.
-- An `"abstract"` recipe with steps serves as a template.  Concrete children inherit steps and provide their own `"components"` and `"result"`.
+- An `"abstract"` recipe with steps serves as a template.  Concrete children inherit steps and root `"components"` and provide their own `"result"`.
 
 ### Step fields
 

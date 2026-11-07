@@ -2400,9 +2400,9 @@ bool item_pocket::is_type( pocket_type ptype ) const
     return ptype == data->type;
 }
 
-bool item_pocket::is_type( const std::set<pocket_type> &ptype ) const
+bool item_pocket::is_type( pocket_type_set ptype ) const
 {
-    return ptype.count( data->type ) == 1;
+    return ptype.contains( data->type );
 }
 
 bool item_pocket::is_ablative() const

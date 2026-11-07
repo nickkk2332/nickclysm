@@ -174,6 +174,10 @@ struct load_history {
 
 load_history object_load_history;
 
+// Set while load_deferred() replays objects whose copy-from parent wasn't loaded yet: a replay
+// is the same definition again, not a second one from its source.
+bool replaying_deferred = false;
+
 // One key per object id ("type\nid"), or one for the abstract id.
 std::vector<std::string> object_keys( const JsonObject &jo )
 {
@@ -272,10 +276,10 @@ void DynamicDataLoader::load_object( const JsonObject &jo, const std::string &sr
     const int src_index = history.src_index.try_emplace( src,
                           static_cast<int>( history.src_index.size() ) ).first->second;
     const uint64_t load = history.next_load++;
-    // These types are loaded outside generic_factory and don't record where each id came
-    // from, so two definitions of one id from the same source are reported here (NPC-J02).
+    // These types don't record where each id came from (no mod_tracker "src"), so two
+    // definitions of one id from the same source are reported here (NPC-J02).
     static const std::unordered_set<std::string> untracked_types = { "faction", "npc" };
-    const bool report_duplicates = untracked_types.count( type ) > 0;
+    const bool report_duplicates = !replaying_deferred && untracked_types.count( type ) > 0;
     for( std::string &key : object_keys( jo ) ) {
         const std::string id = report_duplicates ? key.substr( key.rfind( '\n' ) + 1 ) : "";
         std::vector<std::pair<int, uint64_t>> &loads = history.loaded_by[std::move( key )];
@@ -317,6 +321,8 @@ shared_ptr_fast<std::istream> DynamicDataLoader::get_cached_stream( const std::s
 
 void DynamicDataLoader::load_deferred( deferred_json &data )
 {
+    restore_on_out_of_scope restore_replaying( replaying_deferred );
+    replaying_deferred = true;
     while( !data.empty() ) {
         const size_t n = data.size();
         auto it = data.begin();
@@ -626,11 +632,12 @@ void DynamicDataLoader::initialize()
     add( "MOD_INFO", &load_ignored_type );
 
     add( "faction", &faction_template::load );
-    add( "npc", &npc_template::load );
+    add( "npc", &npc_template::load_npc_template );
     add( "npc_class", &npc_class::load_npc_class );
     add( "talk_topic", &load_talk_topic );
     add( "behavior", &behavior::load_behavior );
     add( "npc_decision_category", &npc_decision_category::load_category );
+    add( "npc_need", &npc_custom_needs::load );
 
     add( "MONSTER_FACTION", &monfactions::load_monster_faction );
 
@@ -839,6 +846,7 @@ void DynamicDataLoader::unload_data()
     bash_damage_profile::reset();
     behavior::reset();
     npc_json_goals::reset();
+    npc_custom_needs::reset();
     npc_decision_category::reset();
     body_part_type::reset();
     butchery_requirements::reset();
@@ -886,6 +894,7 @@ void DynamicDataLoader::unload_data()
     harvest_list::reset();
     item_category::reset();
     items::reset();
+    reset_removal_blacklists();
     jmath_func::reset();
     json_flag::reset();
     connect_group::reset();
@@ -903,6 +912,7 @@ void DynamicDataLoader::unload_data()
     mutation_branch::reset_all();
     mutation_category_trait::reset();
     mutations_category.clear();
+    reset_mutation_types();
     npc_class::reset_npc_classes();
     npc_template::reset();
     option_slider::reset();
@@ -1044,6 +1054,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Diseases" ), &disease_type::finalize_all },
             { _( "Weather types" ), &weather_types::finalize_all },
             { _( "Weather generators" ), &weather_generator::finalize_all },
+            { _( "NPC templates" ), &npc_template::finalize_all },
             { _( "Effect on conditions" ), &effect_on_conditions::finalize_all },
             { _( "Field types" ), &field_types::finalize_all },
             { _( "Ammo effects" ), &ammo_effects::finalize_all },
@@ -1092,6 +1103,8 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Morale Types" ), &morale_type_data::finalize_all },
             { _( "Mapgen weights" ), &calculate_mapgen_weights },
             { _( "Mapgen parameters" ), &overmap_specials::finalize_mapgen_parameters },
+            // before the behaviors, which add a leaf for each need
+            { _( "NPC needs" ), &npc_custom_needs::finalize },
             { _( "Behaviors" ), &behavior::finalize },
             { _( "NPC decision categories" ), &npc_decision_category::finalize_all },
             {
@@ -1240,6 +1253,7 @@ void DynamicDataLoader::check_consistency()
             { _( "NPC classes" ), &npc_class::check_consistency },
             { _( "Behaviors" ), &behavior::check_consistency },
             { _( "NPC decision categories" ), &npc_decision_category::check_consistency },
+            { _( "NPC needs" ), &npc_custom_needs::check_consistency },
             { _( "Mission types" ), &mission_type::check_consistency },
             {
                 _( "Item actions" ), []()
@@ -1255,6 +1269,8 @@ void DynamicDataLoader::check_consistency()
             { _( "Anatomies" ), &anatomy::check_consistency },
             { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },
+            { _( "Enchantments" ), &enchantment::check_consistency },
+            { _( "Terrain/Furniture Transforms" ), &ter_furn_transform::check_all },
             { _( "Executions" ), &executions::check },
             { _( "Abilities" ), &abilities::check },
             { _( "Damage rules" ), &damage_rules::check },

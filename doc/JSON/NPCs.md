@@ -100,21 +100,25 @@ Format:
     "goto": 0.65,                               // walking where it was ordered to
     "camp_work": 0.4,
     "return_to_camp": 0.5,
-    "free_time": 0.35
+    "free_time": 0.35,
+    "embark": 0.6,                              // boarding the avatar's parked vehicle
+    "embark_seated": 0.15                       // once on a belted seat or bed in it
   },
   "starvation_hunger": 300,                     // hunger from which an NPC burning stored calories counts as starving
   "camp_meal_kcal": 500,                        // the least a camp serves a merely hungry NPC
+  "cold_body_temperature": "31 C",              // a body part this cold or colder needs warming
   "sleep": {
     "settle_interval": "3 minutes",             // a settling NPC tries to fall asleep this often
     "settle_timeout": "30 minutes",             // and gives the spot up after this long
     "stall_wakes": 3,                           // woken this often
     "stall_window": "30 minutes",               // within this long, its sleep stalls
-    "stall_duration": "30 minutes"              // and steps aside for other work this long
+    "stall_duration": "30 minutes",             // and steps aside for other work this long
+    "restless_window": "30 minutes"             // noise wakes within this long of the last hold sleep back
   }
 }
 ```
 
-Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. The set of needs is fixed: a mod can't add one here.
+Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. `needs` tunes the four built-in needs; a mod adds needs of its own with [`npc_need`](NPC_BEHAVIOR.md#custom-needs).
 
 ### Shopkeeper NPC configuration
 `npc_class` supports several properties for configuring the behavior of NPCs that behave as shopkeepers:
@@ -241,6 +245,7 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `mission`     | _(mandatory)_ Based on the enum in `npc.h`. The important ones are `NULL`, `SHOPKEEP`, `GUARD`, and `GUARD_PATROL`.
 | `chat`        | _(mandatory)_ Covered in the dialogue examples below.
 | `faction`     | Set faction NPC belongs to (see [FACTIONS.md](FACTIONS.md)).
+| `mission_offered` | A mission id, or an array of them: the missions the NPC offers when it is spawned (see [MISSIONS_JSON.md](MISSIONS_JSON.md)).
 | `death_eocs`  | String `effect_on_condition` ids and/or inline `effect_on_condition`s (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)). When the npc dies all of these `eoc`s are run with the victim as u and the killer as npc. This includes a companion that dies on a camp mission or NPC job away from the player; it has no killer then.
 | `age`         | Set age of NPC.
 | `height`      | Set height of NPC. (in cm)
@@ -250,14 +255,15 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `per`         | Set perception of NPC.
 | `personality` | Set personality of NPC. For example, positive value of `aggression` means NPC is aggressive, negative value means NPC is defensive.
 
-A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` (defined earlier, in the same mod or a mod loaded before) and changes only the fields it gives; `attitude` and `chat` are then optional, and a given `mission_offered` or `death_eocs` replaces the parent's list:
+A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` and changes only the fields it gives; `attitude` and `chat` are then optional.  The parent may be defined anywhere, also later or in a mod loaded after (the copy waits for it), and it may be an `"abstract"` npc: a template only for copying, which is never spawned.  A given `mission_offered` or `death_eocs` replaces the parent's list; `extend` adds to it and `delete` takes the mission ids or EOC ids to remove:
 
 ```jsonc
 {
   "type": "npc",
   "id": "thug",
   "copy-from": "thug",          // a mod changing the vanilla thug
-  "name_suffix": "Thug"
+  "name_suffix": "Thug",
+  "extend": { "death_eocs": [ "EOC_MY_MOD_THUG_DIES" ] }   // the thug's death_eocs and this one
 }
 ```
 
@@ -1475,6 +1481,10 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | consumption_count_total    |  ✅   |   ❌  | u, n  | Return total number of items eaten within a time window, regardless of type.<br/><br/>Optional kwargs:<br/>`hours`: `d` - Time window in hours (default 48).<br/><br/>Example:<br/>`"condition": { "math": [ "u_consumption_count_total('hours': 6) >= 1"] }`|
 | coverage(`s`/`v`)    |  ✅   |   ❌  | u, n  | Return the characters total coverage of a body part.<br/>Argument is bodypart ID. <br/>For items, returns typical coverage of the item. <br/><br/>Example:<br/>`"condition": { "math": [ "u_coverage('torso') > 0"] }`|
 | distance(`s`/`v`,`s`/`v`)    |  ✅   |   ❌  | g  | Return distance between two targets.<br/>Arguments are location variables or special strings (`u`, `npc`). `u` means your location. `npc` means NPC's location.<br/><br/>Example:<br/>`"condition": { "math": [ "distance('u', loc) <= 50"] }`|
+| omt_distance(`s`/`v`,`s`/`v`)    |  ✅   |   ❌  | g  | Return the distance between two targets in overmap tiles (24 map squares each), on the overmap.<br/>Arguments are as for `distance()`: location variables, or `u` / `npc`.<br/><br/>Example:<br/>`"condition": { "math": [ "omt_distance('u', u_home) > 10"] }`|
+| horde_size(`s`/`v`)    |  ✅   |   ❌  | g  | Return the number of monsters in overmap hordes at the overmap tile of a location (see `spawn_overmap_horde` and `signal_hordes`). Only monsters stored on the overmap count: those on the loaded map are counted by `monsters_nearby()`.<br/>Argument is a location variable, or `u` / `npc`.<br/><br/>Optional kwargs:<br/>`radius`: `d`/`v` - default 0; also count the overmap tiles within this many overmap tiles, on the same z-level.<br/><br/>Example:<br/>`"condition": { "math": [ "horde_size('u', 'radius': 3) >= 20"] }`|
+| city_distance(`s`/`v`)    |  ✅   |   ❌  | g  | Return the distance in overmap tiles from a location to the center of the closest city, picked as the `closest_city` effect picks it, or -1 if there is none.<br/>Argument is a location variable, or `u` / `npc`.<br/><br/>Optional kwargs, the filters of `closest_city`:<br/>`known`: `d`/`v` - default 1 (true): only cities you know; 0 for any city<br/>`min_size`, `max_size`: `d`/`v` - only cities of at least / at most this size (`max_size` below 0, the default, is no limit)<br/>`max_distance`: `d`/`v` - only cities whose center is at most this many overmap tiles away (below 0, the default, is no limit)<br/>`name`: `s`/`v` - only the city with this name<br/><br/>Example:<br/>`"condition": { "math": [ "city_distance('u', 'known': 0, 'min_size': 8) < 30"] }`|
+| city_size(`s`/`v`)    |  ✅   |   ❌  | g  | Return the size of the closest city (as `city_distance()` picks it, with the same kwargs), or 0 if there is none. Inside a city that is usually the city you are in.<br/><br/>Example:<br/>`{ "math": [ "town_size = city_size('u', 'known': 0)" ] }`|
 | light_level(`v`)    |  ✅   |   ❌  | g | Return the value of light level the specific tile has. <br/>Argument is location variable. <br/>Return values are:<br/>`0` = DARK<br/>`1` = LOW (Hard to see)<br/>`3` = BRIGHT_ONLY (bright but indistinct(i do not know what it means))<br/>`4` = BRIGHT (only for light sources)<br/>`5` = MEMORIZED (Not a light level but behaves similarly)<br/>`6` = BLANK (blank space, not an actual light level) <br/><br/>Example:<br/>`"condition": { "math": [ "light_level(_pos) == 3" ] }`|
 | effect_intensity(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the characters intensity of effect; -1 when it doesn't have the effect.<br/>Argument is effect ID.<br/><br/>A set value is clamped to the effect's `max_intensity`, and below 1 removes the effect. The intensity of an effect with `int_dur_factor` follows its duration, so setting it sets the shortest duration that gives that intensity. Setting it on an effect the creature doesn't have does nothing (use `effect_duration()` or `u_add_effect` to add one). Only a creature's effects can be set.<br/><br/>Optional kwargs:<br/>`bodypart`: `s`/`v` - Specify the bodypart to get/set intensity of effect. An effect with `main_parts_only` is read and set on the main part, as `u_add_effect` puts it there (a hand's on its arm).<br/><br/> Example:<br/>`"condition": { "math": [ "u_effect_intensity('bite', 'bodypart': 'torso') > 1"] }`<br/>`{ "math": [ "u_effect_intensity('drunk') = 2" ] }`|
 | effect_duration(`s`/`v`)    |  ✅   |   ✅  | u, n  | Return or set the characters duration of effect; -1 when it doesn't have the effect.<br/>Argument is effect ID.<br/><br/>Setting it on an effect the creature doesn't have adds the effect. Setting 0 or less removes it, as `u_lose_effect` does (without a `bodypart`, on every body part). Only a creature's effects can be set.<br/><br/>Optional kwargs:<br/>`bodypart`: `s`/`v` - Specify the bodypart to get/set duration of effect. An effect with `main_parts_only` is read and set on the main part, as `u_add_effect` puts it there (a hand's on its arm).<br/>`unit`: `s`/`v` - Specify the unit of the duration. Omitting will use seconds.<br/><br/> Example:<br/>`"condition": { "math": [ "u_effect_duration('bite', 'bodypart': 'torso') > 1"] }`<br/>`{ "math": [ "_thing = u_effect_duration('yrax_overcharged', 'bodypart': 'torso', 'unit': 'hours')" ] }`<br/>`{ "math": [ "u_effect_duration('bite', 'bodypart': 'torso', 'unit': 'minutes') += 10" ] }`|
@@ -1555,7 +1565,7 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | npc_anger()    |  ✅   |  ✅   | u, n  | Return NPC anger toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_anger() > 2" ] }`|
 | npc_fear()    |  ✅   |  ✅   | u, n  | Return NPC fear toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_fear() < 2" ] }`|
 | npc_danger()    |  ✅   |  ❌   | u, n  | Return the danger the NPC's AI rates around it, as the behavior predicate `npc_in_danger` reads it (above 0 is danger); 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_danger() > 5" ] }`|
-| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep` or `regulate_temperature`; another name written out is a load error. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
+| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep`, `regulate_temperature` or the id of an [`npc_need`](NPC_BEHAVIOR.md#custom-needs), whose urgency it gives as its own `urgency` does, clamped to 0 to 1; another name written out is an error once the game data has loaded. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
 | npc_panic()    |  ✅   |  ❌   | u, n  | Return how panicked the NPC is in a fight: it rises as it judges the fight lost, and the NPC runs, without regard for cover once it's high; 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_panic() > 10" ] }`|
 | npc_personality(`s`/`v`)    |  ✅   |  ✅   | u, n  | Return or set a personality trait of the NPC, -10 to 10: `aggression`, `bravery`, `collector` or `altruism`; another name written out is a load error. A value set is clamped to -10 to 10. 0 for a talker that isn't an NPC, which setting leaves alone. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_personality('bravery') += 2" ] }`|
 | npc_goal_turns()    |  ✅   |  ❌   | u, n  | Return the turns since the NPC's current goal started; 0 when it has none, or isn't an NPC. Callable without a prefix for u. See [JSON goals](NPC_BEHAVIOR.md#reading-goals-from-eocs). <br/><br/>Example:<br/> `{ "math": [ "npc_goal_turns() > 100" ] }`|
