@@ -209,15 +209,13 @@ static std::optional<tripoint_abs_omt> find_or_create_om_terrain(
             } else if( params.replaceable_overmap_terrain ) {
                 // This terrain wasn't part of an overmap special, but we do have a replacement
                 // terrain specified. Find a random location of that replacement type.
-                find_params.must_see = false;
-                find_params.types.front().first = ( *params.replaceable_overmap_terrain ).evaluate( d );
-                target_pos = overmap_buffer.find_random( origin_pos, find_params );
-
-                // We didn't find it, so allow this search to create new overmaps and try again.
-                find_params.existing_only = true;
-                if( target_pos.is_invalid() ) {
-                    target_pos = overmap_buffer.find_random( origin_pos, find_params );
-                }
+                // A copy: the second pass, on new overmaps, still looks for the real
+                // terrain first and only then for its replacement (CAMP-B11).
+                omt_find_params replace_params = find_params;
+                replace_params.must_see = false;
+                replace_params.types.front().first =
+                    ( *params.replaceable_overmap_terrain ).evaluate( d );
+                target_pos = overmap_buffer.find_random( origin_pos, replace_params );
 
                 // We found a match, so set this position (which was our replacement terrain)
                 // to our desired mission terrain.
@@ -382,8 +380,9 @@ mission_target_params mission_util::parse_mission_om_target( const JsonObject &j
     if( jo.has_member( "cant_see" ) ) {
         p.cant_see = jo.get_bool( "cant_see" );
     }
+    // another name for cant_see; it read a missing "exclude" into random (CAMP-B11)
     if( jo.has_member( "exclude_seen" ) ) {
-        p.random = jo.get_bool( "exclude" );
+        p.cant_see = jo.get_bool( "exclude_seen" );
     }
     if( jo.has_member( "random" ) ) {
         p.random = jo.get_bool( "random" );
@@ -459,9 +458,26 @@ bool mission_util::set_update_mapgen( const JsonObject &jo,
 
     if( jo.has_member( "om_terrain" ) ) {
         const std::string om_terrain = jo.get_string( "om_terrain" );
-        auto mission_func = [update_map = std::move( update_map ), om_terrain]( mission * miss ) {
-            tripoint_abs_omt update_pos3 = mission_util::reveal_om_ter( miss->has_target() ? miss->get_target()
-                                           : get_player_character().pos_abs_omt(), om_terrain, 1, false );
+        // the closest om_terrain of this overmap special, as MISSIONS_JSON.md says (CAMP-B11)
+        std::optional<overmap_special_id> om_special;
+        if( jo.has_member( "om_special" ) ) {
+            om_special = overmap_special_id( jo.get_string( "om_special" ) );
+        }
+        auto mission_func = [update_map = std::move( update_map ), om_terrain,
+                   om_special]( mission * miss ) {
+            const tripoint_abs_omt origin = miss->has_target() ? miss->get_target() :
+                                            get_player_character().pos_abs_omt();
+            // searched from the target's own z-level
+            tripoint_abs_omt update_pos3;
+            if( om_special ) {
+                update_pos3 = overmap_buffer.find_closest( origin, om_terrain, 0, false,
+                              ot_match_type::type, false, om_special );
+                if( !update_pos3.is_invalid() ) {
+                    overmap_buffer.reveal( update_pos3, 1 );
+                }
+            } else {
+                update_pos3 = mission_util::reveal_om_ter( origin, om_terrain, 1, false, origin.z() );
+            }
             update_map( update_pos3, miss );
         };
         funcs.emplace_back( std::move( mission_func ) );

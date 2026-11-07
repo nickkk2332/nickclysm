@@ -1,6 +1,7 @@
 #include "mission.h" // IWYU pragma: associated
 
 #include <algorithm>
+#include <string>
 
 #include "condition.h"
 #include "debug.h"
@@ -8,6 +9,7 @@
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"
+#include "item_group.h"
 #include "rng.h"
 
 static const std::map<std::string, std::function<void( mission * )>> mission_function_map = {{
@@ -128,7 +130,8 @@ bool mission_type::load( const JsonObject &jo, const std::string_view src )
 {
     mandatory( jo, was_loaded, "name", name );
 
-    mandatory( jo, was_loaded, "difficulty", difficulty );
+    // only orders the urgent missions an NPC presses (CAMP-J04)
+    optional( jo, was_loaded, "difficulty", difficulty, 0 );
     mandatory( jo, was_loaded, "value", value );
 
     optional( jo, was_loaded, "origins", origins, enum_flags_reader<mission_origin> { "mission_origin" } );
@@ -193,6 +196,8 @@ bool mission_type::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "monster_type", monster_type, mtype_id::NULL_ID() );
     optional( jo, was_loaded, "monster_kill_goal", monster_kill_goal, -1 );
     optional( jo, was_loaded, "destination", target_id );
+    // MGOAL_RECRUIT_NPC_CLASS: the class of NPC to recruit (CAMP-B10)
+    optional( jo, was_loaded, "recruit_class", recruit_class, npc_class_id::NULL_ID() );
 
     // FIXME: reader for condition
     if( jo.has_member( "goal_condition" ) ) {
@@ -220,9 +225,68 @@ void mission_type::finalize_all()
 void mission_type::check_consistency()
 {
     for( const mission_type &m : get_all() ) {
-        if( !m.item_id.is_empty() && !item::type_is_defined( m.item_id ) ) {
-            debugmsg( "Mission %s has undefined item id %s", m.id.c_str(), m.item_id.c_str() );
+        m.check();
+    }
+}
+
+void mission_type::check() const
+{
+    if( !item_id.is_empty() && !item::type_is_defined( item_id ) ) {
+        debugmsg( "Mission %s has undefined item id %s", id.c_str(), item_id.c_str() );
+    }
+    // CAMP-J04: a typo in any of these loaded silently and made a mission that never ends
+    const auto check_item = [this]( const itype_id & type, const char *member ) {
+        if( !type.is_empty() && !type.is_null() && !item::type_is_defined( type ) ) {
+            debugmsg( "Mission %s has undefined %s %s", id.str(), member, type.str() );
         }
+    };
+    check_item( container_id, "required_container" );
+    check_item( empty_container, "empty_container" );
+    if( !group_id.is_null() && !item_group::group_is_defined( group_id ) ) {
+        debugmsg( "Mission %s has undefined item_group %s", id.str(), group_id.str() );
+    }
+    if( !monster_type.is_null() && !monster_type.is_valid() ) {
+        debugmsg( "Mission %s has undefined monster_type %s", id.str(), monster_type.str() );
+    }
+    if( !monster_species.is_empty() && !monster_species.is_valid() ) {
+        debugmsg( "Mission %s has undefined monster_species %s", id.str(), monster_species.str() );
+    }
+    if( !follow_up.is_null() && !follow_up.is_valid() ) {
+        debugmsg( "Mission %s has undefined followup %s", id.str(), follow_up.str() );
+    }
+    if( !recruit_class.is_null() && !recruit_class.is_valid() ) {
+        debugmsg( "Mission %s has undefined recruit_class %s", id.str(), recruit_class.str() );
+    }
+    // what each goal needs to be completed at all
+    const std::string goal_name = io::enum_to_string( goal );
+    const auto require = [this, &goal_name]( const bool has, const char *member ) {
+        if( !has ) {
+            debugmsg( "Mission %s: %s needs %s", id.str(), goal_name, member );
+        }
+    };
+    switch( goal ) {
+        case MGOAL_GO_TO_TYPE:
+            require( !target_id.is_null(), "a destination" );
+            break;
+        case MGOAL_FIND_ITEM:
+            require( !item_id.is_null() && !item_id.is_empty(), "an item" );
+            break;
+        case MGOAL_FIND_ITEM_GROUP:
+            require( !group_id.is_null(), "an item_group" );
+            break;
+        case MGOAL_KILL_MONSTER_TYPE:
+            require( !monster_type.is_null(), "a monster_type" );
+            require( monster_kill_goal > 0, "a monster_kill_goal above 0" );
+            break;
+        case MGOAL_KILL_MONSTER_SPEC:
+            require( !monster_species.is_empty(), "a monster_species" );
+            require( monster_kill_goal > 0, "a monster_kill_goal above 0" );
+            break;
+        case MGOAL_RECRUIT_NPC_CLASS:
+            require( !recruit_class.is_null(), "a recruit_class" );
+            break;
+        default:
+            break;
     }
 }
 

@@ -49,6 +49,17 @@ static const efftype_id effect_run( "run" );
 
 static const mission_type_id mission_NULL( "NULL" );
 
+// the outermost items in @ref inv, without what they hold
+static std::vector<item *> crafting_inventory_roots( const temp_crafting_inventory &inv )
+{
+    std::vector<item *> roots;
+    inv.visit_items( [&roots]( item_location node ) {
+        roots.push_back( node.get_item() );
+        return VisitResponse::SKIP;
+    } );
+    return roots;
+}
+
 mission mission_type::create( const character_id &npc_id ) const
 {
     mission ret;
@@ -63,6 +74,7 @@ mission mission_type::create( const character_id &npc_id ) const
     ret.monster_species = monster_species;
     ret.monster_type = monster_type;
     ret.monster_kill_goal = monster_kill_goal;
+    ret.recruit_class = recruit_class;
 
     struct dialogue d( get_talker_for( get_player_character() ),
                        get_talker_for( g->find_npc( npc_id ) ) );
@@ -521,8 +533,9 @@ void mission::wrap_up()
     switch( type->goal ) {
         case MGOAL_FIND_ITEM_GROUP: {
             temp_crafting_inventory tmp_inv = player_character.crafting_inventory();
-            std::vector<item *> items = std::vector<item *>();
-            tmp_inv.dump( items );
+            // the outermost items: get_all_item_group_matches looks inside them itself, and
+            // dump() also listed every nested item, counting it twice (CAMP-B12)
+            std::vector<item *> items = crafting_inventory_roots( tmp_inv );
             item_group_id grp_type = type->group_id;
             itype_id container = type->container_id;
             bool specific_container_required = !container.is_null();
@@ -534,13 +547,17 @@ void mission::wrap_up()
                 items, grp_type, matches,
                 container, itype_id::NULL_ID(), specific_container_required );
 
-            comps.reserve( matches.size() );
-            for( std::pair<const itype_id, int> &cnt : matches ) {
-                comps.emplace_back( cnt.first, cnt.second );
-
+            // Take exactly count of them, one type after another.  A single list of every
+            // match let consume_items pick one type and try to take all of it (CAMP-B12).
+            int left_to_take = type->item_count;
+            for( const std::pair<const itype_id, int> &cnt : matches ) {
+                if( left_to_take <= 0 ) {
+                    break;
+                }
+                const int take = std::min( left_to_take, cnt.second );
+                player_character.consume_items( std::vector<item_comp> { item_comp( cnt.first, take ) } );
+                left_to_take -= take;
             }
-
-            player_character.consume_items( comps );
 
             if( remove_container ) {
                 std::vector<item_comp> container_comp = std::vector<item_comp>();
@@ -625,8 +642,9 @@ bool mission::is_complete( const character_id &_npc_id ) const
 
         case MGOAL_FIND_ITEM_GROUP: {
             temp_crafting_inventory tmp_inv = player_character.crafting_inventory();
-            std::vector<item *> items = std::vector<item *>();
-            tmp_inv.dump( items );
+            // the outermost items: get_all_item_group_matches looks inside them itself, and
+            // dump() also listed every nested item, counting it twice (CAMP-B12)
+            std::vector<item *> items = crafting_inventory_roots( tmp_inv );
             item_group_id grp_type = type->group_id;
             itype_id container = type->container_id;
             bool specific_container_required = !container.is_null();
@@ -786,12 +804,9 @@ void mission::get_all_item_group_matches( std::vector<item *> &items,
 
         //check whether item itself is target
         if( item_in_group && correct_container ) {
-            std::map<itype_id, int>::iterator it = matches.find( itm->typeId() );
-            if( it != matches.end() ) {
-                it->second = ( it->second ) + 1;
-            } else {
-                matches.insert( std::make_pair( itm->typeId(), 1 ) );
-            }
+            // a stack counts as many as it holds; what the item holds goes with it
+            matches[itm->typeId()] += itm->count();
+            continue;
         }
 
         //recursively check item contents for target

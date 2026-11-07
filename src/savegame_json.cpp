@@ -4898,15 +4898,8 @@ void basecamp::serialize( JsonOut &json ) const
                 json.end_object();
             }
             json.end_array();
-            json.member( "in_progress" );
-            json.start_array();
-            for( const auto &working : expansion.second.in_progress ) {
-                json.start_object();
-                json.member( "id", working.first );
-                json.member( "amount", working.second );
-                json.end_object();
-            }
-            json.end_array();
+            // no "in_progress": what is being built comes from the companions out building
+            // (CAMP-B13); old saves' list is left unread
             json.member( "pos", expansion.second.pos );
             json.end_object();
         }
@@ -5002,12 +4995,6 @@ void basecamp::deserialize( const JsonObject &data )
         const std::string &initial_provide = base_camps::faction_encode_abs( e, 0 );
         if( e.provides.find( initial_provide ) == e.provides.end() ) {
             e.provides[ initial_provide ] = 1;
-        }
-        for( JsonObject in_progress_data : edata.get_array( "in_progress" ) ) {
-            in_progress_data.allow_omitted_members();
-            std::string id = in_progress_data.get_string( "id" );
-            int amount = in_progress_data.get_int( "amount" );
-            e.in_progress[ id ] = amount;
         }
         edata.read( "pos", e.pos );
         expansions[ dir ] = e;

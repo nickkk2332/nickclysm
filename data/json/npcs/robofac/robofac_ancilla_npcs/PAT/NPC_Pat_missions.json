@@ -507,7 +507,7 @@
     "type": "mission_definition",
     "name": { "str": "Circuit Safari: Pat's Recon" },
     "description": "Pat talked to a guy who heard about a guy who saw an Exodii that looked like his friend.  If you're lucky, it'll be a worker you can kill and bring back to Hub 01.",
-    "goal": "MGOAL_GO_TO_TYPE",
+    "goal": "MGOAL_GO_TO",
     "difficulty": 5,
     "value": 0,
     "start": {

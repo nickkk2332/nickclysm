@@ -58,6 +58,13 @@ blueprint requires, blueprint provides, and blueprint excludes are abstract conc
 
 Every upgrade mission has its recipe `"result"` as a blueprint_provides and a blueprint_excludes, so upgrade missions will automatically prevent themselves from being repeatable.
 
+While companions are out building an upgrade, the camp counts what it will provide: that upgrade (in any of its parametric variants) and every upgrade whose blueprint_excludes it would meet can't be started at the same expansion until they come back.
+
+### Skills and EOCs
+When companions come back from an upgrade, each trains the skills of the blueprint's needs (given in `"blueprint_needs"` or worked out from its mapgen, the same skills the companions were picked by) at the recipe's `"difficulty"`, sharing the time worked out between them; a blueprint whose needs name no skill trains its `"skill_used"`.  A recipe crafted at a camp trains its `"skill_used"` at its `"difficulty"` when the companion comes back.  Only a recipe that names no skill at all trains the general "construction" companion practice, as every camp craft and upgrade used to.
+
+A camp craft runs the recipe's `"result_eocs"` when the companion comes back, once per item of the batch as normal crafting does (context `recipe_id`, `batch_size`, `batch_index`), with the companion as alpha and the player as beta; a recipe with no result item can be crafted at a camp for its EOCs alone.  An upgrade runs its recipe's `"result_eocs"` once when it is finished (`batch_size` 1), with the first of its builders as alpha.  `"result_item_eocs"` don't run for camp crafts.
+
 These are arbitrary strings and can be used to control the branching of the upgrade paths.  They also gate camp missions: a [faction_mission](FACTION_MISSIONS.md) is offered at an expansion that has all of its `"required_provides"`, so a mod can add a provide (say `"fishing_dock"`) and a mission that needs it.  The vanilla missions in the table below say what they need in `data/json/faction_missions.json`.  Some strings have meaning within the basecamp code or the vanilla missions:
 
 Provides `"id"`  | Meaning

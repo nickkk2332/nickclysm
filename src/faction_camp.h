@@ -53,6 +53,11 @@ class JsonValue;
 namespace talk_function
 {
 void basecamp_mission( npc & );
+/// The camp @ref p is out on a camp mission from, if it is on one (not an outpost job)
+std::optional<basecamp *> camp_of_companion_mission( const npc &p );
+/// Opens the mission board of the camp @ref p is out on a mission from, @ref by_radio when
+/// the player is not there; false (and nothing opened or founded) if it is on no camp mission
+bool camp_board_for_companion( npc &p, bool by_radio );
 
 /// Start a faction camp on the current OM tile
 void start_camp( npc & );

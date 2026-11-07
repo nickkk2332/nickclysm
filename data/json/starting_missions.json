@@ -563,7 +563,7 @@
     "type": "mission_definition",
     "name": { "str": "Go to the refueling stop" },
     "description": "Your bird is now on the ground, never again able to fly, you could search for a new one in the closest refueling stop requisitioned by the military.",
-    "goal": "MGOAL_GO_TO_TYPE",
+    "goal": "MGOAL_GO_TO",
     "difficulty": 3,
     "start": {
       "assign_mission_target": { "om_terrain": "s_air_helicopter_pad", "om_special": "o_airport", "reveal_radius": 6, "min_distance": 15, "z": 0 },

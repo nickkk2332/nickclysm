@@ -208,6 +208,9 @@ static const std::string var_time_between_succession =
 static const std::string var_timer_time_of_last_succession =
     "timer_time_of_last_succession";
 
+// a companion out on a camp craft: how many it is making, for the recipe's result_eocs
+static const std::string camp_craft_batch_var = "camp_craft_batch_size";
+
 //  These strings are matched against recipe group 'building_type'. Definite candidates for JSON definitions of
 //  the various UI strings corresponding to these groups.
 // TODO: Replace with enum?
@@ -365,6 +368,61 @@ static void run_camp_mission_eocs( const std::vector<effect_on_condition_id> &eo
     }
 }
 
+// A camp craft or upgrade runs its recipe's result_eocs as normal crafting does, once per
+// batch unit, with the companion who did the work as alpha and the player as beta (CAMP-J03)
+static void run_camp_recipe_eocs( const recipe &making, npc &comp, const int batch_size )
+{
+    if( making.result_eocs.empty() ) {
+        return;
+    }
+    dialogue d( get_talker_for( comp ), get_talker_for( get_avatar() ) );
+    d.set_value( "recipe_id", making.ident().str() );
+    d.set_value( "batch_size", batch_size );
+    for( const effect_on_condition_id &eoc : making.result_eocs ) {
+        for( int i = 0; i < batch_size; i++ ) {
+            d.set_value( "batch_index", i );
+            eoc->activate_activation_only( d, "a recipe", "crafting", "recipe" );
+        }
+    }
+}
+
+// The skills a camp craft or upgrade trains: the skills of the blueprint's needs for an upgrade
+// (the ones its companions were picked by), else the recipe's skill_used, rather than the
+// "construction" practice for everything (CAMP-J03).  Empty when the recipe names none.
+static std::vector<skill_id> camp_recipe_skills( const recipe &making,
+        const mapgen_arguments &args )
+{
+    std::vector<skill_id> skills;
+    if( making.is_blueprint() ) {
+        const auto req_it = making.blueprint_build_reqs().reqs_by_parameters.find( args );
+        if( req_it != making.blueprint_build_reqs().reqs_by_parameters.end() ) {
+            for( const std::pair<const skill_id, int> &sk : req_it->second.skills ) {
+                skills.push_back( sk.first );
+            }
+        }
+    }
+    if( skills.empty() && making.skill_used.is_valid() && !making.skill_used.is_null() ) {
+        skills.push_back( making.skill_used );
+    }
+    return skills;
+}
+
+// trains @ref skills at @ref difficulty from @ref worked of work, shared out between them, so
+// the companion learns as much as the "construction" practice taught; that practice when
+// there are none
+static void train_camp_recipe_skills( npc &comp, const std::vector<skill_id> &skills,
+                                      const time_duration &worked, const int difficulty )
+{
+    if( skills.empty() ) {
+        talk_function::companion_skill_trainer( comp, skill_construction.str(), worked, difficulty );
+        return;
+    }
+    const time_duration each = worked / static_cast<int>( skills.size() );
+    for( const skill_id &sk : skills ) {
+        talk_function::companion_skill_trainer( comp, sk, each, difficulty );
+    }
+}
+
 static std::string mission_ui_activity_of( const mission_id &miss_id )
 {
     const std::string dir_abbr = base_camps::all_directions.at(
@@ -482,8 +540,8 @@ static std::map<std::string, comp_list> companion_per_recipe_building_type( comp
 
 static bool update_time_left( std::string &entry, const comp_list &npc_list )
 {
-    bool avail = false;
-    Character &player_character = get_player_character();
+    // any one worker who is done can be recovered, wherever it is in the list (CAMP-B05)
+    bool avail = get_player_character().has_trait( trait_DEBUG_HS );
     for( const auto &comp : npc_list ) {
         entry += comp->get_name();
         if( comp->companion_mission_time_ret < calendar::turn ) {
@@ -493,7 +551,6 @@ static bool update_time_left( std::string &entry, const comp_list &npc_list )
             entry += " [" +
                      to_string( comp->companion_mission_time_ret - calendar::turn ) +
                      _( " left]\n" );
-            avail = player_character.has_trait( trait_DEBUG_HS );
         }
     }
     if( avail ) {
@@ -750,32 +807,60 @@ void talk_function::start_camp( npc &p )
     }
 }
 
-void talk_function::basecamp_mission( npc &p )
+// the mission board of @ref bcp, opened through @ref p from @ref omt_pos
+static void open_camp_mission_board( basecamp *bcp, npc &p, const tripoint_abs_omt &omt_pos,
+                                     const bool by_radio )
 {
     const std::string title = _( "Base Missions" );
-    const tripoint_abs_omt omt_pos = p.pos_abs_omt();
     mission_data mission_key;
-
-    std::optional<basecamp *> temp_camp = get_basecamp( p );
-    if( !temp_camp ) {
-        return;
-    }
-    basecamp *bcp = *temp_camp;
     if( !bcp->allowed_access_by( p ) ) {
         popup( _( "%s isn't under your control!" ), bcp->camp_name() );
         return;
     }
-    bcp->set_by_radio( get_avatar().dialogue_by_radio );
+    bcp->set_by_radio( by_radio );
     map &here = bcp->get_camp_map();
     bcp->form_storage_zones( here, p.pos_abs() );
     bcp->get_available_missions( mission_key, here );
-    if( display_and_choose_opts( mission_key, omt_pos, base_camps::id, title ) ) {
+    if( talk_function::display_and_choose_opts( mission_key, omt_pos, base_camps::id, title ) ) {
         bcp->handle_mission( mission_key.cur_key.id );
     }
     here.save();
     // This is to make sure the basecamp::camp_map is always usable and valid.
     // Otherwise when quick saving unloads submaps, basecamp::camp_map is still valid but becomes unusable.
     bcp->unload_camp_map();
+}
+
+void talk_function::basecamp_mission( npc &p )
+{
+    std::optional<basecamp *> temp_camp = get_basecamp( p );
+    if( !temp_camp ) {
+        return;
+    }
+    open_camp_mission_board( *temp_camp, p, p.pos_abs_omt(), get_avatar().dialogue_by_radio );
+}
+
+std::optional<basecamp *> talk_function::camp_of_companion_mission( const npc &p )
+{
+    if( !p.has_companion_mission() ) {
+        return std::nullopt;
+    }
+    // outpost jobs (a ranch foreman's crops, scavenging...) are no camp of the player's
+    const npc_companion_mission mission = p.get_companion_mission();
+    if( mission.role_id != base_camps::id ) {
+        return std::nullopt;
+    }
+    return overmap_buffer.find_camp( mission.position.xy() );
+}
+
+bool talk_function::camp_board_for_companion( npc &p, const bool by_radio )
+{
+    // never founds a camp where the companion happens to be (CAMP-B08)
+    const std::optional<basecamp *> camp = camp_of_companion_mission( p );
+    if( !camp ) {
+        return false;
+    }
+    open_camp_mission_board( *camp, p, p.get_companion_mission().position, by_radio );
+    return true;
 }
 
 void basecamp::add_available_recipes( mission_data &mission_key, mission_kind kind,
@@ -829,8 +914,13 @@ void basecamp::get_available_missions_by_dir( mission_data &mission_key, const p
                                                        making.blueprint_build_reqs().reqs_by_parameters.find( miss_id.mapgen_args )->second.time ) ),
                                                    making.exertion_level() );
                 const int available_calories = fac()->food_supply().kcal();
-                bool can_upgrade = upgrade.avail;
+                // one build of a blueprint at a time, and none of what it rules out (CAMP-B13)
+                bool can_upgrade = upgrade.avail && !upgrade.in_progress;
                 entry = om_upgrade_description( upgrade.bldg, upgrade.args );
+                if( upgrade.in_progress ) {
+                    entry += colorize( _( "Companions here are already building this or something "
+                                          "that rules it out." ), c_red ) + "\n";
+                }
                 if( foodcost > available_calories ) {
                     can_upgrade = false;
                     entry += string_format( _( "Total calorie cost: %s (have %d)" ),
@@ -1569,7 +1659,8 @@ npc_ptr basecamp::start_mission( const mission_id &miss_id, time_duration total_
         comp->companion_mission_time_ret = calendar::turn + total_time;
         comp->companion_mission_exertion = exertion_level;
         comp->companion_mission_travel_time = travel_time;
-        if( must_feed ) {
+        // a mission of no length (the field survey) costs nothing, so there is no meal
+        if( must_feed && time_to_food( total_time, exertion_level, travel_time ) > 0 ) {
             // TODO update spent food after assigning a specific worker to the mission and recalculating travel time
             feed_workers( *comp.get()->as_character(), camp_food_supply( total_time, exertion_level,
                           travel_time ), camp_meal::mission_cost );
@@ -1668,6 +1759,12 @@ void basecamp::start_upgrade( const mission_id &miss_id )
         continue_salt_water_pipe( miss_id );
         return;
     }
+    // the board doesn't offer it then, but nothing else may start it twice either (CAMP-B13)
+    reset_camp_workers();
+    if( upgrade_in_progress( making, miss_id.dir.value() ) ) {
+        popup( _( "Companions here are already building this or something that rules it out." ) );
+        return;
+    }
 
     auto req_it = making.blueprint_build_reqs().reqs_by_parameters.find( miss_id.mapgen_args );
     cata_assert( req_it != making.blueprint_build_reqs().reqs_by_parameters.end() );
@@ -1703,9 +1800,6 @@ void basecamp::start_upgrade( const mission_id &miss_id )
         }
         components.consume_components();
         const point_rel_omt dir = miss_id.dir.value();  //  Will always have a value
-
-        update_in_progress( miss_id.parameters,
-                            dir );
 
         bool mirror_horizontal;
         bool mirror_vertical;
@@ -2799,7 +2893,6 @@ bool basecamp::common_salt_water_pipe_construction(
 
     if( !comp.empty() ) {
         components.consume_components();
-        update_in_progress( miss_id.parameters, miss_id.dir.value() );  // Dir will always have a value
         pipe->segments[segment_number].started = true;
     }
 
@@ -3165,12 +3258,17 @@ void basecamp::start_crafting( const mission_id &miss_id )
     if( comp != nullptr ) {
         components.consume_components();
         item_components used = components.consumed_components();
-        for( const item &results : making->create_results( num_to_make, &used ) ) {
-            comp->companion_mission_inv.insert( results );
+        // a recipe that makes only its result_eocs has no result item (CAMP-J03)
+        if( !making->result().is_null() ) {
+            for( const item &results : making->create_results( num_to_make, &used ) ) {
+                comp->companion_mission_inv.insert( results );
+            }
         }
         for( const item &byproducts : making->create_byproducts( num_to_make ) ) {
             comp->companion_mission_inv.insert( byproducts );
         }
+        // for the result_eocs, which run when the companion comes back
+        comp->set_value( camp_craft_batch_var, num_to_make );
     }
 }
 
@@ -3465,8 +3563,10 @@ npc_ptr talk_function::camp_start_planting( basecamp &camp, const mission_id &mi
 npc_ptr basecamp::companion_choose_return( const mission_id &miss_id,
         time_duration min_duration )
 {
+    // a companion comes back once its own planned return time is past, not only the
+    // mission's fixed minimum (CAMP-B05)
     return talk_function::companion_choose_return( omt_pos, base_camps::id, miss_id,
-            calendar::turn - min_duration );
+            calendar::turn - min_duration, true, false, true );
 }
 
 npc_ptr basecamp::companion_crafting_choose_return( const mission_id &miss_id )
@@ -3518,6 +3618,8 @@ void basecamp::finish_return( npc &comp, const bool fixed_time, const std::strin
     // mission_companion
     talk_function::send_companion_mission_finished( comp, cancel ? "canceled" : "returned" );
     comp.reset_companion_mission();
+    // a camp craft's batch size, kept for its result_eocs (CAMP-J03)
+    comp.remove_value( camp_craft_batch_var );
     comp.companion_mission_time = calendar::before_time_starts;
     comp.companion_mission_time_ret = calendar::before_time_starts;
     if( !cancel ) {
@@ -3562,9 +3664,26 @@ npc_ptr basecamp::crafting_mission_return( const mission_id &miss_id, const std:
         const std::string &skill, int difficulty )
 {
     npc_ptr comp = companion_crafting_choose_return( miss_id );
-    if( comp != nullptr ) {
-        finish_return( *comp, false, return_msg, skill, difficulty );
+    if( comp == nullptr ) {
+        return comp;
     }
+    // what this companion made, which may not be the recipe the board entry names
+    const recipe_id made( comp->get_companion_mission().miss_id.parameters );
+    if( !made.is_valid() ) {
+        finish_return( *comp, false, return_msg, skill, difficulty );
+        return comp;
+    }
+    const recipe &making = *made;
+    // finish_return forgets these
+    const time_duration worked = calendar::turn - comp->companion_mission_time;
+    const diag_value *batch_var = comp->maybe_get_value( camp_craft_batch_var );
+    const int batch_size = batch_var == nullptr ? 1 : std::max( 1,
+                           static_cast<int>( batch_var->dbl() ) );
+    // the recipe's own skill trains, at its difficulty (CAMP-J03)
+    finish_return( *comp, false, return_msg, std::string(), 0 );
+    const std::vector<skill_id> skills = camp_recipe_skills( making, {} );
+    train_camp_recipe_skills( *comp, skills, worked, skills.empty() ? difficulty : making.difficulty );
+    run_camp_recipe_eocs( making, *comp, batch_size );
     return comp;
 }
 
@@ -3676,9 +3795,15 @@ bool basecamp::upgrade_return( const mission_id &miss_id )
     const std::string msg = _( "returns from upgrading the camp having earned a bit of "
                                "experience…" );
 
+    // the blueprint's skills train, as start_upgrade picked the companions by (CAMP-J03)
+    const std::vector<skill_id> skills = camp_recipe_skills( making, miss_id.mapgen_args );
     for( const npc_ptr &comp : npc_list ) {
-        finish_return( *comp, false, msg, "construction", making.difficulty );
+        const time_duration worked = calendar::turn - comp->companion_mission_time;
+        finish_return( *comp, false, msg, std::string(), 0 );
+        train_camp_recipe_skills( *comp, skills, worked, making.difficulty );
     }
+    // once for the upgrade, however many built it
+    run_camp_recipe_eocs( making, *npc_list.front(), 1 );
 
     return true;
 }
@@ -5233,15 +5358,20 @@ int basecamp::camp_food_supply_days( float exertion_level ) const
 
 camp_food_portion basecamp::camp_food_supply( nutrients change )
 {
+    if( change.calories == 0 && change.vitamins().empty() ) {
+        // nothing asked (a mission of no length, a recruit who wants no food): nothing served
+        return camp_food_portion();
+    }
     if( !fac()->consumes_food ) {
         // larder doesn't shrink, but portion is still served
         return camp_food_portion{ { { calendar::turn_zero, -change } } };
     }
-    if( change.calories >= 0 ) {
+    if( change.calories > 0 ) {
         debugmsg( "camp_food_supply cannot add to stockpile" );
         return camp_food_portion();
     }
-    if( change.vitamins().empty() ) {
+    // an empty larder has no vitamins to share out, and dividing by its calories would not end well
+    if( change.vitamins().empty() && fac()->food_supply().calories > 0 ) {
         // We've been passed a raw kcal value, we should also consume a proportional amount of vitamins
         // Kcals are used as a proxy to consume vitamins.
         // e.g. if you have a larder with 10k kcal, 100 vitamin A, 200 vitamin B then consuming 1000 kcal will

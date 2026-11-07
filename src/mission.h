@@ -250,6 +250,8 @@ struct mission_type {
         static void load_mission_type( const JsonObject &jo, const std::string &src );
         static void finalize_all();
         static void check_consistency();
+        /// Reports undefined ids and fields a goal needs but lacks (CAMP-J04)
+        void check() const;
 
         bool parse_funcs( const JsonObject &jo, std::string_view src,
                           std::function<void( mission * )> &phase_func );

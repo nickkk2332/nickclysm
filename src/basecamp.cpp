@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -32,6 +33,7 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mission_companion.h"
 #include "npc.h"
 #include "output.h"
 #include "overmap.h"
@@ -398,7 +400,6 @@ std::vector<basecamp_upgrade> basecamp::available_upgrades( const point_rel_omt 
                 continue;
             }
             bool should_display = true;
-            bool in_progress = false;
             for( const auto &bp_exclude : recp.blueprint_excludes() ) {
                 // skip buildings that are excluded by previous builds
                 if( e_data.provides.find( bp_exclude.first ) != e_data.provides.end() ) {
@@ -407,17 +408,11 @@ std::vector<basecamp_upgrade> basecamp::available_upgrades( const point_rel_omt 
                         break;
                     }
                 }
-                // track buildings that are currently being built
-                if( e_data.in_progress.find( bp_exclude.first ) != e_data.in_progress.end() ) {
-                    if( e_data.in_progress[bp_exclude.first] >= bp_exclude.second ) {
-                        in_progress = true;
-                        break;
-                    }
-                }
             }
             if( !should_display ) {
                 continue;
             }
+            const bool in_progress = upgrade_in_progress( recp, dir );
             if( recp.blueprint_build_reqs().reqs_by_parameters.empty() ) {
                 debugmsg( "blueprint recipe %s lacked any blueprint_build_reqs", recp.result().str() );
             }
@@ -523,24 +518,39 @@ void basecamp::update_provides( const std::string &bldg, expansion_data &e_data 
     }
 }
 
-void basecamp::update_in_progress( const std::string &bldg, const point_rel_omt &dir )
+bool basecamp::upgrade_in_progress( const recipe &making, const point_rel_omt &dir ) const
 {
-    if( !recipe_id( bldg ).is_valid() ) {
-        return;
-    }
-    auto e = expansions.find( dir );
-    if( e == expansions.end() ) {
-        return;
-    }
-    expansion_data &e_data = e->second;
-
-    const recipe &making = recipe_id( bldg ).obj();
-    for( const auto &bp_provides : making.blueprint_provides() ) {
-        if( e_data.in_progress.find( bp_provides.first ) == e_data.in_progress.end() ) {
-            e_data.in_progress[bp_provides.first] = 0;
+    // What the companions out on upgrades here are building, each blueprint once whatever
+    // its variant and however many work on it.  Worked out from the companions, so it
+    // can't drift from them or be lost in a save (CAMP-B13).
+    std::set<std::string> building;
+    for( const npc_ptr &worker : camp_workers ) {
+        const mission_id miss_id = worker->get_companion_mission().miss_id;
+        if( miss_id.id == Camp_Upgrade && miss_id.dir == dir && !miss_id.parameters.empty() ) {
+            building.insert( miss_id.parameters );
         }
-        e_data.in_progress[bp_provides.first] += bp_provides.second;
     }
+    if( building.count( making.ident().str() ) ) {
+        return true;
+    }
+    // or something that will provide what rules this one out
+    std::map<std::string, int> to_be_provided;
+    for( const std::string &bldg : building ) {
+        const recipe_id started( bldg );
+        if( !started.is_valid() ) {
+            continue;
+        }
+        for( const auto &bp_provides : started->blueprint_provides() ) {
+            to_be_provided[bp_provides.first] += bp_provides.second;
+        }
+    }
+    for( const auto &bp_exclude : making.blueprint_excludes() ) {
+        const auto provided = to_be_provided.find( bp_exclude.first );
+        if( provided != to_be_provided.end() && provided->second >= bp_exclude.second ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void basecamp::reset_camp_resources( map &here )

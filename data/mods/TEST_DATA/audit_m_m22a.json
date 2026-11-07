@@ -1,0 +1,171 @@
+[
+  {
+    "type": "ITEM",
+    "id": "test_m22a_token_a",
+    "//": "CAMP-B07, CAMP-B12: a small item nothing else spawns.",
+    "name": { "str": "test token A" },
+    "description": "Test data only.",
+    "weight": "10 g",
+    "volume": "100 ml",
+    "material": [ "plastic" ],
+    "symbol": "*",
+    "color": "light_gray"
+  },
+  {
+    "type": "ITEM",
+    "id": "test_m22a_token_b",
+    "//": "CAMP-B07, CAMP-B12: a second small item nothing else spawns.",
+    "name": { "str": "test token B" },
+    "description": "Test data only.",
+    "weight": "10 g",
+    "volume": "100 ml",
+    "material": [ "plastic" ],
+    "symbol": "*",
+    "color": "light_blue"
+  },
+  {
+    "type": "ITEM",
+    "id": "test_m22a_token_c",
+    "//": "CAMP-B07: a third small item nothing else spawns.",
+    "name": { "str": "test token C" },
+    "description": "Test data only.",
+    "weight": "10 g",
+    "volume": "100 ml",
+    "material": [ "plastic" ],
+    "symbol": "*",
+    "color": "light_green"
+  },
+  {
+    "type": "item_group",
+    "id": "test_m22a_tokens",
+    "//": "CAMP-B12: what TEST_MISSION_M22A_FIND_TOKENS asks for.",
+    "subtype": "collection",
+    "items": [ "test_m22a_token_a", "test_m22a_token_b" ]
+  },
+  {
+    "id": "TEST_MISSION_M22A_FIND_TOKENS",
+    "type": "mission_definition",
+    "//": "CAMP-B12: three of either token.  CAMP-J04: no difficulty, which is optional now.",
+    "name": { "str": "Find three tokens" },
+    "goal": "MGOAL_FIND_ITEM_GROUP",
+    "value": 0,
+    "item_group": "test_m22a_tokens",
+    "count": 3,
+    "has_generic_rewards": false
+  },
+  {
+    "id": "TEST_MISSION_M22A_RECRUIT_HUNTER",
+    "type": "mission_definition",
+    "//": "CAMP-B10: recruit a hunter.",
+    "name": { "str": "Recruit a hunter" },
+    "goal": "MGOAL_RECRUIT_NPC_CLASS",
+    "difficulty": 1,
+    "value": 0,
+    "recruit_class": "NC_HUNTER",
+    "has_generic_rewards": false
+  },
+  {
+    "id": "TEST_MISSION_M22A_URGENT",
+    "type": "mission_definition",
+    "//": "CAMP-J04: an urgent mission of difficulty 0 (by default).",
+    "name": { "str": "Urgent and easy" },
+    "goal": "MGOAL_NULL",
+    "value": 0,
+    "urgent": true,
+    "has_generic_rewards": false
+  },
+  {
+    "id": "TEST_MISSION_M22A_UPDATE_IN_SPECIAL",
+    "type": "mission_definition",
+    "//": "CAMP-B11: update_mapgen reads om_special (it was an unread member, so loading failed).",
+    "name": { "str": "Update a helicopter pad of an airport" },
+    "goal": "MGOAL_NULL",
+    "value": 0,
+    "has_generic_rewards": false,
+    "start": {
+      "update_mapgen": {
+        "om_terrain": "s_air_helicopter_pad",
+        "om_special": "o_airport",
+        "place_monster": [ { "monster": "mon_zombie", "x": 1, "y": 1 } ]
+      }
+    }
+  },
+  {
+    "type": "recipe",
+    "result": "cudgel",
+    "id_suffix": "test_m22a_camp",
+    "//": "CAMP-J03: crafted at a camp, it trains tailoring at difficulty 3 and runs its result_eocs.",
+    "activity_level": "NO_EXERCISE",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "tailor",
+    "difficulty": 3,
+    "time": "1 h",
+    "autolearn": false,
+    "never_learn": true,
+    "components": [ [ [ "2x4", 1 ] ] ],
+    "result_eocs": [
+      {
+        "id": "EOC_TEST_M22A_CAMP_CRAFTED",
+        "effect": [
+          { "math": [ "test_m22a_crafted++" ] },
+          { "math": [ "test_m22a_crafted_batch = _batch_size" ] },
+          { "math": [ "u_test_m22a_crafter = 1" ] }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "recipe",
+    "result": "test_camp_m22a_site",
+    "//": "CAMP-B13: an expansion for the test upgrades.  Its requirement is never provided, so no camp offers it; tests add it with add_expansion.",
+    "description": "Test data only.",
+    "activity_level": "NO_EXERCISE",
+    "category": "CC_BUILDING",
+    "subcategory": "CSC_BUILDING_BASES",
+    "autolearn": false,
+    "never_learn": true,
+    "time": "1 h",
+    "construction_blueprint": "test_stove_update",
+    "blueprint_name": "test site",
+    "blueprint_requires": [ { "id": "test_camp_not_an_upgrade" } ],
+    "check_blueprint_needs": false
+  },
+  {
+    "type": "recipe",
+    "result": "test_camp_m22a_shed",
+    "//": "CAMP-B13: rules out the garden.  CAMP-J03: its needs train tailoring, and it runs its result_eocs once.",
+    "description": "Test data only.",
+    "activity_level": "NO_EXERCISE",
+    "category": "CC_BUILDING",
+    "subcategory": "CSC_BUILDING_BASES",
+    "autolearn": false,
+    "never_learn": true,
+    "skill_used": "fabrication",
+    "difficulty": 2,
+    "construction_blueprint": "test_stove_update",
+    "blueprint_name": "test shed",
+    "blueprint_requires": [ { "id": "test_camp_m22a_site" } ],
+    "blueprint_excludes": [ { "id": "test_camp_m22a_garden" } ],
+    "blueprint_needs": { "time": "1 h", "skills": [ [ "tailor", 2 ] ], "inline": { "tools": [  ], "qualities": [  ], "components": [  ] } },
+    "check_blueprint_needs": false,
+    "result_eocs": [ { "id": "EOC_TEST_M22A_CAMP_BUILT", "effect": [ { "math": [ "test_m22a_built++" ] } ] } ]
+  },
+  {
+    "type": "recipe",
+    "result": "test_camp_m22a_garden",
+    "//": "CAMP-B13: rules out the shed.",
+    "description": "Test data only.",
+    "activity_level": "NO_EXERCISE",
+    "category": "CC_BUILDING",
+    "subcategory": "CSC_BUILDING_BASES",
+    "autolearn": false,
+    "never_learn": true,
+    "construction_blueprint": "test_stove_update",
+    "blueprint_name": "test garden",
+    "blueprint_requires": [ { "id": "test_camp_m22a_site" } ],
+    "blueprint_excludes": [ { "id": "test_camp_m22a_shed" } ],
+    "blueprint_needs": { "time": "1 h", "skills": [ [ "survival", 1 ] ], "inline": { "tools": [  ], "qualities": [  ], "components": [  ] } },
+    "check_blueprint_needs": false
+  }
+]
