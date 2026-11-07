@@ -1,0 +1,125 @@
+[
+  {
+    "type": "monstergroup",
+    "id": "GROUP_TEST_M06A_SPAWNER",
+    "//": "MAP-B09 fixture: one test zombie per point of the spawn count.",
+    "default": "mon_test_zombie",
+    "monsters": [ { "monster": "mon_test_zombie", "weight": 1, "cost_multiplier": 1, "pack_size": [ 1, 1 ] } ]
+  },
+  {
+    "type": "field_type",
+    "id": "test_fd_m06a_spawner",
+    "//": "MAP-B09 fixture: every turn, spawns two test zombies next to it.",
+    "intensity_levels": [
+      {
+        "name": "test spawner",
+        "sym": "&",
+        "color": "magenta",
+        "monster_spawn_chance": 1,
+        "monster_spawn_count": 2,
+        "monster_spawn_radius": 1,
+        "monster_spawn_group": "GROUP_TEST_M06A_SPAWNER"
+      }
+    ],
+    "priority": 1
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m06a_tree",
+    "name": "test tree",
+    "description": "MAP-J04 and MAP-J05 fixture: radiation scorches it into grass, and felled it leaves mounds of dirt and dirt.",
+    "symbol": "4",
+    "color": "green",
+    "move_cost": 0,
+    "flags": [ "TREE", "NOITEM" ],
+    "rad_scorch": "t_grass",
+    "felled": { "trunk": "t_dirtmound", "stump": "t_dirt" },
+    "bash": { "str_min": 80, "str_max": 180, "sound": "crunch!", "sound_fail": "whack!", "ter_set": "t_dirt" }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m06a_hardy_shrub",
+    "name": "test hardy shrub",
+    "description": "MAP-J04 fixture: a shrub radiation doesn't scorch.",
+    "symbol": "#",
+    "color": "green",
+    "move_cost": 8,
+    "flags": [ "TRANSPARENT", "SHRUB" ],
+    "rad_scorch": "t_test_m06a_hardy_shrub"
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m06a_spring",
+    "name": "test spring",
+    "description": "MAP-J04 fixture: fills a container on it with 8 charges of clean water over a whole year.",
+    "symbol": "~",
+    "color": "blue",
+    "move_cost": 2,
+    "flags": [ "TRANSPARENT", "FLAT" ],
+    "produces_liquid": { "item": "water_clean", "amount": 8, "active": [ 0, 4 ] }
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_m06a_cold_box",
+    "name": "test cold box",
+    "description": "MAP-J04 fixture: keeps what lies in it as cold as a freezer.",
+    "symbol": "#",
+    "color": "white",
+    "move_cost_mod": 2,
+    "required_str": -1,
+    "flags": [ "TRANSPARENT", "CONTAINER", "PLACE_ITEM" ],
+    "item_temperature": "freezer"
+  },
+  {
+    "type": "ITEM",
+    "id": "test_m06a_dryer",
+    "name": { "str": "test dryer" },
+    "description": "MAP-J03 fixture: the base item of the test dryer appliance.",
+    "weight": "25 kg",
+    "to_hit": -1,
+    "material": [ "plastic", "steel" ],
+    "volume": "60 L",
+    "longest_side": "70 cm",
+    "price": "90 USD",
+    "price_postapoc": "5 USD",
+    "symbol": "D",
+    "color": "white",
+    "melee_damage": { "bash": 5 }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "ap_test_m06a_dryer",
+    "name": { "str": "test dryer" },
+    "item": "test_m06a_dryer",
+    "categories": [ "utility" ],
+    "color": "white",
+    "broken_color": "blue",
+    "durability": 20,
+    "description": "MAP-J03 fixture: a 10 minute cycle that cleans filthy items and turns cotton sheets into felt patches.  It starts only once the global test_m06a_dryer_allowed is 1.",
+    "size": "50 L",
+    "damage_modifier": 10,
+    "breaks_into": [ { "item": "scrap", "count": [ 1, 2 ] } ],
+    "flags": [ "APPLIANCE", "CARGO", "OBSTACLE", "COVERED" ],
+    "requirements": { "removal": { "time": "6 m" } },
+    "variants": [ { "symbols": "D", "symbols_broken": "#" } ],
+    "processing_cycle": {
+      "duration": "10 m",
+      "unset_item_flags": [ "FILTHY" ],
+      "transform_items": [ { "from": "sheet_cotton", "to": "felt_patch" } ],
+      "start_message": "The test dryer starts.",
+      "finish_message": "The test dryer stops.",
+      "eoc_on_start": {
+        "id": "EOC_TEST_M06A_DRYER_START",
+        "condition": { "math": [ "test_m06a_dryer_allowed == 1" ] },
+        "effect": [ { "math": [ "test_m06a_dryer_started += 1" ] } ]
+      },
+      "eoc_on_finish": {
+        "id": "EOC_TEST_M06A_DRYER_DONE",
+        "effect": [
+          { "math": [ "test_m06a_dryer_done += 1" ] },
+          { "copy_var": { "context_val": "vpart_id" }, "target_var": { "global_val": "test_m06a_dryer_part" } }
+        ]
+      }
+    }
+  }
+]

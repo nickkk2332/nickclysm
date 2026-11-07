@@ -19,6 +19,7 @@
 #include "color.h"
 #include "coords_fwd.h"
 #include "enum_bitset.h"
+#include "enums.h"
 #include "game_constants.h"
 #include "iexamine.h"
 #include "lightmap.h"
@@ -597,6 +598,10 @@ struct map_data_common_t {
         // Maximal volume of items that can be stored in/on this furniture/terrain
         units::volume max_volume = DEFAULT_TILE_VOLUME;
 
+        // MAP-J04: the temperature items on this tile keep, as a root cellar, fridge or freezer
+        // does (furniture's wins over the terrain's); none for the weather's
+        std::optional<temperature_flag> item_temperature;
+
         itype_id liquid_source_item_id = itype_id::NULL_ID(); // id of a liquid this tile provides
         double liquid_source_min_temp = 4; // in centigrades, cold water as default value
         std::pair<int, int> liquid_source_count = { 0, 0 }; // charges of liquid, if it's finite source
@@ -702,6 +707,19 @@ struct map_data_common_t {
         virtual void check() const {};
 };
 
+// MAP-J04: a liquid a terrain makes as time passes, into the first container on it (a tapped
+// maple's sap)
+struct ter_liquid_production {
+    itype_id item;
+    // charges made over one whole span of the year it is made in
+    int amount = 0;
+    // that span, in seasons from the start of spring (0 to 4); it may run past the end of winter
+    double start = 0.0;
+    double end = 0.0;
+    // one fill in this many is poisoned; 0 for none
+    int poison_chance = 0;
+};
+
 /*
 * Struct ter_t:
 * Short for terrain type. This struct defines all of the metadata for a given terrain id (an enum below).
@@ -738,6 +756,19 @@ struct ter_t : map_data_common_t {
     std::string trap_id_str;     // String storing the id string of the trap.
     ter_str_id transforms_into; // Transform into what terrain?
     ter_str_id roof;            // What will be the floor above this terrain
+
+    // MAP-J04: made while the tile is away from the player
+    std::optional<ter_liquid_production> produces_liquid;
+    // MAP-J04: what radiation scorches it into; empty for the built-in rules (shrubs die into
+    // dirt, trees into dead trees)
+    ter_str_id rad_scorch;
+    // MAP-J05: what a felled tree (TREE terrain) leaves where it fell and where it stood; empty
+    // for t_trunk and t_stump
+    ter_str_id felled_trunk;
+    ter_str_id felled_stump;
+    // MAP-J05: what a vehicle without enough wheels churns it into; empty for the built-in rule
+    // (dirt and grass into a mound of dirt)
+    ter_str_id churned_into;
 
     trap_id trap; // The id of the trap located at this terrain. Limit one trap per tile currently.
 

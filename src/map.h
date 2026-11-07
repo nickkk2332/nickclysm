@@ -514,6 +514,10 @@ class map
         // Apply phase-change logic for a single map square based on historical
         // weather (10-day average at 08:00). Currently implements "water_freeze".
         void temp_based_phase_change_at( const tripoint_bub_ms &p, const class weather_generator &wgen );
+        // The same for every loaded tile with phase rules, skipping tiles with a creature or a
+        // vehicle on them. Loading a submap does it for that submap; the game does it for the
+        // reality bubble once a day, when the average changes.
+        void refresh_phase_changes();
 
         // Original terrain recording for phase changes
         bool has_original_terrain_at( const tripoint_bub_ms &p ) const;
@@ -1394,7 +1398,6 @@ class map
 
         // Effects of attacks/items
         bool hit_with_acid( const tripoint_bub_ms &p );
-        bool hit_with_fire( const tripoint_bub_ms &p );
 
         /**
          * Returns true if there is furniture for which filter returns true in a 1 tile radius of p.
@@ -2066,6 +2069,12 @@ class map
          * If false, monsters are not spawned in view of player character.
          */
         void spawn_monsters( bool ignore_sight, bool spawn_nonlocal = false );
+        /**
+         * Places the monsters queued on this map's submaps (by fields, rotting items, births
+         * and the like) now, instead of at the next map shift. Saved monsters and overmap
+         * groups are left to spawn_monsters. Does nothing unless this is the game's map.
+         */
+        void spawn_queued_monsters();
 
         /**
         * Checks to see if the corpse that is rotting away generates items when it does.
@@ -2092,6 +2101,8 @@ class map
         // Helper #1 - spawns monsters on one submap
         void spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight,
                                     bool spawn_nonlocal = false );
+        // Helper #1b - places the monsters queued on one submap's spawn points
+        void spawn_queued_monsters_submap( const tripoint_rel_sm &gp, submap &current_submap );
         // Helper #2 - spawns monsters on one submap and from one group on this submap
         void spawn_monsters_submap_group( const tripoint_rel_sm &gp, mongroup &group,
                                           bool ignore_sight );

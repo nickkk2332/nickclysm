@@ -1234,6 +1234,7 @@
     "coverage": 80,
     "flags": [ "FLAMMABLE_ASH", "SEALED", "PLACE_ITEM", "SUPPORTS_ROOF", "TREE", "REDUCE_SCENT", "LIQUIDCONT", "CLIMB_ADJACENT" ],
     "examine_action": "tree_maple_tapped",
+    "produces_liquid": { "item": "maple_sap", "amount": 224, "active": [ 3.75, 0.5 ], "poison_chance": 10 },
     "bash": {
       "str_min": 80,
       "str_max": 180,

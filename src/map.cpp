@@ -211,7 +211,6 @@ static const itype_id itype_HEW_printout_data_vitrified( "HEW_printout_data_vitr
 static const itype_id
 itype_HEW_printout_data_void_spider_lair( "HEW_printout_data_void_spider_lair" );
 static const itype_id itype_battery( "battery" );
-static const itype_id itype_maple_sap( "maple_sap" );
 static const itype_id itype_mws_monster_corpse_weather_data( "mws_monster_corpse_weather_data" );
 static const itype_id itype_mws_portal_storm_weather_data( "mws_portal_storm_weather_data" );
 static const itype_id itype_mws_weather_data( "mws_weather_data" );
@@ -260,7 +259,6 @@ static const ter_str_id ter_t_grass( "t_grass" );
 static const ter_str_id ter_t_open_air( "t_open_air" );
 static const ter_str_id ter_t_reb_cage( "t_reb_cage" );
 static const ter_str_id ter_t_rock_floor( "t_rock_floor" );
-static const ter_str_id ter_t_rootcellar( "t_rootcellar" );
 static const ter_str_id ter_t_stump( "t_stump" );
 static const ter_str_id ter_t_tree_birch( "t_tree_birch" );
 static const ter_str_id ter_t_tree_birch_harvested( "t_tree_birch_harvested" );
@@ -269,7 +267,6 @@ static const ter_str_id ter_t_tree_deadpine( "t_tree_deadpine" );
 static const ter_str_id ter_t_tree_hickory( "t_tree_hickory" );
 static const ter_str_id ter_t_tree_hickory_dead( "t_tree_hickory_dead" );
 static const ter_str_id ter_t_tree_hickory_harvested( "t_tree_hickory_harvested" );
-static const ter_str_id ter_t_tree_maple_tapped( "t_tree_maple_tapped" );
 static const ter_str_id ter_t_tree_pine( "t_tree_pine" );
 static const ter_str_id ter_t_tree_willow( "t_tree_willow" );
 static const ter_str_id ter_t_tree_willow_harvested( "t_tree_willow_harvested" );
@@ -1296,7 +1293,12 @@ vehicle *map::move_vehicle( vehicle &veh, const tripoint_rel_ms &dp, const tiler
         for( const tripoint_abs_ms &p : veh.get_points() ) {
             const tripoint_bub_ms pos = get_bub( p );
             const ter_id &pter = ter( pos );
-            if( pter == ter_t_dirt || pter == ter_t_grass ) {
+            // MAP-J05: the terrain's churned_into, by default dirt and grass into a mound
+            if( !pter->churned_into.is_empty() ) {
+                if( pter->churned_into != pter.id() ) {
+                    ter_set( pos, pter->churned_into );
+                }
+            } else if( pter == ter_t_dirt || pter == ter_t_grass ) {
                 ter_set( pos, ter_t_dirtmound );
             }
         }
@@ -2196,7 +2198,7 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
     }
     current_submap->set_furn( l, new_target_furniture );
     current_submap->set_map_damage( point_sm_ms( l ), 0 );
-    clear_original_terrain_at( p );
+    // The terrain under it, and the terrain phase rules recorded for it (frozen water), stay.
 
     // Set the dirty flags
     const furn_t &old_f = old_id.obj();
@@ -5117,12 +5119,8 @@ bash_params map::bash( const tripoint_bub_ms &p, const std::map<damage_type_id, 
         bash_ter_furn( p, bsh, repair_missing_ground );
     }
 
-    // If the bash operation modified the tile (solid) then treat it as a
-    // deliberate map modification and clear any recorded original terrain
-    // to avoid incorrect phase-change reversion.
-    if( bsh.did_bash && bsh.bashed_solid ) {
-        clear_original_terrain_at( p );
-    }
+    // A bash that changes the terrain drops the terrain recorded under it (ter_set does). Bashing
+    // furniture, a vehicle or a field on it leaves frozen water free to thaw.
 
     return bsh;
 }
@@ -5295,7 +5293,6 @@ void map::destroy( const tripoint_bub_ms &p, const bool silent )
     while( count <= 25 && bash( p, 999, silent, true ).success ) {
         count++;
     }
-    clear_original_terrain_at( p );
 }
 
 void map::destroy_furn( const tripoint_bub_ms &p, const bool silent )
@@ -5307,8 +5304,6 @@ void map::destroy_furn( const tripoint_bub_ms &p, const bool silent )
            bash( p, 999, silent, true ).success ) {
         count++;
     }
-
-    clear_original_terrain_at( p );
 }
 
 void map::destroy_vehicle( const tripoint_bub_ms &p, const bool silent )
@@ -5589,21 +5584,6 @@ bool map::hit_with_acid( const tripoint_bub_ms &p )
         return false;
     } else if( t == ter_t_card_science || t == ter_t_card_military || t == ter_t_card_industrial ) {
         ter_set( p, ter_t_card_reader_broken );
-    }
-    return true;
-}
-
-// returns true if terrain stops fire
-bool map::hit_with_fire( const tripoint_bub_ms &p )
-{
-    if( passable( p ) ) {
-        return false;    // Didn't hit the tile!
-    }
-
-    // non passable but flammable terrain, set it on fire
-    if( has_flag( ter_furn_flag::TFLAG_FLAMMABLE, p ) ||
-        has_flag( ter_furn_flag::TFLAG_FLAMMABLE_ASH, p ) ) {
-        add_field( p, fd_fire, 3 );
     }
     return true;
 }
@@ -6492,6 +6472,9 @@ static void process_vehicle_items( vehicle &cur_veh, int part )
 {
     map &here = get_map();
 
+    // MAP-J03: a part's JSON processing_cycle
+    processing_cycles::process( cur_veh, part );
+
     vehicle_part &vp = cur_veh.part( part );
     const vpart_info &vpi = vp.info();
 
@@ -6871,10 +6854,12 @@ void map::process_items_in_submap( submap &current_submap, const tripoint_rel_sm
             // Lets not process it at all.
             continue;
         }
-        // root cellars are special
+        // root cellars are special (MAP-J04: so is any furniture or terrain with item_temperature)
         temperature_flag flag = temperature_flag::NORMAL;
-        if( ter( map_location ) == ter_t_rootcellar ) {
-            flag = temperature_flag::ROOT_CELLAR;
+        if( furn.item_temperature ) {
+            flag = *furn.item_temperature;
+        } else if( const ter_t &terrain = ter( map_location ).obj(); terrain.item_temperature ) {
+            flag = *terrain.item_temperature;
         }
 
         float spoil_multiplier = 1.0f;
@@ -9772,6 +9757,42 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
     }
 }
 
+void map::refresh_phase_changes()
+{
+    const weather_generator &wgen = get_weather().get_cur_weather_gen();
+    const scoped_phase_temperatures phase_temperatures( wgen );
+    const creature_tracker &creatures = get_creature_tracker();
+    const int zmin = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
+    const int zmax = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+    for( int gz = zmin; gz <= zmax; gz++ ) {
+        for( int gx = 0; gx < my_MAPSIZE; gx++ ) {
+            for( int gy = 0; gy < my_MAPSIZE; gy++ ) {
+                const tripoint_rel_sm gp( gx, gy, gz );
+                const submap *const sm = get_submap_at_grid( gp );
+                if( sm == nullptr ) {
+                    continue;
+                }
+                const tripoint_bub_ms sm_origin = rebase_bub( coords::project_to<coords::ms>( gp ) );
+                for( int sx = 0; sx < SEEX; ++sx ) {
+                    for( int sy = 0; sy < SEEY; ++sy ) {
+                        const point_sm_ms l( sx, sy );
+                        if( !sm->has_original_ter( l ) && sm->get_ter( l )->phase_method.empty() ) {
+                            continue;
+                        }
+                        const tripoint_bub_ms p = sm_origin + point( sx, sy );
+                        // Nothing is frozen in or dropped through: a tile with a creature or a
+                        // vehicle on it waits for the next pass, or for the next load.
+                        if( creatures.creature_at( get_abs( p ) ) != nullptr || veh_at( p ) ) {
+                            continue;
+                        }
+                        temp_based_phase_change_at( p, wgen );
+                    }
+                }
+            }
+        }
+    }
+}
+
 void map::handle_decayed_corpse( const item &it, const tripoint_abs_ms &pnt )
 {
     if( !it.is_corpse() ) {
@@ -9991,41 +10012,48 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
         return;
     }
 
-    if( !( ter( p ) == ter_t_tree_maple_tapped ) ) {
+    // MAP-J04: what the terrain makes, and when, is its produces_liquid (a tapped maple's sap:
+    // 224 charges, 56 L, from late winter to early spring)
+    const ter_t &terrain = ter( p ).obj();
+    if( !terrain.produces_liquid ) {
         return;
     }
+    const ter_liquid_production &production = *terrain.produces_liquid;
+    const double span = production.start < production.end ? production.end - production.start :
+                        4.0 - production.start + production.end;
+    const bool wraps = production.start > production.end;
 
-    // Amount of maple sap liters produced per season per tap
-    static const int maple_sap_per_season = 56;
+    // How long a year it is made for
+    const time_duration producing_length = span * calendar::season_length();
 
-    // How many turns to produce 1 charge (250 ml) of sap?
-    const time_duration producing_length = 0.75 * calendar::season_length();
+    // How many turns to produce 1 charge?
+    const time_duration turns_to_produce = producing_length / production.amount;
 
-    const time_duration turns_to_produce = producing_length / ( maple_sap_per_season * 4 );
-
-    // How long of this time_since_last_actualize have we been in the producing period (late winter, early spring)?
+    // How long of this time_since_last_actualize have we been in the producing period?
     time_duration time_producing = 0_turns;
 
     if( time_since_last_actualize >= calendar::year_length() ) {
         time_producing = producing_length;
     } else {
-        // We are only producing sap on the intersection with the sap producing season.
-        const time_duration early_spring_end = 0.5f * calendar::season_length();
-        const time_duration late_winter_start = 3.75f * calendar::season_length();
+        // We are only producing on the intersection with the producing span.
+        const time_duration span_end = static_cast<float>( production.end ) * calendar::season_length();
+        const time_duration span_start = static_cast<float>( production.start ) *
+                                         calendar::season_length();
+        const auto producing_at = [&]( const time_duration & tof ) {
+            return wraps ? tof >= span_start || tof < span_end : tof >= span_start && tof < span_end;
+        };
 
         const time_point last_actualize = calendar::turn - time_since_last_actualize;
         // Times of year from the start of spring (turn_zero), like the bounds above.
         // time_past_new_year() counts from Jan 1, 81 days later.
         const time_duration last_actualize_tof = ( last_actualize - calendar::turn_zero ) %
                 calendar::year_length();
-        bool last_producing = last_actualize_tof >= late_winter_start ||
-                              last_actualize_tof < early_spring_end;
+        bool last_producing = producing_at( last_actualize_tof );
         const time_duration current_tof = ( calendar::turn - calendar::turn_zero ) %
                                           calendar::year_length();
-        bool current_producing = current_tof >= late_winter_start ||
-                                 current_tof < early_spring_end;
+        bool current_producing = producing_at( current_tof );
 
-        const time_duration non_producing_length = 3.25 * calendar::season_length();
+        const time_duration non_producing_length = ( 4.0 - span ) * calendar::season_length();
 
         if( last_producing && current_producing ) {
             if( time_since_last_actualize < non_producing_length ) {
@@ -10038,29 +10066,30 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
                 time_producing = time_since_last_actualize - non_producing_length;
             }
         } else if( last_producing && !current_producing ) {
-            // We hit the end of early spring
-            if( last_actualize_tof < early_spring_end ) {
-                time_producing = early_spring_end - last_actualize_tof;
+            // We hit the end of the span
+            if( last_actualize_tof < span_end ) {
+                time_producing = span_end - last_actualize_tof;
             } else {
-                time_producing = calendar::year_length() - last_actualize_tof + early_spring_end;
+                time_producing = calendar::year_length() - last_actualize_tof + span_end;
             }
         } else if( !last_producing && current_producing ) {
-            // We hit the start of late winter
-            if( current_tof >= late_winter_start ) {
-                time_producing = current_tof - late_winter_start;
+            // We hit the start of the span
+            if( current_tof >= span_start ) {
+                time_producing = current_tof - span_start;
             } else {
-                time_producing = 0.25f * calendar::season_length() + current_tof;
+                time_producing = static_cast<float>( 4.0 - production.start ) * calendar::season_length() +
+                                 current_tof;
             }
         }
     }
 
     int new_charges = roll_remainder( time_producing / turns_to_produce );
-    // Not enough time to produce 1 charge of sap
+    // Not enough time to produce 1 charge
     if( new_charges <= 0 ) {
         return;
     }
 
-    item sap( itype_maple_sap, calendar::turn );
+    item sap( production.item, calendar::turn );
 
     sap.set_item_temperature( get_weather().get_temperature( p ) );
     sap.charges = new_charges;
@@ -10074,7 +10103,7 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
                 sap.charges = std::min( sap.charges, capacity );
 
                 // The environment might have poisoned the sap with animals passing by, insects, leaves or contaminants in the ground
-                sap.poison = one_in( 10 ) ? 1 : 0;
+                sap.poison = production.poison_chance > 0 && one_in( production.poison_chance ) ? 1 : 0;
 
                 it.put_in( sap, pocket_type::CONTAINER );
             }
@@ -10096,6 +10125,11 @@ void map::cut_down_tree( tripoint_bub_ms p, point_rel_ms dir )
         return;
     }
 
+    // MAP-J05: what this tree leaves, by default a pine's trunk and stump
+    const ter_t &tree_ter = ter( p ).obj();
+    const ter_str_id &trunk = tree_ter.felled_trunk.is_empty() ? ter_t_trunk : tree_ter.felled_trunk;
+    const ter_str_id &stump = tree_ter.felled_stump.is_empty() ? ter_t_stump : tree_ter.felled_stump;
+
     tripoint_bub_ms to = p + 3 * dir + point( rng( -1, 1 ), rng( -1, 1 ) );
 
     // TODO: make line_to type aware.
@@ -10113,7 +10147,7 @@ void map::cut_down_tree( tripoint_bub_ms p, point_rel_ms dir )
             batter( elem, bash_strength, bash_attempts );
             const bool smashed_thru = ter( elem.xy() ) != original_terrain_at;
             if( ( open_ground || smashed_thru ) && passable( elem.xy() ) ) {
-                ter_set( elem, ter_t_trunk ); // effectively continues, no further execution this loop.
+                ter_set( elem, trunk ); // effectively continues, no further execution this loop.
                 continue;                     // but just to be sure :)
             } else {
                 shattered_tree = true;
@@ -10128,12 +10162,12 @@ void map::cut_down_tree( tripoint_bub_ms p, point_rel_ms dir )
                 batter( elem, bash_strength, bash_attempts );
             }
             // safety: trunk might not have bash data! It does right now, but maybe we remove that in the future(??)
-            if( ter_t_trunk->bash ) {
-                spawn_items( elem, item_group::items_from( ter_t_trunk->bash->drop_group, calendar::turn ) );
+            if( trunk->bash ) {
+                spawn_items( elem, item_group::items_from( trunk->bash->drop_group, calendar::turn ) );
             }
         }
     }
-    ter_set( p, ter_t_stump );
+    ter_set( p, stump );
 }
 
 void map::rad_scorch( const tripoint_bub_ms &p, const time_duration &time_since_last_actualize )
@@ -10157,7 +10191,14 @@ void map::rad_scorch( const tripoint_bub_ms &p, const time_duration &time_since_
     }
 
     const ter_id &tid = ter( p );
-    // TODO: De-hardcode this
+    // MAP-J04: the terrain's own rad_scorch, if it has one
+    if( !tid->rad_scorch.is_empty() ) {
+        if( tid->rad_scorch != tid.id() ) {
+            ter_set( p, tid->rad_scorch );
+        }
+        return;
+    }
+    // The built-in rules, for terrain without one
     static const std::map<ter_id, ter_str_id> dies_into {{
             {ter_t_grass, ter_t_dirt},
             {ter_t_tree_young, ter_t_dirt},
@@ -10560,14 +10601,40 @@ void map::spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight, b
                   gp.z() );
         return;
     }
+    spawn_queued_monsters_submap( gp, *current_submap );
+}
+
+void map::spawn_queued_monsters()
+{
+    if( this != &get_map() ) {
+        // another map's queue waits until its submaps come into the reality bubble
+        return;
+    }
+    const int zmin = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
+    const int zmax = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+    for( int gz = zmin; gz <= zmax; gz++ ) {
+        for( int gx = 0; gx < my_MAPSIZE; gx++ ) {
+            for( int gy = 0; gy < my_MAPSIZE; gy++ ) {
+                const tripoint_rel_sm gp( gx, gy, gz );
+                submap *const current_submap = get_submap_at_grid( gp );
+                if( current_submap != nullptr && !current_submap->spawns.empty() ) {
+                    spawn_queued_monsters_submap( gp, *current_submap );
+                }
+            }
+        }
+    }
+}
+
+void map::spawn_queued_monsters_submap( const tripoint_rel_sm &gp, submap &current_submap )
+{
     const tripoint_bub_ms gp_ms = rebase_bub( coords::project_to<coords::ms>( gp ) );
 
     // The list of spawns on the submap might be updated while we are iterating it.
     // For example, `monster::on_load` -> `monster::try_reproduce` calls `map::add_spawn`.
     // Therefore, this intentionally uses old-school indexed for-loop with re-check against `.size()` each step.
     // NOLINTNEXTLINE(modernize-loop-convert)
-    for( size_t sp_i = 0; sp_i < current_submap->spawns.size(); ++sp_i ) {
-        const spawn_point i = current_submap->spawns[sp_i]; // intentional copy
+    for( size_t sp_i = 0; sp_i < current_submap.spawns.size(); ++sp_i ) {
+        const spawn_point i = current_submap.spawns[sp_i]; // intentional copy
         const tripoint_bub_ms center = gp_ms + rebase_rel( i.pos );
         const tripoint_range<tripoint_bub_ms> points = points_in_radius( center, 3 );
 
@@ -10620,7 +10687,7 @@ void map::spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight, b
             }
         }
     }
-    current_submap->spawns.clear();
+    current_submap.spawns.clear();
 }
 
 void map::spawn_monsters( bool ignore_sight, bool spawn_nonlocal )

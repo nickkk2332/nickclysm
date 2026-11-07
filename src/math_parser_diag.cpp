@@ -12,6 +12,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -658,28 +659,103 @@ void faction_size_ass( double val, dialogue &d, char /* scope */,
     fac->size = val;
 }
 
+// The tile a map function reads or writes: its 'location' kwarg, else the actor's position
+tripoint_abs_ms map_function_location( const_dialogue const &d, char scope,
+                                       diag_kwargs const &kwargs, std::string_view name )
+{
+    diag_value loc_val = kwargs.kwarg_or( "location" );
+    if( !loc_val.is_empty() ) {
+        return loc_val.tripoint( d );
+    }
+    if( scope == 'g' ) {
+        throw math::syntax_error( R"("%s" needs either an actor scope (u/n) or a 'location' kwarg)",
+                                  std::string( name ) );
+    }
+    return d.const_actor( is_beta( scope ) )->pos_abs();
+}
+
+// The field of that type at a tile of the reality bubble, if there is a live one
+const field_entry *live_field_at( const map &here, const tripoint_abs_ms &loc,
+                                  const field_type_id &ft )
+{
+    if( !here.inbounds( loc ) ) {
+        return nullptr;
+    }
+    const field_entry *fp = here.field_at( here.get_bub( loc ) ).find_field( ft );
+    return fp != nullptr && fp->is_field_alive() ? fp : nullptr;
+}
+
 double field_strength_eval( const_dialogue const &d, char scope,
                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
-    std::optional<var_info> loc_var;
-    diag_value loc_val = kwargs.kwarg_or( "location" );
-
-    tripoint_abs_ms loc;
-
-    if( !loc_val.is_empty() ) {
-        loc = loc_val.tripoint( d );
-    } else if( scope == 'g' ) {
-        throw math::syntax_error(
-            R"("field_strength" needs either an actor scope (u/n) or a 'location' kwarg)" );
-    } else {
-        loc = d.const_actor( is_beta( scope ) )->pos_abs();
-    }
-
-    map &here = get_map();
-
-    field_type_id ft = field_type_id( params[0].str( d ) );
-    field_entry *fp = here.field_at( here.get_bub( loc ) ).find_field( ft );
+    const tripoint_abs_ms loc = map_function_location( d, scope, kwargs, "field_strength" );
+    const field_entry *fp = live_field_at( get_map(), loc, field_type_id( params[0].str( d ) ) );
     return fp ? fp->get_field_intensity() : 0;
+}
+
+// field_strength('fd_fire', 'location': loc) = 2 sets the intensity exactly (capped at the
+// field's highest), adding the field if it isn't there; 0 or less removes it (MAP-J06)
+void field_strength_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                         diag_kwargs const &kwargs )
+{
+    const tripoint_abs_ms loc = map_function_location( d, scope, kwargs, "field_strength" );
+    map &here = get_map();
+    const field_type_str_id ft( params[0].str( d ) );
+    if( !here.inbounds( loc ) || !ft.is_valid() || ft.is_null() ) {
+        return;
+    }
+    const tripoint_bub_ms p = here.get_bub( loc );
+    const int intensity = static_cast<int>( std::round( val ) );
+    if( intensity <= 0 ) {
+        here.remove_field( p, ft );
+    } else if( live_field_at( here, loc, ft ) != nullptr ) {
+        here.set_field_intensity( p, ft, intensity );
+    } else {
+        // a dead entry would keep its age: start afresh (without hitting whoever stands there)
+        here.remove_field( p, ft );
+        here.add_field( p, ft, intensity, 0_turns, false );
+    }
+}
+
+// field_age('fd_smoke', 'location': loc): how old the field is, in turns (-1 with no such field).
+// An older field is closer to losing intensity.
+double field_age_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const &kwargs )
+{
+    const tripoint_abs_ms loc = map_function_location( d, scope, kwargs, "field_age" );
+    const field_entry *fp = live_field_at( get_map(), loc, field_type_id( params[0].str( d ) ) );
+    return fp ? to_turns<double>( fp->get_field_age() ) : -1.0;
+}
+
+void field_age_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                    diag_kwargs const &kwargs )
+{
+    const tripoint_abs_ms loc = map_function_location( d, scope, kwargs, "field_age" );
+    map &here = get_map();
+    const field_type_id ft( params[0].str( d ) );
+    if( live_field_at( here, loc, ft ) != nullptr ) {
+        here.set_field_age( here.get_bub( loc ), ft,
+                            time_duration::from_turns( std::max( 0.0, std::round( val ) ) ) );
+    }
+}
+
+// map_radiation('location': loc): the radiation of a tile of the reality bubble (0 outside it)
+double map_radiation_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
+{
+    const tripoint_abs_ms loc = map_function_location( d, scope, kwargs, "map_radiation" );
+    const map &here = get_map();
+    return here.inbounds( loc ) ? here.get_radiation( here.get_bub( loc ) ) : 0;
+}
+
+void map_radiation_ass( double val, dialogue &d, char scope,
+                        std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
+{
+    const tripoint_abs_ms loc = map_function_location( d, scope, kwargs, "map_radiation" );
+    map &here = get_map();
+    if( here.inbounds( loc ) ) {
+        here.set_radiation( here.get_bub( loc ), std::max( 0, static_cast<int>( std::round( val ) ) ) );
+    }
 }
 
 double gun_damage_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
@@ -3379,7 +3455,9 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "faction_wealth", { "g", 1, faction_wealth_eval, faction_wealth_ass } },
     { "faction_power", { "g", 1, faction_power_eval, faction_power_ass } },
     { "faction_size", { "g", 1, faction_size_eval, faction_size_ass } },
-    { "field_strength", { "ung", 1, field_strength_eval, {}, { "location" } } },
+    { "field_strength", { "ung", 1, field_strength_eval, field_strength_ass, { "location" } } },
+    { "field_age", { "ung", 1, field_age_eval, field_age_ass, { "location" } } },
+    { "map_radiation", { "ung", 0, map_radiation_eval, map_radiation_ass, { "location" } } },
     { "gender", { "un", 0, gender_eval, gender_ass } },
     { "gun_damage", { "un", 1, gun_damage_eval } },
     { "game_option", { "g", 1, option_eval } },

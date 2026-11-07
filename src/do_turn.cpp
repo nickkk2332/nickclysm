@@ -832,6 +832,12 @@ bool game::do_turn()
     m.process_fields();
     m.process_items();
     explosion_handler::process_explosions();
+    // what fields, rotting items and births queued this turn appears now, not at the next shift
+    m.spawn_queued_monsters();
+    if( calendar::once_every( 1_days ) ) {
+        // a new day's temperature average freezes or thaws water near the player too
+        m.refresh_phase_changes();
+    }
     m.creature_in_field( u );
 
     // Apply sounds from previous turn to monster and NPC AI.

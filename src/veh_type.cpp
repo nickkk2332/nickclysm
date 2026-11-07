@@ -19,6 +19,7 @@
 #include "color.h"
 #include "damage.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "flag.h"
 #include "flat_set.h"
@@ -282,6 +283,39 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "floor_bedding_warmth", floor_bedding_warmth, 0_C_delta );
     optional( jo, was_loaded, "bonus_fire_warmth_feet", bonus_fire_warmth_feet, 0.6_C_delta );
     optional( jo, was_loaded, "activatable_eoc", activatable_eoc );
+    // MAP-J03
+    if( jo.has_object( "processing_cycle" ) ) {
+        const JsonObject jc = jo.get_object( "processing_cycle" );
+        vpslot_processing_cycle cycle;
+        mandatory( jc, false, "duration", cycle.duration );
+        for( const std::string &flag : jc.get_string_array( "unset_item_flags" ) ) {
+            cycle.unset_item_flags.emplace( flag );
+        }
+        for( const std::string &flag : jc.get_string_array( "set_item_flags" ) ) {
+            cycle.set_item_flags.emplace( flag );
+        }
+        for( const JsonObject jt : jc.get_array( "transform_items" ) ) {
+            itype_id from;
+            itype_id to;
+            mandatory( jt, false, "from", from );
+            mandatory( jt, false, "to", to );
+            cycle.transform_items.emplace_back( from, to );
+        }
+        optional( jc, false, "start_message", cycle.start_message );
+        optional( jc, false, "progress_message", cycle.progress_message );
+        optional( jc, false, "finish_message", cycle.finish_message );
+        if( jc.has_member( "eoc_on_start" ) ) {
+            cycle.eoc_on_start = effect_on_conditions::load_inline_eoc( jc.get_member( "eoc_on_start" ), src );
+        }
+        if( jc.has_member( "eoc_on_finish" ) ) {
+            cycle.eoc_on_finish = effect_on_conditions::load_inline_eoc( jc.get_member( "eoc_on_finish" ),
+                                  src );
+        }
+        if( cycle.duration <= 0_turns ) {
+            jc.throw_error_at( "duration", "duration must be more than 0" );
+        }
+        processing_cycle = cycle;
+    }
 
     int enchant_num = 0;
     for( JsonValue jv : jo.get_array( "enchantments" ) ) {
@@ -953,6 +987,34 @@ void vpart_info::check() const
     if( activatable_eoc && !activatable_eoc->is_valid() ) {
         debugmsg( "vehicle part %s has unknown activatable_eoc %s", id.str(),
                   activatable_eoc->str() );
+    }
+    if( processing_cycle ) {
+        if( !has_flag( VPFLAG_CARGO ) ) {
+            debugmsg( "vehicle part %s has a processing_cycle but isn't CARGO", id.str() );
+        }
+        for( const std::set<flag_id> *flag_set : {
+                 &processing_cycle->unset_item_flags, &processing_cycle->set_item_flags
+             } ) {
+            for( const flag_id &flag : *flag_set ) {
+                if( !flag.is_valid() ) {
+                    debugmsg( "vehicle part %s: processing_cycle item flag %s doesn't exist", id.str(),
+                              flag.str() );
+                }
+            }
+        }
+        for( const std::pair<itype_id, itype_id> &transform : processing_cycle->transform_items ) {
+            if( !transform.first.is_valid() || !transform.second.is_valid() ) {
+                debugmsg( "vehicle part %s: processing_cycle transforms %s into %s, which aren't both items",
+                          id.str(), transform.first.str(), transform.second.str() );
+            }
+        }
+        for( const std::optional<effect_on_condition_id> *eoc : {
+                 &processing_cycle->eoc_on_start, &processing_cycle->eoc_on_finish
+             } ) {
+            if( *eoc && !( *eoc )->is_valid() ) {
+                debugmsg( "vehicle part %s: processing_cycle has unknown EOC %s", id.str(), ( *eoc )->str() );
+            }
+        }
     }
     if( !!transform_terrain_info && !( transform_terrain_info->post_terrain ||
                                        transform_terrain_info->post_furniture ||

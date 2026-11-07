@@ -475,11 +475,11 @@ TEST_CASE( "mgen-p01_submap_loads_freeze_and_thaw_as_before", "[audit][mapgen]" 
     clear_map();
 }
 
-// Reloading a frozen tile thawed it and froze it again through two full terrain changes. What
-// that left behind besides the same terrain is kept: the map damage reset, the submap marked as
-// changed by the player, and a trap entry for the ice from the refreeze (besides the one the
-// load registers for every terrain trap). The tile is no longer actually thawed and refrozen,
-// which shows in the avatar's memory of it: a terrain change used to forget it.
+// Reloading a frozen tile thawed it and froze it again through two full terrain changes. It is no
+// longer actually thawed and refrozen, which shows in the avatar's memory of it: a terrain change
+// used to forget it. Since MAP-B10 it also keeps what the refreeze used to undo: the tile's map
+// damage, the submap not marked as changed by the player, and a single trap entry for the ice
+// (the one the load registers for every terrain trap).
 TEST_CASE( "mgen-p01_reloading_frozen_ice_keeps_what_refreezing_left", "[audit][mapgen]" )
 {
     restore_turn turn_guard;
@@ -532,12 +532,12 @@ TEST_CASE( "mgen-p01_reloading_frozen_ice_keeps_what_refreezing_left", "[audit][
         CHECK( m.ter( at ) == ice );
         CHECK( m.get_original_terrain_at( at ) == ter_t_water_dp );
         CHECK( m.tr_at( at ).loadid == ice_trap );
-        // one entry from refreezing the tile, one from the load registering terrain traps
+        // the one entry the load registers for terrain traps
         const std::vector<tripoint_bub_ms> &trap_locs = m.trap_locations( ice_trap );
-        CHECK( std::count( trap_locs.begin(), trap_locs.end(), at ) == 2 );
+        CHECK( std::count( trap_locs.begin(), trap_locs.end(), at ) == 1 );
     }
-    CHECK( here.get_map_damage( corner ) == 0 );
-    CHECK( sm->player_adjusted_map );
+    CHECK( here.get_map_damage( corner ) == 7 );
+    CHECK_FALSE( sm->player_adjusted_map );
     // the avatar saw the tile, but it never changed, so the memory of it stays
     CHECK( u.get_memorized_tile( abs_corner ).get_dec_id() == ice.id().str() );
 
