@@ -53,6 +53,11 @@ npc_ai_tuning::npc_ai_tuning()
     stall_window = 30_minutes;
     stall_duration = 30_minutes;
     restless_window = 30_minutes;
+
+    // the old code meant 95 and 85 for the head and torso, but capped them at 80
+    first_aid_limb = 75;
+    first_aid_torso = 80;
+    first_aid_head = 80;
 }
 
 const npc_ai_tuning &npc_ai_tuning::defaults()
@@ -135,6 +140,12 @@ void npc_ai_tuning::load( const JsonObject &jo )
         optional( sleep, true, "stall_duration", stall_duration );
         optional( sleep, true, "restless_window", restless_window );
     }
+    if( jo.has_object( "first_aid" ) ) {
+        const JsonObject first_aid = jo.get_object( "first_aid" );
+        optional( first_aid, true, "limb", first_aid_limb );
+        optional( first_aid, true, "torso", first_aid_torso );
+        optional( first_aid, true, "head", first_aid_head );
+    }
     const std::string wrong = problems();
     if( !wrong.empty() ) {
         jo.throw_error( wrong );
@@ -195,6 +206,15 @@ std::string npc_ai_tuning::problems() const
     }
     if( stall_wakes < 1 ) {
         wrong.push_back( string_format( "sleep.stall_wakes is %d, below 1", stall_wakes ) );
+    }
+    for( const std::pair<const char *, int> &pct : {
+             std::pair<const char *, int>( "first_aid.limb", first_aid_limb ),
+             std::pair<const char *, int>( "first_aid.torso", first_aid_torso ),
+             std::pair<const char *, int>( "first_aid.head", first_aid_head )
+         } ) {
+        if( pct.second < 0 || pct.second > 100 ) {
+            wrong.push_back( string_format( "%s is %d, not between 0 and 100", pct.first, pct.second ) );
+        }
     }
     std::string ret;
     for( const std::string &w : wrong ) {

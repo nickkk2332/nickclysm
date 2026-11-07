@@ -927,9 +927,24 @@ class repair_item_actor : public iuse_actor
         std::string get_description() const override;
 };
 
+/** An effect a healing item removes (heal_actor "cures", NPC-J08) */
+struct heal_cure {
+    efftype_id effect;
+    /** Chance (0 to 1) that one use removes it */
+    float chance = 1.0f;
+};
+
 class heal_actor : public iuse_actor
 {
     public:
+        /** Effects removed from the treated body part, or from the whole body */
+        std::vector<heal_cure> cures;
+        /** Whether a cure is on this part of the patient, or on the whole body */
+        bool cures_effect_at( const Character &patient, const bodypart_id &bp ) const;
+        /** The effects some healing item cures; NPCs check their patients for these */
+        static const std::set<efftype_id> &curable_effects();
+        static void clear_curable_effects();
+        void finalize( const itype_id &my_item_type ) override;
         /** How much hp to restore when healing limbs? */
         float limb_power = 0.0f;
         /** How much hp to restore when healing head? */

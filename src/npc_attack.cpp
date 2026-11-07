@@ -372,6 +372,90 @@ npc_attack_rating npc_attack_rating::operator-=( const int rhs )
     return *this;
 }
 
+// NPC-J06: whether a spell's "npc_use" condition holds, u being the caster and npc the creature
+// (its target, the one it is cast on), if any
+static bool npc_use_condition_holds( const spell_type &type, const npc &source,
+                                     const Creature *other )
+{
+    if( !type.has_npc_condition ) {
+        return true;
+    }
+    if( other == nullptr ) {
+        const_dialogue d( get_const_talker_for( source ), nullptr );
+        return type.npc_condition( d );
+    }
+    const_dialogue d( get_const_talker_for( source ), get_const_talker_for( *other ) );
+    return type.npc_condition( d );
+}
+
+// NPC-J06: where the caster casts a self or ally spell to reach this creature, if it can: on
+// the creature, or for the caster itself and a spell cast on the ground (a summons), on the
+// first free tile next to it
+static std::optional<tripoint_bub_ms> support_spell_target( const spell &sp, const npc &source,
+        const Creature &patient )
+{
+    const map &here = get_map();
+    const tripoint_bub_ms at = patient.pos_bub();
+    if( &patient != &source ) {
+        if( !sp.is_target_in_range( source, at ) || !source.sees( here, patient ) ||
+            ( !sp.has_flag( spell_flag::NO_PROJECTILE ) && has_obstruction( source.pos_bub(), at ) ) ||
+            !sp.is_valid_target( source, at ) ) {
+            return std::nullopt;
+        }
+        return at;
+    }
+    if( sp.is_valid_target( source, at ) ) {
+        return at;
+    }
+    if( sp.is_valid_target( spell_target::ground ) ) {
+        creature_tracker &creatures = get_creature_tracker();
+        for( const tripoint_bub_ms &p : here.points_in_radius( at, 1 ) ) {
+            if( p != at && sp.is_target_in_range( source, p ) && here.passable( p ) &&
+                creatures.creature_at( p ) == nullptr && sp.is_valid_target( source, p ) ) {
+                return p;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// NPC-J06: a self or ally spell is worth its "npc_use" priority, less the time casting it takes,
+// cast on the first creature it suits: the caster, then (ally) the friends it sees
+static npc_attack_rating rate_support_spell( const spell &sp, const npc &source,
+        const int time_penalty )
+{
+    const spell_type &type = sp.id().obj();
+    std::vector<shared_ptr_fast<Creature>> friends;
+    if( type.npc_role == spell_npc_role::ally ) {
+        for( const weak_ptr_fast<Creature> &buddy : source.get_cached_friends() ) {
+            if( shared_ptr_fast<Creature> guy = buddy.lock() ) {
+                friends.push_back( guy );
+            }
+        }
+    }
+    std::vector<const Creature *> patients{ &source };
+    for( const shared_ptr_fast<Creature> &guy : friends ) {
+        if( std::find( patients.begin(), patients.end(), guy.get() ) == patients.end() ) {
+            patients.push_back( guy.get() );
+        }
+    }
+    npc_attack_rating best;
+    for( const Creature *patient : patients ) {
+        const std::optional<tripoint_bub_ms> at = support_spell_target( sp, source, *patient );
+        if( !at || !npc_use_condition_holds( type, source, patient ) ) {
+            continue;
+        }
+        const_dialogue d( get_const_talker_for( source ), get_const_talker_for( *patient ) );
+        npc_attack_rating rating( static_cast<int>( std::round( type.npc_priority.evaluate( d ) ) ),
+                                  *at );
+        rating -= time_penalty;
+        if( rating > best ) {
+            best = rating;
+        }
+    }
+    return best;
+}
+
 void npc_attack_spell::use( npc &source, const tripoint_bub_ms &location ) const
 {
     spell &sp = source.magic->get_spell( attack_spell_id );
@@ -392,6 +476,13 @@ npc_attack_rating npc_attack_spell::evaluate( const npc &source,
         return effectiveness;
     }
     const int time_penalty = base_time_penalty( source );
+    const spell_type &type = attack_spell.id().obj();
+    if( type.npc_role == spell_npc_role::self || type.npc_role == spell_npc_role::ally ) {
+        return rate_support_spell( attack_spell, source, time_penalty );
+    }
+    if( !npc_use_condition_holds( type, source, target ) ) {
+        return effectiveness;
+    }
     if( std::optional<npc_attack_rating> quick = rate_spell_quickly( attack_spell, source, target,
             time_penalty ) ) {
         return *quick;
@@ -416,6 +507,17 @@ std::vector<npc_attack_rating> npc_attack_spell::all_evaluations( const npc &sou
         return effectiveness;
     }
     int time_penalty = this->base_time_penalty( source );
+    const spell_type &type = attack_spell.id().obj();
+    if( type.npc_role == spell_npc_role::self || type.npc_role == spell_npc_role::ally ) {
+        const npc_attack_rating support = rate_support_spell( attack_spell, source, time_penalty );
+        if( support.value() ) {
+            effectiveness.push_back( support );
+        }
+        return effectiveness;
+    }
+    if( !npc_use_condition_holds( type, source, target ) ) {
+        return effectiveness;
+    }
     const std::vector<tripoint_bub_ms> targetable_points = attack_spell.targetable_locations( source );
     for( const tripoint_bub_ms &targetable_point : targetable_points ) {
         npc_attack_rating effectiveness_at_point = evaluate_tripoint( source, target, targetable_point );
@@ -428,6 +530,10 @@ std::vector<npc_attack_rating> npc_attack_spell::all_evaluations( const npc &sou
 bool npc_attack_spell::can_use( const npc &source ) const
 {
     const spell &attack_spell = source.magic->get_spell( attack_spell_id );
+    // NPC-J06: an "npc_use" of "never" keeps NPCs from casting it
+    if( attack_spell_id->npc_role == spell_npc_role::never ) {
+        return false;
+    }
     // missing components or energy or something
     return attack_spell.can_cast( source ) &&
            // use the same rules as silent guns: every NPC has the flag, but only followers obey it

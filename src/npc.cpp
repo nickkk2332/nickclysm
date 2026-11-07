@@ -122,12 +122,6 @@ static const efftype_id effect_lying_down( "lying_down" );
 static const efftype_id effect_mending( "mending" );
 static const efftype_id effect_npc_flee_player( "npc_flee_player" );
 static const efftype_id effect_npc_suspend( "npc_suspend" );
-static const efftype_id effect_pkill1_acetaminophen( "pkill1_acetaminophen" );
-static const efftype_id effect_pkill1_generic( "pkill1_generic" );
-static const efftype_id effect_pkill1_nsaid( "pkill1_nsaid" );
-static const efftype_id effect_pkill2( "pkill2" );
-static const efftype_id effect_pkill3( "pkill3" );
-static const efftype_id effect_pkill_l( "pkill_l" );
 static const efftype_id effect_ridden( "ridden" );
 static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_sleep( "sleep" );
@@ -135,6 +129,8 @@ static const efftype_id effect_sleep( "sleep" );
 static const faction_id faction_amf( "amf" );
 static const faction_id faction_no_faction( "no_faction" );
 static const faction_id faction_your_followers( "your_followers" );
+
+static const flag_id json_flag_PAINKILLER( "PAINKILLER" );
 
 static const item_group_id Item_spawn_data_guns_pistol_common( "guns_pistol_common" );
 static const item_group_id Item_spawn_data_guns_rifle_common( "guns_rifle_common" );
@@ -145,14 +141,7 @@ static const item_group_id Item_spawn_data_survivor_bashing( "survivor_bashing" 
 static const item_group_id Item_spawn_data_survivor_cutting( "survivor_cutting" );
 static const item_group_id Item_spawn_data_survivor_stabbing( "survivor_stabbing" );
 
-static const itype_id itype_acetaminophen( "acetaminophen" );
-static const itype_id itype_aspirin( "aspirin" );
-static const itype_id itype_codeine( "codeine" );
-static const itype_id itype_heroin( "heroin" );
-static const itype_id itype_ibuprofen( "ibuprofen" );
 static const itype_id itype_molotov( "molotov" );
-static const itype_id itype_oxycodone( "oxycodone" );
-static const itype_id itype_tramadol( "tramadol" );
 
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_READ_IN_DARKNESS( "READ_IN_DARKNESS" );
@@ -2635,6 +2624,7 @@ void healing_options::clear_all()
     bleed = false;
     bite = false;
     infect = false;
+    cure.clear();
 }
 
 bool healing_options::all_false() const
@@ -2643,6 +2633,11 @@ bool healing_options::all_false() const
 }
 
 bool healing_options::any_true() const
+{
+    return any_wound() || !cure.empty();
+}
+
+bool healing_options::any_wound() const
 {
     return bandage || bleed || bite || infect || disinfect;
 }
@@ -2654,6 +2649,7 @@ void healing_options::set_all()
     bite = true;
     infect = true;
     disinfect = true;
+    cure = heal_actor::curable_effects();
 }
 
 bool npc::has_healing_item( healing_options try_to_fix )
@@ -2696,12 +2692,19 @@ healing_options npc::has_healing_options( healing_options try_to_fix )
         if( try_to_fix.infect && !fix_p->infect && actor.infect > 0 ) {
             fix_p->infect = true;
         }
+        // NPC-J08: the effects its "cures" removes
+        for( const heal_cure &cure : actor.cures ) {
+            if( try_to_fix.cure.count( cure.effect ) ) {
+                fix_p->cure.insert( cure.effect );
+            }
+        }
         // if we've found items for everything we're looking for, we're done
         if( ( !try_to_fix.bandage || fix_p->bandage ) &&
             ( !try_to_fix.disinfect || fix_p->disinfect ) &&
             ( !try_to_fix.bleed || fix_p->bleed ) &&
             ( !try_to_fix.bite || fix_p->bite ) &&
-            ( !try_to_fix.infect || fix_p->infect ) ) {
+            ( !try_to_fix.infect || fix_p->infect ) &&
+            fix_p->cure.size() == try_to_fix.cure.size() ) {
             return VisitResponse::ABORT;
         }
 
@@ -2720,11 +2723,15 @@ item &npc::get_healing_item( healing_options try_to_fix, bool first_best )
         }
 
         const heal_actor &actor = dynamic_cast<const heal_actor &>( *use->get_actor_ptr() );
+        const bool cures = std::any_of( actor.cures.begin(), actor.cures.end(),
+        [&try_to_fix]( const heal_cure & cure ) {
+            return try_to_fix.cure.count( cure.effect ) > 0;
+        } );
         if( ( try_to_fix.bandage && actor.bandages_power > 0.0f ) ||
             ( try_to_fix.disinfect && actor.disinfectant_power > 0.0f ) ||
             ( try_to_fix.bleed && actor.bleed > 0 ) ||
             ( try_to_fix.bite && actor.bite > 0 ) ||
-            ( try_to_fix.infect && actor.infect > 0 ) ) {
+            ( try_to_fix.infect && actor.infect > 0 ) || cures ) {
             best = node.get_item();
             if( first_best ) {
                 return VisitResponse::ABORT;
@@ -2737,17 +2744,40 @@ item &npc::get_healing_item( healing_options try_to_fix, bool first_best )
     return *best;
 }
 
+// NPC-J07: the "npc_use" of a comestible, nullptr for one without
+static const comestible_npc_use *npc_use_of( const item &it )
+{
+    if( !it.is_comestible() ) {
+        return nullptr;
+    }
+    const cata::value_ptr<islot_comestible> &comest = it.get_comestible();
+    return comest && comest->npc_use ? &*comest->npc_use : nullptr;
+}
+
+// whether the NPC may take the medicine now: its condition holds (the NPC is u_, the item npc_)
+// and it can take it (a needle for heroin...)
+static bool may_take_medicine( const npc &guy, const item &it, const comestible_npc_use &use )
+{
+    if( use.has_condition ) {
+        item_location loc( const_cast<npc &>( guy ), const_cast<item *>( &it ) );
+        const_dialogue d( get_const_talker_for( guy ), get_const_talker_for( loc ) );
+        if( !use.condition( d ) ) {
+            return false;
+        }
+    }
+    return guy.can_eat( it ).success();
+}
+
 bool npc::has_painkiller() const
 {
     const int pain = get_pain();
     bool has_enough = false;
     visit_items(
-    [&pain, &has_enough]( item_location node ) {
-        const itype_id id = node->typeId();
-        if( ( pain <= 35 && ( id == itype_aspirin || id == itype_acetaminophen ||
-                              id == itype_ibuprofen ) ) ||
-            ( pain >= 50 && id == itype_oxycodone ) ||
-            id == itype_tramadol || id == itype_codeine ) {
+    [this, &pain, &has_enough]( item_location node ) {
+        // the painkillers are in JSON (comestible "npc_use"), no longer a list of ids
+        const comestible_npc_use *use = npc_use_of( *node );
+        if( use != nullptr && use->pain && pain >= use->min_pain && pain <= use->max_pain &&
+            may_take_medicine( *this, *node, *use ) ) {
             has_enough = true;
             return VisitResponse::ABORT;
         }
@@ -2764,21 +2794,12 @@ item *npc::most_appropriate_painkiller()
     int difference = INT_MAX;
     item *ret = &null_item_reference();
     visit_items(
-    [&pain, &difference, &ret]( item_location node ) {
-        int diff = INT_MAX;
-        itype_id type = node->typeId();
-        if( type == itype_aspirin || type == itype_acetaminophen || type == itype_ibuprofen ) {
-            diff = std::abs( pain - 15 );
-        } else if( type == itype_codeine ) {
-            diff = std::abs( pain - 30 );
-        } else if( type == itype_oxycodone ) {
-            diff = std::abs( pain - 60 );
-        } else if( type == itype_heroin ) {
-            diff = std::abs( pain - 100 );
-        } else if( type == itype_tramadol ) {
-            diff = std::abs( pain - 40 ) / 2; // Bonus since it's long-acting
+    [this, &pain, &difference, &ret]( item_location node ) {
+        const comestible_npc_use *use = npc_use_of( *node );
+        if( use == nullptr || !use->pain || !may_take_medicine( *this, *node, *use ) ) {
+            return VisitResponse::NEXT;
         }
-
+        const int diff = std::abs( pain - *use->pain ) / use->preference;
         if( diff < difference ) {
             difference = diff;
             ret = node.get_item();
@@ -2789,11 +2810,24 @@ item *npc::most_appropriate_painkiller()
     return ret;
 }
 
+item *npc::medicine_to_take()
+{
+    item *ret = nullptr;
+    visit_items( [this, &ret]( item_location node ) {
+        const comestible_npc_use *use = npc_use_of( *node );
+        if( use != nullptr && !use->pain && may_take_medicine( *this, *node, *use ) ) {
+            ret = node.get_item();
+            return VisitResponse::ABORT;
+        }
+        return VisitResponse::NEXT;
+    } );
+    return ret;
+}
+
 bool npc::took_painkiller() const
 {
-    return has_effect( effect_pkill1_generic )  || has_effect( effect_pkill1_acetaminophen ) ||
-           has_effect( effect_pkill1_nsaid ) || has_effect( effect_pkill2 ) ||
-           has_effect( effect_pkill3 ) || has_effect( effect_pkill_l );
+    // NPC-J07: an effect flag, not a list of effect ids
+    return has_effect_with_flag( json_flag_PAINKILLER );
 }
 
 int npc::get_faction_ver() const

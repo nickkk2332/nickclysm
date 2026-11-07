@@ -76,6 +76,12 @@ struct npc_ai_tuning {
     // noise wakes counted within this long hold its sleep back
     time_duration restless_window;
 
+    // NPC-J08: an NPC bandages and disinfects a body part at or below this percentage of its
+    // HP: a limb, the torso and the head
+    int first_aid_limb;
+    int first_aid_torso;
+    int first_aid_head;
+
     // the defaults
     npc_ai_tuning();
 

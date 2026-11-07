@@ -2699,6 +2699,7 @@
     "id": "pkill1_generic",
     "max_duration": "4 m",
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 1 ], "pkill_max_val": [ 15 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Minor Painkiller"
   },
@@ -2707,6 +2708,7 @@
     "id": "pkill1_nsaid",
     "max_duration": "4 m",
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 1 ], "pkill_max_val": [ 15 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Minor Painkiller (NSAID-based)"
   },
@@ -2715,6 +2717,7 @@
     "id": "pkill1_acetaminophen",
     "max_duration": "4 m",
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 1 ], "pkill_max_val": [ 15 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Minor Painkiller (Acetaminophen)"
   },
@@ -2723,6 +2726,7 @@
     "id": "pkill2",
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_tick": [ 42 ], "pkill_min": [ 2 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Moderate Painkiller"
   },
@@ -2731,6 +2735,7 @@
     "id": "pkill3",
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_tick": [ 12 ], "pkill_min": [ 1 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Heavy Painkiller"
   },
@@ -2739,6 +2744,7 @@
     "id": "pkill_l",
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_max_val": [ 40 ], "pkill_tick": [ 120 ], "pkill_min": [ 1 ] },
+    "flags": [ "PAINKILLER" ],
     "rating": "good",
     "blood_analysis_description": "Slow-Release Painkiller"
   },

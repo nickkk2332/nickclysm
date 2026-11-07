@@ -47,9 +47,11 @@
 #include "creature.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "dialogue_chatbin.h"
 #include "dispersion.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "errand.h"
 #include "event.h"
@@ -191,6 +193,7 @@ static const field_type_str_id field_fd_last_known( "fd_last_known" );
 
 static const flag_id json_flag_FIRESTARTER( "FIRESTARTER" );
 static const flag_id json_flag_MARLOSS( "MARLOSS" );
+static const flag_id json_flag_NPC_DRINKABLE( "NPC_DRINKABLE" );
 
 static const item_category_id item_category_food( "food" );
 
@@ -199,7 +202,6 @@ static const itype_id itype_lsd( "lsd" );
 static const itype_id itype_oxygen_tank( "oxygen_tank" );
 static const itype_id itype_smoxygen_tank( "smoxygen_tank" );
 static const itype_id itype_thorazine( "thorazine" );
-static const itype_id itype_water( "water" );
 static const itype_id itype_water_clean( "water_clean" );
 static const json_character_flag json_flag_BIONIC_GUN( "BIONIC_GUN" );
 static const json_character_flag json_flag_BIONIC_NPC_USABLE( "BIONIC_NPC_USABLE" );
@@ -1010,7 +1012,14 @@ void npc::assess_danger()
 
         if( has_faction_relationship( guy, npc_factions::relationship::watch_your_back ) ) {
             ai_cache.friends.emplace_back( g->shared_from( guy ) );
-        } else if( attitude_to( guy ) != Attitude::NEUTRAL && sees( here, guy.pos_bub( here ) ) ) {
+            continue;
+        }
+        // NPC-B16: sorted the way attitude_to() sees them, as the attacks are; every NPC that
+        // wasn't NEUTRAL, FRIENDLY ones too, used to count as hostile
+        const Attitude att = attitude_to( guy );
+        if( att == Attitude::FRIENDLY ) {
+            ai_cache.friends.emplace_back( g->shared_from( guy ) );
+        } else if( att == Attitude::HOSTILE && sees( here, guy.pos_bub( here ) ) ) {
             ai_cache.hostile_guys.emplace_back( g->shared_from( guy ) );
         }
     }
@@ -1031,8 +1040,9 @@ void npc::assess_danger()
             friendly_count += 1;
             continue;
         }
-        if( att != Attitude::HOSTILE && ( critter.friendly || !is_enemy() ) ) {
-            ai_cache.neutral_guys.emplace_back( g->shared_from( critter ) );
+        // NPC-B16: a monster neither hostile to the NPC nor one it is hostile to (a deer for a
+        // bandit) is no threat and no target: attitude_to() rates no attack on it
+        if( att != Attitude::HOSTILE && attitude_to( critter ) != Attitude::HOSTILE ) {
             continue;
         }
         if( !sees( here, critter ) ) {
@@ -1484,7 +1494,6 @@ void npc::regen_ai_cache()
     float old_assessment = ai_cache.danger_assessment;
     ai_cache.friends.clear();
     ai_cache.hostile_guys.clear();
-    ai_cache.neutral_guys.clear();
     ai_cache.target = shared_ptr_fast<Creature>();
     ai_cache.ally = shared_ptr_fast<Creature>();
     ai_cache.can_heal.clear_all();
@@ -3041,13 +3050,15 @@ healing_options npc::patient_assessment( const Character &c )
             try_to_fix.infect = true;
         }
 
-        int part_threshold = 75;
+        // NPC-J08: the percentages are the healer's "ai_tuning" (first_aid); the old code
+        // meant +20 for the head and +10 for the torso but capped both at 80
+        const npc_ai_tuning &tuning = ai_tuning_of( *this );
+        int part_threshold = tuning.first_aid_limb;
         if( part_id.id() == body_part_head ) {
-            part_threshold += 20;
+            part_threshold = tuning.first_aid_head;
         } else if( part_id.id() == body_part_torso ) {
-            part_threshold += 10;
+            part_threshold = tuning.first_aid_torso;
         }
-        part_threshold = std::min( 80, part_threshold );
         part_threshold = part_threshold * c.get_part_hp_max( part_id ) / 100;
 
         if( c.get_part_hp_cur( part_id ) <= part_threshold ) {
@@ -3057,6 +3068,13 @@ healing_options npc::patient_assessment( const Character &c )
             if( !c.has_effect( effect_disinfected, part_id ) ) {
                 try_to_fix.disinfect = true;
             }
+        }
+    }
+    // NPC-J08: any effect a healing item cures (heal_actor "cures"), not only bleed, bite and
+    // infection
+    for( const efftype_id &curable : heal_actor::curable_effects() ) {
+        if( c.has_effect( curable ) ) {
+            try_to_fix.cure.insert( curable );
         }
     }
     return try_to_fix;
@@ -3104,15 +3122,21 @@ npc_action npc::address_needs( float danger )
     // ( also we can get huge performance boosts )
     if( one_in( 3 ) ) {
         healing_options try_to_fix_me = patient_assessment( *this );
-        if( try_to_fix_me.any_true() ) {
-            if( !use_npc_cbms( *this, bionic_npc_use::wounds ) ) {
-                ai_cache.can_heal = has_healing_options( try_to_fix_me );
-                if( ai_cache.can_heal.any_true() ) {
-                    return npc_heal;
-                }
+        if( try_to_fix_me.any_wound() ) {
+            if( use_npc_cbms( *this, bionic_npc_use::wounds ) ) {
+                // the wounds CBM sees to the wounds; an effect only an item cures still needs it
+                const std::set<efftype_id> cure = try_to_fix_me.cure;
+                try_to_fix_me.clear_all();
+                try_to_fix_me.cure = cure;
             }
         } else {
             deactivate_npc_cbms( *this, bionic_npc_use::wounds );
+        }
+        if( try_to_fix_me.any_true() ) {
+            ai_cache.can_heal = has_healing_options( try_to_fix_me );
+            if( ai_cache.can_heal.any_true() ) {
+                return npc_heal;
+            }
         }
         if( static_cast<int>( get_skill_level( skill_firstaid ) ) > 0 ) {
             if( is_player_ally() ) {
@@ -3149,6 +3173,10 @@ npc_action npc::address_needs( float danger )
             }
         } else {
             deactivate_npc_cbms( *this, bionic_npc_use::pain );
+        }
+        // NPC-J07: other medicine, when its "npc_use" condition holds
+        if( take_medicine() ) {
+            return npc_noop;
         }
     }
 
@@ -5545,6 +5573,18 @@ void npc::use_painkiller()
     }
 }
 
+bool npc::take_medicine()
+{
+    item *it = medicine_to_take();
+    if( it == nullptr ) {
+        return false;
+    }
+    add_msg_if_player_sees( *this, _( "%1$s takes some %2$s." ), disp_name(), it->tname() );
+    item_location loc( *this, it );
+    mod_moves( -to_moves<int>( get_consume_time( *loc ) ) );
+    return consume( loc ) != trinary::NONE;
+}
+
 // We want our food to:
 // Provide enough nutrition and quench
 // Not provide too much of either (don't waste food)
@@ -5578,7 +5618,7 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
         return 0.0f;
     }
 
-    // Don't eat medicine as food (NPC self-medication is handled in use_painkiller)
+    // Don't eat medicine as food (NPCs take it by its "npc_use": use_painkiller, take_medicine)
     if( food->comesttype == "MED" ) {
         return 0.0f;
     }
@@ -6755,20 +6795,30 @@ bool npc::take_shelter_nearby()
     return false;
 }
 
+// NPC-J09: an endless liquid source of a liquid flagged NPC_DRINKABLE (water and clean water in
+// vanilla), not a list of item ids
 static bool is_allowed_water_source( const ter_t &t )
 {
-    static const std::set<itype_id> allowed = {
-        itype_water, itype_water_clean
-    };
     return !t.liquid_source_item_id.is_null() &&
            t.liquid_source_count == std::make_pair( 0, 0 ) &&
-           allowed.count( t.liquid_source_item_id ) > 0;
+           t.liquid_source_item_id.is_valid() && t.liquid_source_item_id->comestible &&
+           t.liquid_source_item_id->has_flag( json_flag_NPC_DRINKABLE );
 }
 
 std::vector<npc::scored_water_source> npc::find_nearby_water_sources() const
 {
     std::vector<scored_water_source> results;
     const map &here = get_map();
+    // NPC-J09: and only a liquid this NPC can drink (its diet, its mutations' eat_conditions...)
+    std::map<itype_id, bool> drinkable;
+    const auto can_drink = [this, &drinkable]( const itype_id & liquid ) {
+        auto known = drinkable.find( liquid );
+        if( known == drinkable.end() ) {
+            const item charge( liquid, calendar::turn, 1 );
+            known = drinkable.emplace( liquid, can_eat( charge ).success() ).first;
+        }
+        return known->second;
+    };
     for( const tripoint_bub_ms &p : closest_points_first( pos_bub(), 6 ) ) {
         if( is_no_go_position( here.get_abs( p ) ) ) {
             continue;
@@ -6776,7 +6826,8 @@ std::vector<npc::scored_water_source> npc::find_nearby_water_sources() const
         if( !sees( here, p ) ) {
             continue;
         }
-        if( !is_allowed_water_source( here.ter( p ).obj() ) ) {
+        const ter_t &source = here.ter( p ).obj();
+        if( !is_allowed_water_source( source ) || !can_drink( source.liquid_source_item_id ) ) {
             continue;
         }
         results.push_back( { p, rl_dist( pos_bub(), p ) } );
@@ -6931,9 +6982,33 @@ std::vector<npc::scored_item> npc::find_nearby_warm_clothing()
     return results;
 }
 
+// NPC-J09: what drinking a charge of a liquid does besides filling the stomach, as consume() and
+// eat() do it for anyone: the consumption EOCs and the consume events. Not its contamination
+// (raw water's 1% bad_food): NPCs drinking from rivers getting food poisoning is the owner's call.
+static void drink_charge_effects( npc &guy, item &liquid )
+{
+    const islot_comestible &comest = *liquid.get_comestible();
+    // the liquid is the beta talker, as when eating
+    item_location drunk( guy, &liquid );
+    if( !comest.consumption_eocs.empty() ) {
+        dialogue d( get_talker_for( guy ), get_talker_for( drunk ) );
+        for( const effect_on_condition_id &eoc : comest.consumption_eocs ) {
+            eoc->activate( d );
+        }
+    }
+    get_event_bus().send_with_talker( &guy, &drunk,
+                                      cata::event::make<event_type::character_eats_item>( guy.getID(), liquid.typeId() ) );
+    get_event_bus().send_with_talker( &guy, &drunk,
+                                      cata::event::make<event_type::character_consumes_item>( guy.getID(), liquid.typeId() ) );
+}
+
 bool npc::drink_from_water_source( const tripoint_bub_ms &water_pos )
 {
     if( get_thirst() <= 0 ) {
+        return false;
+    }
+    const ter_t &source = get_map().ter( water_pos ).obj();
+    if( !is_allowed_water_source( source ) ) {
         return false;
     }
     const units::volume want = std::max( 0_ml,
@@ -6942,7 +7017,25 @@ bool npc::drink_from_water_source( const tripoint_bub_ms &water_pos )
     if( intake <= 0_ml ) {
         return false;
     }
-    stomach.ingest( { intake, 0_ml, {} } );
+    // NPC-J09: the sip is of the source's liquid: its water and nutrients, for the part of a
+    // charge the sip is (all of it is water for water)
+    item liquid( source.liquid_source_item_id, calendar::turn, 1 );
+    const int charge_ml = std::max( 1, units::to_milliliter( liquid.volume() ) );
+    const int water_ml = std::max( 0, liquid.get_comestible()->quench * 5 );
+    units::volume water = intake;
+    if( water_ml != charge_ml ) {
+        water = units::from_milliliter( static_cast<int>( std::lround(
+                                            static_cast<double>( units::to_milliliter( intake ) ) * water_ml / charge_ml ) ) );
+    }
+    nutrients nutr = compute_effective_nutrients( liquid );
+    nutr *= static_cast<double>( units::to_milliliter( intake ) ) / charge_ml;
+    // the first sip of each charge does the rest of what drinking that charge does
+    if( ai_cache.terrain_sip_left <= 0_ml ) {
+        drink_charge_effects( *this, liquid );
+        ai_cache.terrain_sip_left = units::from_milliliter( charge_ml );
+    }
+    ai_cache.terrain_sip_left -= intake;
+    stomach.ingest( { water, 0_ml, nutr } );
     mod_moves( -sip_moves() );
     add_msg_debug( debugmode::DF_NPC_NEEDS,
                    "NPC %s: drank from terrain at %s", get_name(),

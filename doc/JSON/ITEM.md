@@ -713,7 +713,15 @@ CBMs can be defined like this:
 }
 "smoking_result": "dry_meat",     // Food that results from drying this food in a smoker
 "petfood": [ "FUNGALFRUIT", "MIGOFOOD" ] // (Optional) Pet food categories this item is in.
+"npc_use": {                      // (Optional) NPCs take this medicine on their own.  Needs "pain" or "condition"
+  "pain": 30,                     // It is a painkiller for about this much pain: an NPC in pain (15 or more, after painkillers) that hasn't taken one (no effect flagged PAINKILLER on it) takes the painkiller whose "pain" is closest to its pain
+  "min_pain": 0,                  // (Optional) Carrying it makes the NPC reach for a painkiller only while its pain is at least this (default 0)...
+  "max_pain": 35,                 // (Optional) ...and at most this (default no limit)
+  "preference": 2,                // (Optional) Divides how far its "pain" is from the NPC's when picking; 2 is picked over a wider range of pain (default 1)
+  "condition": { "u_has_effect": "infected" } // (Optional) The NPC (u) takes it only while this holds (the item is npc).  Medicine without "pain" is taken whenever it holds, so give it one that stops holding once the medicine works
+}
 ```
+Vanilla's painkillers (aspirin, acetaminophen and ibuprofen up to pain 35, codeine, tramadol, oxycodone and heroin from pain 50) have an `npc_use`; NPCs only take a medicine they could take themselves (heroin needs a syringe).
 
 
 ### Containers
@@ -1416,7 +1424,7 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
 },
 "use_action": {
   "type": "heal",               // Heal damage, possibly some statuses
-  "limb_power": 10,             // How much hp to restore when healing limbs?  At least one of limb_power, head_power, torso_power, bandages_power, bleed, disinfectant_power, bite, infect or effects is needed
+  "limb_power": 10,             // How much hp to restore when healing limbs?  At least one of limb_power, head_power, torso_power, bandages_power, bleed, disinfectant_power, bite, infect, effects or cures is needed
   "bandages_power": 1,          // (optional) Strength of the "bandaged" effect it applies, which heals over time.  Default 0
   "bandages_scaling": 0.25,     // (optional) Extra bandages_power per first aid level.  Defaults to 0.25 * bandages_power
   "head_power": 7,              // How much hp to restore when healing head? If unset, defaults to 0.8 * limb_power
@@ -1426,6 +1434,7 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
   "disinfectant_scaling": 1.0,  // (optional) Extra disinfectant_power per first aid level.  Defaults to 0.25 * disinfectant_power
   "bite": 0.95,                 // Chance to remove bite effect
   "infect": 0.1,                // Chance to remove infected effect
+  "cures": [ "poison", { "effect": "stunned", "chance": 0.5 } ], // (optional) Effects one use removes from the treated body part and from the whole body: an effect id (always removed) or { "effect", "chance" (0 to 1, default 1) }.  NPCs treat these on themselves, the player and their allies with the items that cure them, as they do bleeding, bites and infections
   "move_cost": 250,             // Mandatory.  Cost in moves to use the item
   "limb_scaling": 1.2,          // How much extra limb hp should be healed per first aid level. Defaults to 0.25 * limb_power
   "head_scaling": 1.0,          // How much extra limb hp should be healed per first aid level. Defaults to (limb_scaling / limb_power) * head_power

@@ -240,6 +240,18 @@ std::string enum_to_string<hit_type>( hit_type data )
     }
     cata_fatal( "Invalid hit_type" );
 }
+template<>
+std::string enum_to_string<spell_npc_role>( spell_npc_role data )
+{
+    switch( data ) {
+    case spell_npc_role::attack: return "attack";
+    case spell_npc_role::self: return "self";
+    case spell_npc_role::ally: return "ally";
+    case spell_npc_role::never: return "never";
+    case spell_npc_role::last: break;
+    }
+    cata_fatal( "Invalid spell_npc_role" );
+}
 // *INDENT-ON*
 
 } // namespace io
@@ -448,6 +460,25 @@ void spell_type::load( const JsonObject &jo, std::string_view src )
         has_target_condition = true;
     }
     optional( jo, was_loaded, "target_condition_fail_message", target_condition_fail_message_ );
+
+    if( jo.has_object( "npc_use" ) ) {
+        const JsonObject npc_use = jo.get_object( "npc_use" );
+        optional( npc_use, false, "role", npc_role, spell_npc_role::attack );
+        has_npc_condition = npc_use.has_member( "condition" );
+        if( has_npc_condition ) {
+            read_condition( npc_use, "condition", npc_condition, false );
+        } else {
+            npc_condition = nullptr;
+        }
+        if( npc_use.has_member( "priority" ) &&
+            ( npc_role == spell_npc_role::attack || npc_role == spell_npc_role::never ) ) {
+            npc_use.throw_error_at( "priority",
+                                    "priority rates the self and ally roles; an attack is rated by its damage" );
+        }
+        optional( npc_use, false, "priority", npc_priority, 10.0 );
+    } else if( !was_loaded ) {
+        npc_priority = 10.0;
+    }
 
     optional( jo, was_loaded, "extra_effects", additional_spells );
 

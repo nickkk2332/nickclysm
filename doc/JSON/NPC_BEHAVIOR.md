@@ -692,6 +692,16 @@ Each level is 0 to 1, and `act` <= `insist` <= `emergency`. The temperature pred
 
 A woken NPC lies back down while it is still half as tired as `go_to_sleep`'s `act`.
 
+### First aid
+
+| `first_aid` member | Default | What it does |
+| --- | --- | --- |
+| `limb` | 75 | the NPC bandages and disinfects an arm or leg (its own, the avatar's or an ally's) at or below this percentage of its HP |
+| `torso` | 80 | the same for the torso |
+| `head` | 80 | the same for the head |
+
+The thresholds are the healer's: its class decides when it treats a patient. Bleeding, bites, infections and any effect one of its healing items `cures` ([ITEM.md](ITEM.md#use-actions)) are treated whatever the HP. The code these replace meant 95 for the head and 85 for the torso, but capped both at 80, which the defaults keep.
+
 ## Custom needs
 
 A mod adds a need of its own (blood, mana, a battery to charge) with the type `npc_need`. It is weighed with the built-in needs and leaves them as they are: each one becomes a leaf of the decision tree, by default the last child of `npc_needs`, whose score is the need's urgency and whose goal is a [JSON goal](#json-goals) of the `needs` category with the need's hooks.

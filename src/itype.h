@@ -2,8 +2,10 @@
 #ifndef CATA_SRC_ITYPE_H
 #define CATA_SRC_ITYPE_H
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -50,6 +52,7 @@ class Character;
 class Item_factory;
 class Trait_group;
 class map;
+struct const_dialogue;
 template <typename E> struct enum_traits;
 
 class gun_modifier_data
@@ -200,6 +203,23 @@ struct rot_spawn_data {
     void deserialize( const JsonObject &jo );
 };
 
+// When an NPC takes a comestible as medicine on its own (JSON "npc_use", NPC-J07)
+struct comestible_npc_use {
+    // the pain level it suits; an item with one is a painkiller
+    std::optional<int> pain;
+    // carrying it makes an NPC reach for a painkiller only while its pain is in this range
+    int min_pain = 0;
+    int max_pain = INT_MAX;
+    // divides how far the NPC's pain is from `pain` when it picks a painkiller
+    int preference = 1;
+    // the NPC (u_) takes it only while this holds (the item is npc_); medicine that isn't a
+    // painkiller is taken whenever it holds
+    std::function<bool( const_dialogue const & )> condition;
+    bool has_condition = false;
+
+    void deserialize( const JsonObject &jo );
+};
+
 struct islot_comestible {
     public:
         friend Item_factory;
@@ -298,6 +318,9 @@ struct islot_comestible {
 
         /** The monster that is drawn from when the item rots away */
         rot_spawn_data rot_spawn;
+
+        /** When NPCs take it as medicine; none: they don't */
+        std::optional<comestible_npc_use> npc_use;
 
     private:
         // What seasonings can be eaten with this food for a morale bonus?
