@@ -41,6 +41,7 @@
 #include "point.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
+#include "rng.h"
 #include "talker.h"
 #include "type_id.h"
 
@@ -541,7 +542,9 @@ TEST_CASE( "craft-j02_fail_eocs_run_when_a_craft_fails", "[audit][crafting]" )
     map &here = get_map();
     here.add_item( u.pos_bub(), item( itype_2x4 ) );
     // No DEBUG_CNF and no skill, against difficulty 10: the first step fails, and with one
-    // component the failure takes it, leaving nothing to craft from
+    // component the failure takes it, leaving nothing to craft from.  The failure point is a
+    // normal roll that a novice still beats now and then, so the roll is seeded.
+    rng_set_engine_seed( 3802 );
     u.learn_recipe( &recipe_cudgel_test_craft_fail.obj() );
     u.make_craft( recipe_cudgel_test_craft_fail, 1 );
     REQUIRE( u.activity.id() == ACT_CRAFT );
