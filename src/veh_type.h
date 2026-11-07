@@ -162,6 +162,11 @@ struct vpslot_wheel {
     float offroad_rating = 0.5f;
 
     void deserialize( const JsonObject &jo );
+    // The move cost of this wheel on a tile with these terrain flags, from the tile's own move
+    // cost: an override of an entry whose flag is there replaces it (the lowest one if several
+    // apply), else the largest penalty of the entries whose flag is missing is added. Penalties
+    // don't stack and the order of the entries doesn't matter.
+    int terrain_move_cost( const std::set<std::string> &ter_flags, int move_cost ) const;
 };
 
 struct vpslot_rotor {

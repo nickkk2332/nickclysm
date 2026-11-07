@@ -747,8 +747,10 @@ static point_bub_ms state_to_pos( int state_idx )
     return point_bub_ms( pos_idx / MAPSIZE_Y, pos_idx % MAPSIZE_Y );
 }
 
-// Estimate vehicle drag difficulty using FLAT/ROAD terrain flags (matching
-// wheel terrain_modifiers): non-FLAT +4, FLAT non-ROAD +3, FLAT+ROAD +0.
+// Estimate vehicle drag difficulty using FLAT/ROAD terrain flags, close to a
+// standard wheel's terrain_modifiers (vpslot_wheel::terrain_move_cost, where the
+// largest penalty applies and they don't stack): non-FLAT +4, FLAT non-ROAD +3,
+// FLAT+ROAD +0.
 static int veh_drag_cost( const map &here, const tripoint_bub_ms &pos )
 {
     const int base = here.move_cost_ter_furn( pos );
