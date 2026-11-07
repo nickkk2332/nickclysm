@@ -529,6 +529,10 @@ TEST_CASE( "npc-b13_lone_npc_steps_to_a_clear_line_of_fire", "[audit][npc]" )
     npc &guy = m21a_place_follower( m21a_pos );
     guy.rules.set_flag( ally_rule::use_guns );
     guy.rules.clear_flag( ally_rule::use_silent );
+    // the leader is underground, out of reach: with "follow close" the follower would only head
+    // back to them, and the default "close" engagement leaves a zombie 5 tiles off alone
+    guy.rules.clear_flag( ally_rule::follow_close );
+    guy.rules.engagement = combat_engagement::ALL;
     monster &zombie = m21a_place_zombie( m21a_pos + tripoint( 5, 0, 0 ) );
     map &here = get_map();
     guy.recalc_sight_limits();

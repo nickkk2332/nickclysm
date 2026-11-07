@@ -762,9 +762,13 @@ TEST_CASE( "fight_ends_when_threat_is_gone", "[npc][needs][obligation]" )
     npc &guy = spawn_follower( leader_pos + tripoint( 2, 0, 0 ) );
     settle_body( guy, 0 );
     GIVEN( "a follower committed to fighting a zombie" ) {
-        zombie_in_view( guy );
+        const monster &zed = zombie_in_view( guy );
         run_npc_turns( guy, 3 );
-        REQUIRE( guy.get_committed_goal() == "fight" );
+        // It fights the zombie through the danger reaction (an unarmed NPC punches, NPC-B05).
+        // The tree commits to "fight" only when the NPC finds no attack to make (before
+        // NPC-B05, an unarmed one); that commitment is what must end with the threat.
+        REQUIRE( guy.current_target() == &zed );
+        guy.set_committed_goal_for_test( "fight" );
         WHEN( "zombie stays" ) {
             const time_point since = guy.get_intention().since;
             run_npc_turns( guy, 3 );
