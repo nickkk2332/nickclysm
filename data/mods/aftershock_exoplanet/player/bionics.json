@@ -419,7 +419,7 @@
             { "u_has_wielded_with_flag": "BIONIC_WEAPON_MELEE" }
           ]
         },
-        "hit_you_effect": [ { "id": "bio_blade_electric_arc" } ],
+        "hit_you_effect": [ { "id": "bio_blade_electric_arc", "hit_types": [ "melee" ] } ],
         "melee_damage_bonus": [ { "type": "electric", "add": 10 } ]
       }
     ]

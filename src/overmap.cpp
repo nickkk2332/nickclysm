@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -334,7 +336,13 @@ void overmap::ter_set( const tripoint_om_omt &p, const oter_id &id )
     oter_id &current_oter = layer[p.z() + OVERMAP_DEPTH].terrain[p.xy()];
     const oter_type_str_id &current_type_id = current_oter->get_type_id();
     const oter_type_str_id &incoming_type_id = id->get_type_id();
-    const bool current_type_same = current_type_id == incoming_type_id;
+    // A road that needs a predecessor replacing another such road (a manhole over a road) takes
+    // over that road's predecessor, as a road of the same type does, rather than stacking the
+    // replaced road on it and generating the road twice.
+    const bool current_type_same = current_type_id == incoming_type_id ||
+                                   ( current_oter->is_road() && id->is_road() &&
+                                     current_oter->has_flag( oter_flags::requires_predecessor ) &&
+                                     id->has_flag( oter_flags::requires_predecessor ) );
 
     // Mapgen refinement can push multiple different roads over each other.
     // Roads require a predecessor. A road pushed over a road might cause a
@@ -1750,11 +1758,38 @@ bool overmap::remove_nemesis()
 * @param p location of signal relative to this overmap origin
 * @param sig_power - power of signal or max distance for reaction of zombies
 */
-void overmap::signal_hordes( const tripoint_abs_ms &p, const int sig_power )
+int overmap::signal_hordes( const tripoint_abs_ms &p, const int sig_power )
 {
     tripoint_abs_sm absp = project_to<coords::sm>( p );
-    for( auto &elem : zg ) {
-        mongroup &mg = elem.second;
+    // A group farther than sig_power by rl_dist() can't hear the signal, and rl_dist() is never
+    // less than the largest of |dx| and |dy|. zg is sorted by x, then y, then z, so walking just
+    // the columns in reach visits the groups that can hear it in the same order (and so with the
+    // same random numbers) as walking all of zg.
+    const tripoint rel = absp.raw() - tripoint( project_to<coords::sm>( loc ).raw(), 0 );
+    const auto bound = []( const int64_t v ) {
+        return static_cast<int>( std::clamp<int64_t>( v, std::numeric_limits<int>::min(),
+                                 std::numeric_limits<int>::max() ) );
+    };
+    const int x_min = bound( static_cast<int64_t>( rel.x ) - sig_power );
+    const int x_max = bound( static_cast<int64_t>( rel.x ) + sig_power );
+    const int y_min = bound( static_cast<int64_t>( rel.y ) - sig_power );
+    const int y_max = bound( static_cast<int64_t>( rel.y ) + sig_power );
+    const int z_lowest = std::numeric_limits<int>::min();
+    int visited = 0;
+    for( auto group_iter = zg.lower_bound( tripoint_om_sm( x_min, y_min, z_lowest ) );
+         group_iter != zg.end() && group_iter->first.x() <= x_max; ) {
+        const tripoint_om_sm &key = group_iter->first;
+        if( key.y() < y_min ) {
+            group_iter = zg.lower_bound( tripoint_om_sm( key.x(), y_min, z_lowest ) );
+            continue;
+        }
+        if( key.y() > y_max ) {
+            group_iter = zg.lower_bound( tripoint_om_sm( key.x() + 1, y_min, z_lowest ) );
+            continue;
+        }
+        ++visited;
+        mongroup &mg = group_iter->second;
+        ++group_iter;
         if( !mg.horde ) {
             continue;
         }
@@ -1791,6 +1826,7 @@ void overmap::signal_hordes( const tripoint_abs_ms &p, const int sig_power )
         }
     }
     hordes.signal_entities( p, sig_power );
+    return visited;
 }
 
 void overmap::alert_entity( const tripoint_om_ms &location, const tripoint_abs_ms &destination,

@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <list>
 #include <memory>
 #include <numeric>
@@ -18,6 +17,7 @@
 #include <vector>
 
 #include "behavior_oracle.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_compiler_support.h"
@@ -26,6 +26,7 @@
 #include "character.h"
 #include "character_id.h"
 #include "character_oracle.h"
+#include "city.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -46,6 +47,7 @@
 #include "itype.h"
 #include "magic.h"
 #include "map.h"
+#include "map_iterator.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mod_manager.h"
@@ -56,6 +58,7 @@
 #include "npc.h"
 #include "npc_json_goal.h"
 #include "options.h"
+#include "overmapbuffer.h"
 #include "pimpl.h"
 #include "player_activity.h"
 #include "point.h"
@@ -68,9 +71,8 @@
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"
+#include "veh_type.h"
 #include "vehicle.h"
-#include "vpart_position.h"
-#include "vpart_range.h"
 #include "weather.h"
 #include "weather_gen.h"
 #include "weather_type.h"
@@ -413,6 +415,73 @@ double distance_eval( const_dialogue const &d, char /* scope */,
     return rl_dist( get_pos( params[0] ), get_pos( params[1] ) );
 }
 
+// OMAP-J01: overmap functions. A location argument is a location variable, or "u" / "npc" for
+// that talker's position, as in distance().
+tripoint_abs_omt _omt_of( const_dialogue const &d, diag_value const &dv )
+{
+    if( dv.is_str() ) {
+        std::string const &str = dv.str( d );
+        if( str == "u" ) {
+            return d.const_actor( false )->pos_abs_omt();
+        } else if( str == "npc" ) {
+            return d.const_actor( true )->pos_abs_omt();
+        }
+        throw math::runtime_error( R"(Invalid location "%s")", str );
+    }
+    return project_to<coords::omt>( dv.tripoint( d ) );
+}
+
+double omt_distance_eval( const_dialogue const &d, char /* scope */,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    return rl_dist( _omt_of( d, params[0] ), _omt_of( d, params[1] ) );
+}
+
+double horde_size_eval( const_dialogue const &d, char /* scope */,
+                        std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const tripoint_abs_omt center = _omt_of( d, params[0] );
+    const int radius = std::max( 0, static_cast<int>( kwargs.kwarg_or( "radius", 0 ).dbl( d ) ) );
+    int total = 0;
+    for( const tripoint_abs_omt &p : points_in_radius( center, radius ) ) {
+        total += overmap_buffer.get_horde_size( p );
+    }
+    return total;
+}
+
+// The closest city matching the kwargs of city_distance() and city_size()
+city_reference _closest_city( const_dialogue const &d, std::vector<diag_value> const &params,
+                              diag_kwargs const &kwargs )
+{
+    city_filter filter;
+    filter.known_only = is_true( kwargs.kwarg_or( "known", 1 ).dbl( d ) );
+    filter.min_size = static_cast<int>( kwargs.kwarg_or( "min_size", 0 ).dbl( d ) );
+    filter.max_size = static_cast<int>( kwargs.kwarg_or( "max_size", -1 ).dbl( d ) );
+    filter.max_distance = static_cast<int>( kwargs.kwarg_or( "max_distance", -1 ).dbl( d ) );
+    diag_value const name = kwargs.kwarg_or( "name" );
+    if( !name.is_empty() ) {
+        filter.name = name.str( d );
+    }
+    return overmap_buffer.closest_city( project_to<coords::sm>( _omt_of( d, params[0] ) ), filter );
+}
+
+double city_distance_eval( const_dialogue const &d, char /* scope */,
+                           std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const city_reference city = _closest_city( d, params, kwargs );
+    if( !city ) {
+        return -1;
+    }
+    return rl_dist( project_to<coords::omt>( city.abs_sm_pos ).xy(), _omt_of( d, params[0] ).xy() );
+}
+
+double city_size_eval( const_dialogue const &d, char /* scope */,
+                       std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const city_reference city = _closest_city( d, params, kwargs );
+    return city ? city.city->size : 0;
+}
+
 double artifact_resonance_eval( const_dialogue const &d, char scope,
                                 std::vector<diag_value> const & /* params */,
                                 diag_kwargs const & /* kwargs */ )
@@ -434,7 +503,7 @@ double damage_level_eval( const_dialogue const &d, char scope,
 
 // add_effect keeps a main_parts_only effect on the main part, so read and write it there,
 // or setting it on a hand would add a second effect instead of changing the first
-static bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
+bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
 {
     if( bp_str.empty() ) {
         return bodypart_str_id::NULL_ID();
@@ -767,6 +836,174 @@ double has_active_trait_eval( const_dialogue const &d, char scope,
     const trait_id trait = trait_param( d, params, "has_active_trait" );
     const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
     return guy != nullptr && guy->has_active_mutation( trait ) ? 1.0 : 0.0;
+}
+
+// MUT-J03: bionic state for EOC math. A talker that isn't a character reads 0.
+bionic_id bionic_param( const_dialogue const &d, std::vector<diag_value> const &params,
+                        std::string_view func )
+{
+    const bionic_id bio( params[0].str( d ) );
+    if( !bio.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown bionic "%s")", func, bio.str() );
+    }
+    return bio;
+}
+
+// The character's first installed copy of the bionic, or null
+bionic *installed_bionic( const Character &guy, const bionic_id &bio )
+{
+    const std::optional<bionic *> found = guy.find_bionic_by_type( bio );
+    return found ? *found : nullptr;
+}
+
+Character &bionic_character( dialogue &d, char scope, std::string_view func )
+{
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy == nullptr ) {
+        throw math::runtime_error( "%s(): talker must be a character", func );
+    }
+    return *guy;
+}
+
+// bionic_count('bio_ears'): how many of the bionic are installed; 'ANY' counts every bionic
+double bionic_count_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    if( params[0].str( d ) == "ANY" ) {
+        return guy->num_bionics();
+    }
+    const bionic_id bio = bionic_param( d, params, "bionic_count" );
+    int count = 0;
+    for( const bionic_id &installed : guy->get_bionics() ) {
+        count += installed == bio ? 1 : 0;
+    }
+    return count;
+}
+
+// has_active_bionic('bio_night_vision'): 1 if it is installed and working (powered, not shorted
+// out, not stopped by its fuel threshold)
+double has_active_bionic_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "has_active_bionic" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy != nullptr && guy->has_active_bionic( bio ) ? 1.0 : 0.0;
+}
+
+// bionic_charge('bio_ads'): turns left on its charge timer (a bionic with a "time" that is
+// running); 0 when it isn't installed
+double bionic_charge_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_charge" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    const bionic *installed = guy == nullptr ? nullptr : installed_bionic( *guy, bio );
+    return installed == nullptr ? 0.0 : to_turns<double>( installed->charge_timer );
+}
+
+void bionic_charge_ass( double val, dialogue &d, char scope,
+                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_charge" );
+    if( bionic *installed = installed_bionic( bionic_character( d, scope, "bionic_charge" ), bio ) ) {
+        installed->charge_timer = time_duration::from_turns( std::max( 0.0, std::round( val ) ) );
+    }
+}
+
+// bionic_incapacitated('bio_flashlight'): turns until it stops shorting out (an EMP, say)
+double bionic_incapacitated_eval( const_dialogue const &d, char scope,
+                                  std::vector<diag_value> const &params,
+                                  diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_incapacitated" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    const bionic *installed = guy == nullptr ? nullptr : installed_bionic( *guy, bio );
+    return installed == nullptr ? 0.0 : to_turns<double>( installed->incapacitated_time );
+}
+
+void bionic_incapacitated_ass( double val, dialogue &d, char scope,
+                               std::vector<diag_value> const &params,
+                               diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_incapacitated" );
+    Character &guy = bionic_character( d, scope, "bionic_incapacitated" );
+    if( bionic *installed = installed_bionic( guy, bio ) ) {
+        installed->incapacitated_time = time_duration::from_turns( std::max( 0.0, std::round( val ) ) );
+        // a shorted-out bionic is off, as an EMP leaves it
+        if( installed->incapacitated_time > 0_turns && installed->powered ) {
+            guy.deactivate_bionic( *installed, false, true );
+        }
+    }
+}
+
+// bionic_safe_fuel('bio_fuel_wood'): the fraction of power below which the power source burns
+// fuel; -1 when it burns regardless
+double bionic_safe_fuel_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_safe_fuel" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    const bionic *installed = guy == nullptr ? nullptr : installed_bionic( *guy, bio );
+    return installed == nullptr ? 0.0 : installed->get_safe_fuel_thresh();
+}
+
+void bionic_safe_fuel_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_safe_fuel" );
+    if( bionic *installed = installed_bionic( bionic_character( d, scope, "bionic_safe_fuel" ),
+                            bio ) ) {
+        installed->set_safe_fuel_thresh( static_cast<float>( std::clamp( val, -1.0, 1.0 ) ) );
+    }
+}
+
+// bionic_cost('bio_night_vision', 'type': 'activate'): a cost from the bionic's definition, in
+// millijoules: 'activate' (the default), 'deactivate', 'react' (each time it recharges) or
+// 'trigger'
+double bionic_cost_eval( const_dialogue const &d, char /* scope */,
+                         std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_cost" );
+    const std::string type = kwargs.kwarg_or( "type", "activate" ).str( d );
+    if( type == "activate" ) {
+        return units::to_millijoule( bio->power_activate );
+    } else if( type == "deactivate" ) {
+        return units::to_millijoule( bio->power_deactivate );
+    } else if( type == "react" ) {
+        return units::to_millijoule( bio->power_over_time );
+    } else if( type == "trigger" ) {
+        return units::to_millijoule( bio->power_trigger );
+    }
+    throw math::runtime_error( R"(bionic_cost(): unknown type "%s"; use 'activate', 'deactivate', )"
+                               R"('react' or 'trigger')", type );
+}
+
+// bionic_power(): stored bionic power in millijoules, assignable within 0 and the maximum
+double bionic_power_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0.0 : units::to_millijoule( guy->get_power_level() );
+}
+
+void bionic_power_ass( double val, dialogue &d, char scope,
+                       std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    Character &guy = bionic_character( d, scope, "bionic_power" );
+    const double max = units::to_millijoule( guy.get_max_power_level() );
+    guy.set_power_level( units::from_millijoule( static_cast<std::int64_t>( std::clamp( std::round(
+                             val ), 0.0, max ) ) ) );
+}
+
+double bionic_power_max_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0.0 : units::to_millijoule( guy->get_max_power_level() );
 }
 
 // activity_moves_left(): the moves (100 a turn) the current activity has left; 0 without one,
@@ -1502,6 +1739,101 @@ double spell_difficulty_eval( const_dialogue const &d, char scope,
     throw math::runtime_error( R"(Unknown spell id "%s" for spell_difficulty_eval)", sid_str );
 }
 
+// MAGIC-J02: what a cast of the spell would do now. The character's own spell, or a level 0 one
+// if it doesn't know the spell; with 'baseline', its level without temporary adjustments.
+spell spell_for_math( const Character &guy, const spell_id &id, bool baseline )
+{
+    if( guy.magic->knows_spell( id ) ) {
+        const spell &known = guy.magic->get_spell( id );
+        return baseline ? spell( id, known.xp() ) : known;
+    }
+    return spell( id );
+}
+
+spell_id spell_param( const_dialogue const &d, std::vector<diag_value> const &params,
+                      std::string_view func )
+{
+    const spell_id id( params[0].str( d ) );
+    if( !id.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown spell "%s")", func, id.str() );
+    }
+    return id;
+}
+
+// Runs @p read on the spell for the talker; 0 for a talker that isn't a character
+template<typename Read>
+double spell_value_for_math( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs,
+                             std::string_view func, Read read )
+{
+    const spell_id id = spell_param( d, params, func );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    const bool baseline = is_true( kwargs.kwarg_or( "baseline" ).dbl( d ) );
+    return read( spell_for_math( *guy, id, baseline ), *guy );
+}
+
+double spell_fail_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                        diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_fail",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.spell_fail( guy ) );
+    } );
+}
+
+double spell_casting_exp_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_casting_exp",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.casting_exp( guy ) );
+    } );
+}
+
+double spell_sound_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                         diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_sound",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.sound_volume( guy ) );
+    } );
+}
+
+double spell_energy_cost_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_energy_cost",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.energy_cost( guy ) );
+    } );
+}
+
+double spell_cast_time_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_cast_time",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.casting_time( guy ) );
+    } );
+}
+
+// XP still needed for the next level of a spell the character knows; -1 otherwise, as
+// spell_exp() reads
+double spell_exp_to_next_level_eval( const_dialogue const &d, char scope,
+                                     std::vector<diag_value> const &params,
+                                     diag_kwargs const & /* kwargs */ )
+{
+    const spell_id id = spell_param( d, params, "spell_exp_to_next_level" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr || !guy->magic->knows_spell( id ) ) {
+        return -1.0;
+    }
+    return guy->magic->get_spell( id ).exp_to_next_level();
+}
+
 double spell_exp_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
                        diag_kwargs const & /* kwargs */ )
 {
@@ -2107,27 +2439,33 @@ double npc_panic_eval( const_dialogue const &d, char scope,
     return guy == nullptr ? 0.0 : guy->mem_combat.panic;
 }
 
-constexpr const char *need_goals = "drink_water, eat_food, go_to_sleep or regulate_temperature";
+constexpr const char *need_goals =
+    "drink_water, eat_food, go_to_sleep, regulate_temperature or an npc_need";
 
 void npc_need_urgency_check( std::vector<diag_value> const &params )
 {
-    if( params[0].is_str() && !npc::goal_id_for( params[0].str() ) ) {
+    // a custom need may load after the math that names it: then it is checked once data loaded
+    if( params[0].is_str() && !npc_custom_needs::may_name_need( params[0].str() ) ) {
         throw math::syntax_error( R"(npc_need_urgency(): "%s" isn't %s)", params[0].str(), need_goals );
     }
 }
 
 // npc_need_urgency('drink_water'): the need's urgency, 0 to 1, as the arbitration and the
-// built-in scores have it
+// built-in scores have it; a custom need's (npc_need) as its own urgency gives it
 double npc_need_urgency_eval( const_dialogue const &d, char scope,
                               std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
     const std::string need( params[0].str( d ) );
     const std::optional<npc::need_goal_id> id = npc::goal_id_for( need );
-    if( !id ) {
+    const npc_custom_need *custom = id ? nullptr : npc_custom_needs::find( need );
+    if( !id && custom == nullptr ) {
         throw math::runtime_error( R"(npc_need_urgency(): "%s" isn't %s)", need, need_goals );
     }
     const npc *guy = scoped_npc( d, scope );
-    return guy == nullptr ? 0.0 : guy->current_need_urgency( *id );
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    return id ? guy->current_need_urgency( *id ) : custom->urgency_for( *guy );
 }
 
 double npc_trust_eval( const_dialogue const &d, char scope,
@@ -2700,27 +3038,65 @@ void vehicle_locked_ass( double val, dialogue &d, char scope,
     mutable_vehicle_talker( d, scope, "vehicle_locked" )->is_locked = is_true( val );
 }
 
+// The parts vehicle_part_count(), vehicle_part_broken_count() and vehicle_part_hp() look at:
+// those with the flag given as the argument and of the vehicle part id given as the "part"
+// kwarg (VINT-J01); with neither, every part. Parts of a racked vehicle never count.
+struct vehicle_part_query {
+    std::string flag;
+    std::optional<vpart_id> part;
+
+    bool matches( const vehicle_part &vp ) const {
+        return !vp.removed && !vp.is_fake && !vp.has_flag( vp_flag::carried_flag ) &&
+               ( flag.empty() || vp.info().has_flag( flag ) ) && ( !part || vp.info().id == *part );
+    }
+};
+
+vehicle_part_query vehicle_part_query_params( const_dialogue const &d, std::string_view func,
+        std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    if( params.size() > 1 ) {
+        throw math::runtime_error( "%s() takes at most one argument, a vehicle part flag", func );
+    }
+    vehicle_part_query query;
+    if( !params.empty() ) {
+        query.flag = vehicle_part_flag_param( d, params[0] );
+    }
+    if( kwargs.kwargs.count( "part" ) != 0 ) {
+        diag_value const part_val = kwargs.kwarg_or( "part" );
+        const vpart_id part( part_val.str( d ) );
+        if( !part.is_valid() ) {
+            throw math::runtime_error( R"(Unknown vehicle part "%s" for %s())", part.str(), func );
+        }
+        query.part = part;
+    }
+    return query;
+}
+
 double vehicle_part_count_eval( const_dialogue const &d, char scope,
-                                std::vector<diag_value> const &params,
-                                diag_kwargs const & /* kwargs */ )
+                                std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_count" );
-    const vehicle_part_with_feature_range<std::string> parts =
-        veh->get_avail_parts( vehicle_part_flag_param( d, params[0] ) );
-    return static_cast<double>( std::distance( parts.begin(), parts.end() ) );
+    const vehicle_part_query query = vehicle_part_query_params( d, "vehicle_part_count", params,
+                                     kwargs );
+    int count = 0;
+    for( int idx = 0; idx < veh->part_count(); idx++ ) {
+        const vehicle_part &vp = veh->part( idx );
+        count += query.matches( vp ) && !vp.is_broken() ? 1 : 0;
+    }
+    return count;
 }
 
 double vehicle_part_broken_count_eval( const_dialogue const &d, char scope,
                                        std::vector<diag_value> const &params,
-                                       diag_kwargs const & /* kwargs */ )
+                                       diag_kwargs const &kwargs )
 {
     vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_broken_count" );
+    const vehicle_part_query query = vehicle_part_query_params( d, "vehicle_part_broken_count",
+                                     params, kwargs );
     int broken = 0;
-    for( const vpart_reference &vp : veh->get_any_parts( vehicle_part_flag_param( d,
-            params[0] ) ) ) {
-        if( vp.part().is_broken() && !vp.part().has_flag( vp_flag::carried_flag ) ) {
-            ++broken;
-        }
+    for( int idx = 0; idx < veh->part_count(); idx++ ) {
+        const vehicle_part &vp = veh->part( idx );
+        broken += query.matches( vp ) && vp.is_broken() ? 1 : 0;
     }
     return broken;
 }
@@ -2729,16 +3105,24 @@ double vehicle_part_hp_eval( const_dialogue const &d, char scope,
                              std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_hp" );
-    std::string const &flag = vehicle_part_flag_param( d, params[0] );
+    const vehicle_part_query query = vehicle_part_query_params( d, "vehicle_part_hp", params,
+                                     kwargs );
     diag_value const agg_val = kwargs.kwarg_or( "aggregate", "min" );
     std::string const &agg = agg_val.str( d );
     if( agg != "min" && agg != "max" && agg != "average" ) {
         throw math::runtime_error( R"(Unknown aggregate "%s" for vehicle_part_hp())", agg );
     }
+    // VINT-J01: "hp" gives the hit points themselves rather than the share of the durability
+    diag_value const format_val = kwargs.kwarg_or( "format", "percent" );
+    std::string const &format = format_val.str( d );
+    if( format != "percent" && format != "hp" ) {
+        throw math::runtime_error( R"(Unknown format "%s" for vehicle_part_hp())", format );
+    }
     std::vector<double> health;
-    for( const vpart_reference &vp : veh->get_any_parts( flag ) ) {
-        if( !vp.part().has_flag( vp_flag::carried_flag ) ) {
-            health.push_back( vp.part().health_percent() * 100.0 );
+    for( int idx = 0; idx < veh->part_count(); idx++ ) {
+        const vehicle_part &vp = veh->part( idx );
+        if( query.matches( vp ) ) {
+            health.push_back( format == "hp" ? vp.hp() : vp.health_percent() * 100.0 );
         }
     }
     if( health.empty() ) {
@@ -3004,6 +3388,14 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "sum_traits_of_category", { "un", 1, sum_traits_of_category_eval, {}, { "type" } } },
     { "sum_traits_of_category_char_has", { "un", 1, sum_traits_of_category_char_has_eval, {}, { "type" } } },
     { "has_active_trait", { "un", 1, has_active_trait_eval } },
+    { "bionic_count", { "un", 1, bionic_count_eval } },
+    { "has_active_bionic", { "un", 1, has_active_bionic_eval } },
+    { "bionic_charge", { "un", 1, bionic_charge_eval, bionic_charge_ass } },
+    { "bionic_incapacitated", { "un", 1, bionic_incapacitated_eval, bionic_incapacitated_ass } },
+    { "bionic_safe_fuel", { "un", 1, bionic_safe_fuel_eval, bionic_safe_fuel_ass } },
+    { "bionic_cost", { "g", 1, bionic_cost_eval, {}, { "type" } } },
+    { "bionic_power", { "un", 0, bionic_power_eval, bionic_power_ass } },
+    { "bionic_power_max", { "un", 0, bionic_power_max_eval } },
     { "mutation_category_level", { "un", 1, mutation_category_level_eval } },
     { "mutation_instability", { "un", 1, mutation_instability_eval } },
     { "trait_cooldown", { "un", 1, trait_cooldown_eval, trait_cooldown_ass } },
@@ -3020,6 +3412,11 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "monsters_nearby", { "ung", -1, monsters_nearby_eval, {}, { "radius", "attitude", "location" } } },
     { "mon_species_nearby", { "ung", -1, monster_species_nearby_eval, {}, { "radius", "attitude", "location" } } },
     { "mon_groups_nearby", { "ung", -1, monster_groups_nearby_eval, {}, { "radius", "attitude", "location" } } },
+    // OMAP-J01: overmap functions
+    { "omt_distance", { "g", 2, omt_distance_eval } },
+    { "horde_size", { "g", 1, horde_size_eval, {}, { "radius" } } },
+    { "city_distance", { "g", 1, city_distance_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
+    { "city_size", { "g", 1, city_size_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "moon_phase", { "g", 0, moon_phase_eval } },
     { "morale", { "un", 0, morale_eval, morale_ass, { "raw" } } },
     { "num_input", { "g", 2, num_input_eval } },
@@ -3047,6 +3444,12 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "spell_count", { "un", 0, spell_count_eval, {}, { "school" } } },
     { "spell_difficulty", { "un", 1, spell_difficulty_eval, {}, { "baseline" } } },
     { "spell_exp", { "un", 1, spell_exp_eval, spell_exp_ass } },
+    { "spell_exp_to_next_level", { "un", 1, spell_exp_to_next_level_eval } },
+    { "spell_fail", { "un", 1, spell_fail_eval, {}, { "baseline" } } },
+    { "spell_casting_exp", { "un", 1, spell_casting_exp_eval, {}, { "baseline" } } },
+    { "spell_sound", { "un", 1, spell_sound_eval, {}, { "baseline" } } },
+    { "spell_energy_cost", { "un", 1, spell_energy_cost_eval, {}, { "baseline" } } },
+    { "spell_cast_time", { "un", 1, spell_cast_time_eval, {}, { "baseline" } } },
     { "spell_exp_for_level", { "g", 2, spell_exp_for_level_eval } },
     { "spell_level", { "un", 1, spell_level_eval, spell_level_ass } },
     { "spell_level_adjustment", { "un", 1, spell_level_adjustment_eval, spell_level_adjustment_ass } },
@@ -3096,9 +3499,9 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "vehicle_fuel_capacity", { "un", 1, vehicle_fuel_capacity_eval } },
     { "vehicle_locked", { "un", 0, vehicle_locked_eval, vehicle_locked_ass } },
     { "vehicle_max_speed", { "un", 0, vehicle_max_speed_eval } },
-    { "vehicle_part_broken_count", { "un", 1, vehicle_part_broken_count_eval } },
-    { "vehicle_part_count", { "un", 1, vehicle_part_count_eval } },
-    { "vehicle_part_hp", { "un", 1, vehicle_part_hp_eval, {}, { "aggregate" } } },
+    { "vehicle_part_broken_count", { "un", -1, vehicle_part_broken_count_eval, {}, { "part" } } },
+    { "vehicle_part_count", { "un", -1, vehicle_part_count_eval, {}, { "part" } } },
+    { "vehicle_part_hp", { "un", -1, vehicle_part_hp_eval, {}, { "aggregate", "format", "part" } } },
     { "vehicle_power", { "un", 0, vehicle_power_eval } },
     { "vehicle_velocity", { "un", 0, vehicle_velocity_eval, vehicle_velocity_ass } },
 };

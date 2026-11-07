@@ -22,6 +22,7 @@
     - [`disease`](#disease)
     - [`disease_excess`](#disease_excess)
     - [`decays_into`](#decays_into)
+    - [Copying and changing vitamins](#copying-and-changing-vitamins)
   - [flags](#flags)
       - [opiate MME conversion chart](#opiate-mme-conversion-chart)
 
@@ -113,6 +114,13 @@ Each pair in the list contains a vitamin ID and a number, with the number repres
 In the provided example, each unit of iron will decay into two units of calcium; four units of iron decays into eight units of calcium, and so on.
 Negative values can be used to purge existing vitamins from the body, instead of adding them.
 This only happens with natural decay, as determined by `rate`; other sources of vitamin removal won't cause this to trigger.
+
+### Copying and changing vitamins
+A vitamin can `copy-from` another vitamin (or an `abstract` one).  A later mod changes a vitamin by copying it under the same id: it keeps every member it doesn't name.  `flags` takes `extend` and `delete`; `disease`, `disease_excess` and `decays_into`, when given, replace the copied ones.  A second definition of an id without `copy-from` replaces the first one entirely, and two definitions of one id in the same mod are an error.
+
+```jsonc
+{ "type": "vitamin", "id": "iron", "copy-from": "iron", "max": 4000, "extend": { "flags": [ "NO_DISPLAY" ] } }
+```
 
 ## flags
 

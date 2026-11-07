@@ -21,6 +21,6 @@
         "message": "You set up a surprisingly sturdy cardboard shelter."
       }
     ],
-    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT", "WALL" ] } ]
+    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT" ] } ]
   }
 ]

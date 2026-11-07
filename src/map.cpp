@@ -5,6 +5,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <queue>
@@ -45,6 +46,8 @@
 #include "drawing_primitives.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "execution_fatal.h"
 #include "explosion.h"
 #include "field.h"
@@ -74,6 +77,7 @@
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "mapgen.h"
 #include "material.h"
 #include "math_defines.h"
@@ -411,6 +415,7 @@ void map::set_transparency_cache_dirty( const int zlev )
     if( inbounds_z( zlev ) ) {
         if( level_cache *ch = get_cache_lazy( zlev ) ) {
             ch->transparency_cache_dirty.set();
+            ch->sound_attenuation_dirty.set();
         }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( zlev );
@@ -424,12 +429,23 @@ void map::set_transparency_cache_dirty( const tripoint_bub_ms &p, bool field )
         const tripoint_bub_sm smp = coords::project_to<coords::sm>( p );
         if( level_cache *ch = get_cache_lazy( smp.z() ) ) {
             ch->transparency_cache_dirty.set( smp.x() * MAPSIZE + smp.y() );
+            ch->sound_attenuation_dirty.set( smp.x() * MAPSIZE + smp.y() );
         }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( smp.z() );
         if( !field ) {
             get_creature_tracker().invalidate_reachability_cache();
             bump_geometry_revision( smp.z() );
+        }
+    }
+}
+
+void map::set_sound_attenuation_dirty( const tripoint_bub_ms &p )
+{
+    if( inbounds( p ) ) {
+        const tripoint_bub_sm smp = coords::project_to<coords::sm>( p );
+        if( level_cache *ch = get_cache_lazy( smp.z() ) ) {
+            ch->sound_attenuation_dirty.set( smp.x() * MAPSIZE + smp.y() );
         }
     }
 }
@@ -2231,6 +2247,9 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
             ter_furn_flag::TFLAG_TRANSLUCENT ) ) {
         set_transparency_cache_dirty( p );
     }
+    if( old_f.sound_attenuation != new_f.sound_attenuation ) {
+        set_sound_attenuation_dirty( p );
+    }
 
     if( old_f.light_emitted != new_f.light_emitted ||
         old_f.light_color != new_f.light_color ) {
@@ -2723,6 +2742,9 @@ bool map::ter_set( const tripoint_bub_ms &p, const ter_id &new_terrain, bool avo
         old_t.has_flag( ter_furn_flag::TFLAG_TRANSLUCENT ) != new_t.has_flag(
             ter_furn_flag::TFLAG_TRANSLUCENT ) ) {
         set_transparency_cache_dirty( p );
+    }
+    if( old_t.sound_attenuation != new_t.sound_attenuation ) {
+        set_sound_attenuation_dirty( p );
     }
 
     if( old_t.light_emitted != new_t.light_emitted ||
@@ -4139,8 +4161,14 @@ bool map::has_adjacent_furniture_with( const tripoint_bub_ms &p,
 bool map::has_nearby_fire( const tripoint_bub_ms &p, int radius ) const
 {
     for( const tripoint_bub_ms &pt : points_in_radius( p, radius ) ) {
-        if( has_field_at( pt, fd_fire ) ) {
-            return true;
+        // A field with has_fire that radiates heat at its intensity, such as fd_fire
+        if( has_field_at( pt ) ) {
+            for( const auto &fd : field_at( pt ) ) {
+                if( fd.second.is_field_alive() &&
+                    fd.first->is_usable_fire( fd.second.get_field_intensity() ) ) {
+                    return true;
+                }
+            }
         }
         if( has_flag_ter_or_furn( ter_furn_flag::TFLAG_USABLE_FIRE, pt ) ) {
             return true;
@@ -4335,6 +4363,7 @@ int map::collapse_check( const tripoint_bub_ms &p ) const
 void map::collapse_at( const tripoint_bub_ms &p, const bool silent, const bool was_supporting,
                        const bool destroy_pos )
 {
+    const bash_cause_scope collapsing( "collapse" );
     const bool supports = was_supporting || has_flag( ter_furn_flag::TFLAG_SUPPORTS_ROOF, p );
     const bool wall_tree = was_supporting || has_flag( ter_furn_flag::TFLAG_WALL, p ) ||
                            has_flag( ter_furn_flag::TFLAG_TREE, p );
@@ -4638,6 +4667,51 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
     return false;
 }
 
+void spawn_data::apply( monster &placed ) const
+{
+    if( !patrol_points_rel_ms.empty() ) {
+        placed.set_patrol_route( patrol_points_rel_ms );
+    }
+    for( const spawn_effect &eff : effects ) {
+        if( !eff.id.is_valid() ) {
+            continue;
+        }
+        placed.add_effect( eff.id, time_duration::from_turns( eff.duration.get() ), eff.permanent,
+                           eff.intensity.get() );
+    }
+    for( const std::pair<const std::string, std::string> &var : str_variables ) {
+        placed.set_value( var.first, diag_value( var.second ) );
+    }
+    for( const std::pair<const std::string, double> &var : num_variables ) {
+        placed.set_value( var.first, diag_value( var.second ) );
+    }
+    if( !faction.is_empty() && faction.is_valid() ) {
+        placed.faction = faction.id();
+        get_creature_tracker().invalidate_reachability_cache();
+    }
+}
+
+// The innermost bash_cause_scope's cause, if any
+static const char *current_bash_cause = nullptr;
+
+bash_cause_scope::bash_cause_scope( const char *cause ) : previous( current_bash_cause )
+{
+    current_bash_cause = cause;
+}
+
+bash_cause_scope::~bash_cause_scope()
+{
+    current_bash_cause = previous;
+}
+
+std::string bash_cause_scope::current( const Creature *basher )
+{
+    if( current_bash_cause != nullptr ) {
+        return current_bash_cause;
+    }
+    return basher != nullptr ? "smash" : "other";
+}
+
 // Runs a bash's eoc_on_hit or eoc_on_destroy for the tile at p, with the basher (if any) as alpha.
 // With no known basher, alpha is an empty talker (as for ammo_effect EOCs): an EOC needs at least
 // one talker. Only on the main map: mapgen bashes temporary maps, where nothing happens in the
@@ -4651,6 +4725,7 @@ static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
     }
     dialogue d( basher ? get_talker_for( basher ) : std::make_unique<talker>(), nullptr );
     d.set_value( "loc", m.get_abs( p ) );
+    d.set_value( "cause", bash_cause_scope::current( basher ) );
     for( const std::pair<std::string, std::string> &var : context ) {
         d.set_value( var.first, var.second );
     }
@@ -4981,6 +5056,18 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
         run_bash_eoc( *this, bash->eoc_on_destroy, p, params.basher,
                       ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
     }
+    // Only on the main map, as for the EOCs: mapgen bashes temporary maps
+    if( this == &get_map() ) {
+        const cata::event destroyed = cata::event::make<event_type::tile_destroyed>(
+                                          get_abs( p ).raw(), terid.id, furnid.id, ter( p ).id(), furn( p ).id(),
+                                          bash_cause_scope::current( params.basher ) );
+        if( params.basher != nullptr ) {
+            get_event_bus().send_with_talker( params.basher, static_cast<Creature *>( nullptr ),
+                                              destroyed );
+        } else {
+            get_event_bus().send_without_talker( destroyed );
+        }
+    }
 }
 
 bash_params map::bash( const tripoint_bub_ms &p, const int str,
@@ -5307,6 +5394,7 @@ void map::crush( const tripoint_bub_ms &p )
 
 double map::shoot( const tripoint_bub_ms &p, projectile &proj, const bool hit_items )
 {
+    const bash_cause_scope shooting( "projectile" );
     if( !inbounds( p ) ) {
         debugmsg( "Called map::shoot on out-of-bounds tile %s", p.to_string() );
         return 0;
@@ -7690,9 +7778,9 @@ bool map::add_field( const tripoint_bub_ms &p, const field_type_id &type_id, int
         return false;
     }
 
-    // Hacky way to force electricity fields to become unlit electricity fields
-    const field_type_id &converted_type_id = ( type_id == fd_electricity ||
-            type_id == fd_electricity_unlit ) ? get_applicable_electricity_field( p ) : type_id;
+    // A field with an opaque_variant is placed as that on a tile that isn't transparent, and the
+    // variant turns back into it on a transparent one (fd_electricity and fd_electricity_unlit)
+    const field_type_id converted_type_id = placed_field_type( p, type_id );
     const field_type &fd_type = *converted_type_id;
 
     intensity = std::min( intensity, fd_type.get_max_intensity() );
@@ -7802,6 +7890,9 @@ void map::on_field_modified( const tripoint_bub_ms &p, const field_type &fd_type
     // Dirty the transparency cache now that field processing doesn't always do it
     if( fd_type.dirty_transparency_cache || !fd_type.is_transparent() ) {
         set_transparency_cache_dirty( p, true );
+    }
+    if( fd_type.muffles_sound ) {
+        set_sound_attenuation_dirty( p );
     }
 
     if( fd_type.is_dangerous() ) {
@@ -10519,7 +10610,13 @@ void map::spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight, b
 
             // This can fail, but there isn't much we can do about it if it does. We could output some
             // kind of info message, but, again, it's unlikely to result in anything that can be acted on.
-            g->place_critter_at_or_within( make_shared_fast<monster>( tmp ), this, center, points );
+            monster *placed = g->place_critter_at_or_within( make_shared_fast<monster>( tmp ), this,
+                              center, points );
+            // the rest of the spawn data needs the monster where it is: a patrol route is relative
+            // to its overmap tile
+            if( placed != nullptr ) {
+                i.data.apply( *placed );
+            }
         }
     }
     current_submap->spawns.clear();
@@ -11114,6 +11211,160 @@ void map::build_scene_caches()
         build_transparency_cache( z );
     }
     scene_build_pending = false;
+}
+
+void map::build_sound_attenuation_cache( const int zlev ) const
+{
+    level_cache &ch = get_cache( zlev );
+    if( ch.sound_attenuation_dirty.none() ) {
+        return;
+    }
+    cata::mdarray<uint16_t, point_bub_ms> &grid = ch.sound_attenuation_cache;
+    for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
+        for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
+            const size_t index = smx * MAPSIZE + smy;
+            if( !ch.sound_attenuation_dirty[index] ) {
+                continue;
+            }
+            const submap *cur_submap = get_submap_at_grid( tripoint_rel_sm( smx, smy, zlev ) );
+            int count = 0;
+            for( int sx = 0; sx < SEEX; ++sx ) {
+                for( int sy = 0; sy < SEEY; ++sy ) {
+                    const point_sm_ms sp( sx, sy );
+                    int value = 0;
+                    if( cur_submap != nullptr ) {
+                        value = cur_submap->get_ter( sp ).obj().sound_attenuation +
+                                cur_submap->get_furn( sp ).obj().sound_attenuation;
+                        const field &fields = cur_submap->get_field( sp );
+                        if( fields.displayed_field_type() ) {
+                            for( const auto &fld : fields ) {
+                                if( fld.second.is_field_alive() ) {
+                                    value += fld.second.get_intensity_level().sound_attenuation;
+                                }
+                            }
+                        }
+                    }
+                    value = std::min<int>( value, std::numeric_limits<uint16_t>::max() );
+                    grid[sx + smx * SEEX][sy + smy * SEEY] = static_cast<uint16_t>( value );
+                    count += value > 0 ? 1 : 0;
+                }
+            }
+            ch.sound_attenuating_total += count - ch.sound_attenuating_tiles[index];
+            ch.sound_attenuating_tiles[index] = static_cast<uint8_t>( count );
+        }
+    }
+    ch.sound_attenuation_dirty.reset();
+}
+
+bool map::sound_muffled_on_level( const int zlev ) const
+{
+    if( !inbounds_z( zlev ) ) {
+        return false;
+    }
+    if( sounds::terrain_can_muffle() ) {
+        build_sound_attenuation_cache( zlev );
+        if( get_cache_ref( zlev ).sound_attenuating_total > 0 ) {
+            return true;
+        }
+    }
+    return sounds::vehicles_can_muffle() && get_cache_ref( zlev ).get_veh_in_active_range();
+}
+
+// What the vehicle parts at vp muffle: each part's sound_attenuation, unless it is broken
+// or an open door, hatch or curtain
+static int vehicle_sound_attenuation( const vpart_position &vp )
+{
+    const vehicle &veh = vp.vehicle();
+    int total = 0;
+    for( const int index : veh.parts_at_relative( vp.mount_pos(), true, true ) ) {
+        const vehicle_part &part = veh.part( index );
+        const vpart_info &info = part.info();
+        if( info.sound_attenuation == 0 || part.removed || part.is_broken() ||
+            ( part.open && info.has_flag( VPFLAG_OPENABLE ) ) ) {
+            continue;
+        }
+        total += info.sound_attenuation;
+    }
+    return total;
+}
+
+int map::sound_attenuation_at( const tripoint_bub_ms &p ) const
+{
+    if( !inbounds( p ) ) {
+        return 0;
+    }
+    int total = 0;
+    if( sounds::terrain_can_muffle() ) {
+        build_sound_attenuation_cache( p.z() );
+        total += get_cache_ref( p.z() ).sound_attenuation_cache[p.x()][p.y()];
+    }
+    if( sounds::vehicles_can_muffle() ) {
+        if( const optional_vpart_position vp = veh_at( p ) ) {
+            total += vehicle_sound_attenuation( *vp );
+        }
+    }
+    return total;
+}
+
+int map::sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_bub_ms &to,
+                                    const int stop_at ) const
+{
+    const bool terrain = sounds::terrain_can_muffle();
+    const bool vehicles = sounds::vehicles_can_muffle();
+    // with vanilla data nothing muffles sound, and adjacent tiles have nothing between
+    if( ( !terrain && !vehicles ) || stop_at <= 0 || square_dist( from, to ) <= 1 ) {
+        return 0;
+    }
+    // what may muffle on each level the line crosses; the line is walked only if any does
+    struct walk_state {
+        tripoint_bub_ms to;
+        int stop_at = 0;
+        // the cache of a level with terrain, furniture or fields that muffle, or null
+        std::array<const level_cache *, OVERMAP_LAYERS> terrain_caches{};
+        std::array<bool, OVERMAP_LAYERS> vehicle_levels{};
+        int total = 0;
+    } state;
+    state.to = to;
+    state.stop_at = stop_at;
+    bool any = false;
+    for( int z = std::min( from.z(), to.z() ); z <= std::max( from.z(), to.z() ); ++z ) {
+        if( !inbounds_z( z ) ) {
+            continue;
+        }
+        const size_t index = z + OVERMAP_DEPTH;
+        const level_cache &ch = get_cache_ref( z );
+        if( terrain ) {
+            build_sound_attenuation_cache( z );
+            if( ch.sound_attenuating_total > 0 ) {
+                state.terrain_caches[index] = &ch;
+            }
+        }
+        state.vehicle_levels[index] = vehicles && ch.get_veh_in_active_range();
+        any |= state.terrain_caches[index] != nullptr || state.vehicle_levels[index];
+    }
+    if( !any ) {
+        return 0;
+    }
+    // two pointers, so the std::function bresenham takes doesn't allocate
+    bresenham( from, to, 0, 0, [this, &state]( const tripoint_bub_ms & p ) {
+        if( p == state.to ) {
+            return false;
+        }
+        if( !inbounds( p ) ) {
+            return true;
+        }
+        const size_t index = p.z() + OVERMAP_DEPTH;
+        if( const level_cache *ch = state.terrain_caches[index] ) {
+            state.total += ch->sound_attenuation_cache[p.x()][p.y()];
+        }
+        if( state.vehicle_levels[index] ) {
+            if( const optional_vpart_position vp = veh_at( p ) ) {
+                state.total += vehicle_sound_attenuation( *vp );
+            }
+        }
+        return state.total < state.stop_at;
+    } );
+    return state.total;
 }
 
 void map::ensure_scene_caches() const

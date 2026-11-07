@@ -13,6 +13,7 @@
 
 class Character;
 class activity_actor;
+class monster;
 class time_duration;
 
 // Starting activities that have an activity actor from EOCs (u_assign_activity).
@@ -55,6 +56,8 @@ struct eoc_activity_target {
     std::optional<recipe_id> recipe;
     /** "butcher_type" */
     std::optional<std::string> butcher_type;
+    /** "target_monster": the monster that is the other talker */
+    monster *creature = nullptr;
 };
 
 /** Which target fields a u_assign_activity effect has. */
@@ -63,9 +66,11 @@ struct eoc_target_fields {
     bool loc = false;
     bool recipe = false;
     bool butcher_type = false;
+    /** "target_monster" */
+    bool creature = false;
 
     bool any() const {
-        return item || loc || recipe || butcher_type;
+        return item || loc || recipe || butcher_type || creature;
     }
 };
 

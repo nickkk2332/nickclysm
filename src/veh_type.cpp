@@ -33,6 +33,7 @@
 #include "json.h"
 #include "magic_enchantment.h"
 #include "map.h"
+#include "npctalk.h"
 #include "output.h"
 #include "pocket_type.h"
 #include "requirements.h"
@@ -276,6 +277,8 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "color", color, nc_color_reader{}, c_light_gray );
     optional( jo, was_loaded, "broken_color", color_broken, nc_color_reader{}, c_light_gray );
     optional( jo, was_loaded, "comfort", comfort, 0 );
+    optional( jo, was_loaded, "sound_attenuation", sound_attenuation,
+              numeric_bound_reader<int> { 0, 1000 }, 0 );
     optional( jo, was_loaded, "floor_bedding_warmth", floor_bedding_warmth, 0_C_delta );
     optional( jo, was_loaded, "bonus_fire_warmth_feet", bonus_fire_warmth_feet, 0.6_C_delta );
     optional( jo, was_loaded, "activatable_eoc", activatable_eoc );
@@ -1347,7 +1350,7 @@ void vehicle_prototype::zone_def::deserialize( const JsonObject &jo )
 
 void vehicle_prototype::load( const JsonObject &jo, std::string_view )
 {
-    vgroups[vgroup_id( id.str() )].add_vehicle( id, 100 );
+    VehicleGroup::add_to_group( vgroup_id( id.str() ), id, 100 );
     optional( jo, was_loaded, "name", name );
 
     if( jo.has_member( "blueprint" ) ) {
@@ -1367,6 +1370,7 @@ void vehicle_prototype::load( const JsonObject &jo, std::string_view )
 
     optional( jo, was_loaded, "items", item_spawns );
     optional( jo, was_loaded, "zones", zone_defs, json_read_reader<zone_def> {} );
+    optional( jo, was_loaded, "chat_topics", chat_topics );
 }
 
 void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
@@ -1384,6 +1388,9 @@ void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
     json.member( "id", "/TO_BE_REPLACED/" );
     json.member( "type", "vehicle" );
     json.member( "name", "/TO_BE_REPLACED/" );
+    if( !veh.chat_topics.empty() ) {
+        json.member( "chat_topics", veh.chat_topics );
+    }
     std::map<point_rel_ms, std::list<const vehicle_part *>> vp_map;
     int mount_min_y = 123;
     int mount_max_y = -123;
@@ -1535,6 +1542,13 @@ void vehicles::finalize_prototypes()
         vehicle &blueprint = *proto.blueprint;
         blueprint.type = proto.id;
         blueprint.name = proto.name.translated();
+        // VINT-J01: each vehicle built from it gets a copy, which EOCs can change
+        for( const std::string &topic : proto.chat_topics ) {
+            if( !talk_topic_exists( topic ) ) {
+                debugmsg( "vehicle prototype %s has unknown chat topic %s", proto.id.str(), topic );
+            }
+        }
+        blueprint.chat_topics = proto.chat_topics;
 
         blueprint.suspend_refresh();
         for( vehicle_prototype::part_def &pt : proto.parts ) {

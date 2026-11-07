@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
@@ -20,6 +21,7 @@
 #include "game.h"
 #include "item.h"
 #include "itype.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "rng.h"
 #include "skill.h"
@@ -64,9 +66,18 @@ static const efftype_id effect_nausea( "nausea" );
  */
 static void run_activity_eoc( const effect_on_condition_id &eoc, Character &who,
                               const activity_id &type, int moves_total, int moves_left,
-                              item_location target, std::optional<bool> resume = std::nullopt )
+                              item_location target, const global_variables::impl_t &eoc_context,
+                              std::optional<bool> resume = std::nullopt,
+                              const std::string &outcome = std::string() )
 {
     dialogue d( get_talker_for( who ), target.get_item() ? get_talker_for( target ) : nullptr );
+    // u_assign_activity's context first, so the values below win over any it reuses
+    for( const std::pair<const std::string, diag_value> &value : eoc_context ) {
+        d.set_value( value.first, value.second );
+    }
+    if( !outcome.empty() ) {
+        d.set_value( "outcome", outcome );
+    }
     d.set_value( "activity", type.str() );
     d.set_value( "moves_total", moves_total );
     d.set_value( "moves_left", moves_left );
@@ -227,8 +238,9 @@ void player_activity::start_or_resume( Character &who, bool resuming )
     if( *this && !type->start_EOC.is_null() ) {
         // copies: the EOC may replace this activity
         const activity_id act_type = type;
+        const global_variables::impl_t context = eoc_context;
         run_activity_eoc( act_type->start_EOC, who, act_type, moves_total, moves_left,
-                          hook_target( *this ), resuming );
+                          hook_target( *this ), context, resuming );
     }
 }
 
@@ -307,8 +319,9 @@ void player_activity::do_turn( Character &you )
     if( !type->do_turn_EOC.is_null() ) {
         // if we have an EOC defined in json do that
         const activity_id act_type = type;
+        const global_variables::impl_t context = eoc_context;
         run_activity_eoc( act_type->do_turn_EOC, you, act_type, moves_total, moves_left,
-                          hook_target( *this ) );
+                          hook_target( *this ), context );
         // We may have canceled this via a message interrupt.
         if( type.is_null() ) {
             activity_handlers::clean_may_activity_occupancy_items_var_if_is_avatar_and_no_activity_now( you );
@@ -451,24 +464,53 @@ activity_end_hooks player_activity::peek_end_hooks() const
     hooks.moves_total = moves_total;
     hooks.moves_left = moves_left;
     hooks.target = hook_target( *this );
+    hooks.eoc_context = eoc_context;
     return hooks;
 }
 
-void activity_end_hooks::run( Character &who, bool canceled )
+void activity_end_hooks::run( Character &who, bool canceled, bool resumable )
 {
     if( !pending ) {
         return;
     }
     pending = false;
+    const std::string outcome = !canceled ? "completed" : resumable ? "interrupted" : "canceled";
     // The EOC runs before the event: shipped mods end the activity's state in completion_eoc
     // and treat state an event EOC still finds as a cancel.
     if( !type.is_null() ) {
         const effect_on_condition_id &eoc = canceled ? type->cancel_EOC : type->completion_EOC;
         if( !eoc.is_null() ) {
-            run_activity_eoc( eoc, who, type, moves_total, moves_left, target );
+            run_activity_eoc( eoc, who, type, moves_total, moves_left, target, eoc_context,
+                              std::nullopt, outcome );
         }
     }
-    get_event_bus().send<event_type::character_finished_activity>( who.getID(), type, canceled );
+    get_event_bus().send<event_type::character_finished_activity>( who.getID(), type, canceled,
+            outcome );
+}
+
+// The values the next activity assigned takes; see activity_eoc_context_scope
+static std::optional<global_variables::impl_t> &pending_activity_eoc_context()
+{
+    static std::optional<global_variables::impl_t> pending;
+    return pending;
+}
+
+activity_eoc_context_scope::activity_eoc_context_scope( global_variables::impl_t values ) :
+    previous( std::move( pending_activity_eoc_context() ) )
+{
+    pending_activity_eoc_context() = std::move( values );
+}
+
+activity_eoc_context_scope::~activity_eoc_context_scope()
+{
+    pending_activity_eoc_context() = std::move( previous );
+}
+
+std::optional<global_variables::impl_t> activity_eoc_context_scope::take()
+{
+    std::optional<global_variables::impl_t> values;
+    values.swap( pending_activity_eoc_context() );
+    return values;
 }
 
 float player_activity::exertion_level() const

@@ -10,8 +10,10 @@
 #include "type_id.h"
 
 class Character;
+class harvest_drop_type;
 class item;
 class player_activity;
+struct mtype;
 
 enum class butcher_type : int {
     BLEED,          // bleeding a corpse
@@ -52,6 +54,22 @@ butcher_type get_butcher_type( player_activity *act );
 bool set_up_butchery( player_activity &act, Character &you, butchery_data bd );
 
 int roll_butchery_dissect( int skill_level, int dex, int tool_quality );
+
+// What `roll` of a harvest entry of drop type `type` comes to after the drop type's rules for
+// the action and the corpse's state; nullopt when the action leaves the entry alone.
+std::optional<int> butchery_entry_yield( const harvest_drop_type &type, int roll,
+        butcher_type action, const item &corpse_item, const mtype &mt, const Character &you );
+
+// Is there something for field dressing, skinning or bleeding (as its drop types say) left on
+// the corpse? Always true for the other actions.
+bool butchery_has_target( const item &corpse_item, butcher_type action );
+
+// Does quartering this creature need field dressing first?
+bool butchery_needs_field_dressing( const mtype &mt );
+
+// Practices the proficiencies the drop types of the creature train for the action.
+void butchery_train_proficiencies( Character &you, const mtype &mt, butcher_type action,
+                                   const time_duration &moves_total );
 
 // Returns false if the calling function should abort
 bool butchery_drops_harvest( butchery_data bt, Character &you );
