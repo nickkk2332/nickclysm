@@ -3640,6 +3640,8 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
         std::vector<computer_failure> failures;
         std::vector<std::string> chat_topics;
         std::vector<effect_on_condition_id> eocs;
+        // "eocs_mode": "on_login" (the eocs run once logged in) or "replace" (the default)
+        bool eocs_on_login = false;
         bool target;
         jmapgen_computer( const JsonObject &jsi, std::string_view/*context*/ ) {
             jsi.read( "name", name );
@@ -3657,9 +3659,16 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
                 }
             }
             if( jsi.has_array( "eocs" ) ) {
-                for( const std::string &eoc : jsi.get_string_array( "eocs" ) ) {
-                    eocs.emplace_back( eoc );
+                // ids or inline EOCs
+                for( JsonValue jv : jsi.get_array( "eocs" ) ) {
+                    eocs.emplace_back( load_computer_eoc( jv ) );
                 }
+            }
+            const std::string eocs_mode = jsi.get_string( "eocs_mode", "replace" );
+            if( eocs_mode == "on_login" ) {
+                eocs_on_login = true;
+            } else if( eocs_mode != "replace" ) {
+                jsi.throw_error_at( "eocs_mode", R"(eocs_mode must be "replace" or "on_login")" );
             }
             if( jsi.has_array( "chat_topics" ) ) {
                 for( const std::string &topic : jsi.get_string_array( "chat_topics" ) ) {
@@ -3686,6 +3695,7 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
             for( const effect_on_condition_id &eoc : eocs ) {
                 cpu->add_eoc( eoc );
             }
+            cpu->eocs_on_login = eocs_on_login;
             for( const std::string &chat_topic : chat_topics ) {
                 cpu->add_chat_topic( chat_topic );
             }
@@ -3702,6 +3712,22 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
                 if( !eoc.is_valid() ) {
                     debugmsg( "Invalid effect_on_condition \"%s\" for a computer in %s", eoc.str(),
                               context );
+                }
+            }
+            for( const computer_option &opt : options ) {
+                for( const effect_on_condition_id &eoc : opt.eocs ) {
+                    if( !eoc.is_valid() ) {
+                        debugmsg( "Invalid effect_on_condition \"%s\" for the computer option \"%s\" in %s",
+                                  eoc.str(), opt.name, context );
+                    }
+                }
+            }
+            for( const computer_failure &fail : failures ) {
+                for( const effect_on_condition_id &eoc : fail.eocs ) {
+                    if( !eoc.is_valid() ) {
+                        debugmsg( "Invalid effect_on_condition \"%s\" for a computer failure in %s",
+                                  eoc.str(), context );
+                    }
                 }
             }
             for( const std::string &topic : chat_topics ) {
@@ -3856,6 +3882,8 @@ class jmapgen_zone : public jmapgen_piece
         mapgen_value<faction_id> faction;
         std::string name;
         std::string filter;
+        // ACT-J05: farm seed, blueprint construction, unload and ignore settings
+        zone_options_preset options;
         jmapgen_zone( const JsonObject &jsi, std::string_view/*context*/ )
             : zone_type( jsi.get_member( "type" ) )
             , faction( jsi.get_member( "faction" ) ) {
@@ -3864,6 +3892,9 @@ class jmapgen_zone : public jmapgen_piece
             }
             if( jsi.has_string( "filter" ) ) {
                 filter = jsi.get_string( "filter" );
+            }
+            if( jsi.has_member( "options" ) ) {
+                options.deserialize( jsi.get_object( "options" ) );
             }
         }
         mapgen_phase phase() const override {
@@ -3877,7 +3908,8 @@ class jmapgen_zone : public jmapgen_piece
                                           dat.zlevel() + z.get() ) );
             const tripoint_abs_ms end = dat.m.get_abs( tripoint_bub_ms( int( x.valmax ), int( y.valmax ),
                                         dat.zlevel() + z.get() ) );
-            mapgen_place_zone( start, end, chosen_zone_type, chosen_faction, name, filter, &dat.m );
+            mapgen_place_zone( start, end, chosen_zone_type, chosen_faction, name, filter, &dat.m,
+                               options.empty() ? nullptr : &options );
         }
 
         void check( const std::string &oter_name, const mapgen_parameters &parameters,
@@ -3885,6 +3917,16 @@ class jmapgen_zone : public jmapgen_piece
                   ) const override {
             zone_type.check( oter_name, parameters );
             faction.check( oter_name, parameters );
+            if( options.empty() ) {
+                return;
+            }
+            for( const zone_type_id &type : zone_type.all_possible_results( parameters ) ) {
+                const std::string wrong = options.check( type );
+                if( !wrong.empty() ) {
+                    debugmsg( "zone of type %s in mapgen for %s has wrong \"options\": %s", type.str(),
+                              oter_name, wrong );
+                }
+            }
         }
 };
 

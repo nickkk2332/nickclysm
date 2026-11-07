@@ -55,3 +55,5 @@ def parse_examine_action(json, origin, name):
 
     for eoc in json.get("effect_on_conditions", []):
         parse_effect_on_condition(eoc, origin, ename)
+    for eoc in json.get("hack_eocs", []):
+        parse_effect_on_condition(eoc, origin, f"hack_eocs of {ename}")

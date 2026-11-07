@@ -70,6 +70,13 @@ class cardreader_examine_actor : public iexamine_actor
         std::string success_msg;
         std::string redundant_msg;
 
+        // ACT-J06: what the reader itself becomes when hacked open
+        std::optional<ter_str_id> hacked_ter;
+        std::optional<furn_str_id> hacked_furn;
+        // TERR-J04: the hack roll needed to open it, and what runs once it is hacked open
+        int hack_difficulty = 6;
+        std::vector<effect_on_condition_id> hack_eocs;
+
         void consume_card( const std::vector<item_location> &cards ) const;
         std::vector<item_location> get_cards( Character &you, const tripoint_bub_ms &examp ) const;
         bool apply( const tripoint_bub_ms &examp ) const;
@@ -81,6 +88,21 @@ class cardreader_examine_actor : public iexamine_actor
         void load( const JsonObject &jo, const std::string & ) override;
         void call( Character &you, const tripoint_bub_ms &examp ) const override;
         void finalize() const override;
+        void check( const std::string &owner ) const override;
+        /**
+         * A successful hack of this reader at `examp`: makes the changes a card would, then turns
+         * the reader into `hacked_ter` / `hacked_furn` (unless those changes replaced it). Without
+         * them, a terrain reader becomes t_card_reader_broken and a furniture reader stays.
+         * @param furniture_reader whether the reader is the furniture at `examp`, not its terrain
+         * @return whether the card changes changed anything
+         */
+        bool hack( const tripoint_bub_ms &examp, bool furniture_reader ) const;
+        // The hack roll a hacker needs ("hack_difficulty"; 6 by default)
+        int get_hack_difficulty() const {
+            return hack_difficulty;
+        }
+        // Runs "hack_eocs" for who, who just hacked the reader at examp open
+        void run_hack_eocs( Character &who, const tripoint_bub_ms &examp ) const;
 
         std::unique_ptr<iexamine_actor> clone() const override;
 };
@@ -89,6 +111,19 @@ class eoc_examine_actor : public iexamine_actor
 {
     private:
         std::vector<effect_on_condition_id> eocs;
+        // TERR-J03: the examiner (alpha) must meet it, else the message is shown (or, without
+        // one, the action is greyed out)
+        std::function<bool( const_dialogue const & )> condition;
+        bool has_condition = false;
+        translation condition_fail_msg;
+        // whether an NPC may use it
+        bool npc_usable = true;
+
+        // The context values the condition and the EOCs get
+        static void set_context( const_dialogue &d, const tripoint_bub_ms &examp,
+                                 const map_data_common_t &data );
+        bool meets_condition( const Character &who, const tripoint_bub_ms &examp,
+                              const map_data_common_t &data ) const;
     public:
         explicit eoc_examine_actor( const std::string &type = "effect_on_condition" )
             : iexamine_actor( type ) {}
@@ -97,6 +132,10 @@ class eoc_examine_actor : public iexamine_actor
         void call( Character &you, const tripoint_bub_ms &examp ) const override;
         void call_with_context( Character &you, const tripoint_bub_ms &examp,
                                 const map_data_common_t &data ) const override;
+        bool can_examine( const Character &who, const tripoint_bub_ms &examp,
+                          const map_data_common_t &data ) const override;
+        bool npc_can_use( const Character &who, const tripoint_bub_ms &examp,
+                          const map_data_common_t &data ) const override;
         void finalize() const override;
 
         std::unique_ptr<iexamine_actor> clone() const override;

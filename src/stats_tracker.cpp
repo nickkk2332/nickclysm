@@ -436,6 +436,7 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
         case event_type::character_smashes_tile:
         case event_type::character_triggers_trap:
         case event_type::cuts_tree:
+        case event_type::monster_triggers_trap:
             return pos;
         case event_type::character_casts_spell:
         case event_type::spellcasting_finish:

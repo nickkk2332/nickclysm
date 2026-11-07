@@ -208,6 +208,7 @@ enum class event_type : int {
     appliance_placed,
     character_levels_spell,
     monster_casts_spell,
+    monster_triggers_trap,
     num_event_types // last
 };
 
@@ -275,7 +276,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 183,
+static_assert( static_cast<int>( event_type::num_event_types ) == 184,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1755,6 +1756,18 @@ struct event_spec<event_type::appliance_placed> {
     static constexpr std::array<event_field, 2> fields = {{
             { "character", cata_variant_type::character_id },
             { "vpart_id", cata_variant_type::string },
+        }
+    };
+};
+
+// a monster set off a trap (character_triggers_trap is the event for a character); its EOCs get
+// the monster as alpha
+template<>
+struct event_spec<event_type::monster_triggers_trap> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "trap", cata_variant_type::trap_str_id },
+            // map squares; the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
         }
     };
 };

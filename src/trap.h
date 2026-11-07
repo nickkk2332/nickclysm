@@ -24,6 +24,7 @@ class JsonObject;
 class JsonValue;
 class item;
 class map;
+struct const_dialogue;
 
 namespace trapfunc
 {
@@ -98,6 +99,31 @@ struct vehicle_handle_trap_data {
 
 using trap_function = std::function<bool( const tripoint_bub_ms &, Creature *, item * )>;
 
+// One damage a built-in trap action deals when it is set off (JSON "trigger_damage"): "amount",
+// or a random amount from "min" to "max", of a damage type.
+struct trap_damage_roll {
+    damage_type_id type;
+    int min = 0;
+    int max = 0;
+
+    void deserialize( const JsonObject &jo );
+};
+
+// JSON numbers that the built-in actions "beartrap", "board", "caltrops" and "caltrops_glass"
+// use in place of their own (TERR-J08). An unset value keeps the action's.
+struct trap_trigger_tuning {
+    // "trigger_damage": replaces the action's whole damage
+    std::vector<trap_damage_roll> damage;
+    // "tetanus_chance": one in this many cutting hits gives tetanus; 0 never does
+    std::optional<int> tetanus_chance;
+    // "tetanus_chance_resistant": the same for a character with infection resistance
+    std::optional<int> tetanus_chance_resistant;
+    // "break_weight": a creature this heavy always breaks the trap, a lighter one may
+    std::optional<units::mass> break_weight;
+    // "self_disarm_chance": percent chance that a trap that didn't break disarms itself
+    std::optional<int> self_disarm_chance;
+};
+
 /**
  * Some traps aren't actually traps in the usual sense of the word. We use traps to implement
  * funnels (the main map keeps a list of traps and we iterate over that list during rain
@@ -150,6 +176,8 @@ struct trap {
         bool always_invisible = false;
         update_mapgen_id map_regen;
         trap_function act;
+        // the JSON "action" that act runs
+        std::string action_name;
         translation name_;
 
         std::optional<translation> memorial_male;
@@ -183,6 +211,21 @@ struct trap {
         // data required for trapfunc::spell()
         fake_spell spell_data;
         std::vector<effect_on_condition_id> eocs;
+        // "item_eocs": what an "eocs" trap runs when an item thrown or dropped onto it, or a
+        // sound, sets it off (there is no alpha talker)
+        std::vector<effect_on_condition_id> item_eocs;
+        // "disarm_eocs" and "disarm_fail_eocs": run after the trap is disarmed or taken down,
+        // or after a failed attempt, with the disarmer as alpha
+        std::vector<effect_on_condition_id> disarm_eocs;
+        std::vector<effect_on_condition_id> disarm_fail_eocs;
+        // "disarm_condition": the disarmer (alpha) must meet it to try; else
+        // "disarm_condition_msg" is shown
+        std::function<bool( const_dialogue const & )> disarm_condition;
+        translation disarm_condition_msg;
+        // "easy_take_down_condition": a disarmer (alpha) who meets it takes the trap down
+        // without a roll, as a trap with no avoidance and no difficulty
+        std::function<bool( const_dialogue const & )> easy_take_down_condition;
+        trap_trigger_tuning tuning;
         int comfort = 0;
         units::temperature_delta floor_bedding_warmth = 0_C_delta;
         vehicle_handle_trap_data vehicle_data;
@@ -247,6 +290,18 @@ struct trap {
          * This usually applies to traps like funnels, rollmat.
          */
         bool easy_take_down() const;
+        // Whether who may try to disarm the trap at pos ("disarm_condition"), and whether
+        // they take it down without a roll (easy_take_down or "easy_take_down_condition")
+        bool can_try_disarm( Character &who, const tripoint_bub_ms &pos ) const;
+        bool easy_take_down( Character &who, const tripoint_bub_ms &pos ) const;
+        /**
+         * Runs eocs with who as alpha (none when null) and the context values "trap" (this
+         * trap's id) and "trap_location" (absolute).
+         */
+        void run_eocs( const std::vector<effect_on_condition_id> &list, Creature *who,
+                       const tripoint_abs_ms &pos ) const;
+        // The items in "drops", spawned at p
+        void spawn_drops( map &m, const tripoint_bub_ms &p ) const;
 
         bool is_trivial_to_spot() const;
 
@@ -301,6 +356,9 @@ struct trap {
          */
         // Don't call from outside this class. Add a wrapper like the ones below instead.
         void trigger( const tripoint_bub_ms &pos, Creature *creature, item *item ) const;
+        // Runs "item_eocs" when an item (or a sound, it is null then) set the trap off.
+        // Whether there were any.
+        bool trigger_item_eocs( const tripoint_bub_ms &pos, const item *it ) const;
     public:
         /*@{*/
         /**

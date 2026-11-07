@@ -1250,6 +1250,7 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::appliance_placed:
         case event_type::character_levels_spell:
         case event_type::monster_casts_spell:
+        case event_type::monster_triggers_trap:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

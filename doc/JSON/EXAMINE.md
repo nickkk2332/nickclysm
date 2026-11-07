@@ -14,6 +14,8 @@
       - [`flags`](#flags)
       - [`consume_card`](#consume_card)
       - [`allow_hacking`](#allow_hacking)
+      - [`hacked_ter`](#hacked_ter)
+      - [`hacked_furn`](#hacked_furn)
       - [`despawn_monsters`](#despawn_monsters)
       - [`omt_allowed_radius`](#omt_allowed_radius)
       - [`mapgen_id`](#mapgen_id)
@@ -69,8 +71,9 @@ Examine actions and examine actors can be mixed within single key, like `"examin
 - ```fungus``` Release spores as the terrain crumbles away.
 - ```gaspump``` Use the gas-pump.
 - ```harvest_plant_ex``` Harvest a harvestable plant. Works on field crops and planters. (corn, wheat, etc.)
-- ```locked_object``` Locked, but can be pried open. Adding 'PICKABLE' flag allows opening with a lockpick as well. Prying/lockpicking results are hardcoded.
-- ```locked_object_pickable``` Locked, but can be opened with a lockpick. Requires 'PICKABLE' flag, lockpicking results are hardcoded.
+- ```gunsafe_el``` An electronic safe: hacking it open turns it into its `hack_result` furniture (default `f_safe_o`), see [JSON_INFO.md](JSON_INFO.md#hack_result).
+- ```locked_object``` Locked, but can be pried open. Adding 'PICKABLE' flag allows opening with a lockpick as well. Lockpicking uses the furniture/terrain's `lockpick_result`, `lockpick_message`, `lockpick_difficulty` and `lockpick_jam_result` (see [JSON_INFO.md](JSON_INFO.md#lockpick_result)); an `ALARMED` lock may set off an alarm.
+- ```locked_object_pickable``` Locked, but can be opened with a lockpick. Requires 'PICKABLE' flag; lockpicking works as for `locked_object`.
 - ```none``` None
 - ```pedestal_temple``` Opens the temple if you have a petrified eye.
 - ```pedestal_wyrm``` Spawn wyrms.
@@ -148,7 +151,29 @@ Whether or not to consume the item used to activate this cardreader.
 Optional, defaults to true.
 Boolean (true/false).
 Whether or not to allow hacking this door with an electrohack.
-If this allows hacking, it will ignore the data specified here, and transform all `t_door_metal_locked` to `t_door_metal_c` in a 3 tile radius.
+A successful hack makes the same changes as a card (`mapgen_id`, or `terrain_changes` and `furn_changes` within `radius`), without despawning monsters or using up a card, then turns the reader into `hacked_ter` / `hacked_furn`.
+
+#### `hacked_ter`
+Optional.
+String.
+The terrain the reader's tile becomes when it is hacked open.
+Defaults to `t_card_reader_broken` for a terrain reader; the terrain under a furniture reader stays as it is.
+
+#### `hacked_furn`
+Optional.
+String.
+The furniture the reader's tile becomes when it is hacked open.
+Without it the furniture stays as it is.
+
+#### `hack_difficulty`
+Optional, defaults to 6.
+Integer (0 or greater).
+The hack roll needed to open it. The roll is random around the hacker's hacking level (computer skill, tool quality and intelligence; standard deviation 5): below 0 it sets off an alarm, from 0 to below `hack_difficulty` nothing happens.
+
+#### `hack_eocs`
+Optional.
+Array of strings and or effect_on_condition objects.
+Run once the reader is hacked open (after its changes), with the hacker as alpha and the context value `pos`, the reader's location.
 
 #### `despawn_monsters`
 Optional, defaults to true.
@@ -189,6 +214,7 @@ Multiple items can be specified by adding more keys, e.g. `{ "a": "b", "x": "y" 
 Optional, defaults to true.
 Boolean (true/false).
 Whether or not to query the player before activating and potentially consuming a card.
+With `false`, examining the reader with a card uses it at once.
 
 #### `query_msg`
 Optional, defaults to nothing.
@@ -229,6 +255,35 @@ What message to print when attempting to activate the cardreader after it has al
 Mandatory.
 Array of strings and or effect_on_condition objects.
 Run all of the eocs upon being examined with u as the examiner and npc as null. See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)
+They get the context values `this` (the id of the terrain or furniture the action belongs to), `terrain`, `furniture`, `examined_layer` (`terrain` or `furniture`) and `pos` (the tile).
+
+#### `condition`
+Optional.
+A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions), with the examiner as alpha and the same context values.
+When it isn't met, the EOCs don't run: examining shows `condition_fail_msg` if there is one; without one, the action is greyed out in the examine menu, and a tile whose only action it is can't be examined.
+
+#### `condition_fail_msg`
+Optional.
+String.
+Shown to the examiner when `condition` isn't met.
+
+#### `npc_usable`
+Optional, defaults to true.
+Boolean (true/false).
+Whether an NPC (for example one told to examine the tile from an EOC, `npc_examine`) may use this action.
+An NPC uses the first examine actor it may use: one whose `condition` it meets and that is `npc_usable` (other actor types always count as usable), else the tile's first built-in examine action.
+
+#### Example
+```jsonc
+  "examine_action": {
+    "type": "effect_on_condition",
+    "name": "Pray",
+    "condition": { "u_has_trait": "SPIRITUAL" },
+    "condition_fail_msg": "You feel nothing.",
+    "npc_usable": false,
+    "effect_on_conditions": [ "EOC_ALTAR" ]
+  }
+```
 
 ### `mortar`
 

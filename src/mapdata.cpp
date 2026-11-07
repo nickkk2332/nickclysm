@@ -696,8 +696,15 @@ std::string map_data_common_t::name() const
 
 bool map_data_common_t::can_examine( const tripoint_bub_ms &examp ) const
 {
-    if( !examine_actor.empty() ) {
-        return true;
+    return can_examine( examp, get_player_character() );
+}
+
+bool map_data_common_t::can_examine( const tripoint_bub_ms &examp, const Character &who ) const
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
+        if( act->can_examine( who, examp, *this ) ) {
+            return true;
+        }
     }
 
     for( const iexamine_functions &func : examine_func ) {
@@ -735,6 +742,17 @@ std::vector<cata::clone_ptr<iexamine_actor>> map_data_common_t::get_examine() co
     return examine_actor;
 }
 
+const iexamine_actor *map_data_common_t::npc_examine_actor( const Character &who,
+        const tripoint_bub_ms &examp ) const
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
+        if( act->npc_can_use( who, examp, *this ) ) {
+            return act.get();
+        }
+    }
+    return nullptr;
+}
+
 void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) const
 {
     if( examine_actor.empty() && examine_func.empty() ) {
@@ -751,12 +769,13 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
         return;
     }
 
-    // if NPC, pick the very first option
+    // if NPC, pick the first examine actor it may use (an EOC actor can say no with its
+    // "condition" or "npc_usable"), else the first examine action
     // TODO, but i have no idea how to approach it for generic use cases
     if( you.is_npc() ) {
-        if( examine_actor.size() > 0 ) {
-            examine_actor.front()->call_with_context( you, examp, *this );
-        } else {
+        if( const iexamine_actor *act = npc_examine_actor( you, examp ) ) {
+            act->call_with_context( you, examp, *this );
+        } else if( !examine_func.empty() ) {
             examine_func.front().examine( you, examp );
         }
         return;
@@ -773,6 +792,7 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
 
     for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
         uilist_entry e( act->get_name() );
+        e.enabled = act->can_examine( you, examp, *this );
         selector.addentry( e );
     }
 
@@ -1418,6 +1438,22 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     floor_bedding_warmth = units::from_legacy_bodypart_temp_delta( legacy_floor_bedding_warmth );
 
     optional( jo, was_loaded, "lockpick_message", lockpick_message, translation() );
+    // ACT-J07: an int, or [ min, max ] to roll between
+    if( jo.has_int( "lockpick_difficulty" ) ) {
+        const int difficulty = jo.get_int( "lockpick_difficulty" );
+        lockpick_difficulty = std::make_pair( difficulty, difficulty );
+    } else if( jo.has_array( "lockpick_difficulty" ) ) {
+        const JsonArray ja = jo.get_array( "lockpick_difficulty" );
+        if( ja.size() != 2 ) {
+            ja.throw_error( "lockpick_difficulty must be an int or [ min, max ]" );
+        }
+        lockpick_difficulty = std::make_pair( ja.get_int( 0 ), ja.get_int( 1 ) );
+        if( lockpick_difficulty->first > lockpick_difficulty->second ) {
+            ja.throw_error( "lockpick_difficulty: min is more than max" );
+        }
+    } else if( jo.has_member( "lockpick_difficulty" ) ) {
+        jo.throw_error_at( "lockpick_difficulty", "lockpick_difficulty must be an int or [ min, max ]" );
+    }
     optional( jo, was_loaded, "light_emitted", light_emitted );
     if( jo.has_array( "light_color" ) ) {
         JsonArray jarr = jo.get_array( "light_color" );
@@ -1584,6 +1620,7 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "plant_result", plant_result );
 
     optional( jo, was_loaded, "lockpick_result", lockpick_result, ter_str_id::NULL_ID() );
+    optional( jo, was_loaded, "lockpick_jam_result", lockpick_jam_result );
 
     // Phase-change fields
     if( jo.has_array( "phase_targets" ) ) {
@@ -1782,6 +1819,10 @@ void ter_t::check() const
     }
     if( !plant_result.is_empty() && !plant_result.is_valid() ) {
         debugmsg( "ter %s: plant_result %s doesn't exist", id.c_str(), plant_result.c_str() );
+    // ACT-J07
+    if( !lockpick_jam_result.is_empty() && !lockpick_jam_result.is_valid() ) {
+        debugmsg( "ter %s: lockpick_jam_result terrain %s doesn't exist", id.c_str(),
+                  lockpick_jam_result.c_str() );
     }
 
     // Validate open/close transforms
@@ -1860,6 +1901,10 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
 
     optional( jo, was_loaded, "lockpick_result", lockpick_result, string_id_reader<furn_t> {},
               furn_str_id::NULL_ID() );
+    optional( jo, was_loaded, "lockpick_jam_result", lockpick_jam_result,
+              string_id_reader<furn_t> {}, furn_str_id() );
+    optional( jo, was_loaded, "hack_result", hack_result, string_id_reader<furn_t> {},
+              furn_str_id() );
 
     load_tool_activity( jo, "oxytorch", was_loaded, oxytorch );
     load_tool_activity( jo, "boltcut", was_loaded, boltcut );
@@ -1969,6 +2014,16 @@ void furn_t::check() const
     }
     if( has_examine( iexamine::smoker_options ) && !smoker ) {
         debugmsg( "furn %s has examine action smoker_options but no \"smoker\" object", id.c_str() );
+    }
+    // ACT-J06, ACT-J07
+    for( const std::pair<const furn_str_id *, const char *> &result : {
+             std::make_pair( &lockpick_jam_result, "lockpick_jam_result" ),
+             std::make_pair( &hack_result, "hack_result" )
+         } ) {
+        if( !result.first->is_empty() && !result.first->is_valid() ) {
+            debugmsg( "furn %s: %s furniture %s doesn't exist", id.c_str(), result.second,
+                      result.first->c_str() );
+        }
     }
 }
 

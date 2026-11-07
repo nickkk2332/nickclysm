@@ -100,6 +100,7 @@
 #include "temp_crafting_inventory.h"
 #include "timed_event.h"
 #include "translation.h"
+#include "trap.h"
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"
@@ -2579,6 +2580,9 @@ conditional_t::func f_map_ter_furn_id( const JsonObject &jo, std::string_view me
         } else if( member == "map_field_id" ) {
             const field &fields_here = here.field_at( loc );
             return !!fields_here.find_field( field_type_id( furn_type.evaluate( d ) ) );
+        } else if( member == "map_trap_id" ) {
+            // also true for a trap nobody has seen yet
+            return here.tr_at( loc ).id == trap_str_id( furn_type.evaluate( d ) );
         } else {
             debugmsg( "Invalid map id: %s", member );
             return false;
@@ -3976,6 +3980,7 @@ parsers = {
     {"map_terrain_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
     {"map_furniture_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
     {"map_field_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
+    {"map_trap_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
     {"map_is_outside", jarg::member, &conditional_fun::f_map_is_outside },
     {"map_in_city", jarg::member, &conditional_fun::f_map_in_city },
     {"map_in_zone", jarg::member, &conditional_fun::f_map_in_zone },

@@ -63,8 +63,7 @@
 
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
-static const ter_str_id ter_t_door_metal_c( "t_door_metal_c" );
-static const ter_str_id ter_t_door_metal_locked( "t_door_metal_locked" );
+static const ter_str_id ter_t_card_reader_broken( "t_card_reader_broken" );
 
 void appliance_convert_examine_actor::load( const JsonObject &jo, const std::string & )
 {
@@ -222,7 +221,8 @@ void cardreader_examine_actor::call( Character &you, const tripoint_bub_ms &exam
 
     std::vector<item_location> cards = get_cards( you, examp );
 
-    if( !cards.empty() && query_yn( _( query_msg ) ) ) {
+    // "query": false uses the card without asking
+    if( !cards.empty() && ( !query || query_yn( _( query_msg ) ) ) ) {
         you.mod_moves( -to_moves<int>( 1_seconds ) );
         open = apply( examp );
         for( monster &critter : g->all_monsters() ) {
@@ -251,7 +251,7 @@ void cardreader_examine_actor::call( Character &you, const tripoint_bub_ms &exam
     }
 }
 
-void cardreader_examine_actor::load( const JsonObject &jo, const std::string & )
+void cardreader_examine_actor::load( const JsonObject &jo, const std::string &src )
 {
     mandatory( jo, false, "flags", allowed_flags );
     optional( jo, false, "consume_card", consume, true );
@@ -270,13 +270,70 @@ void cardreader_examine_actor::load( const JsonObject &jo, const std::string & )
     optional( jo, false, "query_msg", query_msg );
     mandatory( jo, false, "success_msg", success_msg );
     mandatory( jo, false, "redundant_msg", redundant_msg );
+    optional( jo, false, "hacked_ter", hacked_ter );
+    optional( jo, false, "hacked_furn", hacked_furn );
+    optional( jo, false, "hack_difficulty", hack_difficulty, 6 );
+    for( JsonValue jv : jo.get_array( "hack_eocs" ) ) {
+        hack_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+}
 
+void cardreader_examine_actor::run_hack_eocs( Character &who, const tripoint_bub_ms &examp ) const
+{
+    const tripoint_abs_ms pos = get_map().get_abs( examp );
+    for( const effect_on_condition_id &eoc : hack_eocs ) {
+        dialogue d( get_talker_for( who ), nullptr );
+        d.set_value( "pos", pos );
+        eoc->activate( d );
+    }
+}
+
+bool cardreader_examine_actor::hack( const tripoint_bub_ms &examp, bool furniture_reader ) const
+{
+    map &here = get_map();
+    const ter_id reader_ter = here.ter( examp );
+    const furn_id reader_furn = here.furn( examp );
+    // the doors (or the mapgen update) first: apply() looks at the tiles around the reader
+    const bool opened = apply( examp );
+    // the reader itself, unless the changes already replaced it
+    if( here.ter( examp ) == reader_ter ) {
+        if( hacked_ter ) {
+            here.ter_set( examp, *hacked_ter );
+        } else if( !furniture_reader ) {
+            here.ter_set( examp, ter_t_card_reader_broken );
+        }
+    }
+    if( hacked_furn && here.furn( examp ) == reader_furn ) {
+        here.furn_set( examp, *hacked_furn );
+    }
+    return opened;
+}
+
+void cardreader_examine_actor::check( const std::string &owner ) const
+{
+    if( hacked_ter && !hacked_ter->is_valid() ) {
+        debugmsg( "card reader of %s: hacked_ter \"%s\" is not a terrain", owner, hacked_ter->str() );
+    }
+    if( hacked_furn && !hacked_furn->is_valid() ) {
+        debugmsg( "card reader of %s: hacked_furn \"%s\" is not furniture", owner,
+                  hacked_furn->str() );
+    }
+    if( hack_difficulty < 0 ) {
+        debugmsg( "card reader of %s: hack_difficulty %d is below 0", owner, hack_difficulty );
+    }
+    // examine actors' finalize() isn't called: its checks run here
+    finalize();
 }
 
 void cardreader_examine_actor::finalize() const
 {
     if( allowed_flags.empty() ) {
         debugmsg( "Cardreader examine actor has no allowed card flags." );
+    }
+    for( const effect_on_condition_id &eoc : hack_eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "Cardreader runs hack_eocs %s that does not exist!", eoc.str() );
+        }
     }
 
     for( const flag_id &flag : allowed_flags ) {
@@ -292,12 +349,7 @@ void cardreader_examine_actor::finalize() const
     if( query && query_msg.empty() ) {
         debugmsg( "Cardreader is told to query, yet does not have a query message defined." );
     }
-
-    if( allow_hacking && ( !furn_changes.empty() || terrain_changes.size() != 1 ||
-                           terrain_changes.count( ter_t_door_metal_locked ) != 1 ||
-                           terrain_changes.at( ter_t_door_metal_locked ) != ter_t_door_metal_c ) ) {
-        debugmsg( "Cardreader allows hacking, but activities different that if hacked." );
-    }
+    // hacking makes the same changes as a card (ACT-J06), so any reader may allow it
 }
 
 std::unique_ptr<iexamine_actor> cardreader_examine_actor::clone() const
@@ -314,18 +366,53 @@ void eoc_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) con
     call_with_context( you, examp, data );
 }
 
-void eoc_examine_actor::call_with_context( Character &you, const tripoint_bub_ms &examp,
-        const map_data_common_t &data ) const
+void eoc_examine_actor::set_context( const_dialogue &d, const tripoint_bub_ms &examp,
+                                     const map_data_common_t &data )
 {
-    map &here = get_map();
+    const map &here = get_map();
     const bool furniture = &data == &here.furn( examp ).obj();
-
-    dialogue d( get_talker_for( you ), nullptr );
     d.set_value( "this", furniture ? here.furn( examp ).id().str() : here.ter( examp ).id().str() );
     d.set_value( "terrain", here.ter( examp ).id().str() );
     d.set_value( "furniture", here.furn( examp ).id().str() );
     d.set_value( "examined_layer", furniture ? "furniture" : "terrain" );
     d.set_value( "pos", here.get_abs( examp ) );
+}
+
+bool eoc_examine_actor::meets_condition( const Character &who, const tripoint_bub_ms &examp,
+        const map_data_common_t &data ) const
+{
+    if( !has_condition ) {
+        return true;
+    }
+    const_dialogue d( get_const_talker_for( who ), nullptr );
+    set_context( d, examp, data );
+    return condition( d );
+}
+
+bool eoc_examine_actor::can_examine( const Character &who, const tripoint_bub_ms &examp,
+                                     const map_data_common_t &data ) const
+{
+    // with a message, examining says why it can't
+    return !condition_fail_msg.empty() || meets_condition( who, examp, data );
+}
+
+bool eoc_examine_actor::npc_can_use( const Character &who, const tripoint_bub_ms &examp,
+                                     const map_data_common_t &data ) const
+{
+    return npc_usable && meets_condition( who, examp, data );
+}
+
+void eoc_examine_actor::call_with_context( Character &you, const tripoint_bub_ms &examp,
+        const map_data_common_t &data ) const
+{
+    if( !meets_condition( you, examp, data ) ) {
+        if( !condition_fail_msg.empty() ) {
+            you.add_msg_if_player( condition_fail_msg.translated() );
+        }
+        return;
+    }
+    dialogue d( get_talker_for( you ), nullptr );
+    set_context( d, examp, data );
     for( const effect_on_condition_id &eoc : eocs ) {
         eoc->activate( d );
     }
@@ -336,6 +423,12 @@ void eoc_examine_actor::load( const JsonObject &jo, const std::string &src )
     for( JsonValue jv : jo.get_array( "effect_on_conditions" ) ) {
         eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+        has_condition = true;
+    }
+    optional( jo, false, "condition_fail_msg", condition_fail_msg );
+    optional( jo, false, "npc_usable", npc_usable, true );
 }
 
 void eoc_examine_actor::finalize() const

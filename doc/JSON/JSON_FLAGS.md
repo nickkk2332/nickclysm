@@ -669,7 +669,7 @@ These are checked by hardcode for monsters (introducing new flags will require C
 List of known flags, used in both `furniture` and `terrain`.  Some work for both, others are limited to either.
 Can also be used as `pre_flags` for `construction`.
 
-- ```ALARMED``` Sets off an alarm if smashed.
+- ```ALARMED``` Sets off an alarm if smashed, and may when its lock is picked (see `lockpick_difficulty` in [JSON_INFO.md](JSON_INFO.md#lockpick_difficulty)).
 - ```ALLOW_FIELD_EFFECT``` Apply field effects to items inside `SEALED` terrain/furniture.
 - ```AUTO_WALL_SYMBOL``` (only for terrain) The symbol of this terrain will be one of the line drawings (corner, T-intersection, straight line etc.) depending on the adjacent terrains.
 
