@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "activity_handlers.h"
@@ -541,16 +542,26 @@ int roll_butchery_dissect( int skill_level, int dex, int tool_quality )
     return static_cast<int>( std::round( skill_shift ) );
 }
 
-// A number between 0 and 1 that represents how much usable material can be harvested
-// as a fraction of the maximum possible amount.
-static double butchery_dissect_yield_mult( int skill_level, int dex, int tool_quality )
+// The weights of skill, tool and dexterity in butchery yields (MONDT-B16)
+static const std::string butchery_yield_skill_weight( "BUTCHERY_YIELD_SKILL_WEIGHT" );
+static const std::string butchery_yield_tool_weight( "BUTCHERY_YIELD_TOOL_WEIGHT" );
+static const std::string butchery_yield_dex_weight( "BUTCHERY_YIELD_DEX_WEIGHT" );
+
+// An option's weight as a double: options hold floats, and 0.3f isn't 0.3, so the default
+// weights would change the yields slightly.  To a millionth, they are the old literals exactly.
+static double butchery_yield_weight( const std::string &option )
+{
+    return std::round( static_cast<double>( get_option<float>( option ) ) * 1000000.0 ) / 1000000.0;
+}
+
+double butchery_dissect_yield_mult( int skill_level, int dex, int tool_quality )
 {
     const double skill_score = skill_level / 10.0;
     const double tool_score = ( tool_quality + 50.0 ) / 100.0;
     const double dex_score = dex / 20.0;
-    return 0.5 * clamp( skill_score, 0.0, 1.0 ) +
-           0.3 * clamp( tool_score, 0.0, 1.0 ) +
-           0.2 * clamp( dex_score, 0.0, 1.0 );
+    return butchery_yield_weight( butchery_yield_skill_weight ) * clamp( skill_score, 0.0, 1.0 ) +
+           butchery_yield_weight( butchery_yield_tool_weight ) * clamp( tool_score, 0.0, 1.0 ) +
+           butchery_yield_weight( butchery_yield_dex_weight ) * clamp( dex_score, 0.0, 1.0 );
 }
 
 std::optional<int> butchery_entry_yield( const harvest_drop_type &type, int roll,

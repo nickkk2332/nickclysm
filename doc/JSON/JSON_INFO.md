@@ -3600,6 +3600,8 @@ Id of the `butchery_requirement` that says which tools and surfaces each kind of
 
 Butchering a creature the butcher empathizes with (a human, for most characters) costs morale and trauma, and angers the NPCs who see it and empathize too. The amounts are `EXTERNAL_OPTION`s in `data/core/external_options.json`: `BUTCHERY_EMPATHY_MORALE` (-50) and `BUTCHERY_EMPATHY_TRAUMA` (10) for butchering, `DISSECT_EMPATHY_MORALE` (-40) and `DISSECT_EMPATHY_TRAUMA` (5) for dissecting without `prof_dissect_humans`, `BUTCHERY_EMPATHY_NPC_OPINION` (5) for the NPCs' trust, value and anger. Every butchery sends the `character_butchered_corpse` event with the corpse as beta (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).
 
+How much of a `mass_ratio` harvest entry the butcher gets is a share of its maximum: the butcher's skill (the drop type's `harvest_skills`, survival by default; for dissection, plus the tool's CUT_FINE quality) as a share of level 10, the tool's quality as a share of 50 and dexterity as a share of 20, each capped at 1, weighted by the `EXTERNAL_OPTION`s `BUTCHERY_YIELD_SKILL_WEIGHT` (0.5), `BUTCHERY_YIELD_TOOL_WEIGHT` (0.3) and `BUTCHERY_YIELD_DEX_WEIGHT` (0.2).  With a BUTCHER 20 knife and dexterity 8, that is 0.29 of the maximum at survival 0 and 0.79 from survival 10.
+
 ### Harvest Drop Type
 ```jsonc
 {

@@ -55,6 +55,11 @@ bool set_up_butchery( player_activity &act, Character &you, butchery_data bd );
 
 int roll_butchery_dissect( int skill_level, int dex, int tool_quality );
 
+// A number between 0 and 1: how much of a harvest entry's mass_ratio maximum the butcher gets,
+// from the skill level, dexterity and tool quality, weighted by the BUTCHERY_YIELD_*_WEIGHT
+// external options (0.5, 0.3 and 0.2)
+double butchery_dissect_yield_mult( int skill_level, int dex, int tool_quality );
+
 // The skill level of `you` for drops of type `htype` (the average of its harvest skills,
 // survival when there's none), with `tool_quality` added in for DISSECT only.
 int butchery_dissect_skill_level( const Character &you, int tool_quality,

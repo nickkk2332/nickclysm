@@ -758,5 +758,26 @@
     "//": "How much an NPC who sees you butcher or dissect a creature it empathizes with loses trust and value for you, and gains anger.",
     "stype": "int",
     "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_YIELD_SKILL_WEIGHT",
+    "//": "Butchery: weight of the butcher's skill (survival, or the drop type's harvest skills; for dissection, plus the tool quality), as a share of level 10 in how much of a harvest entry's mass_ratio maximum is harvested.  The three weights add up to the share at best (1 by default).",
+    "stype": "float",
+    "value": 0.5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_YIELD_TOOL_WEIGHT",
+    "//": "Butchery: weight of the butcher's tool quality (BUTCHER or CUT_FINE), as a share of quality 50 in how much of a harvest entry's mass_ratio maximum is harvested.  The three weights add up to the share at best (1 by default).",
+    "stype": "float",
+    "value": 0.3
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_YIELD_DEX_WEIGHT",
+    "//": "Butchery: weight of the butcher's dexterity, as a share of 20 in how much of a harvest entry's mass_ratio maximum is harvested.  The three weights add up to the share at best (1 by default).",
+    "stype": "float",
+    "value": 0.2
   }
 ]

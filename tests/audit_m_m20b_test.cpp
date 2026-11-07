@@ -32,6 +32,7 @@
 #include "mondefense.h"
 #include "monster.h"
 #include "mtype.h"
+#include "options_helpers.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "projectile.h"
@@ -171,6 +172,31 @@ TEST_CASE( "mondt-b16_butchery_counts_tool_quality_as_skill_only_for_dissection"
     you.set_skill_level( skill_firstaid, 2 );
     CHECK( butchery_dissect_skill_level( you, 20, harvest_drop_bionic, butcher_type::FULL ) == 3 );
     CHECK( butchery_dissect_skill_level( you, 2, harvest_drop_bionic, butcher_type::DISSECT ) == 4 );
+}
+
+// The yield weights are external options (BUTCHERY_YIELD_*_WEIGHT); the defaults give exactly
+// the numbers of the old literals 0.5, 0.3 and 0.2.
+TEST_CASE( "mondt-b16_butchery_yield_weights_are_options", "[audit][butchery]" )
+{
+    for( const int skill : { 0, 2, 5, 10, 12 } ) {
+        for( const int dex : { 4, 8, 20 } ) {
+            for( const int tool : { 0, 20, 50 } ) {
+                CAPTURE( skill, dex, tool );
+                const double old_mult = 0.5 * std::clamp( skill / 10.0, 0.0, 1.0 ) +
+                                        0.3 * std::clamp( ( tool + 50.0 ) / 100.0, 0.0, 1.0 ) +
+                                        0.2 * std::clamp( dex / 20.0, 0.0, 1.0 );
+                CHECK( butchery_dissect_yield_mult( skill, dex, tool ) == old_mult );
+            }
+        }
+    }
+    CHECK( butchery_dissect_yield_mult( 0, 8, 20 ) == Approx( 0.29 ) );
+    {
+        override_option skill_weight( "BUTCHERY_YIELD_SKILL_WEIGHT", "0.25" );
+        override_option tool_weight( "BUTCHERY_YIELD_TOOL_WEIGHT", "0.55" );
+        CHECK( butchery_dissect_yield_mult( 0, 8, 20 ) == Approx( 0.465 ) );
+        CHECK( butchery_dissect_yield_mult( 10, 8, 20 ) == Approx( 0.715 ) );
+    }
+    CHECK( butchery_dissect_yield_mult( 0, 8, 20 ) == Approx( 0.29 ) );
 }
 
 // dissect_only was loaded and never read.
