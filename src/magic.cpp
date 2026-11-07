@@ -569,8 +569,8 @@ static bool spell_infinite_loop_check( std::set<spell_id> spell_effects, const s
     return false;
 }
 
-// Checks that effect_str names an existing id of the type the spell effect reads it as.
-// Effects that ignore effect_str, and timed_event (a fixed keyword list), are not checked.
+// Checks that effect_str names an existing id of the type the spell effect reads it as, or
+// one of the keywords it accepts.  Effects that ignore effect_str are not checked.
 static void check_spell_effect_str( const spell_type &sp_t )
 {
     const std::string &str = sp_t.effect_str;
@@ -654,6 +654,10 @@ static void check_spell_effect_str( const spell_type &sp_t )
     } else if( eff == "summon_vehicle" ) {
         if( !str.empty() && !vproto_id( str ).is_valid() ) {
             invalid( "vehicle prototype id" );
+        }
+    } else if( eff == "timed_event" ) {
+        if( !spell_effect::timed_event_from_effect_str( str ) ) {
+            invalid( "timed event (see the timed_event effect in doc/JSON/MAGIC.md)" );
         }
     }
 }
@@ -1392,7 +1396,10 @@ int spell_type::get_difficulty( const Creature &caster ) const
 int spell::get_difficulty( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
-    return type->difficulty.evaluate( d ) + temp_difficulty_adjustment;
+    const double base = type->difficulty.evaluate( d ) + temp_difficulty_adjustment;
+    // not clamped at 0, unlike the other spell values: a difficulty can be below 0
+    return static_cast<int>( std::lround( caster.enchantment_cache->modify_spell_value(
+            enchant_vals::spell_mod::DIFFICULTY, *this, base ) ) );
 }
 
 mod_id spell::get_src() const
@@ -1470,6 +1477,16 @@ std::string spell::message() const
 }
 
 float spell::spell_fail( const Character &guy ) const
+{
+    if( has_flag( spell_flag::NO_FAIL ) ) {
+        return 0.0f;
+    }
+    const double enchanted = guy.enchantment_cache->modify_spell_value( enchant_vals::spell_mod::FAIL,
+                             *this, spell_fail_unenchanted( guy ) );
+    return static_cast<float>( std::clamp( enchanted, 0.0, 1.0 ) );
+}
+
+float spell::spell_fail_unenchanted( const Character &guy ) const
 {
     if( has_flag( spell_flag::NO_FAIL ) ) {
         return 0.0f;
@@ -1721,7 +1738,8 @@ int spell::sound_volume( const Creature &caster ) const
             loudness += 1 + damage( caster ) / 3;
         }
     }
-    return std::max( loudness * temp_sound_multiplyer, 0.0f );
+    return enchanted_spell_value( *this, caster, enchant_vals::spell_mod::SOUND,
+                                  std::max( loudness * temp_sound_multiplyer, 0.0f ) );
 }
 
 void spell::make_sound( const tripoint_bub_ms &target, Creature &caster ) const
@@ -2249,15 +2267,19 @@ float spell::exp_modifier( const Character &guy ) const
 
 int spell::casting_exp( const Character &guy ) const
 {
+    double exp;
     if( type->magic_type.has_value() && type->magic_type.value()->casting_xp_formula_id.has_value() ) {
         const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
         d.set_value( "spell_id", id().str() );
-        return std::round( type->magic_type.value()->casting_xp_formula_id.value()->eval( d ) );
+        exp = std::round( type->magic_type.value()->casting_xp_formula_id.value()->eval( d ) );
     } else {
         // the amount of xp you would get with no modifiers
         const int base_casting_xp = 75;
-        return std::round( guy.adjust_for_focus( base_casting_xp * exp_modifier( guy ) ) );
+        exp = std::round( guy.adjust_for_focus( base_casting_xp * exp_modifier( guy ) ) );
     }
+    // the caster's EXP enchantments change what a cast teaches, not what study does
+    return static_cast<int>( std::round( guy.enchantment_cache->modify_spell_value(
+            enchant_vals::spell_mod::EXP, *this, exp ) ) );
 }
 
 std::string spell::enumerate_targets() const

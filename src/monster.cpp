@@ -654,28 +654,30 @@ void monster::refill_udders()
         debugmsg( "monster %s has no starting ammo to refill udders", get_name() );
         return;
     }
-    if( ammo.empty() ) {
-        // legacy animals got empty ammo map, fill them up now if needed.
-        ammo[type->starting_ammo.begin()->first] = type->starting_ammo.begin()->second;
-    }
-    auto current_milk = ammo.find( itype_milk_raw );
+    // What the monster gives when milked: any liquid, such as honeydew, not only milk
+    const itype_id &milk_type = type->starting_ammo.begin()->first;
+    const int full_udders = type->starting_ammo.begin()->second;
+    auto current_milk = ammo.find( milk_type );
     if( current_milk == ammo.end() ) {
-        current_milk = ammo.find( itype_milk );
-        if( current_milk != ammo.end() ) {
-            // take this opportunity to update milk udders to raw_milk
-            ammo[itype_milk_raw] = current_milk->second;
-            // Erase old key-value from map
-            ammo.erase( current_milk );
+        const auto legacy_milk = milk_type == itype_milk_raw ? ammo.find( itype_milk ) : ammo.end();
+        if( legacy_milk != ammo.end() ) {
+            // Old saves kept raw milk under the "milk" id; move it to "milk_raw"
+            const int amount = legacy_milk->second;
+            ammo.erase( legacy_milk );
+            current_milk = ammo.emplace( milk_type, amount ).first;
+        } else {
+            // Legacy animals got an empty ammo map, and the milk type may have changed
+            // since the save; fill them up now.
+            current_milk = ammo.emplace( milk_type, full_udders ).first;
         }
     }
-    // if we got here, we got milk.
-    if( current_milk->second == type->starting_ammo.begin()->second ) {
+    if( current_milk->second == full_udders ) {
         // already full up
         return;
     }
     if( calendar::turn - udder_timer > 1_days ) {
         // You milk once a day.
-        ammo.begin()->second = type->starting_ammo.begin()->second;
+        current_milk->second = full_udders;
         udder_timer = calendar::turn;
     }
 }
@@ -3368,22 +3370,27 @@ void monster::die( map *here, Creature *nkiller )
         get_player_character().apply_murder_penalties( this );
     }
 
-    if( type->mdeath_effect.eoc.has_value() ) {
-        //Not a hallucination, go process the death effects.
-        if( type->mdeath_effect.eoc.value().is_valid() ) {
-            dialogue d( killer == nullptr ? nullptr : get_talker_for( killer ), get_talker_for( *this ) );
-            type->mdeath_effect.eoc.value()->activate( d );
-        } else {
-            debugmsg( "eoc id %s is not valid", type->mdeath_effect.eoc.value().str() );
-        }
-    }
-
     // scale overkill damage by enchantments
     if( nkiller && ( nkiller->is_npc() || nkiller->is_avatar() ) ) {
         int current_hp = get_hp();
         current_hp = nkiller->as_character()->enchantment_cache->modify_value(
                          enchant_vals::mod::OVERKILL_DAMAGE, current_hp );
         set_hp( current_hp );
+    }
+
+    // The death EOC runs before the corpse is made, so that it can still stop the corpse
+    // (npc_die with remove_corpse) or change the monster it is made from.
+    if( type->mdeath_effect.eoc.has_value() ) {
+        //Not a hallucination, go process the death effects.
+        if( type->mdeath_effect.eoc.value().is_valid() ) {
+            dialogue d( killer == nullptr ? nullptr : get_talker_for( killer ), get_talker_for( *this ) );
+            d.set_value( "loc", pos_abs() );
+            // How far below 0 HP the monster went, which decides how damaged its corpse is
+            d.set_value( "overkill", static_cast<double>( std::max( 0, -get_hp() ) ) );
+            type->mdeath_effect.eoc.value()->activate( d );
+        } else {
+            debugmsg( "eoc id %s is not valid", type->mdeath_effect.eoc.value().str() );
+        }
     }
 
     item_location corpse;

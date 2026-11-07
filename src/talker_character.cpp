@@ -312,7 +312,7 @@ bool talker_character_const::has_recipe( const recipe_id &recipe_to_check ) cons
 
 void talker_character::learn_recipe( const recipe_id &recipe_to_learn )
 {
-    me_chr->learn_recipe( &*recipe_to_learn );
+    me_chr->learn_recipe( &*recipe_to_learn, false, "eoc" );
 }
 
 void talker_character::forget_recipe( const recipe_id &recipe_to_forget )
@@ -513,8 +513,8 @@ int talker_character_const::get_spell_sum( const trait_id &school, int min_level
     int count = 0;
 
     for( const spell *sp : me_chr_const->magic->get_spells() ) {
-        if( school.is_null() || ( sp->spell_class() == school &&
-                                  sp->get_effective_level() >= min_level ) ) {
+        if( ( school.is_null() || sp->spell_class() == school ) &&
+            sp->get_effective_level() >= min_level ) {
             count = count + sp->get_effective_level() ;
         }
     }
@@ -1198,9 +1198,9 @@ int talker_character_const::get_bmi_permil() const
     return std::round( me_chr_const->get_bmi_fat() * 1000.0f );
 }
 
-int talker_character_const::get_weight() const
+units::mass talker_character_const::get_weight() const
 {
-    return units::to_milligram( me_chr_const->get_weight() );
+    return me_chr_const->get_weight();
 }
 
 int talker_character_const::get_volume() const

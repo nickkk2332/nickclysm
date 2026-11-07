@@ -1134,6 +1134,7 @@ void place_npc_iuse::load( const JsonObject &obj, const std::string & )
     optional( obj, false, "summon_msg", summon_msg );
     optional( obj, false, "moves", moves, 100 );
     optional( obj, false, "place_randomly", place_randomly, false );
+    optional( obj, false, "radius", radius, 1 );
 }
 
 
@@ -5720,12 +5721,33 @@ std::unique_ptr<iuse_actor> weigh_self_actor::clone() const
 void sew_advanced_actor::load( const JsonObject &obj, const std::string & )
 {
     mandatory( obj, false, "materials", materials );
-    mandatory( obj, false, "clothing_mods", materials );
+    mandatory( obj, false, "clothing_mods", clothing_mods );
 
     optional( obj, false, "skill", used_skill );
     if( !used_skill.is_empty() && !used_skill.is_valid() ) {
         obj.throw_error_at( "skill", "Invalid skill" );
     }
+}
+
+void sew_advanced_actor::finalize( const itype_id &my_item_type )
+{
+    for( const material_id &mat : materials ) {
+        if( !mat.is_valid() ) {
+            debugmsg( "Item %s has sew_advanced action with invalid material %s", my_item_type.str(),
+                      mat.str() );
+        }
+    }
+    for( const clothing_mod_id &cm : clothing_mods ) {
+        if( !cm.is_valid() ) {
+            debugmsg( "Item %s has sew_advanced action with invalid clothing mod %s",
+                      my_item_type.str(), cm.str() );
+        }
+    }
+    // Don't offer a clothing mod that doesn't exist in the menu
+    clothing_mods.erase( std::remove_if( clothing_mods.begin(), clothing_mods.end(),
+    []( const clothing_mod_id & cm ) {
+        return !cm.is_valid();
+    } ), clothing_mods.end() );
 }
 
 

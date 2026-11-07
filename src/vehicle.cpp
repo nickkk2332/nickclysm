@@ -246,6 +246,46 @@ units::volume vehicle_stack::stored_volume() const
 
 // Vehicle class methods.
 
+vehicle_uid::vehicle_uid( const vehicle_uid & )
+{
+}
+
+vehicle_uid &vehicle_uid::operator=( const vehicle_uid &other )
+{
+    if( this != &other ) {
+        value = 0;
+    }
+    return *this;
+}
+
+vehicle_uid::vehicle_uid( vehicle_uid &&other ) noexcept : value( std::exchange( other.value, 0 ) )
+{
+}
+
+vehicle_uid &vehicle_uid::operator=( vehicle_uid &&other ) noexcept
+{
+    if( this != &other ) {
+        value = std::exchange( other.value, 0 );
+    }
+    return *this;
+}
+
+int64_t vehicle_uid::get() const
+{
+    if( value == 0 && g ) {
+        value = g->assign_vehicle_uid();
+    }
+    return value;
+}
+
+void vehicle_uid::load( int64_t saved )
+{
+    value = saved > 0 ? saved : 0;
+    if( value != 0 && g ) {
+        g->reserve_vehicle_uid( value );
+    }
+}
+
 vehicle::vehicle( const vproto_id &proto_id )
 {
     face.init( 0_degrees );

@@ -332,9 +332,31 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `mapgen_tee`      | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
 | `mapgen_four_way` | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
 | `eoc`             | Supply an effect_on_condition id or an inline effect_on_condition.  The condition of the eoc will be tested to see if the special can be placed.  The effect of the eoc will be run when the special is placed.  See [effect_on_condition.md](EFFECT_ON_CONDITION.md). |
-| `entry_eoc`       | An effect on condition ID that will run when you enter this location.                            |
-| `exit_eoc`        | An effect on condition ID that will run when you exit this location.                             |
+| `entry_eoc`       | An effect on condition ID that will run when you enter this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
+| `exit_eoc`        | An effect on condition ID that will run when you exit this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
 | `post_process_generators` | Array of `pp_generator` ids applied after mapgen completes.  See [Post-Process Generators](#post-process-generators).  Supports `copy-from` inheritance and `delete`. |
+
+### `entry_eoc` and `exit_eoc`
+
+These run when the avatar moves from one overmap terrain tile (OMT) to another: on foot, up or
+down stairs, by teleport, or carried by a vehicle (driving or a vehicle teleport).  NPCs and
+monsters don't run them, and neither do the avatar's first OMT at game start, travel to another
+dimension or the debug menu's overmap teleport.  When the avatar crosses a boundary, the
+`exit_eoc` of the terrain being left runs first, then the `entry_eoc` of the terrain being
+entered.  If the avatar is moved again during a move (a teleport trap stepped on, a fall), they
+run once, from where the move started to where it ended.
+
+Both must be activation EOCs (no `recurrence`).  They run with the avatar as alpha talker and no
+beta talker, and get these context variables:
+
+| Variable          | Description |
+| ----------------- | ----------- |
+| `omt_pos`         | Location variable: the north-west corner, at the OMT's z-level, of the OMT this EOC belongs to (the one being entered for `entry_eoc`, the one being left for `exit_eoc`). |
+| `left_oter_id`    | Id of the overmap terrain being left, with its rotation or line suffix, e.g. `"house_north"`. |
+| `entered_oter_id` | Id of the overmap terrain being entered, in the same form. |
+
+Read them as context variables, e.g. `{ "context_val": "omt_pos" }`.  Both EOC ids are checked
+at load: an unknown id is reported as an error.
 
 ### `see_cost` values
 
@@ -383,7 +405,7 @@ an exhaustive example...
       "effect": [ { "math": [ "refugee_centers++" ] } ]
     },
     "entry_eoc": "EOC_ENTERED_SECRET_FIELD",
-    "exity_eoc": "EOC_LEFT_SECRET_FIELD"
+    "exit_eoc": "EOC_LEFT_SECRET_FIELD"
 }
 ```
 

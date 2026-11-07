@@ -1,5 +1,6 @@
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -21,10 +22,12 @@
 #include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
+#include "json.h"
 #include "json_loader.h"
 #include "lightmap.h"
 #include "map.h"
@@ -46,9 +49,14 @@ static const activity_id ACT_GAME( "ACT_GAME" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MULTIPLE_FARM( "ACT_MULTIPLE_FARM" );
 static const activity_id ACT_TARGET_PRACTICE( "ACT_TARGET_PRACTICE" );
+static const activity_id ACT_TEST_CONTEXT( "ACT_TEST_CONTEXT" );
 static const activity_id ACT_TEST_HOOKS( "ACT_TEST_HOOKS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_ASSIGN_WITH_CONTEXT( "EOC_TEST_ASSIGN_WITH_CONTEXT" );
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_LEARN_THE_FAIL_RECIPE( "EOC_TEST_LEARN_THE_FAIL_RECIPE" );
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_ACT_HOOK_TARGET( "EOC_TEST_ACT_HOOK_TARGET" );
 
@@ -62,6 +70,7 @@ static const itype_id itype_test_audit_hook_widget( "test_audit_hook_widget" );
 static const quality_id qual_DIG( "DIG" );
 
 static const recipe_id recipe_cudgel_test_activity_hooks( "cudgel_test_activity_hooks" );
+static const recipe_id recipe_cudgel_test_craft_fail( "cudgel_test_craft_fail" );
 static const recipe_id recipe_cudgel_test_crafting_eocs( "cudgel_test_crafting_eocs" );
 
 static const trait_id trait_DEBUG_CNF( "DEBUG_CNF" );
@@ -222,6 +231,8 @@ TEST_CASE( "act-j03_activity_start_completion_and_cancel_hooks", "[audit][activi
     SECTION( "completion runs once the activity has ended" ) {
         run_activity_to_the_end( u, ACT_TEST_HOOKS );
         CHECK( globvars.get_global_value( "act_hooks_done" ) == 1 );
+        CHECK( globvars.get_global_value( "act_hooks_done_outcome" ) == "completed" );
+        CHECK( globvars.get_global_value( "act_hooks_event_outcome" ) == "completed" );
         CHECK( globvars.get_global_value( "act_hooks_done_total" ) == 1000 );
         CHECK( !globvars.maybe_get_global_value( "act_hooks_done_while_active" ) );
         CHECK( !globvars.maybe_get_global_value( "act_hooks_cancel" ) );
@@ -229,6 +240,11 @@ TEST_CASE( "act-j03_activity_start_completion_and_cancel_hooks", "[audit][activi
     SECTION( "canceling runs the cancel hook, not the completion one" ) {
         u.cancel_activity();
         CHECK( globvars.get_global_value( "act_hooks_cancel" ) == 1 );
+        // kept in the backlog to resume, it was interrupted; otherwise canceled
+        const bool kept = !u.backlog.empty() && u.backlog.front().id() == ACT_TEST_HOOKS;
+        const std::string outcome = kept ? "interrupted" : "canceled";
+        CHECK( globvars.get_global_value( "act_hooks_cancel_outcome" ) == outcome );
+        CHECK( globvars.get_global_value( "act_hooks_event_outcome" ) == outcome );
         CHECK( globvars.get_global_value( "act_hooks_cancel_left" ) == 1000 );
         CHECK( !globvars.maybe_get_global_value( "act_hooks_done" ) );
     }
@@ -499,6 +515,111 @@ TEST_CASE( "craft-j02_result_eocs_get_context_and_result_items", "[audit][crafti
     }
     CHECK( cudgels == 2 );
     CHECK( marked == 2 );
+    // start_eocs ran once, when the craft started, with the craft in progress as beta
+    CHECK( globvars.get_global_value( "craft_start_runs" ) == 1 );
+    CHECK( globvars.get_global_value( "craft_start_batch" ) == 2 );
+    CHECK( globvars.get_global_value( "craft_start_recipe" ) == "cudgel_test_crafting_eocs" );
+    CHECK( globvars.get_global_value( "craft_start_had_beta" ) == 1 );
+    // character_crafts_item, once for the batch
+    CHECK( globvars.get_global_value( "crafted_events" ) == 1 );
+    CHECK( globvars.get_global_value( "crafted_recipe" ) == "cudgel_test_crafting_eocs" );
+    CHECK( globvars.get_global_value( "crafted_itype" ) == "cudgel" );
+    CHECK( globvars.get_global_value( "crafted_quantity" ) == 2 );
+    clear_avatar();
+}
+
+// CRAFT-J02: a craft that failed partway, losing components and progress, ran no EOC.
+TEST_CASE( "craft-j02_fail_eocs_run_when_a_craft_fails", "[audit][crafting]" )
+{
+    clear_avatar();
+    clear_map();
+    set_time( calendar::turn_zero + 12_hours );
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    here.add_item( u.pos_bub(), item( itype_2x4 ) );
+    // No DEBUG_CNF and no skill, against difficulty 10: the first step fails, and with one
+    // component the failure takes it, leaving nothing to craft from
+    u.learn_recipe( &recipe_cudgel_test_craft_fail.obj() );
+    u.make_craft( recipe_cudgel_test_craft_fail, 1 );
+    REQUIRE( u.activity.id() == ACT_CRAFT );
+    run_activity_to_the_end( u, ACT_CRAFT );
+
+    REQUIRE( globvars.maybe_get_global_value( "craft_fail_runs" ) != nullptr );
+    CHECK( globvars.get_global_value( "craft_fail_runs" ).dbl() >= 1 );
+    CHECK( globvars.get_global_value( "craft_fail_recipe" ) == "cudgel_test_craft_fail" );
+    CHECK( globvars.get_global_value( "craft_fail_components_lost" ) == 1 );
+    CHECK( globvars.get_global_value( "craft_fail_destroyed" ) == 1 );
+    CHECK( globvars.get_global_value( "craft_fail_had_beta" ) == 1 );
+    // nothing was made
+    CHECK( !globvars.maybe_get_global_value( "crafted_events" ) );
+    clear_avatar();
+}
+
+// CRAFT-J02: learning a recipe sent no event.
+TEST_CASE( "craft-j02_learning_a_new_recipe_sends_an_event", "[audit][crafting]" )
+{
+    clear_avatar();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    avatar &u = get_avatar();
+    REQUIRE_FALSE( u.knows_recipe( &recipe_cudgel_test_craft_fail.obj() ) );
+
+    dialogue d( get_talker_for( u ), nullptr );
+    effect_on_condition_EOC_TEST_LEARN_THE_FAIL_RECIPE->activate( d );
+    CHECK( u.knows_recipe( &recipe_cudgel_test_craft_fail.obj() ) );
+    CHECK( globvars.get_global_value( "learned_events" ) == 1 );
+    CHECK( globvars.get_global_value( "learned_recipe" ) == "cudgel_test_craft_fail" );
+    CHECK( globvars.get_global_value( "learned_how" ) == "eoc" );
+
+    // a recipe already known isn't learned again
+    effect_on_condition_EOC_TEST_LEARN_THE_FAIL_RECIPE->activate( d );
+    CHECK( globvars.get_global_value( "learned_events" ) == 1 );
+    clear_avatar();
+}
+
+// ACT-J03: u_assign_activity could give the activity nothing, so its EOCs couldn't tell what
+// they were for. Its "context" now reaches the activity's EOCs, and is saved with it.
+TEST_CASE( "act-j03_u_assign_activity_context_reaches_the_activity_eocs", "[audit][activity]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    globvars.set_global_value( "act_ctx_source", std::string( "a global" ) );
+    avatar &u = get_avatar();
+
+    dialogue d( get_talker_for( u ), nullptr );
+    effect_on_condition_EOC_TEST_ASSIGN_WITH_CONTEXT->activate( d );
+    REQUIRE( u.activity.id() == ACT_TEST_CONTEXT );
+    CHECK( globvars.get_global_value( "act_ctx_start_note" ) == "from the eoc" );
+    CHECK( u.activity.eoc_context.count( "act_note" ) == 1 );
+
+    SECTION( "the completion EOC gets it, evaluated when it was assigned" ) {
+        globvars.set_global_value( "act_ctx_source", std::string( "changed since" ) );
+        run_activity_to_the_end( u, ACT_TEST_CONTEXT );
+        CHECK( globvars.get_global_value( "act_ctx_done_note" ) == "from the eoc" );
+        CHECK( globvars.get_global_value( "act_ctx_done_global" ) == "a global" );
+        CHECK( globvars.get_global_value( "act_ctx_done_outcome" ) == "completed" );
+    }
+    SECTION( "the cancel EOC gets it" ) {
+        u.cancel_activity();
+        CHECK( globvars.get_global_value( "act_ctx_cancel_note" ) == "from the eoc" );
+    }
+    SECTION( "it is saved with the activity" ) {
+        std::ostringstream saved;
+        JsonOut json( saved );
+        u.activity.serialize( json );
+        player_activity loaded;
+        loaded.deserialize( json_loader::from_string( saved.str() ) );
+        REQUIRE( loaded.eoc_context.count( "act_note" ) == 1 );
+        CHECK( loaded.eoc_context.at( "act_note" ).str() == "from the eoc" );
+    }
+    // an activity assigned later, by anything else, gets none of it
+    u.cancel_activity();
+    u.assign_activity( ACT_TEST_HOOKS, 1000 );
+    CHECK( u.activity.eoc_context.empty() );
     clear_avatar();
 }
 
@@ -524,6 +645,9 @@ TEST_CASE( "craft-j02_disassembly_runs_disassembly_eocs", "[audit][crafting]" )
     CHECK( globvars.get_global_value( "disassembled_count" ) == 1 );
     CHECK( globvars.get_global_value( "disassembled_item" ) == "test_audit_hook_widget" );
     CHECK( globvars.get_global_value( "disassembled_recipe" ) == "test_audit_hook_widget" );
+    // and the event, after the EOCs
+    CHECK( globvars.get_global_value( "disassembled_events" ) == 1 );
+    CHECK( globvars.get_global_value( "disassembled_event_itype" ) == "test_audit_hook_widget" );
     clear_avatar();
 }
 

@@ -313,7 +313,7 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
     if( type == "uncraft" ) {
         // Nothing is crafted from an uncraft recipe.
         for( const char *member : {
-                 "result_eocs", "result_item_eocs"
+                 "result_eocs", "result_item_eocs", "start_eocs", "fail_eocs"
              } ) {
             if( jo.has_member( member ) ) {
                 jo.throw_error_at( member, string_format( "%s never run on disassembly; "
@@ -337,6 +337,18 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         disassembly_eocs.clear();
         for( JsonValue jv : jo.get_array( "disassembly_eocs" ) ) {
             disassembly_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_member( "start_eocs" ) ) {
+        start_eocs.clear();
+        for( JsonValue jv : jo.get_array( "start_eocs" ) ) {
+            start_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_member( "fail_eocs" ) ) {
+        fail_eocs.clear();
+        for( JsonValue jv : jo.get_array( "fail_eocs" ) ) {
+            fail_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
         }
     }
     if( abstract ) {

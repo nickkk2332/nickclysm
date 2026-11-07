@@ -445,6 +445,51 @@ void spawn_data::deserialize( const JsonObject &jo )
 {
     optional( jo, false, "ammo", ammo, spawn_data_ammo_reader{} );
     optional( jo, false, "patrol", patrol_points_rel_ms, spawn_data_patrol_reader{} );
+    for( const JsonObject eff : jo.get_array( "effects" ) ) {
+        spawn_effect added;
+        mandatory( eff, false, "id", added.id );
+        added.duration = jmapgen_int( eff, "duration", 1, 1 );
+        added.intensity = jmapgen_int( eff, "intensity", 1, 1 );
+        optional( eff, false, "permanent", added.permanent, false );
+        effects.push_back( added );
+    }
+    if( jo.has_object( "variables" ) ) {
+        for( const JsonMember var : jo.get_object( "variables" ) ) {
+            if( var.test_float() ) {
+                num_variables[var.name()] = var.get_float();
+            } else {
+                str_variables[var.name()] = var.get_string();
+            }
+        }
+    }
+    optional( jo, false, "faction", faction );
+}
+
+spawn_data merged_spawn_data( spawn_data entry, const spawn_data &piece )
+{
+    for( const std::pair<const itype_id, jmapgen_int> &a : piece.ammo ) {
+        entry.ammo.insert_or_assign( a.first, a.second );
+    }
+    if( !piece.patrol_points_rel_ms.empty() ) {
+        entry.patrol_points_rel_ms = piece.patrol_points_rel_ms;
+    }
+    entry.effects.insert( entry.effects.end(), piece.effects.begin(), piece.effects.end() );
+    for( const std::pair<const std::string, std::string> &var : piece.str_variables ) {
+        entry.str_variables[var.first] = var.second;
+    }
+    for( const std::pair<const std::string, double> &var : piece.num_variables ) {
+        entry.num_variables[var.first] = var.second;
+    }
+    if( !piece.faction.is_empty() ) {
+        entry.faction = piece.faction;
+    }
+    return entry;
+}
+
+bool spawn_data::empty() const
+{
+    return ammo.empty() && patrol_points_rel_ms.empty() && effects.empty() && str_variables.empty() &&
+           num_variables.empty() && faction.is_empty();
 }
 
 void map::delete_unmerged_submaps()
@@ -2729,13 +2774,18 @@ class jmapgen_monster : public jmapgen_piece
                 chosen_name.emplace( name.value().translated() );
             }
             if( !chosen_group.is_null() ) {
+                // entry conditions see where the piece is ("loc"), at its lowest coordinates so no
+                // random number is used up
+                const mongroup_spawn_location_scope spawning_at( dat.m.get_abs( tripoint_bub_ms(
+                            static_cast<int>( x.val ), static_cast<int>( y.val ), dat.zlevel() + z.val ) ) );
                 std::vector<MonsterGroupResult> spawn_details =
                     MonsterGroupManager::GetResultFromGroup( chosen_group, nullptr, nullptr, false, nullptr,
                             use_pack_size );
                 for( const MonsterGroupResult &mgr : spawn_details ) {
+                    // the group entry's spawn data, with what this piece gives on top
                     dat.m.add_spawn( mgr.id, spawn_count * pack_size.get(),
                     { x.get(), y.get(), dat.zlevel() + z.get()},
-                    friendly, -1, mission_id, chosen_name, data );
+                    friendly, -1, mission_id, chosen_name, merged_spawn_data( mgr.data, data ) );
                 }
             } else if( ids.is_valid() ) {
                 mtype_id chosen_type = ids.pick()->get( dat );
@@ -6813,7 +6863,8 @@ void map::place_spawns( const mongroup_id &group, const int chance,
             tries--;
         } while( impassable( p ) && tries > 0 );
 
-        // Pick a monster type
+        // Pick a monster type; entry conditions see the spot as "loc"
+        const mongroup_spawn_location_scope spawning_at( get_abs( tripoint_bub_ms( p, abs_sub.z() ) ) );
         std::vector<MonsterGroupResult> spawn_details =
             MonsterGroupManager::GetResultFromGroup( group, &num );
         for( const MonsterGroupResult &mgr : spawn_details ) {

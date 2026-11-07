@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -238,6 +239,22 @@ struct mongroup {
 template<>
 struct enum_traits<mongroup::horde_behaviour> {
     static constexpr mongroup::horde_behaviour last = mongroup::horde_behaviour::last;
+};
+
+/**
+ * While it lives, monster group entry conditions get @p where as their "loc" context value:
+ * where the monsters would spawn. Without one, "loc" is where the avatar is.
+ */
+class mongroup_spawn_location_scope
+{
+    public:
+        explicit mongroup_spawn_location_scope( const tripoint_abs_ms &where );
+        ~mongroup_spawn_location_scope();
+        mongroup_spawn_location_scope( const mongroup_spawn_location_scope & ) = delete;
+        mongroup_spawn_location_scope &operator=( const mongroup_spawn_location_scope & ) = delete;
+        static std::optional<tripoint_abs_ms> current();
+    private:
+        std::optional<tripoint_abs_ms> previous;
 };
 
 class MonsterGroupManager

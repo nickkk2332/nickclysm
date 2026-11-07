@@ -29,7 +29,9 @@ class butchery_requirements
         string_id<butchery_requirements> id;
         std::vector<std::pair<string_id<butchery_requirements>, mod_id>> src;
 
-        // tries to find the requirement with the highest speed bonus. if it fails it returns std::nullopt
+        // Returns the first requirement, by speed multiplier, that the actor can meet, else the one
+        // with the highest multiplier.  If there is none for this size and butcher type (an unknown
+        // id or broken data), shows a debugmsg and returns a null requirement with multiplier 1.
         std::pair<float, requirement_id> get_fastest_requirements(
             const Character *actor, const temp_crafting_inventory &crafting_inv, creature_size size,
             butcher_type butcher ) const;

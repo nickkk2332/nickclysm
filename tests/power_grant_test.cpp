@@ -119,7 +119,11 @@ Creature &actor( const std::string &kind )
 {
     if( kind == "npc" ) {
         npc &who = spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( 3, 0 ), "thug" );
-        who.clear_worn();
+        // A thug rolls random traits, which can keep it from wearing what a form gives it
+        // (with Magiclysm loaded, say); the roll depends on what the tests before used of the RNG
+        const tripoint_bub_ms pos = who.pos_bub();
+        clear_character( who );
+        who.setpos( get_map(), pos );
         who.set_wielded_item( item() );
         who.set_all_parts_hp_cur( 10000 );
         return who;

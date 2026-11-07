@@ -159,6 +159,12 @@ void mutation_category_trait::check_consistency()
                       cat.id.c_str(), cat.threshold_mut.c_str() );
         }
     }
+    // a dream of an undefined category is never dreamed
+    for( const dream &d : dreams ) {
+        if( !mutation_category_is_valid( d.category ) ) {
+            debugmsg( "A dream has undefined mutation category %s", d.category.c_str() );
+        }
+    }
 }
 
 static mut_attack load_mutation_attack( const JsonObject &jo )
@@ -741,6 +747,18 @@ void mutation_branch::check_consistency()
             if( !allergy.second.is_valid() ) {
                 debugmsg( "mutation %s has a food allergy with undefined morale type %s",
                           mid.c_str(), allergy.second.c_str() );
+            }
+        }
+        // MUT-J01: a category that isn't defined is ignored when mutating, and an undefined
+        // allowed_category stops every category mutation
+        for( const mutation_category_id &cat : mdata.category ) {
+            if( !mutation_category_is_valid( cat ) ) {
+                debugmsg( "mutation %s has undefined mutation category %s", mid.c_str(), cat.c_str() );
+            }
+        }
+        for( const mutation_category_id &cat : mdata.allowed_category ) {
+            if( !mutation_category_is_valid( cat ) ) {
+                debugmsg( "mutation %s has undefined allowed_category %s", mid.c_str(), cat.c_str() );
             }
         }
         // Suppress these onload warnings for overlapping mods

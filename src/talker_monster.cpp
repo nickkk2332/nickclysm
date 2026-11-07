@@ -210,9 +210,9 @@ int talker_monster_const::get_volume() const
     return units::to_milliliter( me_mon_const->get_volume() );
 }
 
-int talker_monster_const::get_weight() const
+units::mass talker_monster_const::get_weight() const
 {
-    return units::to_milligram( me_mon_const->get_weight() );
+    return me_mon_const->get_weight();
 }
 
 bool talker_monster_const::is_warm() const
