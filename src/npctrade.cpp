@@ -17,7 +17,6 @@
 #include "character.h"
 #include "character_attire.h"
 #include "debug.h"
-#include "dialogue_helpers.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"

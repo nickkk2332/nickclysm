@@ -109,7 +109,7 @@
 #include "viewer.h"
 #include "vpart_position.h"
 #include "weather.h"
-#include "widget.h"
+#include "widget.h" // IWYU pragma: keep
 #include "worldfactory.h"
 #include "wound.h"
 
