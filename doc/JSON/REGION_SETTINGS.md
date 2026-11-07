@@ -587,7 +587,7 @@ See above.
 
 |     Identifier                 |                              Description                              |
 | ------------------------------ | --------------------------------------------------------------------- |
-| `base_temperature`             | Base temperature for the region: a plain number of degrees Celsius, or a string with units such as `"6.5 C"`. |
+| `base_temperature`             | Base temperature for the region: a plain number of degrees Celsius, or a string with units such as `"6 C 500 mC"` (unit strings take whole numbers, so 6.5 °C is `"6 C 500 mC"`). |
 | `base_humidity`                | Base humidity for the region in relative humidity %                   |
 | `base_pressure`                | Base pressure for the region in millibars.  Increasing it decreases the wind strength |
 | `base_wind`                    | Base wind for the region in mph units. Roughly the yearly average.    |
@@ -604,7 +604,7 @@ See above.
 | `temperature_noise`            | Optional, the greatest random change from the day's temperature. Default `"6 C"`. |
 | `seasonal_noise`               | Optional, how much stronger the noise is in midwinter than midsummer: 0.5 makes it 1.5 times as strong. Default 0.5. |
 | `underground_temperature`      | Optional, the temperature below ground (z < 0), e.g. `"10 C"`. Defaults to `base_temperature`. |
-| `water_temperature`            | Optional object, the temperature of water (swimming, thermometers): `mean` (the year's average, default about `"13.6 C"`), `seasonal_amplitude` (coldest in late winter, warmest in late summer; default `"11.5 C"`) and `daily_amplitude` (default about `"1.1 C"`; the water is coolest at dawn and warmest in the afternoon). Each member is optional. |
+| `water_temperature`            | Optional object, the temperature of water (swimming, thermometers): `mean` (the year's average, default about 13.6 °C), `seasonal_amplitude` (coldest in late winter, warmest in late summer; default `"11 C 500 mC"`) and `daily_amplitude` (default about 1.1 °C; the water is coolest at dawn and warmest in the afternoon). Each member is optional. |
 | `wind_direction_weights`       | Optional object with members `spring`, `summer`, `autumn` and `winter` (each optional): 16 non-negative integers, the relative chance of the wind blowing from each compass point, starting from north and going clockwise (N, NNE, NE ... NNW). Defaults to New England's prevailing winds. |
 | `snow`                         | Optional, how snow piles up, melts and slows movement here; see below. |
 

@@ -76,7 +76,7 @@
     "type": "weather_generator",
     "id": "test_m05b_explicit_gen",
     "//": "LOOP-J06: the base values of test_m05b_plain_gen, with the documented defaults written out.",
-    "base_temperature": "11.1 C",
+    "base_temperature": 11.1,
     "base_humidity": 70.0,
     "base_pressure": 1015.0,
     "base_wind": 3.4,
