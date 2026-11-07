@@ -2017,7 +2017,8 @@ class npc_template
 
         static void load_npc_template( const JsonObject &jsobj, const std::string &src );
         static void reset();
-        static void finalize();
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
         static void check_consistency();
 
         static const std::vector<npc_template> &get_all();
