@@ -167,6 +167,8 @@ TEST_CASE( "map-b09_a_field_spawns_its_whole_count_and_they_appear_at_once", "[a
         clear_map();
     } );
     REQUIRE( here.add_field( spot, field_test_fd_m06a_spawner, 1 ) );
+    // process_fields leaves a newborn field (age 0) alone for a turn
+    here.set_field_age( spot, field_test_fd_m06a_spawner, 1_turns );
     REQUIRE( test_zombies_on_map() == 0 );
 
     here.process_fields();

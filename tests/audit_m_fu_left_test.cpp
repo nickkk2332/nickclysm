@@ -46,7 +46,7 @@ static const itype_id itype_apple( "apple" );
 static const itype_id itype_corpse( "corpse" );
 static const itype_id itype_crowbar( "crowbar" );
 static const itype_id itype_hammer( "hammer" );
-static const itype_id itype_knife_butcher( "knife_butcher" );
+static const itype_id itype_knife_huge( "knife_huge" );
 static const itype_id itype_neccowafers( "neccowafers" );
 static const itype_id itype_pan( "pan" );
 static const itype_id itype_pot( "pot" );
@@ -457,7 +457,7 @@ TEST_CASE( "upstream-89419_dragged_furniture_swaps_the_items_on_both_tiles",
     REQUIRE( here.furn( furn_pos ) == furn_f_test_fu_left_crate );
 
     std::vector<itype_id> in_crate = {
-        itype_hammer, itype_screwdriver, itype_wrench, itype_knife_butcher
+        itype_hammer, itype_screwdriver, itype_wrench, itype_knife_huge
     };
     std::vector<itype_id> on_dest = { itype_pot, itype_pan, itype_saw, itype_crowbar };
     for( const itype_id &id : in_crate ) {

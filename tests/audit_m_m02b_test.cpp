@@ -55,7 +55,7 @@ static const faction_id faction_your_followers( "your_followers" );
 
 static const itype_id itype_apple( "apple" );
 static const itype_id itype_battery( "battery" );
-static const itype_id itype_test_9mm( "test_9mm" );
+static const itype_id itype_test_9mm_ammo( "test_9mm_ammo" );
 static const itype_id itype_test_battery_disposable( "test_battery_disposable" );
 static const itype_id itype_test_glock( "test_glock" );
 static const itype_id itype_test_rock( "test_rock" );
@@ -253,7 +253,7 @@ TEST_CASE( "math-j07_item_power_count_rot_temperature_and_ammo", "[audit][math_p
     }
 
     SECTION( "count of a stack" ) {
-        item_location rounds = here.add_item_or_charges_ret_loc( spot, item( itype_test_9mm,
+        item_location rounds = here.add_item_or_charges_ret_loc( spot, item( itype_test_9mm_ammo,
                                calendar::turn, 10 ) );
         REQUIRE( rounds );
         REQUIRE( rounds->charges == 10 );
@@ -386,7 +386,8 @@ TEST_CASE( "math-j09_a_vehicle_an_npc_drives_is_driven", "[audit][math_parser][v
     REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_seat ) >= 0 );
     REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_controls ) >= 0 );
     here.add_vehicle_to_cache( veh );
-    npc &driver = spawn_npc( spot.xy(), "thug" );
+    // spawned next to the vehicle and moved onto it: one spawned on the seat boards on load
+    npc &driver = spawn_npc( ( spot + tripoint::north ).xy(), "thug" );
     on_out_of_scope cleanup( [&driver]() {
         map &m = get_map();
         driver.controlling_vehicle = false;
@@ -396,7 +397,9 @@ TEST_CASE( "math-j09_a_vehicle_an_npc_drives_is_driven", "[audit][math_parser][v
         clear_npcs();
         clear_vehicles();
     } );
+    driver.setpos( here, spot );
     REQUIRE( driver.pos_bub() == spot );
+    REQUIRE_FALSE( driver.in_vehicle );
     here.board_vehicle( spot, &driver );
     REQUIRE( driver.in_vehicle );
 
