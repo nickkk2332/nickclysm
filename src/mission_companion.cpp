@@ -437,7 +437,7 @@ std::string action_of( const mission_id &miss_id )
 mission_id::mission_id( mission_kind kind, std::string params, mapgen_arguments args,
                         std::optional<point_rel_omt> direction, faction_mission_id camp_mission ) :
     id( kind ), parameters( std::move( params ) ), mapgen_args( std::move( args ) ),
-    dir( direction ), type( std::move( camp_mission ) )
+    dir( direction ), type( camp_mission )
 {
 }
 

@@ -1,8 +1,8 @@
 #include "harvest.h"
 
-#include <stddef.h>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -178,7 +178,7 @@ void harvest_corpse_rule::deserialize( const JsonObject &jo )
         }
         yield.deserialize( jo.get_member( "yield" ) );
     } else if( !skip ) {
-        jo.throw_error( "A corpse rule needs a \"yield\" or \"skip\": true" );
+        jo.throw_error( R"(A corpse rule needs a "yield" or "skip": true)" );
     }
 }
 

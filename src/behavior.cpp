@@ -759,7 +759,7 @@ std::vector<std::string> behavior::add_custom_need_leaves()
         node_t leaf;
         leaf.id = leaf_id;
         leaf.was_loaded = true;
-        const auto felt = [held]( const oracle_t *subject, const std::string & ) {
+        const auto felt = [held]( const oracle_t *subject, const std::string_view ) {
             const Creature *who = subject == nullptr ? nullptr : subject->creature();
             if( who == nullptr ) {
                 return status_t::failure;

@@ -234,7 +234,7 @@ class faction_mission
         std::string depart_text() const;
         std::string return_text() const;
         /// The behaviour a JSON "behavior" name selects
-        static std::optional<mission_kind> behavior_of( const std::string &name );
+        static std::optional<mission_kind> behavior_of( std::string_view name );
         static std::string behavior_name( mission_kind kind );
 };
 

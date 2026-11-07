@@ -85,7 +85,10 @@ static const spell_id spell_audit_p01_tree( "audit_p01_tree" );
 static const spell_id spell_audit_p01_wonder( "audit_p01_wonder" );
 
 static const string_id<behavior::node_t> behavior_node_t_audit_j10_needs( "audit_j10_needs" );
+static const string_id<behavior::node_t> behavior_node_t_elsewhere( "elsewhere" );
 static const string_id<behavior::node_t> behavior_node_t_npc_needs( "npc_needs" );
+
+static const string_id<npc_custom_need> npc_custom_need_audit_j10_loaded( "audit_j10_loaded" );
 
 static const weather_type_id weather_clear( "clear" );
 
@@ -750,7 +753,7 @@ TEST_CASE( "npc-j10_custom_need_loading", "[audit][npc][npc_goal]" )
 {
     const auto load = []( const std::string & json ) {
         npc_custom_need need;
-        need.id = string_id<npc_custom_need>( "audit_j10_loaded" );
+        need.id = npc_custom_need_audit_j10_loaded;
         const JsonObject jo = json_loader::from_string( json );
         jo.allow_omitted_members();
         need.load( jo, "audit_partial_perf_ai_test" );
@@ -784,7 +787,7 @@ TEST_CASE( "npc-j10_custom_need_loading", "[audit][npc][npc_goal]" )
     CHECK_THAT( reg.add_goal( builtin, "npc_need a" ), Catch::Matchers::Contains( "built-in" ) );
     CHECK( reg.add_goal( goal, "npc_need b" ).empty() );
     npc_json_goal twin = goal;
-    twin.node = string_id<behavior::node_t>( "elsewhere" );
+    twin.node = behavior_node_t_elsewhere;
     CHECK_THAT( reg.add_goal( twin, "npc_need c" ), Catch::Matchers::Contains( "defined by" ) );
     // the same source gives it again: replaced, not doubled
     CHECK( reg.add_goal( goal, "npc_need b" ).empty() );

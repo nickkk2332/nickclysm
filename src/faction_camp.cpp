@@ -5182,7 +5182,7 @@ std::string basecamp::recruit_description( int npc_count ) const
     return desc;
 }
 
-std::vector<std::string> basecamp::gathering_description( const item_group_id &itemlist )
+std::vector<std::string> basecamp::gathering_description( const item_group_id &group )
 {
     std::vector<std::string> output;
 
@@ -5190,7 +5190,7 @@ std::vector<std::string> basecamp::gathering_description( const item_group_id &i
     // doesn't have perfect knowledge
     std::map<std::string, int> itemnames;
     for( size_t a = 0; a < 6; a++ ) {
-        const std::vector<item> items = item_group::items_from( itemlist, calendar::turn );
+        const std::vector<item> items = item_group::items_from( group, calendar::turn );
         for( const item &it : items ) {
             itemnames[it.display_name()]++;
         }

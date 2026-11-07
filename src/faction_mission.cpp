@@ -1,5 +1,5 @@
-#include <stdint.h>
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <map>
@@ -324,7 +324,7 @@ const std::vector<faction_mission> &faction_mission::get_all()
     return faction_mission_factory.get_all();
 }
 
-std::optional<mission_kind> faction_mission::behavior_of( const std::string &name )
+std::optional<mission_kind> faction_mission::behavior_of( const std::string_view name )
 {
     for( const std::pair<std::string_view, mission_kind> &behavior : camp_mission_behaviors ) {
         if( behavior.first == name ) {

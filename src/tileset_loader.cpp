@@ -482,7 +482,7 @@ atlas_upload_interrupt tileset_cache::loader::load( const std::string &tileset_i
         // below, or season lookups would return freed tiles
         for( auto &by_season : ts.tile_ids_by_season ) {
             for( auto it = by_season.begin(); it != by_season.end(); ) {
-                auto &value = it->second;
+                tileset::season_tile_value &value = it->second;
                 if( invalid_tiles.count( value.default_tile ) ) {
                     value.default_tile = nullptr;
                 }

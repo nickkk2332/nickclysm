@@ -245,6 +245,7 @@ TEST_CASE( "terr-j02_kiln_start_matches_old_code", "[audit][examine]" )
     for( const furn_str_id &kiln : kilns ) {
         for( const std::vector<itype_id> &fill : fills ) {
             std::vector<item> items;
+            items.reserve( fill.size() );
             for( const itype_id &type : fill ) {
                 items.push_back( made_ago( type, 2_days ) );
             }
@@ -623,9 +624,7 @@ std::optional<int> old_entry_yield( const std::string &type, int roll, butcher_t
     if( action == butcher_type::QUICK ) {
         if( type == "flesh" ) {
             roll /= 4;
-        } else if( type == "bone" ) {
-            roll /= 2;
-        } else if( mt.size >= creature_size::medium && type == "skin" ) {
+        } else if( type == "bone" || ( mt.size >= creature_size::medium && type == "skin" ) ) {
             roll /= 2;
         } else if( type == "offal" ) {
             roll /= 5;

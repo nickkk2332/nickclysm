@@ -122,10 +122,10 @@ static const requirement_id
 requirement_data_inline_recipe_minifridge( "inline_recipe_minifridge" );
 
 static const snippet_id
-snippet_epilogue_faction_free_merchants_0( "epilogue_faction_free_merchants_0" );
+translation_epilogue_faction_free_merchants_0( "epilogue_faction_free_merchants_0" );
 static const snippet_id
-snippet_epilogue_faction_free_merchants_150( "epilogue_faction_free_merchants_150" );
-static const snippet_id snippet_epilogue_faction_old_guard_0( "epilogue_faction_old_guard_0" );
+translation_epilogue_faction_free_merchants_150( "epilogue_faction_free_merchants_150" );
+static const snippet_id translation_epilogue_faction_old_guard_0( "epilogue_faction_old_guard_0" );
 
 static const string_id<npc_template>
 npc_template_audit_loading_npc_child( "audit_loading_npc_child" );
@@ -276,10 +276,10 @@ TEST_CASE( "npc-j02_faction_templates_load_through_generic_factory", "[audit][np
         CHECK( has_relation( *child, "old_guard", npc_factions::relationship::watch_your_back ) );
 
         REQUIRE( parent->epilogue_data.size() == 2 );
-        CHECK( parent->epilogue_data[1].epilogue == snippet_epilogue_faction_free_merchants_150 );
+        CHECK( parent->epilogue_data[1].epilogue == translation_epilogue_faction_free_merchants_150 );
         REQUIRE( child->epilogue_data.size() == 2 );
-        CHECK( child->epilogue_data[0].epilogue == snippet_epilogue_faction_free_merchants_0 );
-        CHECK( child->epilogue_data[1].epilogue == snippet_epilogue_faction_old_guard_0 );
+        CHECK( child->epilogue_data[0].epilogue == translation_epilogue_faction_free_merchants_0 );
+        CHECK( child->epilogue_data[1].epilogue == translation_epilogue_faction_old_guard_0 );
 
         CHECK( child->get_name() == "Audit Loading Parents" );
         CHECK( child->id == faction_audit_loading_faction_child );
@@ -348,7 +348,7 @@ TEST_CASE( "craft-j01_copy_from_recipes_inherit_and_change_inline_requirements",
 {
     SECTION( "a copy inherits the groups it doesn't give" ) {
         const requirement_data &req = recipe_cudgel_audit_loading_inherit->simple_requirements();
-        const auto &comps = req.get_components();
+        const requirement_data::alter_item_comp_vector &comps = req.get_components();
         REQUIRE( comps.size() == 2 );
         CHECK( group_has( comps, 0, itype_2x4, 1 ) );
         CHECK( group_has( comps, 1, itype_nail, 2 ) );
@@ -358,7 +358,7 @@ TEST_CASE( "craft-j01_copy_from_recipes_inherit_and_change_inline_requirements",
     }
     SECTION( "a copy replaces, extends and deletes groups" ) {
         const requirement_data &req = recipe_cudgel_audit_loading_change->simple_requirements();
-        const auto &comps = req.get_components();
+        const requirement_data::alter_item_comp_vector &comps = req.get_components();
         // [2x4], [nail or rock] less nail, then [duct_tape]
         REQUIRE( comps.size() == 3 );
         CHECK( group_has( comps, 0, itype_2x4, 1 ) );

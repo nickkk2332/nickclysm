@@ -1510,13 +1510,14 @@ static std::vector<std::pair<int, point_abs_om>> missing_overmaps_near( overmapb
     for( const point_abs_om &om : closest_points_first( center, 0,
             special_search_generated_rings ) ) {
         const point_abs_omt corner = coords::project_to<coords::omt>( om );
-        const int dx = std::max( { 0, corner.x() - origin.x(),
-                                   origin.x() - ( corner.x() + OMAPX - 1 )
-                                 } );
-        const int dy = std::max( { 0, corner.y() - origin.y(),
-                                   origin.y() - ( corner.y() + OMAPY - 1 )
-                                 } );
-        const int om_dist = std::max( dx, dy );
+        // how far the origin is outside the overmap's OMTs, on each axis
+        const point gap( std::max( { 0, corner.x() - origin.x(),
+                                     origin.x() - ( corner.x() + OMAPX - 1 )
+                                   } ),
+                         std::max( { 0, corner.y() - origin.y(),
+                                     origin.y() - ( corner.y() + OMAPY - 1 )
+                                   } ) );
+        const int om_dist = std::max( gap.x, gap.y );
         if( om_dist <= max_dist && buffer.get_existing( om ) == nullptr ) {
             missing.emplace_back( om_dist, om );
         }

@@ -132,7 +132,7 @@ TEST_CASE( "mgen-b03_remove_npcs_checks_its_class", "[audit][mapgen]" )
 // mapgen, lacked the flag.
 TEST_CASE( "mgen-b06_variable_weight_mapgen_is_checked_against_its_terrain", "[audit][mapgen]" )
 {
-    const std::string key = oter_audit_partial_data_var_pred_omt.str();
+    const std::string &key = oter_audit_partial_data_var_pred_omt.str();
     // Its own terrain has REQUIRES_PREDECESSOR; a field has not.
     const std::string own = capture_debugmsg_during( [&key]() {
         check_mapgen_consistent_with( key, oter_audit_partial_data_var_pred_omt.obj() );

@@ -13314,7 +13314,7 @@ void json_talk_topic::delete_responses( const JsonObject &match )
     const bool by_text = match.has_member( "text" );
     const bool by_topic = match.has_string( "topic" );
     if( !by_text && !by_topic ) {
-        match.throw_error( "a response to delete needs a \"text\", a \"topic\" or both" );
+        match.throw_error( R"(a response to delete needs a "text", a "topic" or both)" );
     }
     translation text;
     if( by_text ) {

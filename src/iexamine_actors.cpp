@@ -501,7 +501,7 @@ static void read_messages( const JsonObject &jo, std::string_view name,
     }
 }
 
-static void read_process_eocs( const JsonObject &jo, const std::string &src,
+static void read_process_eocs( const JsonObject &jo, const std::string_view src,
                                std::vector<effect_on_condition_id> &eocs )
 {
     eocs.clear();

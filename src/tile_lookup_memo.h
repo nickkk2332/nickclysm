@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -79,7 +80,7 @@ class tile_lookup_memo
         /** The remembered answer, or nullptr if this lookup has not been made. */
         const Result *find( size_t season, size_t category, const std::string &id,
                             tile_lookup_suffix suffix, int intensity,
-                            const std::string &variant ) const {
+                            const std::string_view variant ) const {
             if( season >= Seasons || category >= Categories ) {
                 return nullptr;
             }
@@ -98,7 +99,7 @@ class tile_lookup_memo
          */
         const Result *find_by_int_id( size_t season, size_t category, int int_id,
                                       tile_lookup_suffix suffix, int intensity,
-                                      const std::string &variant ) const {
+                                      const std::string_view variant ) const {
             if( season >= Seasons || category >= Categories || int_id < 0 ) {
                 return nullptr;
             }
@@ -113,15 +114,15 @@ class tile_lookup_memo
          * Remembers `result` as the answer to this lookup and returns it.  The reference is
          * valid until the next call that changes the memo.
          */
-        const Result &remember( size_t season, size_t category, const std::string &id,
-                                tile_lookup_suffix suffix, int intensity, const std::string &variant,
+        const Result &remember( size_t season, size_t category, const std::string_view id,
+                                tile_lookup_suffix suffix, int intensity, const std::string_view variant,
                                 Result result ) {
             if( season >= Seasons || category >= Categories ) {
                 overflow = std::move( result );
                 return overflow;
             }
-            std::vector<answer> &for_id = answers[season][category][id];
-            for_id.push_back( { suffix, intensity, variant, std::move( result ) } );
+            std::vector<answer> &for_id = answers[season][category][std::string( id )];
+            for_id.push_back( { suffix, intensity, std::string( variant ), std::move( result ) } );
             ++count;
             return for_id.back().result;
         }
@@ -129,7 +130,7 @@ class tile_lookup_memo
         /** As remember(), for the lookup find_by_int_id() finds. */
         const Result &remember_by_int_id( size_t season, size_t category, int int_id,
                                           tile_lookup_suffix suffix, int intensity,
-                                          const std::string &variant, Result result ) {
+                                          const std::string_view variant, Result result ) {
             if( season >= Seasons || category >= Categories || int_id < 0 ||
                 int_id >= int_id_limit ) {
                 overflow = std::move( result );
@@ -140,7 +141,7 @@ class tile_lookup_memo
                 by_int_id.resize( static_cast<size_t>( int_id ) + 1 );
             }
             std::vector<answer> &for_id = by_int_id[static_cast<size_t>( int_id )];
-            for_id.push_back( { suffix, intensity, variant, std::move( result ) } );
+            for_id.push_back( { suffix, intensity, std::string( variant ), std::move( result ) } );
             ++count;
             return for_id.back().result;
         }
@@ -180,7 +181,7 @@ class tile_lookup_memo
         using by_int_id_table = std::vector<std::vector<answer>>;
 
         static const Result *find_in( const std::vector<answer> &for_id, tile_lookup_suffix suffix,
-                                      int intensity, const std::string &variant ) {
+                                      int intensity, const std::string_view variant ) {
             for( const answer &a : for_id ) {
                 if( a.suffix == suffix && a.intensity == intensity && a.variant == variant ) {
                     return &a.result;

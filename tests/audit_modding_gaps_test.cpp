@@ -63,12 +63,14 @@ effect_on_condition_EOC_TEST_PAID_BIONIC( "EOC_TEST_PAID_BIONIC" );
 
 static const efftype_id effect_test_grapple_mark( "test_grapple_mark" );
 
+static const faction_id faction_free_merchants( "free_merchants" );
 static const faction_id faction_test_npc_ai_doves( "test_npc_ai_doves" );
 static const faction_id faction_test_npc_ai_hawks( "test_npc_ai_hawks" );
 
 static const itype_id itype_gloves_leather( "gloves_leather" );
 
 static const mfaction_str_id monfaction_animal( "animal" );
+static const mfaction_str_id monfaction_zombie( "zombie" );
 
 static const mongroup_id GROUP_TEST_SPAWN_DATA( "GROUP_TEST_SPAWN_DATA" );
 static const mongroup_id GROUP_TEST_SPAWN_LOC( "GROUP_TEST_SPAWN_LOC" );
@@ -304,7 +306,7 @@ TEST_CASE( "veh-j01_eocs_damage_vehicle_parts_and_set_the_owner", "[audit][vehic
     CHECK( car->part_count() == parts );
 
     effect_on_condition_EOC_TEST_OWN_VEHICLE->activate( d );
-    CHECK( car->get_owner() == faction_id( "free_merchants" ) );
+    CHECK( car->get_owner() == faction_free_merchants );
     CHECK( global_number( "test_veh_owned" ) == 1 );
 }
 
@@ -387,10 +389,10 @@ TEST_CASE( "mondt-j01_group_spawn_data_gives_effects_variables_and_faction",
     }
     SECTION( "a mapgen piece's spawn data goes on top of the entry's" ) {
         spawn_data piece;
-        piece.faction = mfaction_str_id( "zombie" );
+        piece.faction = monfaction_zombie;
         piece.str_variables["test_tag"] = "piece";
         const spawn_data merged = merged_spawn_data( data, piece );
-        CHECK( merged.faction == mfaction_str_id( "zombie" ) );
+        CHECK( merged.faction == monfaction_zombie );
         CHECK( merged.str_variables.at( "test_tag" ) == "piece" );
         CHECK( merged.num_variables.at( "test_level" ) == 3 );
         CHECK( merged.effects.size() == 1 );

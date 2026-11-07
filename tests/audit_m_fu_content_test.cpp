@@ -1,7 +1,10 @@
+#include <functional>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -20,24 +23,20 @@
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "global_vars.h"
-#include "harvest.h"
 #include "init.h"
 #include "item.h"
 #include "json_loader.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "mapdata.h"
 #include "monster.h"
-#include "mtype.h"
 #include "npc.h"
 #include "options.h"
 #include "options_helpers.h"
 #include "path_info.h"
 #include "player_helpers.h"
 #include "point.h"
-#include "skill.h"
 #include "sounds.h"
 #include "speech.h"
 #include "string_formatter.h"
@@ -47,6 +46,9 @@
 #include "veh_type.h"
 #include "weather.h"
 #include "weather_type.h"
+
+class harvest_drop_type;
+struct mtype;
 
 static const bionic_id bio_creeyncaggii( "bio_creeyncaggii" );
 static const bionic_id bio_dex_enhancer( "bio_dex_enhancer" );
@@ -127,7 +129,7 @@ static const vpart_id vpart_woodboard( "woodboard" );
 namespace
 {
 
-bool is_test_id( const std::string &id )
+bool is_test_id( const std::string_view id )
 {
     return id.rfind( "test_", 0 ) == 0;
 }

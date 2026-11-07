@@ -1,6 +1,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "cata_catch.h"

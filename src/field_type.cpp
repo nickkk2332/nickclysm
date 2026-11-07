@@ -15,15 +15,10 @@
 #include "scent_block.h"
 #include "string_formatter.h"
 
+const field_type_str_id fd_null = field_type_str_id::NULL_ID();
+
 static const damage_type_id damage_bash( "bash" );
 
-static const furn_str_id furn_f_ash( "f_ash" );
-
-static const itype_id itype_ash( "ash" );
-
-static const ter_str_id ter_t_dirt( "t_dirt" );
-
-const field_type_str_id fd_null = field_type_str_id::NULL_ID();
 const field_type_str_id fd_acid( "fd_acid" );
 const field_type_str_id fd_acid_vent( "fd_acid_vent" );
 const field_type_str_id fd_bile( "fd_bile" );
@@ -77,6 +72,18 @@ const field_type_str_id fd_tear_gas( "fd_tear_gas" );
 const field_type_str_id fd_tindalos_rift( "fd_tindalos_rift" );
 const field_type_str_id fd_toxic_gas( "fd_toxic_gas" );
 const field_type_str_id fd_web( "fd_web" );
+// The vanilla fields the processors default to (set_defaults)
+static const field_type_str_id field_fd_acid( "fd_acid" );
+static const field_type_str_id field_fd_electricity( "fd_electricity" );
+static const field_type_str_id field_fd_fire( "fd_fire" );
+static const field_type_str_id field_fd_smoke( "fd_smoke" );
+static const field_type_str_id field_fd_web( "fd_web" );
+
+static const furn_str_id furn_f_ash( "f_ash" );
+
+static const itype_id itype_ash( "ash" );
+
+static const ter_str_id ter_t_dirt( "t_dirt" );
 
 namespace io
 {
@@ -287,8 +294,8 @@ void field_processor_def::set_defaults()
     // The values the vanilla field using this processor had in C++
     switch( type ) {
         case field_processor_type::fire:
-            smoke_field = fd_smoke;
-            fuel_field = fd_web;
+            smoke_field = field_fd_smoke;
+            fuel_field = field_fd_web;
             ash_item = itype_ash;
             ash_furniture = furn_f_ash;
             break;
@@ -299,13 +306,13 @@ void field_processor_def::set_defaults()
             damage_type = damage_bash;
             break;
         case field_processor_type::shock_vent:
-            field = fd_electricity;
+            field = field_fd_electricity;
             break;
         case field_processor_type::acid_vent:
-            field = fd_acid;
+            field = field_fd_acid;
             break;
         case field_processor_type::incendiary:
-            field = fd_fire;
+            field = field_fd_fire;
             break;
         case field_processor_type::fall:
         case field_processor_type::extinguish:

@@ -193,6 +193,7 @@ TEST_CASE( "vint-j01_math_reads_parts_by_id_fuel_and_battery", "[audit][vehicle]
         car.set_hp( flat, 0, true );
         car.set_hp( worn, durability / 2, true );
         std::vector<double> hp;
+        hp.reserve( wheels.size() );
         for( const int idx : wheels ) {
             hp.push_back( car.part( idx ).hp() );
         }

@@ -38,6 +38,8 @@ static const mutation_category_id mutation_category_ANY( "ANY" );
 
 static const trait_group::Trait_group_tag Trait_group_EMPTY_GROUP( "EMPTY_GROUP" );
 
+static const vitamin_id vitamin_null( "null" );
+
 using TraitGroupMap =
     std::map<trait_group::Trait_group_tag, shared_ptr_fast<Trait_group>>;
 using TraitSet = std::set<trait_id>;
@@ -111,7 +113,7 @@ void mutation_category_trait::load( const JsonObject &jsobj, std::string_view )
     static_cast<void>( translate_marker_context( "memorial_female", "Crossed a threshold" ) );
     optional( jsobj, was_loaded, "memorial_message", raw_memorial_message,
               text_style_check_reader(), "Crossed a threshold" );
-    optional( jsobj, was_loaded, "vitamin", vitamin, vitamin_id( "null" ) );
+    optional( jsobj, was_loaded, "vitamin", vitamin, vitamin_null );
     optional( jsobj, was_loaded, "threshold_min", threshold_min, 2200 );
     optional( jsobj, was_loaded, "base_removal_chance", base_removal_chance, 100 );
     optional( jsobj, was_loaded, "base_removal_cost_mul", base_removal_cost_mul, 3.0f );
