@@ -100,7 +100,25 @@
     "progress": "Cutting logs in the woods…",
     "depart_message": "departs to cut logs…",
     "return_message": "returns from working in the woods…",
-    "train": { "skill": "construction", "difficulty": 2 }
+    "train": { "skill": "construction", "difficulty": 2 },
+    "target_terrains": [
+      "forest",
+      "forest_thick",
+      "forest_trail",
+      "forest_trail_intersection",
+      "rural_road_forest",
+      "special_forest",
+      "special_forest_thick"
+    ],
+    "cleared_terrains": {
+      "forest": "field",
+      "forest_thick": "field",
+      "forest_trail": "field",
+      "forest_trail_intersection": "field",
+      "rural_road_forest": "rural_road",
+      "special_forest": "field",
+      "special_forest_thick": "field"
+    }
   },
   {
     "type": "faction_mission",
@@ -128,7 +146,25 @@
     "progress": "Clearing a forest…",
     "depart_message": "departs to clear a forest…",
     "return_message": "returns from working in the woods…",
-    "train": { "skill": "construction", "difficulty": 1 }
+    "train": { "skill": "construction", "difficulty": 1 },
+    "target_terrains": [
+      "forest",
+      "forest_thick",
+      "forest_trail",
+      "forest_trail_intersection",
+      "rural_road_forest",
+      "special_forest",
+      "special_forest_thick"
+    ],
+    "cleared_terrains": {
+      "forest": "field",
+      "forest_thick": "field",
+      "forest_trail": "field",
+      "forest_trail_intersection": "field",
+      "rural_road_forest": "rural_road",
+      "special_forest": "field",
+      "special_forest_thick": "field"
+    }
   },
   {
     "type": "faction_mission",
@@ -154,7 +190,18 @@
     "progress": "Setting up a hide site…",
     "depart_message": "departs to build a hide site…",
     "return_message": "returns from working on the hide site…",
-    "train": { "skill": "survival", "difficulty": 3 }
+    "train": { "skill": "survival", "difficulty": 3 },
+    "target_terrains": [
+      "forest",
+      "forest_thick",
+      "forest_trail",
+      "forest_trail_intersection",
+      "rural_road_forest",
+      "special_forest",
+      "special_forest_thick",
+      "field",
+      "forest_water"
+    ]
   },
   {
     "type": "faction_mission",
@@ -282,7 +329,7 @@
     "name": "Recruiting",
     "desc": "Send a companion to search for survivors willing to join your camp.",
     "behavior": "recruiting",
-    "skill": "gun",
+    "skill": "speech",
     "activity": "MODERATE_EXERCISE",
     "positions": 1,
     "required_provides": [ "recruiting" ],
@@ -431,7 +478,20 @@
     "progress": "Surveying for suitable fields…",
     "depart_message": "departs to look for suitable fields…",
     "return_message": "stops looking for terrain to turn into fields…",
-    "train": { "skill": "construction", "difficulty": 0 }
+    "train": { "skill": "construction", "difficulty": 0 },
+    "field_terrains": [
+      "t_clay",
+      "t_dirt",
+      "t_dirtmound",
+      "t_grass",
+      "t_grass_dead",
+      "t_grass_golf",
+      "t_grass_long",
+      "t_grass_tall",
+      "t_moss",
+      "t_sand"
+    ],
+    "field_overmap_terrain": "field"
   },
   {
     "type": "faction_mission",

@@ -127,10 +127,6 @@
     "carry_override": "NC_DM_MERCHANT_carry",
     "shopkeeper_price_rules": [
       { "group": "NC_DM_MERCHANT_stock", "markup": 2.5 },
-      { "group": "zombie_humanoid", "fixed_adj": -2.5 },
-      { "group": "human", "fixed_adj": -2.5 },
-      { "group": "arachnid", "fixed_adj": -2.5 },
-      { "group": "triffid_paralytic", "fixed_adj": -2.5 },
       { "group": "default_zombie_death_drops", "fixed_adj": -0.5 },
       { "group": "mon_zombie_cop_death_drops", "fixed_adj": -0.5 },
       { "group": "mon_zombie_fireman_death_drops", "fixed_adj": -0.5 },

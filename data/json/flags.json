@@ -1870,6 +1870,11 @@
     "type": "json_flag"
   },
   {
+    "id": "NO_CAMP_FARMING",
+    "type": "json_flag",
+    "//": "Seeds that camp companions won't plant or harvest."
+  },
+  {
     "id": "NO_DROP",
     "type": "json_flag"
   },

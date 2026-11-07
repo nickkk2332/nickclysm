@@ -127,6 +127,10 @@ void npc_class::check_consistency()
         if( !cl.traits.is_valid() ) {
             debugmsg( "Trait group %s is undefined", cl.traits.c_str() );
         }
+
+        for( const faction_price_rule &rule : cl.shop_price_rules ) {
+            rule.check( string_format( "npc_class %s shopkeeper_price_rules", cl.id.str() ) );
+        }
     }
 }
 

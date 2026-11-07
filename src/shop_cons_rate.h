@@ -32,6 +32,13 @@ struct icg_entry {
 
     bool operator==( icg_entry const &rhs ) const;
     bool matches( item const &it, npc const &beta ) const;
+    /// What the condition (and a price rule's math) sees for @ref it, traded with @ref beta: the
+    /// avatar as alpha, the trader as beta, and the item in the context variables trade_item,
+    /// trade_item_category, trade_item_count, trade_item_damage, trade_item_rotten and
+    /// trade_item_owner
+    static const_dialogue trade_dialogue( item const &it, npc const &beta );
+    /// Reports an item, category or group that isn't defined; @ref owner says whose entry it is
+    void check( std::string_view owner ) const;
 };
 
 class icg_entry_reader : public generic_typed_reader<icg_entry_reader>
@@ -82,7 +89,9 @@ struct shopkeeper_blacklist {
     static const std::vector<shopkeeper_blacklist> &get_all();
     static void load_blacklist( const JsonObject &jo, std::string const &src );
     static void finalize_all();
+    static void check_all();
     void load( const JsonObject &jo, std::string_view src );
+    void check() const;
     icg_entry const *matches( item const &it, npc const &beta ) const;
 };
 
@@ -97,7 +106,9 @@ struct shopkeeper_whitelist {
     static const std::vector<shopkeeper_whitelist> &get_all();
     static void load_whitelist( const JsonObject &jo, std::string const &src );
     static void finalize_all();
+    static void check_all();
     void load( const JsonObject &jo, std::string_view src );
+    void check() const;
     icg_entry const *matches( item const &it, npc const &beta ) const;
 };
 

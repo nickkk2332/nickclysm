@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <list>
 #include <map>
 #include <memory>
@@ -87,6 +88,7 @@
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
 #include "pimpl.h"
+#include "planting_memo.h"
 #include "player_activity.h"
 #include "point.h"
 #include "recipe.h"
@@ -116,6 +118,8 @@ static const addiction_id addiction_alcohol( "alcohol" );
 
 static const efftype_id effect_HACK_camp_vision_for_npc( "HACK_camp_vision_for_npc" );
 
+static const flag_id json_flag_NO_CAMP_FARMING( "NO_CAMP_FARMING" );
+
 static const furn_str_id furn_f_plant_harvest( "f_plant_harvest" );
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 
@@ -123,14 +127,10 @@ static const itype_id itype_camp_meal_large( "camp_meal_large" );
 static const itype_id itype_camp_meal_medium( "camp_meal_medium" );
 static const itype_id itype_camp_meal_small( "camp_meal_small" );
 static const itype_id itype_duffelbag( "duffelbag" );
-static const itype_id itype_fungal_seeds( "fungal_seeds" );
 static const itype_id itype_log( "log" );
-static const itype_id itype_marloss_seed( "marloss_seed" );
-static const itype_id itype_seed_buckwheat( "seed_buckwheat" );
 static const itype_id itype_stick_long( "stick_long" );
 
 static const oter_str_id oter_faction_hide_site_0( "faction_hide_site_0" );
-static const oter_str_id oter_field( "field" );
 
 static const oter_type_str_id oter_type_faction_hide_site_0( "faction_hide_site_0" );
 static const oter_type_str_id oter_type_field( "field" );
@@ -140,7 +140,6 @@ static const oter_type_str_id oter_type_forest_trail( "forest_trail" );
 static const oter_type_str_id oter_type_forest_trail_intersection( "forest_trail_intersection" );
 static const oter_type_str_id oter_type_forest_water( "forest_water" );
 static const oter_type_str_id oter_type_road( "road" );
-static const oter_type_str_id oter_type_rural_road( "rural_road" );
 static const oter_type_str_id oter_type_rural_road_forest( "rural_road_forest" );
 static const oter_type_str_id oter_type_special_forest( "special_forest" );
 static const oter_type_str_id oter_type_special_forest_thick( "special_forest_thick" );
@@ -158,17 +157,9 @@ static const skill_id skill_stabbing( "stabbing" );
 static const skill_id skill_survival( "survival" );
 static const skill_id skill_unarmed( "unarmed" );
 
-static const ter_str_id ter_t_clay( "t_clay" );
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
-static const ter_str_id ter_t_grass( "t_grass" );
-static const ter_str_id ter_t_grass_dead( "t_grass_dead" );
-static const ter_str_id ter_t_grass_golf( "t_grass_golf" );
-static const ter_str_id ter_t_grass_long( "t_grass_long" );
-static const ter_str_id ter_t_grass_tall( "t_grass_tall" );
 static const ter_str_id ter_t_improvised_shelter( "t_improvised_shelter" );
-static const ter_str_id ter_t_moss( "t_moss" );
-static const ter_str_id ter_t_sand( "t_sand" );
 static const ter_str_id ter_t_stump( "t_stump" );
 static const ter_str_id ter_t_tree_young( "t_tree_young" );
 static const ter_str_id ter_t_trunk( "t_trunk" );
@@ -314,6 +305,8 @@ static std::string camp_trip_description( const time_duration &total_time,
  * TODO: Convert to JSON basic on dynamic line type structure
  */
 static bool survive_random_encounter( npc &comp, std::string &situation, int favor, int threat );
+static bool survive_json_encounter( npc &comp, const faction_mission &def,
+                                    const tripoint_abs_omt &camp_pos );
 static void send_camp_upgrade_completed( const basecamp &camp, const tripoint_abs_omt &pos,
         const std::string &upgrade );
 
@@ -347,6 +340,13 @@ static std::string camp_mission_trains( const faction_mission &def )
 static int camp_mission_training_difficulty( const faction_mission &def )
 {
     return def.train ? def.train->difficulty : 0;
+}
+
+// The recruiting mission's own rules, or the vanilla ones for a mission that gives none
+static const camp_mission_recruiting &recruiting_of( const faction_mission &def )
+{
+    static const camp_mission_recruiting vanilla;
+    return def.recruit ? *def.recruit : vanilla;
 }
 
 // Runs @ref eocs of camp mission @ref def with companion @ref comp as alpha and the avatar as beta
@@ -993,31 +993,36 @@ void basecamp::get_available_missions( mission_data &mission_key, map &here )
     // Missions that belong exclusively to the central tile
     {
         if( directions.size() < 8 ) {
-            bool free_non_field_found = false;
+            // the overmap terrain types of the neighbours with no expansion
+            std::set<oter_type_str_id> free_types;
             bool possible_expansion_found = false;
 
             for( const auto &dir : base_camps::all_directions ) {
                 if( dir.first != base_camps::base_dir && expansions.find( dir.first ) == expansions.end() ) {
                     const oter_id &omt_ref = overmap_buffer.ter( omt_pos + dir.first );
-                    if( !free_non_field_found && omt_ref->get_type_id() != oter_type_field ) {
-                        free_non_field_found = true;
-                    }
+                    free_types.insert( omt_ref->get_type_id() );
                     if( !possible_expansion_found ) {
                         const std::optional<mapgen_arguments> *maybe_args =
                             overmap_buffer.mapgen_args( omt_pos + dir.first );
                         possible_expansion_found = recipe_group::has_recipes_by_id( "all_faction_base_expansions",
                                                    omt_ref, maybe_args );
                     }
-                    if( free_non_field_found && possible_expansion_found ) {
-                        break;
-                    }
                 }
             }
+            // a survey_field mission has a neighbour that isn't yet what it makes fields into
+            const auto has_unsurveyed = [&free_types]( const faction_mission & def ) {
+                const oter_type_str_id field_type = def.field_terrain.is_valid() ?
+                                                    def.field_terrain->get_type_id() : oter_type_field;
+                return std::any_of( free_types.begin(), free_types.end(),
+                [&field_type]( const oter_type_str_id & type ) {
+                    return type != field_type;
+                } );
+            };
 
             // the base-only camp missions from JSON (surveys)
             for( const faction_mission &def : faction_mission::get_all() ) {
                 if( !def.base_only() || !has_mission_provides( def, base_dir ) ||
-                    ( def.behavior == Camp_Survey_Field && !free_non_field_found ) ) {
+                    ( def.behavior == Camp_Survey_Field && !has_unsurveyed( def ) ) ) {
                     continue;
                 }
                 offer_camp_mission( mission_key, def, base_dir,
@@ -1398,7 +1403,7 @@ void basecamp::handle_camp_mission( const faction_mission &def, const ui_mission
 
         case Camp_Recruiting:
             if( ret ) {
-                recruit_return( id, recruit_evaluation() );
+                recruit_return( id, recruit_evaluation( def ) );
             } else {
                 start_camp_mission( def, id );
             }
@@ -1502,23 +1507,20 @@ void basecamp::offer_camp_mission( mission_data &mission_key, const faction_miss
             entry = def.describe( npc_count, nullptr, std::function( [this, &dir, &plots, op]() {
                 return farm_description( dir, plots, op );
             } ) );
-            bool possible = plots > 0;
-            if( op == farm_ops::plant ) {
-                const tripoint_abs_omt target_omt = omt_pos + dir;
-                const tripoint_bub_ms target_pnt = get_map().get_bub( project_to<coords::ms>( target_omt ) );
-                // FIXME/HACK: Always checks buckwheat seeds!
-                possible = possible && warm_enough_to_plant( target_pnt, itype_seed_buckwheat ).success();
-            }
+            // whether it is warm enough depends on the seed: planting offers only the seeds that
+            // can go in now
+            const bool possible = plots > 0;
             mission_key.add_start( miss_id, name_display_of( miss_id ), entry, possible && can_start );
             break;
         }
         case Camp_Recruiting:
-            mission_key.add_start( miss_id, name_display_of( miss_id ), recruit_description( npc_count ),
+            mission_key.add_start( miss_id, name_display_of( miss_id ), recruit_description( def, npc_count ),
                                    has_room && can_start );
             break;
         default: {
             // with no list of what it brings back, show a sample of its item group
-            const item_group_id group = def.results.item_group_in( season_of_year( calendar::turn ) );
+            const item_group_id group = def.results_at( omt_pos ).item_group_in(
+                                            season_of_year( calendar::turn ) );
             if( !def.items_label.empty() && def.items_possibilities.empty() && !group.is_null() ) {
                 entry = def.describe( npc_count, std::function( [&group]() {
                     return gathering_description( group );
@@ -2071,25 +2073,16 @@ void basecamp::start_menial_labor( const faction_mission &def )
     run_camp_mission_eocs( def.start_eocs, def, *comp, omt_pos );
 }
 
-static void change_cleared_terrain( tripoint_abs_omt forest )
+// A logging mission's tile with almost no trees left becomes what the mission's
+// "cleared_terrains" says its type does; a type it doesn't list stays as it is
+static void change_cleared_terrain( tripoint_abs_omt forest, const faction_mission &def )
 {
     if( om_cutdown_trees_est( forest ) < 5 ) {
         const oter_id &omt_trees = overmap_buffer.ter( forest );
 
         // Oter types before and after clear cutting, if value (after) is linear, key (before) should also be linear, otherwise any combination of rotatable/linear/not rotatable should work
-        static const std::unordered_map<oter_type_str_id, oter_type_str_id> clear_cut_conversion = {
-            { oter_type_forest, oter_type_field },
-            { oter_type_forest_thick, oter_type_field },
-            { oter_type_forest_trail, oter_type_field },
-            { oter_type_forest_trail_intersection, oter_type_field },
-            { oter_type_rural_road_forest, oter_type_rural_road },
-            { oter_type_special_forest, oter_type_field },
-            { oter_type_special_forest_thick, oter_type_field }
-        };
-
-        auto converted_it = clear_cut_conversion.find( omt_trees->get_type_id() );
-        if( converted_it == clear_cut_conversion.end() ) {
-            popup( _( "%s isn't a recognized terrain.  Please file a bug report." ), omt_trees.id().c_str() );
+        const auto converted_it = def.cleared_terrains.find( omt_trees->get_type_id() );
+        if( converted_it == def.cleared_terrains.end() ) {
             return;
         } else {
             const oter_type_str_id &oter_type_clearcut = converted_it->second;
@@ -2107,6 +2100,7 @@ static void change_cleared_terrain( tripoint_abs_omt forest )
     }
 }
 
+// The tiles Camp_OM_Fortifications can run through; the faction missions name their own targets
 static const std::unordered_set<oter_type_str_id> terrains_forest = { oter_type_forest, oter_type_forest_thick, oter_type_forest_trail, oter_type_forest_trail_intersection, oter_type_rural_road_forest, oter_type_special_forest, oter_type_special_forest_thick };
 static const std::unordered_set<oter_type_str_id> terrains_field_swamp_forest = [] {
     std::unordered_set<oter_type_str_id> tmp = terrains_forest;
@@ -2115,10 +2109,17 @@ static const std::unordered_set<oter_type_str_id> terrains_field_swamp_forest = 
     return tmp;
 }();
 
+// The overmap terrain types a camp mission's companion can be sent to
+static std::unordered_set<oter_type_str_id> camp_mission_targets( const faction_mission &def )
+{
+    return std::unordered_set<oter_type_str_id>( def.target_terrains.begin(),
+            def.target_terrains.end() );
+}
+
 void basecamp::start_cut_logs( const mission_id &miss_id, const faction_mission &def )
 {
     const float exertion_level = def.exertion();
-    tripoint_abs_omt forest = om_target_tile( omt_pos, 1, 50, terrains_forest, true,
+    tripoint_abs_omt forest = om_target_tile( omt_pos, 1, 50, camp_mission_targets( def ), true,
                               tripoint_abs_omt::invalid, false,
                               _( "Select a forest (or road/trail) from %d to %d tiles away." ) );
     if( !forest.is_invalid() ) {
@@ -2156,7 +2157,7 @@ void basecamp::start_cut_logs( const mission_id &miss_id, const faction_mission 
             const time_duration travel_time = companion_travel_time_calc( path, trips );
             const time_duration total_time = base_camps::to_workdays( travel_time + chop_time );
             comp->companion_mission_time_ret = calendar::turn + total_time;
-            change_cleared_terrain( forest );
+            change_cleared_terrain( forest, def );
         }
     }
 }
@@ -2165,7 +2166,7 @@ void basecamp::start_clearcut( const mission_id &miss_id, const faction_mission 
 {
     const float exertion_level = def.exertion();
     popup( _( "Forests are the only valid cutting locations, with forest dirt roads, forest rural roads, and trails being valid as well.  Note that it's likely both forest and field roads look exactly the same after having been cleared." ) );
-    tripoint_abs_omt forest = om_target_tile( omt_pos, 1, 50, terrains_forest );
+    tripoint_abs_omt forest = om_target_tile( omt_pos, 1, 50, camp_mission_targets( def ) );
     if( !forest.is_invalid() ) {
         standard_npc sample_npc( "Temp" );
         sample_npc.set_fake( true );
@@ -2189,7 +2190,7 @@ void basecamp::start_clearcut( const mission_id &miss_id, const faction_mission 
         if( comp != nullptr ) {
             om_cutdown_trees_trunks( forest, 95 );
             om_harvest_ter_break( *comp, forest, ter_t_tree_young, 95 );
-            change_cleared_terrain( forest );
+            change_cleared_terrain( forest, def );
         }
     }
 }
@@ -2197,7 +2198,7 @@ void basecamp::start_clearcut( const mission_id &miss_id, const faction_mission 
 void basecamp::start_setup_hide_site( const mission_id &miss_id, const faction_mission &def )
 {
     const float exertion_level = def.exertion();
-    tripoint_abs_omt forest = om_target_tile( omt_pos, 10, 90, terrains_field_swamp_forest, true,
+    tripoint_abs_omt forest = om_target_tile( omt_pos, 10, 90, camp_mission_targets( def ), true,
                               omt_pos, true, _( "Select a forest, swamp, or field from %d to %d tiles away." ) );
     if( !forest.is_invalid() ) {
         pf::simple_path<tripoint_abs_omt> path = overmap_buffer.get_travel_path( omt_pos, forest,
@@ -3176,7 +3177,13 @@ void basecamp::start_crafting( const mission_id &miss_id )
 
 static bool farm_valid_seed( const item &itm )
 {
-    return itm.is_seed() && itm.typeId() != itype_marloss_seed && itm.typeId() != itype_fungal_seeds;
+    return itm.is_seed() && !itm.has_flag( json_flag_NO_CAMP_FARMING );
+}
+
+// camp plots are dirt mounds: a seed that needs other ground (water) can't go in one
+static bool farm_plot_takes_seed( const itype &seed )
+{
+    return ter_t_dirtmound->has_flag( seed.seed->required_terrain_flag );
 }
 
 std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, farm_ops op,
@@ -3214,8 +3221,8 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
     tripoint_omt_ms mapmin{ 0, 0, omt_tgt.z() };
     tripoint_omt_ms mapmax{ 2 * SEEX - 1, 2 * SEEY - 1, omt_tgt.z() };
     bool done_planting = false;
-    Character &player_character = get_player_character();
-    map &here = get_map();
+    // what the harvest yields goes to camp storage, like other mission results
+    std::vector<item> harvested;
     for( const tripoint_omt_ms &pos : farm_map.points_in_rectangle( mapmin, mapmax ) ) {
         if( done_planting ) {
             break;
@@ -3280,8 +3287,17 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
                             done_planting = true;
                             break;
                         }
-                        item *tmp_seed = seed_inv.back();
-                        seed_inv.pop_back();
+                        // the last seed this plot's ground takes (as manual planting checks);
+                        // the others stay with the companion and come back to camp
+                        auto takes = std::find_if( seed_inv.rbegin(), seed_inv.rend(),
+                        [&farm_map, &pos]( const item * seed ) {
+                            return farm_map.has_flag_ter( seed->type->seed->required_terrain_flag, pos );
+                        } );
+                        if( takes == seed_inv.rend() ) {
+                            break;
+                        }
+                        item *tmp_seed = *takes;
+                        seed_inv.erase( std::next( takes ).base() );
                         std::list<item> used_seed;
                         used_seed.push_back( *tmp_seed );
                         if( tmp_seed->count_by_charges() ) {
@@ -3324,7 +3340,7 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
                             int seed_cnt = std::max( 1, rng( plant_count / 4, plant_count / 2 ) );
                             for( item &i : iexamine::get_harvest_items( *seed->type, plant_count,
                                     seed_cnt, true ) ) {
-                                here.add_item_or_charges( player_character.pos_bub(), i );
+                                harvested.push_back( i );
                             }
                             farm_map.i_clear( pos );
                             farm_map.furn_set( pos, furn_str_id::NULL_ID() );
@@ -3342,6 +3358,9 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
     }
     if( comp ) {
         farm_map.save();
+    }
+    for( const item &crop : harvested ) {
+        place_results( crop );
     }
 
     int total_c = 0;
@@ -3388,12 +3407,16 @@ void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_i
                            exertion_level );
             break;
         case farm_ops::plant: {
-            inventory_filter_preset seed_filter( []( const item_location & loc ) {
-                return loc->is_seed() && loc->typeId() != itype_marloss_seed && loc->typeId() != itype_fungal_seeds;
+            // only seeds the plots take and that won't die of cold before they can be harvested
+            const tripoint_bub_ms target_pnt = get_map().get_bub( project_to<coords::ms>( omt_pos + dir ) );
+            const scoped_planting_memo memo;
+            inventory_filter_preset seed_filter( [&target_pnt]( const item_location & loc ) {
+                return farm_valid_seed( *loc ) && farm_plot_takes_seed( *loc->type ) &&
+                       warm_enough_to_plant( target_pnt, loc->typeId() ).success();
             } );
             drop_locations seed_selection = give_basecamp_equipment( seed_filter,
                                             _( "Which seeds do you wish to have planted?" ), _( "Selected seeds" ),
-                                            _( "You have no additional seeds to give your companions…" ) );
+                                            _( "You have no seeds that can be planted there now…" ) );
             if( seed_selection.empty() ) {
                 return;
             }
@@ -3708,12 +3731,15 @@ bool basecamp::camp_mission_return( const faction_mission &def, const mission_id
     }
 
     // how well it did the work, before the work trains it
-    const camp_mission_results &results = def.results;
+    const camp_mission_results &results = def.results_at( omt_pos );
     const int skill = static_cast<int>( std::round( results.skill_score.evaluate( *comp ) ) );
     const time_duration mission_time = calendar::turn - comp->companion_mission_time;
     if( def.encounter && def.encounter->one_in > 0 && one_in( def.encounter->one_in ) ) {
         std::string task = def.encounter->task.translated();
-        if( !survive_random_encounter( *comp, task, def.encounter->favor, def.encounter->threat ) ) {
+        const bool survived = def.encounter->eoc.is_null() ?
+                              survive_random_encounter( *comp, task, def.encounter->favor, def.encounter->threat ) :
+                              survive_json_encounter( *comp, def, omt_pos );
+        if( !survived ) {
             return false;
         }
     }
@@ -3992,21 +4018,20 @@ void basecamp::recruit_return( const mission_id &miss_id, int score )
         return;
     }
 
+    const camp_mission_recruiting &recruiting = recruiting_of( *def );
     npc_ptr recruit;
     //Success of finding an NPC to recruit, based on survival/tracking
-    float skill = comp->get_skill_level( skill_survival );
-    if( rng( 1, 20 ) + skill > 17 ) {
-        recruit = make_shared_fast<npc>();
-        recruit->normalize();
-        recruit->randomize();
+    float skill = comp->get_skill_level( recruiting.find_skill );
+    if( rng( 1, 20 ) + skill > recruiting.find_difficulty ) {
+        recruit = talk_function::camp_new_recruit( recruiting );
         popup( _( "%s encountered %s…" ), comp->get_name(), recruit->get_name() );
     } else {
         popup( _( "%s didn't find anyone to recruit…" ), comp->get_name() );
         return;
     }
     //Chance of convincing them to come back
-    skill = ( 100 * comp->get_skill_level( skill_speech ) + score ) / 100;
-    if( rng( 1, 20 ) + skill  > 19 ) {
+    skill = ( 100 * comp->get_skill_level( recruiting.convince_skill ) + score ) / 100;
+    if( rng( 1, 20 ) + skill > recruiting.convince_difficulty ) {
         popup( _( "%s convinced %s to hear a recruitment offer from you…" ), comp->get_name(),
                recruit->get_name() );
     } else {
@@ -4078,7 +4103,7 @@ void basecamp::recruit_return( const mission_id &miss_id, int score )
         }
     }
     // Roll for recruitment
-    if( rng( 1, 20 ) + appeal >= 10 ) {
+    if( rng( 1, 20 ) + appeal >= recruiting.join_difficulty ) {
         popup( _( "%s has been convinced to join!" ), recruit->get_name() );
     } else {
         popup( _( "%s wasn't interested…" ), recruit->get_name() );
@@ -4101,6 +4126,45 @@ void basecamp::recruit_return( const mission_id &miss_id, int score )
                               recruit->getID() ) );
     talk_function::follow( *recruit );
     g->load_npcs();
+    if( !recruiting.recruit_eocs.empty() ) {
+        dialogue d( get_talker_for( *recruit ), get_talker_for( player_character ) );
+        d.set_value( "camp_mission", def->id.str() );
+        d.set_value( "pos", project_to<coords::ms>( omt_pos ) );
+        for( const effect_on_condition_id &eoc : recruiting.recruit_eocs ) {
+            eoc->activate( d );
+        }
+    }
+}
+
+npc_ptr talk_function::camp_new_recruit( const camp_mission_recruiting &recruiting )
+{
+    npc_ptr recruit = make_shared_fast<npc>();
+    recruit->normalize();
+    int total = 0;
+    for( const std::pair<npc_class_id, int> &cls : recruiting.npc_classes ) {
+        total += std::max( cls.second, 0 );
+    }
+    for( const std::pair<npc_template_id, int> &tem : recruiting.npc_templates ) {
+        total += std::max( tem.second, 0 );
+    }
+    int roll = total > 0 ? rng( 1, total ) : 0;
+    for( const std::pair<npc_class_id, int> &cls : recruiting.npc_classes ) {
+        roll -= std::max( cls.second, 0 );
+        if( total > 0 && roll <= 0 ) {
+            recruit->randomize( cls.first );
+            return recruit;
+        }
+    }
+    for( const std::pair<npc_template_id, int> &tem : recruiting.npc_templates ) {
+        roll -= std::max( tem.second, 0 );
+        if( total > 0 && roll <= 0 ) {
+            recruit->load_npc_template( tem.first );
+            return recruit;
+        }
+    }
+    // no classes or templates: a random NPC with no class, as recruiting always found
+    recruit->randomize();
+    return recruit;
 }
 
 void basecamp::combat_mission_return( const mission_id &miss_id )
@@ -4195,7 +4259,7 @@ bool basecamp::survey_field_return( const mission_id &miss_id )
             }
         }
 
-        if( overmap_buffer.ter_existing( where ) == oter_field ) {
+        if( overmap_buffer.ter_existing( where ) == def->field_terrain.id() ) {
             if( query_yn(
                     _( "This location is already a field.  Do you want to finish this mission?  If not, another tile can be checked." ) ) ) {
                 finish_return( *comp, true, abort_msg, trained, training_difficulty );
@@ -4210,7 +4274,8 @@ bool basecamp::survey_field_return( const mission_id &miss_id )
         int mismatch_tiles = 0;
         const tripoint_omt_ms mapmin{ 0, 0, where.z() };
         const tripoint_omt_ms mapmax = { 2 * SEEX - 1, 2 * SEEY - 1, where.z() };
-        const std::unordered_set<ter_str_id> match_terrains = { ter_t_clay, ter_t_dirt, ter_t_dirtmound, ter_t_grass, ter_t_grass_dead, ter_t_grass_golf, ter_t_grass_long, ter_t_grass_tall, ter_t_moss, ter_t_sand };
+        const std::unordered_set<ter_str_id> match_terrains( def->field_terrains.begin(),
+                def->field_terrains.end() );
         for( const tripoint_omt_ms &p : target.points_in_rectangle( mapmin, mapmax ) ) {
             if( match_terrains.find( target.ter( p ).id() ) == match_terrains.end() ) {
                 mismatch_tiles++;
@@ -4228,7 +4293,7 @@ bool basecamp::survey_field_return( const mission_id &miss_id )
             }
         }
 
-        overmap_buffer.ter_set( where, oter_field );
+        overmap_buffer.ter_set( where, def->field_terrain.id() );
         if( query_yn(
                 _( "This location has now been converted into a field!  Do you want to finish the mission?  If not, another tile can be checked." ) ) ) {
             finish_return( *comp, true, abort_msg, trained, training_difficulty );
@@ -5105,7 +5170,8 @@ std::string basecamp::craft_description( const recipe_id &itm )
     return comp;
 }
 
-int basecamp::recruit_evaluation( int &sbase, int &sexpansions, int &sfaction, int &sbonus ) const
+int basecamp::recruit_evaluation( const faction_mission &def, int &sbase, int &sexpansions,
+                                  int &sfaction, int &sbonus ) const
 {
     auto e = expansions.find( base_camps::base_dir );
     if( e == expansions.end() ) {
@@ -5145,40 +5211,48 @@ int basecamp::recruit_evaluation( int &sbase, int &sexpansions, int &sfaction, i
     if( g->get_kill_tracker().npc_kill_count() > 10 ) {
         sbonus += 10;
     }
+    // the mission's own bonuses (CAMP-J06)
+    sbonus += recruiting_of( def ).bonus();
     return sbase + sexpansions + sfaction + sbonus;
 }
-int basecamp::recruit_evaluation() const
+int basecamp::recruit_evaluation( const faction_mission &def ) const
 {
     int sbase;
     int sexpansions;
     int sfaction;
     int sbonus;
-    return recruit_evaluation( sbase, sexpansions, sfaction, sbonus );
+    return recruit_evaluation( def, sbase, sexpansions, sfaction, sbonus );
 }
 
-std::string basecamp::recruit_description( int npc_count ) const
+std::string basecamp::recruit_description( const faction_mission &def, int npc_count ) const
 {
     int sbase;
     int sexpansions;
     int sfaction;
     int sbonus;
-    int total = recruit_evaluation( sbase, sexpansions, sfaction, sbonus );
+    int total = recruit_evaluation( def, sbase, sexpansions, sfaction, sbonus );
+    const camp_mission_recruiting &recruiting = recruiting_of( def );
+    //~ %1$s and %2$s: the skills that find and convince a recruit, %3$d to %7$d: the parts of the
+    //~ camp's recruiting score, %8$s: how long the mission takes, %9$d/%10$d: companions on it
     std::string desc = string_format( _( "Notes:\n"
                                          "Recruiting additional followers is very dangerous and "
                                          "expensive.  The outcome is heavily dependent on the "
                                          "skill of the companion you send and the appeal of "
                                          "your base.\n\n"
-                                         "Skill used: social\n"
+                                         "Skill used: %1$s, %2$s\n"
                                          "Difficulty: 2\n"
-                                         "Base Score:                   +%3d%%\n"
-                                         "> Expansion Bonus:            +%3d%%\n"
-                                         "> Faction Bonus:              +%3d%%\n"
-                                         "> Special Bonus:              +%3d%%\n\n"
-                                         "Total: Skill                  +%3d%%\n\n"
+                                         "Base Score:                   +%3$3d%%\n"
+                                         "> Expansion Bonus:            +%4$3d%%\n"
+                                         "> Faction Bonus:              +%5$3d%%\n"
+                                         "> Special Bonus:              +%6$3d%%\n\n"
+                                         "Total: Skill                  +%7$3d%%\n\n"
                                          "Risk: High\n"
-                                         "Time: 4 Days\n"
-                                         "Positions: %d/1\n" ), sbase, sexpansions, sfaction,
-                                      sbonus, total, npc_count );
+                                         "Time: %8$s\n"
+                                         "Positions: %9$d/%10$d\n" ),
+                                      recruiting.find_skill->name(), recruiting.convince_skill->name(),
+                                      sbase, sexpansions, sfaction, sbonus, total,
+                                      to_string( def.duration.value_or( 0_seconds ) ), npc_count,
+                                      def.positions );
     return desc;
 }
 
@@ -6025,6 +6099,31 @@ void send_camp_upgrade_completed( const basecamp &camp, const tripoint_abs_omt &
 {
     get_event_bus().send<event_type::camp_upgrade_completed>( camp.camp_name(),
             project_to<coords::ms>( pos ).raw(), upgrade );
+}
+
+// The encounter EOC of camp mission @ref def, with @ref comp as alpha and the avatar as beta.
+// The companion dies on the mission if the EOC sets encounter_survived to 0 (a death EOC may
+// keep it alive).
+bool survive_json_encounter( npc &comp, const faction_mission &def,
+                             const tripoint_abs_omt &camp_pos )
+{
+    dialogue d( get_talker_for( comp ), get_talker_for( get_avatar() ) );
+    d.set_value( "camp_mission", def.id.str() );
+    d.set_value( "pos", project_to<coords::ms>( camp_pos ) );
+    d.set_value( "task", def.encounter->task.translated() );
+    d.set_value( "favor", static_cast<double>( def.encounter->favor ) );
+    d.set_value( "threat", static_cast<double>( def.encounter->threat ) );
+    d.set_value( "encounter_survived", 1.0 );
+    bool survived = true;
+    def.encounter->eoc->activate( d, true, [&survived]( const dialogue & done ) {
+        const diag_value *val = done.maybe_get_value( "encounter_survived" );
+        survived = val == nullptr || !val->is_dbl() || val->dbl() != 0;
+    } );
+    if( survived ) {
+        return true;
+    }
+    // a death EOC may keep the companion alive
+    return !talk_function::companion_mission_death( comp );
 }
 
 bool survive_random_encounter( npc &comp, std::string &situation, int favor, int threat )

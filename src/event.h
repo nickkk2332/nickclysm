@@ -157,6 +157,7 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    avatar_trades,
     num_event_types // last
 };
 
@@ -224,7 +225,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 134,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1171,6 +1172,19 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// the avatar finished a trade with an NPC (CAMP-J12): value_given is the trade value of what the
+// avatar handed over, value_received of what the NPC did, in cents
+template<>
+struct event_spec<event_type::avatar_trades> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "faction", cata_variant_type::faction_id },
+            { "value_given", cata_variant_type::int_ },
+            { "value_received", cata_variant_type::int_ },
         }
     };
 };

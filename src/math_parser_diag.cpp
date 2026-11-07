@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <list>
 #include <memory>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include "achievement.h"
+#include "basecamp.h"
 #include "behavior_oracle.h"
 #include "bionics.h"
 #include "bodypart.h"
@@ -780,6 +782,108 @@ double faction_food_supply_eval( const_dialogue const &d, char /* scope */,
                    fac->food_supply().get_vitamin( vitamin_id( vit_val.str( d ) ) ) );
     }
     return static_cast<double>( fac->food_supply().calories );
+}
+
+// faction_food_supply('your_followers') += 50000 puts that many calories (1/1000 kcal) in the
+// faction's larder and -= takes them out ('vitamin': the units of that vitamin instead); what
+// is added never goes bad, or goes bad after 'expires_in' (CAMP-J08)
+void faction_food_supply_ass( double val, dialogue &d, char /* scope */,
+                              std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    faction *fac = _get_faction( d, params[0] );
+    const diag_value vit_val = kwargs.kwarg_or( "vitamin" );
+    const nutrients current = fac->food_supply();
+    const int64_t wanted = static_cast<int64_t>( std::round( val ) );
+    nutrients change;
+    int64_t delta = 0;
+    if( !vit_val.is_empty() ) {
+        const vitamin_id vit( vit_val.str( d ) );
+        delta = wanted - current.get_vitamin( vit );
+        change.set_vitamin( vit, static_cast<int>( std::min<int64_t>( std::abs( delta ), INT_MAX ) ) );
+    } else {
+        delta = wanted - current.calories;
+        change.calories = std::abs( delta );
+    }
+    if( delta > 0 ) {
+        time_point expires = calendar::turn_zero;
+        const diag_value expires_val = kwargs.kwarg_or( "expires_in" );
+        if( !expires_val.is_empty() ) {
+            expires = calendar::turn + time_duration::from_seconds( expires_val.dbl( d ) );
+        }
+        fac->add_to_food_supply( { { expires, change } } );
+    } else if( delta < 0 && ( current.calories > 0 || !current.vitamins().empty() ) ) {
+        fac->consume_food_supply( change );
+    }
+}
+
+// The camp a camp_ function asks about: the one at the 'location' kwarg, or else the NPC
+// actor's assigned camp, or else the camp at (or within 3 overmap tiles of) the actor;
+// nullptr if there is none
+basecamp *camp_function_camp( const_dialogue const &d, char scope, diag_kwargs const &kwargs,
+                              std::string_view name )
+{
+    tripoint_abs_omt where;
+    const diag_value loc_val = kwargs.kwarg_or( "location" );
+    if( !loc_val.is_empty() ) {
+        where = project_to<coords::omt>( loc_val.tripoint( d ) );
+    } else if( scope == 'g' ) {
+        throw math::syntax_error( R"("%s" needs either an actor scope (u/n) or a 'location' kwarg)",
+                                  std::string( name ) );
+    } else {
+        const_talker const *actor = d.const_actor( is_beta( scope ) );
+        const npc *guy = actor->get_const_npc();
+        where = guy != nullptr && guy->assigned_camp ? *guy->assigned_camp :
+                project_to<coords::omt>( actor->pos_abs() );
+    }
+    std::optional<basecamp *> camp = overmap_buffer.find_camp( where.xy() );
+    return camp ? *camp : nullptr;
+}
+
+double camp_provides_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const basecamp *camp = camp_function_camp( d, scope, kwargs, "camp_provides" );
+    return camp == nullptr ? 0 : camp->provides_amount( params[0].str( d ) );
+}
+
+double camp_expansion_count_eval( const_dialogue const &d, char scope,
+                                  std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
+{
+    const basecamp *camp = camp_function_camp( d, scope, kwargs, "camp_expansion_count" );
+    if( camp == nullptr ) {
+        return 0;
+    }
+    return static_cast<double>( std::count_if( camp->directions.begin(), camp->directions.end(),
+    []( const point_rel_omt & dir ) {
+        return dir != base_camps::base_dir;
+    } ) );
+}
+
+double camp_assigned_npcs_eval( const_dialogue const &d, char scope,
+                                std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
+{
+    basecamp *camp = camp_function_camp( d, scope, kwargs, "camp_assigned_npcs" );
+    return camp == nullptr ? 0 : static_cast<double>( camp->get_npcs_assigned().size() );
+}
+
+// companions out on camp missions from the camp: on the faction_mission named, or on any for ''
+double camp_workers_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const basecamp *camp = camp_function_camp( d, scope, kwargs, "camp_workers" );
+    if( camp == nullptr ) {
+        return 0;
+    }
+    const std::string mission = params[0].str( d );
+    int count = 0;
+    for( const shared_ptr_fast<npc> &guy : overmap_buffer.get_companion_mission_npcs() ) {
+        const npc_companion_mission c_mission = guy->get_companion_mission();
+        if( c_mission.position == camp->camp_omt_pos() && c_mission.role_id == "FACTION_CAMP" &&
+            ( mission.empty() || c_mission.miss_id.type.str() == mission ) ) {
+            count++;
+        }
+    }
+    return count;
 }
 
 double faction_wealth_eval( const_dialogue const &d, char /* scope */,
@@ -3748,7 +3852,11 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "faction_like", { "g", 1, faction_like_eval, faction_like_ass } },
     { "faction_respect", { "g", 1, faction_respect_eval, faction_respect_ass } },
     { "faction_trust", { "g", 1, faction_trust_eval, faction_trust_ass } },
-    { "faction_food_supply", { "g", 1, faction_food_supply_eval, {}, { "vitamin" } } },
+    { "faction_food_supply", { "g", 1, faction_food_supply_eval, faction_food_supply_ass, { "vitamin", "expires_in" } } },
+    { "camp_provides", { "ung", 1, camp_provides_eval, {}, { "location" } } },
+    { "camp_expansion_count", { "ung", 0, camp_expansion_count_eval, {}, { "location" } } },
+    { "camp_assigned_npcs", { "ung", 0, camp_assigned_npcs_eval, {}, { "location" } } },
+    { "camp_workers", { "ung", 1, camp_workers_eval, {}, { "location" } } },
     { "faction_wealth", { "g", 1, faction_wealth_eval, faction_wealth_ass } },
     { "faction_power", { "g", 1, faction_power_eval, faction_power_ass } },
     { "faction_size", { "g", 1, faction_size_eval, faction_size_ass } },

@@ -345,6 +345,18 @@ bool basecamp::has_provides( const std::string &req, const std::optional<point_r
     return false;
 }
 
+int basecamp::provides_amount( const std::string &req ) const
+{
+    int most = 0;
+    for( const std::pair<const point_rel_omt, expansion_data> &e : expansions ) {
+        const auto provide = e.second.provides.find( req );
+        if( provide != e.second.provides.end() ) {
+            most = std::max( most, provide->second );
+        }
+    }
+    return most;
+}
+
 bool basecamp::has_water() const
 {
     // special case required for fbmh_well_north constructed between b9162 (Jun 16, 2019) and b9644 (Sep 20, 2019)
