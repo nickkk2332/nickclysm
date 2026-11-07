@@ -370,9 +370,11 @@ return true if alpha talker is female
 "condition": "npc_female",
 ```
 
-### `u_is_avatar`, `u_is_npc`, `u_is_character`, `u_is_monster`, `u_is_item`, `u_is_furniture`, `u_is_vehicle`, `npc_is_avatar`, `npc_is_npc`, `npc_is_character`, `npc_is_monster`, `npc_is_item`, `npc_is_furniture`, `npc_is_vehicle`
+### `u_is_avatar`, `u_is_npc`, `u_is_character`, `u_is_monster`, `u_is_item`, `u_is_furniture`, `u_is_vehicle`, `npc_is_avatar`, `npc_is_npc`, `npc_is_character`, `npc_is_monster`, `npc_is_item`, `npc_is_furniture`, `npc_is_vehicle`, `u_is_computer`, `npc_is_computer`, `u_is_zone`, `npc_is_zone`
 - type: simple string
-- return true if alpha or beta talker is avatar / NPC / character / monster / item / furniture / vehicle
+- return true if alpha or beta talker is avatar / NPC / character / monster / item / furniture / vehicle / zone
+- the "furniture" talker is a computer's (the console being used), not furniture or terrain in general; `u_is_computer` is the same test under its real name
+- a zone talker is what `u_run_fixed_zone_eocs` gives its EOCs
 - `avatar` is you, player, that control specific NPC (yes, your character is still NPC, you just can control it, as you can control another NPC using faction succession)
 - `npc` is any NPC, except Avatar
 - `character` is both NPC or Avatar
@@ -1994,7 +1996,7 @@ The NPC can get next to the shed door within 30 steps
 
 ### `u_is_driven`, `npc_is_driven`
 - type: simple string
-- return true if alpha or beta talker is a vehicle currently being driven: by the avatar at its controls, by the avatar's remote control within range, or by its autopilot (autodrive, following or patrolling)
+- return true if alpha or beta talker is a vehicle currently being driven: by the avatar or an NPC at its controls, by the avatar's remote control within range, or by its autopilot (autodrive, following or patrolling)
 
 #### Valid talkers:
 
@@ -3693,7 +3695,7 @@ Vehicles run EoCs, provided by this effect; only vehicles inside the reality bub
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_run_vehicle_eocs"/ "npc_run_vehicle_eocs" | **mandatory** | array of eocs | EoCs that would be run by vehicles |
-| "vehicle_range" | optional | int | if used, only vehicles within this distance of the talker are affected |
+| "vehicle_range" | optional | int or [variable object](#variable-object) | if used, only vehicles within this distance of the talker are affected |
 | "z_min" | optional | int or [variable object](#variable-object) | if used, only vehicles with z position >= z_min are affected |
 | "z_max" | optional | int or [variable object](#variable-object) | if used, only vehicles with z position <= z_max are affected |
 
@@ -3781,13 +3783,21 @@ Pick all items with `RECHARGE` _or_ `ELECTRONIC` flags, and run `EOC_PRINT_ITEM_
 ```
 
 #### `u_run_fixed_zone_eocs`, `npc_run_fixed_zone_eocs`
-Fix zones run EoCs, provided by this effect; can work outside of reality bubble
+Fix zones run EoCs, provided by this effect; can work outside of reality bubble. Personal and vehicle zones are left out.
 
-Note: current version only supports run EoC "u_location_variable" "u_teleport" to move fix zones.
+Each zone is the alpha talker of its EoC (there is no beta talker):
+- `u_is_zone` is true, and the string mutator `u_zone_type` gives its zone type id (`{ "compare_string": [ "LOOT_UNSORTED", { "mutator": "u_zone_type" } ] }`).
+- The talker's name is the zone's name, and its position (`u_location_variable`) is the zone's start corner.
+- The context variables `_zone_start` and `_zone_end` hold its two corners, so `u_map_run_eocs` and the like can work on its tiles.
+- `u_` variables are kept with the zone and saved with it.
+- `u_teleport` moves the zone.
+
+The context variables of the calling EoC are passed on.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_run_fixed_zone_eocs"/ "npc_run_fixed_zone_eocs" | **mandatory** | array of eocs | EoCs that would be run by fixed zones |
+| "zone_types" | optional | array of strings | if used, only zones of these zone types (`LOOT_UNSORTED`, `NO_NPC_PICKUP`, ...) are affected; an unknown type is a load error |
 | "zone_range" | optional | int or [variable object](#variable-object) | if used, only fixed zone in this range are affected |
 | "z_min" | optional | int or [variable object](#variable-object) | if used, only fixed zone'z position >= z_min are affected |
 | "z_max" | optional | int or [variable object](#variable-object) | if used, only fixed zone'z position <= z_max are affected |

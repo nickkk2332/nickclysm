@@ -9259,20 +9259,22 @@ talk_effect_fun_t::func f_run_vehicle_eocs( const JsonObject &jo,
         std::string_view member, std::string_view src, bool is_npc )
 {
     std::vector<effect_on_condition_id> eocs = load_eoc_vector( jo, member, src );
-    std::optional<int> vehicle_range;
-    if( jo.has_int( "vehicle_range" ) ) {
-        vehicle_range = jo.get_int( "vehicle_range" );
-    }
+    // MATH-J08: a number or a variable object, as the docs say
+    const bool has_vehicle_range = jo.has_member( "vehicle_range" );
+    dbl_or_var vehicle_range;
+    optional( jo, false, "vehicle_range", vehicle_range, 0 );
     span_param z_span;
     z_span.has_min = jo.has_member( "z_min" );
     z_span.has_max = jo.has_member( "z_max" );
     optional( jo, false, "z_min", z_span.min, 0 );
     optional( jo, false, "z_max", z_span.max, 0 );
 
-    return [eocs, vehicle_range, z_span, is_npc]( dialogue const & d ) {
+    return [eocs, has_vehicle_range, vehicle_range, z_span, is_npc]( dialogue const & d ) {
         tripoint_abs_ms actor_pos = d.actor( is_npc )->pos_abs();
         int z_min = z_span.min.evaluate( d );
         int z_max = z_span.max.evaluate( d );
+        const std::optional<int> range = has_vehicle_range ?
+                                         std::optional<int>( vehicle_range.evaluate( d ) ) : std::nullopt;
         for( wrapped_vehicle &elem : get_map().get_vehicles() ) {
             vehicle &veh = *elem.v;
             const tripoint_abs_ms &pos_abs = veh.pos_abs();
@@ -9282,8 +9284,7 @@ talk_effect_fun_t::func f_run_vehicle_eocs( const JsonObject &jo,
             if( z_span.has_max && pos_abs.z() > z_max ) {
                 continue;
             }
-            if( !vehicle_range.has_value() ||
-                rl_dist( actor_pos, veh.pos_abs() ) <= vehicle_range.value() ) {
+            if( !range.has_value() || rl_dist( actor_pos, veh.pos_abs() ) <= range.value() ) {
                 for( const effect_on_condition_id &eoc : eocs ) {
                     dialogue newDialog( get_talker_for( veh ), nullptr, d.get_conditionals(), d.get_context() );
                     eoc->activate( newDialog );
@@ -9297,9 +9298,22 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
         std::string_view member, std::string_view src, bool is_npc )
 {
     std::vector<effect_on_condition_id> eocs = load_eoc_vector( jo, member, src );
-    std::optional<int> zone_range;
-    if( jo.has_int( "zone_range" ) ) {
-        zone_range = jo.get_int( "zone_range" );
+    // MATH-J08: a number or a variable object, as the docs say
+    const bool has_zone_range = jo.has_member( "zone_range" );
+    dbl_or_var zone_range;
+    optional( jo, false, "zone_range", zone_range, 0 );
+    // only zones of these types; all of them without the list
+    std::vector<zone_type_id> zone_types;
+    optional( jo, false, "zone_types", zone_types );
+    if( !zone_types.empty() ) {
+        const std::string where = jo.get_member( "zone_types" ).get_root_source_path();
+        effect_on_conditions::add_load_check( [zone_types, where]() {
+            for( const zone_type_id &type : zone_types ) {
+                if( !type.is_valid() ) {
+                    debugmsg( "Unknown zone type \"%s\" in zone_types (%s)", type.str(), where );
+                }
+            }
+        } );
     }
 
     span_param z_span;
@@ -9308,13 +9322,19 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
     optional( jo, false, "z_min", z_span.min, 0 );
     optional( jo, false, "z_max", z_span.max, 0 );
 
-    return [eocs, zone_range, z_span, is_npc]( dialogue const & d ) {
+    return [eocs, has_zone_range, zone_range, zone_types, z_span, is_npc]( dialogue const & d ) {
         zone_manager &mgr = zone_manager::get_manager();
         tripoint_abs_ms actor_pos = d.actor( is_npc )->pos_abs();
         int z_min = z_span.min.evaluate( d );
         int z_max = z_span.max.evaluate( d );
+        const std::optional<int> range = has_zone_range ?
+                                         std::optional<int>( zone_range.evaluate( d ) ) : std::nullopt;
         for( zone_data &zone : mgr.get_zones() ) {
             if( zone.get_is_personal() || zone.get_is_vehicle() ) {
+                continue;
+            }
+            if( !zone_types.empty() &&
+                std::find( zone_types.begin(), zone_types.end(), zone.get_type() ) == zone_types.end() ) {
                 continue;
             }
             const tripoint_abs_ms &pos_abs = zone.get_start_point();
@@ -9324,10 +9344,12 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
             if( z_span.has_max && pos_abs.z() > z_max ) {
                 continue;
             }
-            if( !zone_range.has_value() ||
-                rl_dist( actor_pos, zone.get_start_point() ) <= zone_range.value() ) {
+            if( !range.has_value() || rl_dist( actor_pos, zone.get_start_point() ) <= range.value() ) {
                 for( const effect_on_condition_id &eoc : eocs ) {
                     dialogue newDialog( get_talker_for( zone ), nullptr, d.get_conditionals(), d.get_context() );
+                    // the zone's corners, for EOCs that work on its tiles
+                    newDialog.set_value( "zone_start", zone.get_start_point() );
+                    newDialog.set_value( "zone_end", zone.get_end_point() );
                     eoc->activate( newDialog );
                 }
             }

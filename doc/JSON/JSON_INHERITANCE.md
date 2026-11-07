@@ -201,6 +201,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `damage_info_order` | copy-from |
 | `damage_rule` | copy-from |
 | `damage_type` | copy-from |
+| `dialogue_topic_override` | copy-from |
 | `dimension` | copy-from |
 | `dimension_region_layout` | copy-from |
 | `disease_type` | copy-from |

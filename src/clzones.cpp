@@ -1856,8 +1856,26 @@ void zone_data::serialize( JsonOut &json ) const
         json.member( "end", end );
     }
     json.member( "is_displayed", is_displayed );
+    if( !values.empty() ) {
+        json.member( "values", values );
+    }
     options->serialize( json );
     json.end_object();
+}
+
+void zone_data::set_value( const std::string &key, diag_value value )
+{
+    values[ key ] = std::move( value );
+}
+
+void zone_data::remove_value( const std::string &key )
+{
+    values.erase( key );
+}
+
+diag_value const *zone_data::maybe_get_value( const std::string &key ) const
+{
+    return global_variables::_common_maybe_get_value( key, values );
 }
 
 void zone_data::deserialize( const JsonObject &data )
@@ -1924,6 +1942,11 @@ void zone_data::deserialize( const JsonObject &data )
         data.read( "is_displayed", is_displayed );
     } else {
         is_displayed = false;
+    }
+    // optional: saves from before MATH-J08 have no zone variables
+    values.clear();
+    if( data.has_member( "values" ) ) {
+        data.read( "values", values );
     }
     auto new_options = zone_options::create( type );
     new_options->deserialize( data );

@@ -9,6 +9,7 @@
 #include "debug.h"
 #include "item.h"
 #include "item_location.h"
+#include "ammo.h"
 #include "itype.h"
 #include "magic_enchantment.h"
 #include "math_parser_diag_value.h"
@@ -17,10 +18,14 @@
 
 static const ammotype ammo_battery( "battery" );
 
-static const itype_id itype_battery( "battery" );
-
 namespace
 {
+// MATH-J07: an item's power is the battery charge it holds; other ammo (a gun's rounds) isn't
+int battery_charges( const item &it )
+{
+    return it.ammo_capacity( ammo_battery ) > 0 ? it.ammo_remaining() : 0;
+}
+
 // The item, or nullptr once it is gone: an EOC can still hold the talker of an item that was used
 // up (taken apart, crafted with, destroyed) earlier in the same EOC.
 const item *alive( const item_location *loc )
@@ -126,7 +131,7 @@ int talker_item_const::get_hp_max( const bodypart_id & ) const
 units::energy talker_item_const::power_cur() const
 {
     const item *it = alive( me_it_const );
-    return it != nullptr ? 1_mJ * it->ammo_remaining( ) : 0_mJ;
+    return it != nullptr ? 1_mJ * battery_charges( *it ) : 0_mJ;
 }
 
 units::energy talker_item_const::power_max() const
@@ -163,7 +168,12 @@ int talker_item_const::coverage_at( bodypart_id &id ) const
 int talker_item_const::encumbrance_at( bodypart_id &id ) const
 {
     const item *it = alive( me_it_const );
-    return it != nullptr ? it->get_encumber( get_player_character(), id ) : 0;
+    if( it == nullptr ) {
+        return 0;
+    }
+    // for the one wearing or carrying it, or else the avatar
+    const Character *holder = me_it_const->carrier();
+    return it->get_encumber( holder != nullptr ? *holder : get_player_character(), id );
 }
 
 int talker_item_const::get_volume() const
@@ -200,8 +210,12 @@ void talker_item::remove_value( const std::string &var_name )
 void talker_item::set_power_cur( units::energy value )
 {
     if( item *it = alive( me_it ) ) {
-        it->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0,
-                                            it->ammo_capacity( ammo_battery ) ) );
+        // keep the battery ammo it holds (a mod's own kind), or else the battery type's default
+        const itype *loaded = it->ammo_data();
+        const itype_id ammo = loaded != nullptr && loaded->ammo && loaded->ammo->type == ammo_battery ?
+                              loaded->get_id() : ammo_battery->default_ammotype();
+        it->ammo_set( ammo, clamp( static_cast<int>( value.value() ), 0,
+                                   it->ammo_capacity( ammo_battery ) ) );
     }
 }
 

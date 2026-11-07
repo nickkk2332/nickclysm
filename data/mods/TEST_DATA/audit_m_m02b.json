@@ -1,0 +1,69 @@
+[
+  {
+    "//": "MATH-J05: an activity the u_activity mutator reads",
+    "id": "ACT_AUDIT_M02B",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "testing the activity mutator",
+    "based_on": "time"
+  },
+  {
+    "type": "jmath_function",
+    "id": "audit_m02b_stat",
+    "//": "MATH-J11: a string argument, and an assign body",
+    "num_args": 1,
+    "return": "u_val(_0)",
+    "assign": "u_val(_0) = _val"
+  },
+  {
+    "type": "jmath_function",
+    "id": "audit_m02b_strength",
+    "//": "MATH-J11: read with u_ or n_",
+    "num_args": 0,
+    "return": "u_val('strength') * 10 + n_val('strength')"
+  },
+  {
+    "type": "jmath_function",
+    "id": "audit_m02b_len",
+    "//": "MATH-J11: an array argument",
+    "num_args": 1,
+    "return": "_test_str_len_(_0)"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M02B_RUN_ZONES",
+    "effect": [
+      {
+        "u_run_fixed_zone_eocs": [ "EOC_AUDIT_M02B_ZONE" ],
+        "zone_types": [ "LOOT_WOOD" ],
+        "zone_range": { "global_val": "audit_m02b_zone_range" }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M02B_ZONE",
+    "condition": "u_is_zone",
+    "effect": [
+      { "math": [ "audit_m02b_zone_count++" ] },
+      { "math": [ "u_audit_m02b_seen = 7" ] },
+      { "math": [ "audit_m02b_zone_end_x = _zone_end.x - _zone_start.x" ] },
+      { "set_string_var": { "mutator": "u_zone_type" }, "target_var": { "global_val": "audit_m02b_zone_type" } }
+    ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_M02B_OVERRIDE",
+    "dynamic_line": "Overridden.",
+    "responses": [ { "text": "Bye.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "dialogue_topic_override",
+    "id": "audit_m02b_override",
+    "//": "MATH-J10: only while the test sets the variable",
+    "condition": { "math": [ "audit_m02b_override == 1" ] },
+    "topic": "TALK_AUDIT_M02B_OVERRIDE",
+    "priority": 5,
+    "replaces": [ "reboot" ]
+  }
+]

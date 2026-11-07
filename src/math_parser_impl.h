@@ -62,6 +62,12 @@ struct scoped_diag_proto {
     char scope = 'g';
 };
 
+// MATH-J11: a call of a jmath function, with its scope: u_my_func(), n_my_func()
+struct scoped_jmath_proto {
+    jmath_func_id id;
+    char scope = 'g';
+};
+
 struct thingie;
 struct oper {
     oper( thingie l_, thingie r_, binary_op::f_t op_ );
@@ -90,12 +96,16 @@ struct func {
     math_func::f_t f{};
 };
 struct func_jmath {
-    explicit func_jmath( std::vector<thingie> &&params_, jmath_func_id const &id_ );
+    explicit func_jmath( std::vector<thingie> &&params_, jmath_func_id const &id_,
+                         char scope_ = 'g' );
 
     double eval( const_dialogue const &d ) const;
+    // runs the function's "assign" body
+    void assign( dialogue &d, double val ) const;
 
     std::vector<thingie> params;
     jmath_func_id id;
+    char scope = 'g';
 };
 
 struct func_diag {
@@ -233,7 +243,7 @@ constexpr double thingie::eval( dialogue &d ) const
 }
 
 using op_t =
-    std::variant<pbin_op, punary_op, pass_op, pmath_func, jmath_func_id, scoped_diag_proto, paren>;
+    std::variant<pbin_op, punary_op, pass_op, pmath_func, scoped_jmath_proto, scoped_diag_proto, paren>;
 
 constexpr bool operator>( op_t const &lhs, binary_op const &rhs )
 {
