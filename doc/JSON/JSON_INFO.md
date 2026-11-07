@@ -2526,6 +2526,11 @@ optional.  It defaults to "<statistic description>: <value>".
 "statistic": "avatar_num_headshots"
 ```
 
+A game shows the scores that existed when it started.  A score with
+`"allow_late_tracking": true` (default false) is also shown in games that
+started before it was loaded, for example when its mod is added to a save.  Its
+value counts everything since the game started.
+
 #### `achievement`
 
 Achievements are goals for the player to aspire to, in the usual sense of the
@@ -2611,6 +2616,27 @@ add an `"anything"` constraint on it.  For example:
 
 This is a simple "survive a day" but is triggered by waking up, so it will be
 completed when you wake up for the first time after 24 hours into the game.
+
+A game tracks the achievements and conducts that existed when it started:
+one from a mod added to a save later is not shown and can't be completed or
+failed.  Add `"allow_late_tracking": true` (default false) to track it in such
+a game too, from the first time the game is loaded with it.  Its statistics
+count everything since the game started, but, as above, it is only claimed (or
+failed, for a conduct) when one of them next changes.
+
+```jsonc
+"unlocks_all_content": true
+```
+
+Once a game completes this achievement, every profession and scenario can be
+picked in every world, whatever achievements they require (default false).
+Arcade Mode, given from the debug menu, is one.
+
+EOCs can complete an achievement with
+[`give_achievement`](EFFECT_ON_CONDITION.md#give_achievement), fail a conduct
+with [`fail_conduct`](EFFECT_ON_CONDITION.md#fail_conduct), and read them with
+the math functions `achievement_state()` and `past_achievement()` (see
+[NPCs.md](NPCs.md)).
 
 Using the debug menu disables achievements for that game.  Achievements
 completed while they are disabled still show in that game, but they are not

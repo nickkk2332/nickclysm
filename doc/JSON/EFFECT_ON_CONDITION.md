@@ -94,6 +94,9 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | bionics: "activated_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id; `act_cost`, int, cost of activation of item
 | bionics: "deactivated_eocs"                      | character (Character)       | NONE                        | `this`, string, the bionic id
 | bionics: "processed_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id
+| effect_type: "apply_eocs"                        | creature that gained the effect (Creature) | the creature that caused it, if it can be found (a character), otherwise NONE | `effect`, string, the effect id; `bodypart`, string, its body part (`bp_null` if none); `intensity`, int; `old_intensity`, int, 0
+| effect_type: "intensity_change_eocs"             | creature with the effect (Creature) | the creature that caused the change (or the effect), if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity`, int, the new intensity; `old_intensity`, int, the one before
+| effect_type: "remove_eocs"                       | creature that lost the effect (Creature) | the creature that caused the effect, if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity`, int, 0; `old_intensity`, int, the intensity it had
 | mutation: "activated_eocs"                       | character (Character)       | NONE                        |
 | mutation: "deactivated_eocs"                     | character (Character)       | NONE                        |
 | mutation: "processed_eocs"                       | character (Character)       | NONE                        |
@@ -2430,7 +2433,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | avatar_dies |  | NONE | avatar / NONE |
 | awakes_dark_wyrms | Triggers when `pedestal_wyrm` examine action is used | NONE | avatar / NONE |
 | becomes_wanted | Not currently emitted: nothing in the game sends it (only `trigger_event` can). Meant for when copbots/riot bots are spawned as part of a timed event after mon/char is photo'd by eyebot | { "character", `character_id` } | character / NONE |
-| broken_bone | Triggered when any body part reaches 0 hp | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
+| broken_bone | Triggered when any body part of a character (the avatar or an NPC) reaches 0 hp | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
 | broken_bone_mends | Triggered when `mending` effect is removed by expiry (Character::mend) | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
 | buries_corpse | Triggers when item with flag CORPSE is located on same tile as construction with post-special `done_grave` is completed | { "character", `character_id` },<br/> { "corpse_type", `mtype_id` },<br/> { "corpse_name", `string` }, | character / NONE |
 | camp_expansion_added | Triggers when a companion's survey adds an expansion to a camp | { "camp_name", `string` },<br/> { "pos", `tripoint` } (location of the expansion's overmap tile, its north-west corner),<br/> { "expansion", `string` } (overmap terrain id of the expansion) | avatar / NONE |
@@ -2757,7 +2760,7 @@ Sets NPC to be faction representative
 ```
 
 #### `give_achievement`
-Marks the given achievement as complete
+Marks the given achievement as complete, if it is still pending.  An id that is not an achievement, or is a conduct (use `fail_conduct`), is an error.  An achievement the game doesn't track, because its mod was added to the save after the game started and it doesn't have `"allow_late_tracking": true` (see [Achievements](JSON_INFO.md#achievement)), is left alone; with the debug mode filter for talkers on, a debug message says so.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -2774,6 +2777,27 @@ Gives achievement `escaped_the_cataclysm`
 ```jsonc
 { "give_achievement": "escaped_the_cataclysm" }
 ```
+
+#### `fail_conduct`
+Marks the given conduct as failed, if it hasn't failed yet, as breaking its requirements would.  An id that is not a conduct is an error (give an achievement with `give_achievement`).  A conduct the game doesn't track is left alone, as for `give_achievement`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "fail_conduct" | **mandatory** | string or [variable object](#variable-object) | the conduct that fails |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Fails conduct `conduct_zero_kills`
+```jsonc
+{ "fail_conduct": "conduct_zero_kills" }
+```
+
+To read an achievement's or conduct's state, use the math functions `achievement_state()` and `past_achievement()` (see [NPCs.md](NPCs.md)).
 
 #### `trigger_event`
 Sends an event, as if the game had: statistics, scores, achievements, the memorial log and [EVENT EOCs](#event-eocs) all see it.

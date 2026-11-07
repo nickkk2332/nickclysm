@@ -1957,6 +1957,7 @@
     "type": "achievement",
     "name": "Arcade Mode",
     "manually_given": true,
+    "unlocks_all_content": true,
     "//": "this is the achievement that lets you forever have meta progression disabled",
     "description": "STOP HAND-HOLDING ME!!!",
     "requirements": [  ]

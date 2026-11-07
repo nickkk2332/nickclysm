@@ -7456,12 +7456,14 @@ void Character::process_effects()
     dex_bonus_hardcoded = 0;
     int_bonus_hardcoded = 0;
     per_bonus_hardcoded = 0;
-    //Human only effects
+    //Human only effects.  Effect EOCs wait until the loop is done.
+    hold_effect_eocs();
     for( std::pair<const efftype_id, std::map<bodypart_id, effect>> &elem : *effects ) {
         for( std::pair<const bodypart_id, effect> &_effect_it : elem.second ) {
             process_one_effect( _effect_it.second, false );
         }
     }
+    release_effect_eocs();
 
     // Apply new effects from effect->effect chains
     while( !scheduled_effects.empty() ) {

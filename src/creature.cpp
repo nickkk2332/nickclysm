@@ -31,7 +31,9 @@
 #include "damage.h"
 #include "damage_transaction.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "enum_traits.h"
 #include "enums.h"
 #include "event.h"
@@ -73,6 +75,7 @@
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "safe_reference.h"
 #include "sounds.h"
 #include "talker.h"
 #include "talker_avatar.h"
@@ -2080,13 +2083,16 @@ void Creature::add_effect( const effect_source &source, const efftype_id &eff_id
                 e.clamp_intensity();
             }
             if( e.get_intensity() != prev_int ) {
-                on_effect_int_change( eff_id, e.get_intensity(), bp );
+                const int new_int = e.get_intensity();
+                on_effect_int_change( eff_id, new_int, bp );
 
                 if( Character *ch = as_character() ) {
                     get_event_bus().send<event_type::character_effect_intensity_changed>(
-                        ch->getID(), bp.id(), eff_id, e.get_intensity()
+                        ch->getID(), bp.id(), eff_id, new_int
                     );
                 }
+                // Last: the EOCs may change this creature's effects (and so `e`)
+                run_effect_eocs( effect_eoc_hook::intensity_change, type, bp, new_int, prev_int, source );
             }
         }
     }
@@ -2111,6 +2117,7 @@ void Creature::add_effect( const effect_source &source, const efftype_id &eff_id
         if( !deferred ) {
             process_one_effect( e, true );
         }
+        run_effect_eocs( effect_eoc_hook::apply, type, bp, e.get_intensity(), 0, source );
     }
 }
 void Creature::add_effect( const effect_source &source, const efftype_id &eff_id,
@@ -2192,14 +2199,33 @@ bool Creature::remove_effect( const efftype_id &eff_id, const bodypart_id &bp )
         get_event_bus().send<event_type::character_loses_effect>( ch->getID(), bp.id(), eff_id );
     }
 
+    // EVT-J04: each effect lost (one per body part) runs remove_eocs once it's gone
+    struct lost_effect {
+        bodypart_id part;
+        int intensity;
+        effect_source source;
+    };
+    std::vector<lost_effect> lost;
+    const auto note_lost = [&lost, &type]( const bodypart_id & part, const effect & e ) {
+        if( !type.remove_eocs.empty() ) {
+            lost.push_back( { part, e.get_intensity(), e.get_source() } );
+        }
+    };
+
     // bp_null means remove all of a given effect id
     if( bp == bodypart_str_id::NULL_ID() ) {
         for( auto &it : ( *effects )[eff_id] ) {
+            note_lost( it.first, it.second );
             on_effect_int_change( eff_id, 0, it.first );
         }
         effects->erase( eff_id );
     } else {
-        ( *effects )[eff_id].erase( bp.id() );
+        auto &parts = ( *effects )[eff_id];
+        const auto found = parts.find( bp );
+        if( found != parts.end() ) {
+            note_lost( found->first, found->second );
+        }
+        parts.erase( bp.id() );
         on_effect_int_change( eff_id, 0, bp );
         // If there are no more effects of a given type remove the type map
         if( ( *effects )[eff_id].empty() ) {
@@ -2207,11 +2233,95 @@ bool Creature::remove_effect( const efftype_id &eff_id, const bodypart_id &bp )
         }
     }
 
+    for( const lost_effect &gone : lost ) {
+        run_effect_eocs( effect_eoc_hook::remove, type, gone.part, 0, gone.intensity, gone.source );
+    }
+
     return true;
 }
 bool Creature::remove_effect( const efftype_id &eff_id )
 {
     return remove_effect( eff_id, bodypart_str_id::NULL_ID() );
+}
+
+namespace
+{
+// EVT-J04: effect EOCs waiting for the effects being looped over
+struct held_effect_eocs {
+    // Gone (a monster despawned by a map shift, say), its EOCs don't run
+    safe_reference<Creature> holder;
+    Creature::effect_eoc_hook hook;
+    efftype_id eff_id;
+    bodypart_id bp;
+    int intensity;
+    int old_intensity;
+    effect_source source;
+};
+
+int effect_eoc_holds = 0;
+
+std::vector<held_effect_eocs> &held_effect_eoc_runs()
+{
+    static std::vector<held_effect_eocs> runs;
+    return runs;
+}
+} // namespace
+
+void Creature::run_effect_eocs( const effect_eoc_hook hook, const effect_type &type,
+                                const bodypart_id &bp, const int intensity, const int old_intensity,
+                                const effect_source &source )
+{
+    const std::vector<effect_on_condition_id> &eocs =
+        hook == effect_eoc_hook::apply ? type.apply_eocs :
+        hook == effect_eoc_hook::intensity_change ? type.intensity_change_eocs : type.remove_eocs;
+    if( eocs.empty() ) {
+        return;
+    }
+    if( effect_eoc_holds > 0 ) {
+        held_effect_eoc_runs().push_back( { get_safe_reference(), hook, type.id, bp, intensity,
+                                            old_intensity, source } );
+        return;
+    }
+    Creature *cause = source.resolve_creature();
+    for( const effect_on_condition_id &eoc : eocs ) {
+        dialogue d( get_talker_for( *this ), cause ? get_talker_for( *cause ) : nullptr );
+        d.set_value( "effect", type.id.str() );
+        d.set_value( "bodypart", bp.id().str() );
+        d.set_value( "intensity", intensity );
+        d.set_value( "old_intensity", old_intensity );
+        eoc->activate_activation_only( d, "an effect type's apply_eocs, intensity_change_eocs or "
+                                       "remove_eocs" );
+    }
+}
+
+void Creature::hold_effect_eocs()
+{
+    ++effect_eoc_holds;
+}
+
+void Creature::release_effect_eocs()
+{
+    if( effect_eoc_holds <= 0 ) {
+        debugmsg( "Effect EOCs released more often than they were held" );
+        effect_eoc_holds = 0;
+        return;
+    }
+    if( --effect_eoc_holds > 0 ) {
+        return;
+    }
+    std::vector<held_effect_eocs> &runs = held_effect_eoc_runs();
+    // An EOC run here runs at once; one that holds and releases again may add more first
+    while( !runs.empty() ) {
+        std::vector<held_effect_eocs> now;
+        now.swap( runs );
+        for( const held_effect_eocs &run : now ) {
+            Creature *holder = run.holder.get();
+            if( holder != nullptr && run.eff_id.is_valid() ) {
+                holder->run_effect_eocs( run.hook, run.eff_id.obj(), run.bp, run.intensity,
+                                         run.old_intensity, run.source );
+            }
+        }
+    }
 }
 
 void Creature::schedule_effect_removal( const efftype_id &eff_id, const bodypart_id &bp )
@@ -2344,7 +2454,8 @@ void Creature::process_effects()
     std::vector<efftype_id> rem_ids;
     std::vector<bodypart_id> rem_bps;
 
-    // Decay/removal of effects
+    // Decay/removal of effects.  Effect EOCs wait until the loop is done.
+    hold_effect_eocs();
     for( auto &elem : *effects ) {
         for( auto &_it : elem.second ) {
             // Do not freeze the effect with the FREEZE_EFFECTS flag.
@@ -2365,6 +2476,8 @@ void Creature::process_effects()
 
             if( e.get_intensity() != prev_int && e.get_duration() > 0_turns ) {
                 on_effect_int_change( e.get_id(), e.get_intensity(), e.get_bp() );
+                run_effect_eocs( effect_eoc_hook::intensity_change, *e.get_effect_type(), e.get_bp(),
+                                 e.get_intensity(), prev_int, e.get_source() );
             }
 
             const bool reduced = resists_effect( e );
@@ -2382,6 +2495,7 @@ void Creature::process_effects()
             }
         }
     }
+    release_effect_eocs();
 
     // Actually remove effects. This should be the last thing done in process_effects().
     for( size_t i = 0; i < rem_ids.size(); ++i ) {
@@ -2852,10 +2966,12 @@ float Creature::get_part_wetness_percentage( const bodypart_id &id ) const
 
 void Creature::set_part_hp_cur( const bodypart_id &id, int set )
 {
-    bool was_broken = is_avatar() && as_character()->is_limb_broken( id );
+    // EVT-J04: any character's, not only the avatar's
+    const Character *ch = as_character();
+    const bool was_broken = ch && ch->is_limb_broken( id );
     set_part_helper( *this, id, &bodypart::set_hp_cur, set );
-    if( !was_broken && is_avatar() && as_character()->is_limb_broken( id ) ) {
-        get_event_bus().send<event_type::broken_bone>( as_character()->getID(), id );
+    if( ch && !was_broken && ch->is_limb_broken( id ) ) {
+        get_event_bus().send<event_type::broken_bone>( ch->getID(), id );
     }
 }
 
@@ -2911,10 +3027,12 @@ void Creature::set_part_mut_drench( const bodypart_id &id, std::pair<water_toler
 
 void Creature::mod_part_hp_cur( const bodypart_id &id, int mod )
 {
-    bool was_broken = is_avatar() && as_character()->is_limb_broken( id );
+    // EVT-J04: any character's, not only the avatar's
+    const Character *ch = as_character();
+    const bool was_broken = ch && ch->is_limb_broken( id );
     set_part_helper( *this, id, &bodypart::mod_hp_cur, mod );
-    if( !was_broken && is_avatar() && as_character()->is_limb_broken( id ) ) {
-        get_event_bus().send<event_type::broken_bone>( as_character()->getID(), id );
+    if( ch && !was_broken && ch->is_limb_broken( id ) ) {
+        get_event_bus().send<event_type::broken_bone>( ch->getID(), id );
     }
 }
 

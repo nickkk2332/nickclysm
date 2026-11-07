@@ -139,7 +139,7 @@ An effect type can copy another one (or an `"abstract"` one, which nothing can a
 ```
 
 * Every field that the child leaves out keeps the parent's value.  A field the child gives replaces the parent's value.
-* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects` and `enchantments` (`delete` takes enchantment ids; an inline enchantment is named `INLINE_ENCH_<effect id>_<n>`, where `n` counts that id's inline enchantments in load order across all its definitions, so one definition's are `_0`, `_1`, ...).
+* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects`, `apply_eocs`, `intensity_change_eocs`, `remove_eocs` (`delete` takes EOC ids) and `enchantments` (`delete` takes enchantment ids; an inline enchantment is named `INLINE_ENCH_<effect id>_<n>`, where `n` counts that id's inline enchantments in load order across all its definitions, so one definition's are `_0`, `_1`, ...).
 * Numeric fields (`max_intensity`, `int_add_val`, `int_decay_step`, `dur_add_perc`, `max_duration`, ...) support `relative` and `proportional`.
 * `base_mods` and `scaling_mods` replace the parent's values one group at a time.  Each stat's keys form a group (`str_mod` alone; `pain_amount`, `pain_min`, `pain_max`, `pain_max_val`, `pain_chance`, `pain_chance_bot` and `pain_tick`; the `hurt_*` keys; the `sleep_*` keys; and so on).  Naming any key of a group, in either object, replaces the parent's whole group, base and scaling values alike: a child that only sets `pain_chance` loses the parent's `pain_min`, `pain_max` and the rest, so restate the ones to keep.  Groups the child doesn't name keep the parent's values.
 * `apply_message` replaces the parent's apply messages; a `rating` alone re-rates them.  `reduced_desc` keeps following `desc` unless the parent or the child sets it.
@@ -466,6 +466,24 @@ As defined, this will cause non-resistant characters to gain between 1 and 2 of 
 - `death_event` An event that is sent when the player dies from this effect.
 
 For `chance_kill` and `chance_kill_resist`, it accepts an array of arrays in the format described. Each entry in the array will be applied for a successive intensity level of the field. If the intensity level of the field is greater than the number of entries in the array, the last entry will be used.
+
+### Effect EOCs
+
+```jsonc
+    "apply_eocs": [ "EOC_IGNITE_NEARBY" ],
+    "intensity_change_eocs": [ { "id": "EOC_onfire_spreads", "effect": [ { "u_message": "The flames grow!" } ] } ],
+    "remove_eocs": [ "EOC_ONFIRE_SMOKE" ]
+```
+
+Lists of effect_on_conditions (ids or inline definitions, which must be activation EOCs) run for any creature: the avatar, an NPC or a monster.  `u` is the creature with the effect.  `npc` is the creature that caused the effect (for `intensity_change_eocs` raised by applying the effect again: the one that applied it), when it can be found; only characters can be found, so for most effects there is no `npc`: check `has_beta` before using it.
+
+- `apply_eocs` run when the creature gains the effect (on a body part, if it has one), after the effect's first tick of effects.
+- `intensity_change_eocs` run when the intensity of an effect the creature has changes: applying it again, its decay over time (`int_decay_step`, `int_dur_factor`), or a grant or the end of one.  Setting the intensity in other ways (`effect_intensity()` in math, for example) doesn't run them.
+- `remove_eocs` run when the creature loses the effect, after it is gone: when it expires, is cured or removed, or is removed by another effect.  An effect on several body parts removed at once runs them once per body part.  They don't run when all of a creature's effects are cleared at once (the debug menu, or a reset such as a time-reverting artifact's).
+
+Each EOC can read the context values `effect` (the effect id), `bodypart` (its body part, `bp_null` if it has none), `intensity` (its intensity now: 0 once lost) and `old_intensity` (before: 0 when gained), for example `{ "math": [ "_intensity > _old_intensity" ] }`.
+
+While a creature's effects are being processed each turn, these EOCs wait until that is done, then run.
 
 ### Limb score modifiers
 

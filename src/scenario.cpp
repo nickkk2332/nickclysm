@@ -19,8 +19,6 @@
 #include "start_location.h"
 #include "translations.h"
 
-static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
-
 namespace
 {
 generic_factory<scenario> all_scenarios( "scenario" );
@@ -708,7 +706,7 @@ ret_val<void> scenario::can_pick() const
 {
     const bool meta_progression = get_option<bool>( "META_PROGRESS" );
     // if meta progression is disabled then skip this
-    if( get_past_achievements().is_completed( achievement_achievement_arcade_mode ) ||
+    if( get_past_achievements().unlocks_all_content() ||
         ( !meta_progression && !has_hard_requirement() ) ) {
         return ret_val<void>::make_success();
     }
