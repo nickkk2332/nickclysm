@@ -5,10 +5,14 @@
 #include <cctype>
 #include <chrono>
 #include <climits>
+#include <cstdint>
+#include <initializer_list>
 #include <iterator>
 #include <list>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -30,6 +34,7 @@
 #include "input.h"
 #include "item.h"
 #include "item_factory.h"
+#include "item_group.h"
 #include "item_location.h"
 #include "itype.h"
 #include "mapgen.h"
@@ -49,10 +54,14 @@
 #include "value_ptr.h"
 #include "visitable.h"
 
+static const flag_id json_flag_NO_UNCRAFT( "NO_UNCRAFT" );
 static const flag_id json_flag_NUTRIENT_OVERRIDE( "NUTRIENT_OVERRIDE" );
 
 static const itype_id itype_debug_item_search( "debug_item_search" );
 static const itype_id itype_paper( "paper" );
+
+static const material_id material_cardboard( "cardboard" );
+static const material_id material_paper( "paper" );
 
 static const requirement_id requirement_data_uncraft_book( "uncraft_book" );
 
@@ -60,6 +69,22 @@ recipe_dictionary recipe_dict;
 
 namespace
 {
+
+// CRAFT-J03: a book disassembles into paper only when at least half of it is paper or
+// cardboard (a stone tablet or a leather scroll is not).  One with no material, as before, is.
+bool is_mostly_paper( const itype &type )
+{
+    if( type.mat_portion_total <= 0 ) {
+        return true;
+    }
+    int paper = 0;
+    for( const std::pair<const material_id, int> &mat : type.materials ) {
+        if( mat.first == material_paper || mat.first == material_cardboard ) {
+            paper += mat.second;
+        }
+    }
+    return paper * 2 >= type.mat_portion_total;
+}
 
 void delete_if( std::map<recipe_id, recipe> &data,
                 const std::function<bool( const recipe & )> &pred )
@@ -239,11 +264,76 @@ static Unit can_contain_filter( std::string_view hint, std::string_view txt, Uni
     return uni;
 }
 
+namespace
+{
+// CRAFT-B07: the `l:` filter, parsed once per search. "N" matches difficulty N, "A~B" (either
+// side optional) the range between; anything else, or no digits, matches every recipe.
+struct difficulty_filter {
+    bool match_all = true;
+    bool use_range = false;
+    int start = 0;
+    int end = INT_MAX;
+
+    bool matches( int difficulty ) const {
+        if( match_all ) {
+            return true;
+        }
+        if( use_range ) {
+            return difficulty == clamp( difficulty, start, end );
+        }
+        return difficulty == start;
+    }
+};
+
+// Digits past INT_MAX saturate: std::stoi threw std::out_of_range here and ended the game.
+int saturating_digits( std::string_view digits )
+{
+    int64_t value = 0;
+    for( const char chr : digits ) {
+        value = std::min<int64_t>( value * 10 + ( chr - '0' ), INT_MAX );
+    }
+    return static_cast<int>( value );
+}
+
+difficulty_filter parse_difficulty_filter( std::string_view txt )
+{
+    difficulty_filter filter;
+    std::string range_start;
+    std::string range_end;
+    for( const char chr : txt ) {
+        if( std::isdigit( static_cast<unsigned char>( chr ) ) ) {
+            ( filter.use_range ? range_end : range_start ) += chr;
+        } else if( chr == '~' ) {
+            filter.use_range = true;
+        } else {
+            // unexpected character
+            return difficulty_filter();
+        }
+    }
+    if( range_start.empty() && range_end.empty() ) {
+        return difficulty_filter();
+    }
+    filter.match_all = false;
+    if( !range_start.empty() ) {
+        filter.start = saturating_digits( range_start );
+    }
+    if( filter.use_range && !range_end.empty() ) {
+        filter.end = saturating_digits( range_end );
+    }
+    if( filter.use_range && filter.start > filter.end ) {
+        std::swap( filter.start, filter.end );
+    }
+    return filter;
+}
+} // namespace
+
 std::vector<const recipe *> recipe_subset::search(
     std::string_view txt, const search_type key,
     const Character *crafter,
     const std::function<void( size_t, size_t )> &progress_callback ) const
 {
+    const difficulty_filter difficulty = key == search_type::difficulty ?
+                                         parse_difficulty_filter( txt ) : difficulty_filter();
     auto predicate = [&]( const recipe * r ) {
         if( !*r || r->obsolete ) {
             return false;
@@ -356,61 +446,8 @@ std::vector<const recipe *> recipe_subset::search(
                 } );
             }
 
-            case search_type::difficulty: {
-                std::string range_start;
-                std::string range_end;
-                bool use_range = false;
-                for( const char &chr : txt ) {
-                    if( std::isdigit( chr ) ) {
-                        if( use_range ) {
-                            range_end += chr;
-                        } else {
-                            range_start += chr;
-                        }
-                    } else if( chr == '~' ) {
-                        use_range = true;
-                    } else {
-                        // unexpected character
-                        return true;
-                    }
-                }
-
-                int start = 0;
-                int end = INT_MAX;
-
-                if( use_range ) {
-                    if( !range_start.empty() ) {
-                        start = std::stoi( range_start );
-                    }
-
-                    if( !range_end.empty() ) {
-                        end = std::stoi( range_end );
-                    }
-
-                    if( range_start.empty() && range_end.empty() ) {
-                        return true;
-                    }
-                } else {
-                    if( !range_start.empty() ) {
-                        start = std::stoi( range_start );
-                    }
-
-                    if( range_start.empty() && range_end.empty() ) {
-                        return true;
-                    }
-                }
-
-                if( use_range && start > end ) {
-                    std::swap( start, end );
-                }
-
-                if( use_range ) {
-                    // check if number is between two numbers inclusive
-                    return r->difficulty == clamp( r->difficulty, start, end );
-                } else {
-                    return r->difficulty == start;
-                }
-            }
+            case search_type::difficulty:
+                return difficulty.matches( r->difficulty );
 
             case search_type::activity_level:
                 return lcmatch( display::activity_level_str( r->exertion_level() ), txt );
@@ -660,6 +697,9 @@ recipe &recipe_dictionary::load( const JsonObject &jo, const std::string &src,
     if( duplicate != out.end() ) {
         mod_tracker::check_duplicate_entries( r, duplicate->second );
     }
+    // CRAFT-J05: a redefinition keeps the place of the id's first definition
+    static int64_t loaded_count = 0;
+    r.load_order = duplicate != out.end() ? duplicate->second.load_order : ++loaded_count;
 
     return out[ r.ident() ] = std::move( r );
 }
@@ -780,6 +820,22 @@ void recipe_dictionary::finalize()
     finalize_internal( recipe_dict.recipes );
     finalize_internal( recipe_dict.uncraft );
 
+    // CRAFT-J05: the reversible recipe that gives each result its disassembly, when there is no
+    // uncraft recipe for it.  The first one met used to win, and the map is in string-intern
+    // order, which is not stable between runs (an id named anywhere earlier, in C++ or JSON,
+    // moves up).  Now: the one marked "primary", else the first loaded, which is what that order
+    // mostly was.
+    const auto better_uncraft_source = []( const recipe & a, const recipe & b ) {
+        if( a.uncraft_primary != b.uncraft_primary ) {
+            return a.uncraft_primary;
+        }
+        if( a.load_order != b.load_order ) {
+            return a.load_order < b.load_order;
+        }
+        // NOLINTNEXTLINE(cata-use-localized-sorting)
+        return a.ident().str() < b.ident().str();
+    };
+    std::map<recipe_id, const recipe *> uncraft_sources;
     for( const auto &e : recipe_dict.recipes ) {
         const recipe &r = e.second;
 
@@ -799,13 +855,42 @@ void recipe_dictionary::finalize()
 
         const string_id<recipe> uncraft_id = recipe_id( r.result().str() );
         if( r.is_reversible() && !recipe_dict.uncraft.count( uncraft_id ) ) {
-            recipe_dict.uncraft[ uncraft_id ] = r;
-
-            if( r.uncraft_time > 0 ) {
-                // If a specified uncraft time has been given, use that in the uncraft
-                // recipe rather than the original.
-                recipe_dict.uncraft[ uncraft_id ].time = r.uncraft_time;
+            const recipe *&source = uncraft_sources[uncraft_id];
+            if( source != nullptr && source->uncraft_primary && r.uncraft_primary ) {
+                debugmsg( "recipes %s and %s both make %s and are both the primary reversible "
+                          "recipe", source->ident().str(), r.ident().str(), r.result().str() );
             }
+            if( source == nullptr || better_uncraft_source( r, *source ) ) {
+                source = &r;
+            }
+        }
+    }
+
+    for( const auto &[uncraft_id, source] : uncraft_sources ) {
+        recipe &uncraft = recipe_dict.uncraft[ uncraft_id ];
+        uncraft = *source;
+        // CRAFT-B03: disassembly is one stretch of work, and time_to_craft_moves sums a step
+        // recipe's steps without reading time.  So the copy drops its steps (their requirements
+        // are merged into the recipe's already) and takes the time of the steps someone works
+        // through, unless reversible gives a time.
+        if( uncraft.has_steps() ) {
+            int64_t worked = 0;
+            for( const recipe_step &step : uncraft.steps_ ) {
+                if( step.attention != step_attention::unattended ) {
+                    worked += step.time;
+                }
+            }
+            if( worked > 0 ) {
+                uncraft.time = worked;
+            }
+            uncraft.proficiencies = uncraft.aggregate_proficiencies_;
+            uncraft.steps_.clear();
+            uncraft.aggregate_proficiencies_.clear();
+        }
+        if( source->uncraft_time > 0 ) {
+            // If a specified uncraft time has been given, use that in the uncraft
+            // recipe rather than the original.
+            uncraft.time = source->uncraft_time;
         }
     }
 
@@ -815,7 +900,8 @@ void recipe_dictionary::finalize()
         const recipe_id rid = recipe_id( id.str() );
 
         // books that don't already have an uncrafting recipe
-        if( e->book && !recipe_dict.uncraft.count( rid ) && e->weight > 0_gram ) {
+        if( e->book && !recipe_dict.uncraft.count( rid ) && e->weight > 0_gram &&
+            !e->has_flag( json_flag_NO_UNCRAFT ) && is_mostly_paper( *e ) ) {
             const int pages = e->weight / itype_paper->weight;
             recipe &bk = recipe_dict.uncraft[rid];
             bk.id = rid;
@@ -866,8 +952,88 @@ void recipe_dictionary::finalize()
     recipe_dict.find_items_on_loops();
 }
 
+// CRAFT-J05: recipe flags are plain strings, so a typo used to do nothing.  These are the ones
+// the game reads (doc/JSON/JSON_FLAGS.md, "Recipes" and "Camp building recipes").
+bool is_known_recipe_flag( const std::string_view flag )
+{
+    static const std::set<std::string, std::less<>> known = {
+        "AFFECTED_BY_PAIN", "ALLOW_ROTTEN", "ALWAYS_START_ON_GROUND", "BLIND_EASY", "BLIND_HARD",
+        "FULL_MAGAZINE", "NEED_FULL_MAGAZINE", "NO_BENCH", "NO_ENCHANTMENT", "NO_FOOD_REQ",
+        "NO_MANIP", "NO_RESIZE", "SECRET"
+    };
+    if( known.find( flag ) != known.end() ) {
+        return true;
+    }
+    // camp blueprints: MAP_ROTATE_90/180/270 and MAP_MIRROR_HORIZONTAL/VERTICAL, each optionally
+    // _IF_ and a direction (or nothing, for the camp's core)
+    static const std::array<std::string_view, 5> transforms = {
+        "MAP_ROTATE_90", "MAP_ROTATE_180", "MAP_ROTATE_270", "MAP_MIRROR_HORIZONTAL",
+        "MAP_MIRROR_VERTICAL"
+    };
+    static const std::set<std::string, std::less<>> directions = {
+        "", "N", "NE", "E", "SE", "S", "SW", "W", "NW"
+    };
+    for( const std::string_view transform : transforms ) {
+        if( flag == transform ) {
+            return true;
+        }
+        const std::string conditional = std::string( transform ) + "_IF_";
+        if( string_starts_with( flag, conditional ) &&
+            directions.find( flag.substr( conditional.size() ) ) != directions.end() ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void recipe_dictionary::check_consistency()
 {
+    // CRAFT-J05: ids and flags nothing checked before
+    const auto check_ids = []( const recipe & r ) {
+        const std::string &rid = r.ident().str();
+        for( const std::string &flag : r.flags ) {
+            if( !is_known_recipe_flag( flag ) ) {
+                debugmsg( "recipe %s has unknown flag %s", rid, flag );
+            }
+        }
+        for( const std::vector<effect_on_condition_id> *eocs : {
+                 &r.result_eocs, &r.result_item_eocs, &r.start_eocs, &r.fail_eocs,
+                 &r.disassembly_eocs
+             } ) {
+            for( const effect_on_condition_id &eoc : *eocs ) {
+                if( !eoc.is_valid() ) {
+                    debugmsg( "recipe %s uses unknown effect_on_condition %s", rid, eoc.str() );
+                }
+            }
+        }
+        for( const std::map<skill_id, int> *skills : {
+                 &r.autolearn_requirements, &r.learn_by_disassembly
+             } ) {
+            for( const std::pair<const skill_id, int> &sk : *skills ) {
+                if( !sk.first.is_valid() ) {
+                    debugmsg( "recipe %s uses unknown skill %s in autolearn or decomp_learn", rid,
+                              sk.first.str() );
+                }
+            }
+        }
+        if( r.byproduct_group && !item_group::group_is_defined( *r.byproduct_group ) ) {
+            debugmsg( "recipe %s has unknown byproduct_group %s", rid, r.byproduct_group->str() );
+        }
+        if( r.is_reversible() && r.result_mult > 1 ) {
+            debugmsg( "recipe %s is reversible with result_mult %d: disassembling one result would "
+                      "give back the components of all %d", rid, r.result_mult, r.result_mult );
+        }
+    };
+    for( const auto &e : recipe_dict.recipes ) {
+        check_ids( e.second );
+    }
+    for( const auto &e : recipe_dict.uncraft ) {
+        // a reversible recipe's copy was checked as the recipe
+        if( !recipe_dict.recipes.count( e.second.ident() ) ) {
+            check_ids( e.second );
+        }
+    }
+
     for( const auto &e : recipe_dict.recipes ) {
         const recipe &r = e.second;
 

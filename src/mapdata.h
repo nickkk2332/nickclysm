@@ -554,6 +554,14 @@ struct map_data_common_t {
     public:
         ter_str_id curtain_transform;
 
+        // CRAFT-J08: pseudo tools the tile lends to crafting, besides furniture's
+        // crafting_pseudo_item (which alone gets ammo from the tile).  Given at all, it replaces
+        // the TREE default.
+        std::vector<itype_id> crafting_pseudo_items;
+        bool crafting_pseudo_items_set = false;
+        // crafting_pseudo_items, or for TREE terrain that gives none, a butchery tree
+        const std::vector<itype_id> &crafting_pseudo_tools() const;
+
         bool has_curtains() const {
             return !( curtain_transform.is_empty() || curtain_transform.is_null() );
         }

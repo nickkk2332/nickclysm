@@ -50,6 +50,7 @@ class Character;
 class Item_factory;
 class Trait_group;
 class map;
+struct disassembly_substitute;
 template <typename E> struct enum_traits;
 
 class gun_modifier_data
@@ -1450,6 +1451,10 @@ struct itype {
 
         // Rather than use its own materials to determine repair difficulty, the item uses this item's materials
         itype_id repairs_like;
+
+        // CRAFT-J07: set when a reversible recipe needing this tool needs something else to
+        // disassemble (a welder or forge becomes a fine metal saw); shared by copies
+        std::shared_ptr<const disassembly_substitute> disassembly_sub;
 
         std::string snippet_category;
 

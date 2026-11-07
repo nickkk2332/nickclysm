@@ -3,10 +3,12 @@
 
 #include <atomic>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "character.h"
@@ -34,8 +36,6 @@ class vehicle;
 
 static const flag_id json_flag_PSEUDO( "PSEUDO" );
 
-static const itype_id itype_brick_oven_pseudo( "brick_oven_pseudo" );
-static const itype_id itype_butchery_tree_pseudo( "butchery_tree_pseudo" );
 static const itype_id itype_fire( "fire" );
 
 namespace
@@ -378,17 +378,22 @@ void temp_crafting_inventory::form_from_map( map &m, std::vector<tripoint_bub_ms
         const bool pseudo_tools_reserved =
             get_craft_reservations().provider_tile_reserved( m.get_abs( p ) );
         const ter_id &t = m.ter( p );
-        // a temporary hack while trees are terrain
-        if( !pseudo_tools_reserved && t->has_flag( ter_furn_flag::TFLAG_TREE ) ) {
-            add_pseudo_item( itype_butchery_tree_pseudo );
-        }
-        // Another terrible hack, as terrain can't provide pseudo items, and construction can't do multi-step furniture
-        ter_id brick_oven( "t_brick_oven" );
-        if( !pseudo_tools_reserved && t == brick_oven ) {
-            add_pseudo_item( itype_brick_oven_pseudo );
-        }
         const furn_id &f = m.furn( p );
         const furn_t &fo = f.obj();
+        // CRAFT-J08: terrain and furniture "crafting_pseudo_items" (a tree's butchery tree and
+        // the brick oven were hardcoded here); crafting.cpp's provider list reads the same
+        if( !pseudo_tools_reserved ) {
+            for( const std::vector<itype_id> *tools : {
+                     &t->crafting_pseudo_tools(), &fo.crafting_pseudo_tools()
+                 } ) {
+                for( const itype_id &pseudo : *tools ) {
+                    if( pseudo.is_valid() && ( !pseudo->has_flag( flag_NEEDS_SUNLIGHT ) ||
+                                               tile_has_sufficient_sunlight( m, p ) ) ) {
+                        add_pseudo_item( pseudo );
+                    }
+                }
+            }
+        }
         const itype_id &pseudo_id = fo.crafting_pseudo_item;
         if( !pseudo_tools_reserved && pseudo_id.is_valid() ) {
             if(

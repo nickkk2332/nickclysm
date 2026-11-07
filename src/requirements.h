@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -41,6 +42,20 @@ enum class component_type : int {
     QUALITY,
 };
 
+// CRAFT-J07: what a tool (an item's "disassembly_substitute") or a tool quality (the quality's)
+// becomes when a reversible recipe is used to disassemble.  The tool or quality group naming it is
+// dropped, each of `qualities` is required in its own right instead, and tool groups naming any
+// of `drop_tools` are dropped too.
+struct disassembly_substitute {
+    // a level of 0 is the level the recipe asked of the quality being replaced (1 for a tool)
+    std::vector<std::pair<quality_id, int>> qualities;
+    std::vector<itype_id> drop_tools;
+
+    void load( const JsonObject &jo );
+    // what is wrong with it, or empty
+    std::string check() const;
+};
+
 struct quality {
     bool was_loaded = false;
     quality_id id;
@@ -48,6 +63,10 @@ struct quality {
     translation name;
 
     std::vector<std::pair<int, std::string>> usages;
+
+    // CRAFT-J07: set when a reversible recipe needing this quality needs something else to
+    // disassemble (SEW becomes CUT, GLARE and KNIT are not needed)
+    std::optional<disassembly_substitute> disassembly_sub;
 
     void load( const JsonObject &jo, std::string_view src );
 

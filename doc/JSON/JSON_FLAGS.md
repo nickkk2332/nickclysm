@@ -899,6 +899,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```NO_REPAIR``` Prevents repairing of this item even if otherwise suitable tools exist.
 - ```NO_SALVAGE``` Item cannot be broken down through a salvage process.  Best used when something should not be able to be broken down (i.e. base components like leather patches).
 - ```NO_STERILE``` This item is not sterile.  Only applies to CBMs.
+- ```NO_UNCRAFT``` This item cannot be disassembled, even if a recipe for it is reversible, an `uncraft` recipe names it or it is a book (which otherwise disassembles into paper).
 - ```NPC_ACTIVATE``` NPCs can activate this item as an alternative attack.  Currently done by throwing it right after activation.  `BOMB` implies this.
 - ```NPC_ALT_ATTACK``` Shouldn't be set directly.  Implied by `NPC_ACTIVATE` and `NPC_THROWN`.
 - ```NPC_SAFE``` NPC will consume this item if you give them, no matter of it's trust about you.
@@ -1439,6 +1440,8 @@ See [Character](#character)
 
 
 ## Recipes
+
+Recipe flags are the ones below and the camp building ones further on; any other flag on a recipe is a load error.
 
 - ```ALLOW_ROTTEN``` Explicitly allow rotten components when crafting non-perishables.
 - ```BLIND_EASY``` Easy to craft with little to no light.

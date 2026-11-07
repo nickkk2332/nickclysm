@@ -1761,6 +1761,16 @@ recipe_panel build_recipe_panel( const recipe &recp, const availability &avail, 
                 value >= requirement ? c_green : c_red
             } );
         }
+        // CRAFT-J06: the recipe's condition, and why it fails
+        if( recp.has_condition() ) {
+            if( recp.meets_condition( crafter ) ) {
+                panel.character_requirements.push_back( {
+                    _( "The conditions for this recipe are met." ), c_green
+                } );
+            } else {
+                panel.character_requirements.push_back( { recp.condition_fail_text(), c_red } );
+            }
+        }
     }
     panel.components = panel_components( recp.simple_requirements(), crafting_inv,
                                          recp.get_component_filter(), batch_size,

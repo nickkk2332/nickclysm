@@ -1633,6 +1633,7 @@
     "color": "red",
     "move_cost": 0,
     "flags": [ "REDUCE_SCENT", "CONTAINER", "FIRE_CONTAINER", "SUPPRESS_SMOKE", "PERMEABLE", "FIRE_CONTAINER" ],
+    "crafting_pseudo_items": [ "brick_oven_pseudo" ],
     "deconstruct": { "ter_set": "t_dirt", "items": [ { "item": "fire_brick", "count": 90 } ] },
     "examine_action": "fireplace",
     "bash": {

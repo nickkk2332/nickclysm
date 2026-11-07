@@ -89,6 +89,9 @@ class recipe_dictionary
 
 extern recipe_dictionary recipe_dict;
 
+// CRAFT-J05: whether the game reads this recipe flag; an unknown one is a load error
+bool is_known_recipe_flag( std::string_view flag );
+
 class recipe_subset
 {
     public:

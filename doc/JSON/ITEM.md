@@ -111,6 +111,7 @@ These fields can be read by any ITEM regardless of subtypes:
 "display_type": "BY_WEIGHT",      // (Optional) Whether this item should be displayed by weight or volume instead of count. Valid entries are `DEFAULT`(no need to put anything), `BY_LENGTH`, `BY_VOLUME`, and `BY_WEIGHT`.
 "container": "null",             // What container (if any) this item should spawn within
 "repairs_like": "scarf",          // If this item does not have recipe, what item to look for a recipe for when repairing it.
+"disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] }, // (Optional) What a reversible recipe needing this tool needs instead to be disassembled; see ITEM_CRAFT_AND_DISASSEMBLY.md, "Reversible crafting recipes".
 "color": "blue",                 // Color of the item symbol.
 "symbol": "[",                   // The item symbol as it appears on the map. Must be a Unicode string exactly 1 console cell width.
 "looks_like": "sheet_cotton",              // hint to tilesets if this item has no tile, use the looks_like tile

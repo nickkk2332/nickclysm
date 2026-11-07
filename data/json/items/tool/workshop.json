@@ -852,6 +852,7 @@
   },
   {
     "id": "oxy_torch",
+    "disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "acetylene torch", "str_pl": "acetylene torches" },
@@ -1308,6 +1309,7 @@
   },
   {
     "id": "welder",
+    "disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "arc welder" },
@@ -1360,6 +1362,7 @@
   },
   {
     "id": "welder_crude",
+    "disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "makeshift arc welder" },

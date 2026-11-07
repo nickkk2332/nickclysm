@@ -168,6 +168,7 @@ Use the `Home` key to return to the top.
       - [`color` or `bgcolor`](#color-or-bgcolor)
       - [`coverage`](#coverage)
       - [`max_volume`](#max_volume)
+      - [`crafting_pseudo_items`](#crafting_pseudo_items)
       - [`examine_action`](#examine_action)
       - [`close` and `open`](#close-and-open)
       - [`bash`](#bash)
@@ -2904,7 +2905,8 @@ Format and syntax:
   "type": "tool_quality",
   "id": "SAW_W",                      // Unique ID
   "name": { "str": "wood sawing" },   // Description used in tabs in-game when looking at entries with the id
-  "usages": [ [ 2, [ "LUMBER" ] ] ]   // Not mandatory.  The special actions that may be performed with the item.
+  "usages": [ [ 2, [ "LUMBER" ] ] ],  // Not mandatory.  The special actions that may be performed with the item.
+  "disassembly_substitute": { "qualities": [ { "id": "CUT" } ] } // Not mandatory.  What a reversible recipe needing this quality needs instead to be disassembled ({ } for nothing); see ITEM_CRAFT_AND_DISASSEMBLY.md, "Reversible crafting recipes".
 },
 ```
 
@@ -4261,6 +4263,16 @@ Color of the object as it appears in the game. "color" defines the foreground co
 #### `max_volume`
 
 (Optional) Maximal volume that can be used to store items here. Volume in ml and L can be used - "50 ml" or "2 L"
+
+#### `crafting_pseudo_items`
+
+(Optional) Ids of items (tools) that are available for crafting while this terrain or furniture is in range, as if they were there: a rock outcrop that works as a hammer, a natural oven, a counter with a cutting board and a sink.  Furniture's own [`crafting_pseudo_item`](#crafting_pseudo_item) still comes first and is the only one that holds ammo from the tile; these are plain tools.  A tool with the `NEEDS_SUNLIGHT` flag needs the tile in sunlight.
+
+```jsonc
+"crafting_pseudo_items": [ "brick_oven_pseudo" ]
+```
+
+Terrain with the `TREE` flag and no `crafting_pseudo_items` lends a `butchery_tree_pseudo` (a branch to hang a carcass from); give it `"crafting_pseudo_items": [ ]` for none.  A `copy-from` inherits the list; giving it replaces it.
 
 #### `examine_action`
 

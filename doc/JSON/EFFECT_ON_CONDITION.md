@@ -1300,21 +1300,27 @@ You are busy with something
 { "u_is_doing_activity": "any" }
 ```
 
-### `u_know_recipe`
+### `u_know_recipe`, `npc_know_recipe`
 - type: string or [variable object](#variable-object)
-- return true if character know specific recipe;
+- return true if the alpha (`u_`) or beta (`npc_`) talker knows the recipe;
 - only memorized recipes count, not recipes written in the book
+- the talker's own recipes: before 2.0 `u_know_recipe` always checked the avatar, whoever the alpha talker was
 
 #### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
 
 #### Examples
 check do you memorize `meat_hunk` recipe
 ```jsonc
 { "u_know_recipe": "meat_hunk" }
+```
+
+check that the NPC you talk to knows it
+```jsonc
+{ "npc_know_recipe": "meat_hunk" }
 ```
 
 ### `u_has_item_with_flag`, `npc_has_item_with_flag`

@@ -110,6 +110,8 @@ static const efftype_id effect_weed_high( "weed_high" );
 
 static const fault_id fault_emp_reboot( "fault_emp_reboot" );
 
+static const flag_id json_flag_NO_UNCRAFT( "NO_UNCRAFT" );
+
 static const furn_str_id furn_f_metal_smoking_rack_active( "f_metal_smoking_rack_active" );
 static const furn_str_id furn_f_smoking_rack_active( "f_smoking_rack_active" );
 static const furn_str_id furn_f_water_mill_active( "f_water_mill_active" );
@@ -3364,7 +3366,8 @@ bool item::is_salvageable() const
 
 bool item::is_disassemblable() const
 {
-    return !ethereal && !has_var( "power_grant_application" ) &&
+    // CRAFT-J03: NO_UNCRAFT opts an item out of disassembly
+    return !ethereal && !has_var( "power_grant_application" ) && !has_flag( json_flag_NO_UNCRAFT ) &&
            ( recipe_dictionary::get_uncraft( typeId() ) || typeId() == itype_disassembly );
 }
 

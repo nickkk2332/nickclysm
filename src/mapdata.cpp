@@ -52,6 +52,8 @@ static const furn_str_id furn_f_null( "f_null" );
 
 static const item_group_id Item_spawn_data_EMPTY_GROUP( "EMPTY_GROUP" );
 
+static const itype_id itype_butchery_tree_pseudo( "butchery_tree_pseudo" );
+
 static const skill_id skill_survival( "survival" );
 
 namespace mapdata
@@ -1273,6 +1275,14 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "coverage", coverage );
     optional( jo, was_loaded, "curtain_transform", curtain_transform );
     optional( jo, was_loaded, "emissions", emissions );
+    // CRAFT-J08
+    if( jo.has_member( "crafting_pseudo_items" ) ) {
+        crafting_pseudo_items.clear();
+        for( const std::string pseudo : jo.get_array( "crafting_pseudo_items" ) ) {
+            crafting_pseudo_items.emplace_back( pseudo );
+        }
+        crafting_pseudo_items_set = true;
+    }
     // MAP-J04
     if( jo.has_member( "item_temperature" ) ) {
         const std::string temperature = jo.get_string( "item_temperature" );
@@ -1448,6 +1458,25 @@ static void load_tool_activity( const JsonObject &jo, const std::string_view mem
 bool map_data_common_t::is_terrain() const
 {
     return false;
+}
+
+const std::vector<itype_id> &map_data_common_t::crafting_pseudo_tools() const
+{
+    // a tree lends its trunk to hang a carcass from unless its JSON says otherwise
+    static const std::vector<itype_id> tree = { itype_butchery_tree_pseudo };
+    if( !crafting_pseudo_items_set && is_terrain() && has_flag( ter_furn_flag::TFLAG_TREE ) ) {
+        return tree;
+    }
+    return crafting_pseudo_items;
+}
+
+static void check_crafting_pseudo_items( const map_data_common_t &data, const std::string &id )
+{
+    for( const itype_id &pseudo : data.crafting_pseudo_items ) {
+        if( !pseudo.is_valid() ) {
+            debugmsg( "%s has unknown crafting_pseudo_items entry %s", id, pseudo.str() );
+        }
+    }
 }
 
 bool ter_t::is_terrain() const
@@ -1652,6 +1681,7 @@ bool ter_t::is_smashable() const
 void ter_t::check() const
 {
     map_data_common_t::check();
+    check_crafting_pseudo_items( *this, id.str() );
     for( const cata::clone_ptr<iexamine_actor> &actor : examine_actor ) {
         actor->check( id.str() );
     }
@@ -1817,6 +1847,7 @@ bool furn_t::is_smashable() const
 void furn_t::check() const
 {
     map_data_common_t::check();
+    check_crafting_pseudo_items( *this, id.str() );
     for( const cata::clone_ptr<iexamine_actor> &actor : examine_actor ) {
         actor->check( id.str() );
     }

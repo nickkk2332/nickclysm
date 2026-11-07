@@ -1907,6 +1907,11 @@
     "//": "This flag should only be applied to GUN definitions, it will prevent generation of a turret vehicle part for the gun.  This blocks fake guns, or player unobtainable ones from appearing in turret list."
   },
   {
+    "id": "NO_UNCRAFT",
+    "type": "json_flag",
+    "inherit": false
+  },
+  {
     "id": "NO_UNLOAD",
     "type": "json_flag",
     "inherit": false
