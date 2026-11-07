@@ -368,8 +368,6 @@ static const ter_str_id ter_t_pit_glass( "t_pit_glass" );
 static const ter_str_id ter_t_pit_shallow( "t_pit_shallow" );
 static const ter_str_id ter_t_pit_spiked( "t_pit_spiked" );
 static const ter_str_id ter_t_pit_spiked_covered( "t_pit_spiked_covered" );
-static const ter_str_id ter_t_stump( "t_stump" );
-static const ter_str_id ter_t_trunk( "t_trunk" );
 static const ter_str_id ter_t_utility_light( "t_utility_light" );
 
 static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
@@ -2581,8 +2579,9 @@ std::optional<int> iuse::makemound( Character *p, item *it, const tripoint_bub_m
     if( here.has_flag( ter_furn_flag::TFLAG_PLOWABLE, pnt ) &&
         !here.has_flag( ter_furn_flag::TFLAG_PLANT, pnt ) ) {
         p->add_msg_if_player( _( "You start churning up the earth here." ) );
-        p->assign_activity( churn_activity_actor( std::max( 1, params.get_int( "moves", 18000 ) ),
-                            item_location( *p, it ) ) );
+        // the tool's "moves", else the terrain's till time (ACT-J10)
+        p->assign_activity( churn_activity_actor( std::max( 1, params.get_int( "moves",
+                            here.ter( pnt )->till_moves() ) ), item_location( *p, it ) ) );
         p->activity.placement = here.get_abs( pnt );
         return 1;
     } else {
@@ -4371,16 +4370,10 @@ std::optional<int> iuse::chop_logs( Character *p, item *it, const tripoint_bub_m
         return std::nullopt;
     }
 
-    const std::set<ter_str_id> allowed_ter_id {
-        ter_t_trunk,
-        ter_t_stump
-    };
     map &here = get_map();
-    const std::function<bool( const tripoint_bub_ms & )> f = [&allowed_ter_id,
-    &here]( const tripoint_bub_ms & pnt ) {
-        const ter_id &type = here.ter( pnt );
-        const bool is_allowed_terrain = allowed_ter_id.find( type.id() ) != allowed_ter_id.end();
-        return is_allowed_terrain;
+    // ACT-J10: terrain with a "chop" object
+    const std::function<bool( const tripoint_bub_ms & )> f = [&here]( const tripoint_bub_ms & pnt ) {
+        return here.ter( pnt )->can_chop();
     };
 
     const std::optional<tripoint_bub_ms> pnt_ = choose_adjacent_highlight(

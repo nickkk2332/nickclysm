@@ -44,6 +44,7 @@ Use the `Home` key to return to the top.
     - [Emitters](#emitters)
     - [Item Groups](#item-groups)
     - [Item Category](#item-category)
+    - [Zone types](#zone-types)
     - [Item faults](#item-faults)
     - [Item fault fixes](#item-fault-fixes)
     - [Item fault groups](#item-fault-groups)
@@ -148,6 +149,9 @@ Use the `Home` key to return to the top.
       - [`rad_scorch`](#rad_scorch)
       - [`felled`](#felled)
       - [`churned_into`](#churned_into)
+      - [`chop`](#chop)
+      - [`till`](#till)
+      - [`plant_result`](#plant_result)
     - [Common To Furniture And Terrain](#common-to-furniture-and-terrain)
       - [`id`](#id-1)
       - [`name`](#name)
@@ -1723,6 +1727,36 @@ When you sort your inventory by category, these are the categories that are disp
     "spawn_rate": 0.5
 }
 ```
+
+### Zone types
+
+The zone types the zone manager offers (`data/json/loot_zones.json`, `data/json/zones.json`), type `LOOT_ZONE`. They support `copy-from`.
+
+| Identifier        | Description
+|---                |---
+| `id`              | Unique ID.
+| `name`            | Shown in the zone manager.
+| `description`     | (optional) Shown in the zone manager.
+| `display_field`   | The field type that marks the zone's tiles while it's shown.
+| `can_be_personal` | (optional, default false) The zone can be a personal zone, one that moves with you.
+| `hidden`          | (optional, default false) Not offered in the zone manager (zones placed by mapgen or EOCs only).
+| `loot_source`     | (optional) Zones of this type are where zone jobs fetch tools and materials from, and where NPC traders' goods are. Default: true for the types whose id starts with `LOOT`.
+
+```jsonc
+{
+  "id": "LOOT_FOOD",
+  "type": "LOOT_ZONE",
+  "name": "Loot: Food",
+  "display_field": "fd_food_loot_zone",
+  "can_be_personal": true,
+  "description": "Destination for comestibles.  If more specific food zone is not defined, all food is moved here."
+}
+```
+
+What a zone type does is up to the game's code or to your JSON:
+- Sorting (`Sort out the loot`) moves items to the zone that their [item category](#item-category)'s `zone` or `priority_zones` names, so a new zone type works as a sorting destination.
+- The zone jobs (farming, chopping, construction, mining...) work on their own vanilla zone types only.
+- For anything else, run EOCs on the zones: `u_run_fixed_zone_eocs` (with `zone_types`) gives each zone as a talker with its corners; `u_in_zone` and `map_in_zone` test a location; `create_zone`, `remove_zones` and `set_zones_enabled` change zones. See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md#u_run_fixed_zone_eocs-npc_run_fixed_zone_eocs).
 
 ### Item faults
 
@@ -4307,6 +4341,29 @@ A tile away for a year or more gets one whole span's worth.
 #### `churned_into`
 
 (Optional) Terrain id. What a vehicle without enough wheels (dragged along on its frame) churns the terrain into. Set it to the terrain's own id to keep it as it is. Without it, `t_dirt` and `t_grass` become `t_dirtmound` and other terrain is left alone.
+
+#### `chop`
+
+(Optional) What chopping the terrain up with an axe gives (the `CHOP_LOGS` use, the zone job that chops trees and trunks, `u_assign_activity` with `ACT_CHOP_LOGS`). It's a block like [`prying`](#prying-1): `result` (mandatory) is the terrain it becomes, `byproducts` what it leaves (each item spawned one at a time), and `message` (optional) replaces "You finish chopping wood.". `duration` isn't used: the time comes from the axe and the character. Terrain without `chop` can't be chopped. A `copy-from` keeps it; `"delete": { "chop": true }` removes it.
+
+```jsonc
+"chop": {
+  "result": "t_dirt",
+  "byproducts": [ { "item": "log", "count": [ 2, 3 ] }, { "item": "stick_long", "count": [ 0, 3 ] } ]
+}
+```
+
+#### `till`
+
+(Optional) What tilling a `PLOWABLE` terrain (the `MAKEMOUND` use, farm zones) turns it into: `result` (mandatory), `time` (optional, default 3 minutes) and `message` (optional, default "You finish churning up the earth here."). Without it, the terrain becomes `t_dirtmound` in 3 minutes.
+
+```jsonc
+"till": { "result": "t_greenhouse_tilled", "message": "You finish preparing the greenhouse here." }
+```
+
+#### `plant_result`
+
+(Optional) Terrain id. What a `PLANTABLE` terrain becomes when a seed is planted on it (the seed then grows as furniture on it). Default `t_dirt`.
 
 ### Common To Furniture And Terrain
 

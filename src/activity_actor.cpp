@@ -343,7 +343,6 @@ static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_efile_junk( "efile_junk" );
 static const itype_id itype_efile_photos( "efile_photos" );
 static const itype_id itype_flight_helmet( "flight_helmet" );
-static const itype_id itype_log( "log" );
 static const itype_id itype_makeshift_ear_plugs_off( "makeshift_ear_plugs_off" );
 static const itype_id itype_muscle( "muscle" );
 static const itype_id itype_paper( "paper" );
@@ -353,7 +352,6 @@ static const itype_id itype_pseudo_bio_picklock( "pseudo_bio_picklock" );
 static const itype_id
 itype_robofac_yrax_trifacet_deactivation_manual( "robofac_yrax_trifacet_deactivation_manual" );
 static const itype_id itype_splinter( "splinter" );
-static const itype_id itype_stick_long( "stick_long" );
 
 static const json_character_flag json_flag_ASOCIAL1( "ASOCIAL1" );
 static const json_character_flag json_flag_ASOCIAL2( "ASOCIAL2" );
@@ -410,17 +408,11 @@ static const skill_id skill_traps( "traps" );
 static const species_id species_ZOMBIE( "ZOMBIE" );
 
 static const ter_str_id ter_t_card_reader_broken( "t_card_reader_broken" );
-static const ter_str_id ter_t_dirt( "t_dirt" );
-static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 static const ter_str_id ter_t_door_c( "t_door_c" );
 static const ter_str_id ter_t_door_locked_alarm( "t_door_locked_alarm" );
 static const ter_str_id ter_t_door_metal_c( "t_door_metal_c" );
 static const ter_str_id ter_t_door_metal_locked( "t_door_metal_locked" );
-static const ter_str_id ter_t_greenhouse( "t_greenhouse" );
-static const ter_str_id ter_t_greenhouse_tilled( "t_greenhouse_tilled" );
-static const ter_str_id ter_t_stump( "t_stump" );
 static const ter_str_id ter_t_tree( "t_tree" );
-static const ter_str_id ter_t_trunk( "t_trunk" );
 
 static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
 static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
@@ -10689,53 +10681,29 @@ void chop_logs_activity_actor::finish( player_activity &act, Character &who )
 {
     map &here = get_map();
     const tripoint_bub_ms &pos = here.get_bub( act.placement );
-    int log_quan;
-    int stick_quan;
-    int splint_quan;
-    const ter_id &t = here.ter( pos );
-    if( t == ter_t_trunk ) {
-        log_quan = rng( 2, 3 );
-        stick_quan = rng( 0, 3 );
-        splint_quan = 0;
-    } else if( t == ter_t_stump ) {
-        log_quan = rng( 0, 2 );
-        stick_quan = 0;
-        splint_quan = rng( 5, 15 );
-    } else {
-        log_quan = 0;
-        stick_quan = 0;
-        splint_quan = 0;
+    // ACT-J10: the terrain's "chop" object says what it becomes and what it leaves
+    const ter_t &ter = here.ter( pos ).obj();
+    if( !ter.can_chop() ) {
+        who.add_msg_if_player( m_info, _( "There is nothing left to chop here." ) );
+        act.set_to_null();
+        return;
     }
-    for( int i = 0; i != log_quan; ++i ) {
-        item obj( itype_log, calendar::turn );
-        obj.set_var( "activity_var", who.name );
-        //The item may exceed the capacity of the pos and move to another coordinate.So get loc.
-        item_location loc = here.add_item_or_charges_ret_loc( pos, obj );
-        if( loc ) {
-            who.may_activity_occupancy_after_end_items_loc.push_back( loc );
-        }
-
-    }
-    for( int i = 0; i != stick_quan; ++i ) {
-        item obj( itype_stick_long, calendar::turn );
-        obj.set_var( "activity_var", who.name );
-        //The item may exceed the capacity of the pos and move to another coordinate.So get loc.
-        item_location loc = here.add_item_or_charges_ret_loc( pos, obj );
-        if( loc ) {
-            who.may_activity_occupancy_after_end_items_loc.push_back( loc );
+    const activity_data_ter &chop = *ter.chop;
+    for( const activity_byproduct &byproduct : chop.byproducts() ) {
+        const int amount = byproduct.roll();
+        for( int i = 0; i < amount; ++i ) {
+            item obj( byproduct.item, calendar::turn );
+            obj.set_var( "activity_var", who.name );
+            //The item may exceed the capacity of the pos and move to another coordinate.So get loc.
+            item_location loc = here.add_item_or_charges_ret_loc( pos, obj );
+            if( loc ) {
+                who.may_activity_occupancy_after_end_items_loc.push_back( loc );
+            }
         }
     }
-    for( int i = 0; i != splint_quan; ++i ) {
-        item obj( itype_splinter, calendar::turn );
-        obj.set_var( "activity_var", who.name );
-        //The item may exceed the capacity of the pos and move to another coordinate.So get loc.
-        item_location loc = here.add_item_or_charges_ret_loc( pos, obj );
-        if( loc ) {
-            who.may_activity_occupancy_after_end_items_loc.push_back( loc );
-        }
-    }
-    here.ter_set( pos, ter_t_dirt );
-    who.add_msg_if_player( m_good, _( "You finish chopping wood." ) );
+    here.ter_set( pos, chop.result() );
+    who.add_msg_if_player( m_good, chop.message().empty() ? _( "You finish chopping wood." ) :
+                           chop.message().translated() );
 
     act.set_to_null();
 }
@@ -10963,13 +10931,12 @@ void churn_activity_actor::finish( player_activity &act, Character &who )
     map &here = get_map();
     tripoint_bub_ms examp = here.get_bub( act.placement );
 
-    if( here.ter( examp ).id() == ter_t_greenhouse ) {
-        here.ter_set( examp, ter_t_greenhouse_tilled );
-        who.add_msg_if_player( _( "You finish preparing the greenhouse here." ) );
-    } else {
-        here.ter_set( examp, ter_t_dirtmound );
-        who.add_msg_if_player( _( "You finish churning up the earth here." ) );
-    }
+    // ACT-J10: the terrain's "till" object, by default a mound of dirt
+    const ter_t &ter = here.ter( examp ).obj();
+    const translation message = ter.till ? ter.till->message : translation();
+    here.ter_set( examp, ter.till_result() );
+    who.add_msg_if_player( message.empty() ? _( "You finish churning up the earth here." ) :
+                           message.translated() );
     // Go back to what we were doing before
     // could be player zone activity, or could be NPC multi-farming
     act.set_to_null();

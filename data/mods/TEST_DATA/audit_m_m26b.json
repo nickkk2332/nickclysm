@@ -1,0 +1,100 @@
+[
+  {
+    "type": "ITEM",
+    "id": "test_m26b_cleanser",
+    "name": { "str": "test cleanser" },
+    "description": "ACT-J08 and ACT-J10 fixture: a mod's cleanser, the one item of its own washing requirement.",
+    "weight": "10 g",
+    "material": [ "powder" ],
+    "volume": "10 ml",
+    "symbol": "=",
+    "color": "white"
+  },
+  {
+    "type": "requirement",
+    "id": "test_m26b_wash_cleanser",
+    "//": "ACT-J08 fixture: a mod's own cleanser requirement for washing (USE-J06's cleanser_requirement).",
+    "components": [ [ [ "test_m26b_cleanser", 1 ] ] ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M26B_COUNT_ZONE",
+    "//": "ACT-J09 fixture: counts the zones u_run_fixed_zone_eocs runs it for, and keeps the last one's faction.",
+    "condition": "u_is_zone",
+    "effect": [
+      { "math": [ "audit_m26b_zone_count++" ] },
+      { "set_string_var": { "mutator": "u_zone_faction" }, "target_var": { "global_val": "audit_m26b_zone_faction" } }
+    ]
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m26b_alien_trunk",
+    "name": "test alien trunk",
+    "description": "ACT-J10 fixture: chopped up, it leaves two test cleansers and grass.",
+    "symbol": "1",
+    "color": "brown",
+    "move_cost": 4,
+    "flags": [ "TRANSPARENT" ],
+    "chop": {
+      "result": "t_grass",
+      "message": "You finish chopping the alien trunk.",
+      "byproducts": [ { "item": "test_m26b_cleanser", "count": 2 } ]
+    }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m26b_alien_soil",
+    "name": "test alien soil",
+    "description": "ACT-J10 fixture: tilled in 10 minutes into tilled alien soil.",
+    "symbol": ".",
+    "color": "brown",
+    "move_cost": 2,
+    "flags": [ "TRANSPARENT", "FLAT", "PLOWABLE" ],
+    "till": { "result": "t_test_m26b_alien_tilled", "time": "10 m" }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m26b_alien_tilled",
+    "name": "test tilled alien soil",
+    "description": "ACT-J10 fixture: planting on it leaves alien soil, not dirt.",
+    "symbol": "#",
+    "color": "brown",
+    "move_cost": 3,
+    "flags": [ "TRANSPARENT", "FLAT", "PLANTABLE" ],
+    "plant_result": "t_test_m26b_alien_soil"
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_m26b_rack",
+    "copy-from": "f_smoking_rack",
+    "name": "test smoking rack",
+    "description": "ACT-J11 fixture: a mod's smoking rack that holds 1 L of food.",
+    "smoker": { "lit": "f_test_m26b_rack_lit", "capacity": "1 L" }
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_m26b_rack_lit",
+    "copy-from": "f_smoking_rack_active",
+    "name": "lit test smoking rack",
+    "description": "ACT-J11 fixture: the test smoking rack while it smokes.",
+    "smoker": { "unlit": "f_test_m26b_rack", "capacity": "1 L" }
+  },
+  {
+    "type": "LOOT_ZONE",
+    "id": "AUDIT_M26B_STORAGE",
+    "name": "Audit storage",
+    "description": "ACT-J12 fixture: a zone type without the LOOT prefix that is a loot source.",
+    "display_field": "fd_food_loot_zone",
+    "hidden": true,
+    "loot_source": true
+  },
+  {
+    "type": "LOOT_ZONE",
+    "id": "LOOT_AUDIT_M26B_DISPLAY",
+    "name": "Audit display",
+    "description": "ACT-J12 fixture: a LOOT zone type that isn't a loot source.",
+    "display_field": "fd_food_loot_zone",
+    "hidden": true,
+    "loot_source": false
+  }
+]

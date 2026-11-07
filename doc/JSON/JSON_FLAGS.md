@@ -1703,7 +1703,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.  Many
 - ```MA_MANUAL``` Learn the martial art style this manual teaches.
 - ```MACE``` Spray an adjacent creature, which may blind it.
 - ```MAGIC_8_BALL``` Ask a question and get a random answer.
-- ```MAKEMOUND``` Make a mound of dirt.  Takes an optional `"moves"` (default 18000): how many moves churning up the soil takes, in object form: `{ "type": "MAKEMOUND", "moves": 9000 }`.
+- ```MAKEMOUND``` Make a mound of dirt.  Takes an optional `"moves"`: how many moves churning up the soil takes (default: the terrain's `till` time, 18000 moves unless the terrain sets one), in object form: `{ "type": "MAKEMOUND", "moves": 9000 }`.
 - ```MANAGE_EXOSUIT``` Manage the modules in this exosuit's pockets.
 - ```MEASURE_RESONANCE``` Find the resonant (artifact) items you carry and scan one.
 - ```MEDITATE``` Meditate, for `SPIRITUAL` characters.

@@ -166,9 +166,6 @@ static const quality_id qual_SHEAR( "SHEAR" );
 
 static const skill_id skill_survival( "survival" );
 
-static const ter_str_id ter_t_stump( "t_stump" );
-static const ter_str_id ter_t_trunk( "t_trunk" );
-
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
 
@@ -1386,7 +1383,7 @@ refusal start_chop_logs( const activity_id &, Character &who, const eoc_activity
         return no;
     }
     map &here = get_map();
-    if( here.ter( pos ) != ter_t_trunk && here.ter( pos ) != ter_t_stump ) {
+    if( !here.ter( pos )->can_chop() ) {
         return string_format( _( "There is no tree trunk to chop at the %s." ), here.name( pos ) );
     }
     if( who.cant_do_mounted( false ) ) {

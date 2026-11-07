@@ -669,6 +669,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "lit": "f_smoking_rack_active", "capacity": "20 L" },
     "deconstruct": { "items": [ { "item": "rock", "count": 8 }, { "item": "stick", "count": [ 16, 16 ] } ] },
     "bash": {
       "str_min": 18,
@@ -797,6 +798,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "unlit": "f_smoking_rack", "capacity": "20 L" },
     "bash": {
       "str_min": 18,
       "str_max": 50,
@@ -819,6 +821,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "lit": "f_metal_smoking_rack_active", "capacity": "15 L" },
     "item": "metal_smoking_rack",
     "bash": { "str_min": 18, "str_max": 50, "sound": "metal screeching!", "sound_fail": "clang!" }
   },
@@ -836,6 +839,7 @@
     "flags": [ "TRANSPARENT", "SEALED", "ALLOW_FIELD_EFFECT", "CONTAINER", "NOITEM", "EASY_DECONSTRUCT", "MINEABLE" ],
     "crafting_pseudo_item": "fake_char_smoker",
     "examine_action": "smoker_options",
+    "smoker": { "unlit": "f_metal_smoking_rack", "capacity": "15 L" },
     "item": "metal_smoking_rack",
     "bash": { "str_min": 18, "str_max": 50, "sound": "metal screeching!", "sound_fail": "clang!" }
   },

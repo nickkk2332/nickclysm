@@ -71,6 +71,9 @@ class zone_type
 
         bool can_be_personal = false;
         bool hidden = false;
+        // ACT-J12: zones of this type are where fetching for zone jobs, and NPC traders, take
+        // items from; by default the types whose id starts with LOOT
+        bool loot_source = false;
 
         static void load_zones( const JsonObject &jo, const std::string &src );
         static void finalize_all();

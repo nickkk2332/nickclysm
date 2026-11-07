@@ -144,9 +144,6 @@ requirement_data_multi_farm_cut_harvesting( "multi_farm_cut_harvesting" );
 static const requirement_id requirement_data_multi_farm_tilling( "multi_farm_tilling" );
 static const requirement_id requirement_data_multi_fishing( "multi_fishing" );
 
-static const ter_str_id ter_t_stump( "t_stump" );
-static const ter_str_id ter_t_trunk( "t_trunk" );
-
 static const trap_str_id tr_firewood_source( "tr_firewood_source" );
 
 static const zone_type_id zone_type_( "" );
@@ -2403,7 +2400,8 @@ activity_reason_info multi_chop_trees_activity_actor::multi_activity_can_do( Cha
     map &here = get_map();
 
     const ter_id &t = here.ter( src_loc );
-    if( t == ter_t_trunk || t == ter_t_stump || here.has_flag( ter_furn_flag::TFLAG_TREE, src_loc ) ) {
+    // ACT-J10: a tree, or what's left of one (terrain with a "chop" object)
+    if( t->can_chop() || here.has_flag( ter_furn_flag::TFLAG_TREE, src_loc ) ) {
         if( you.has_unreserved_quality( qual_AXE ) ) {
             return activity_reason_info::ok( do_activity_reason::NEEDS_TREE_CHOPPING );
         } else {
@@ -3779,7 +3777,7 @@ static bool chop_tree_activity( Character &you, const tripoint_bub_ms &src_loc )
         you.assign_activity( chop_tree_activity_actor( moves, item_location( you, &best_qual ) ) );
         you.activity.placement = here.get_abs( src_loc );
         return true;
-    } else if( ter == ter_t_trunk || ter == ter_t_stump ) {
+    } else if( ter->can_chop() ) {
         you.assign_activity( chop_logs_activity_actor( moves, item_location( you, &best_qual ) ) );
         you.activity.placement = here.get_abs( src_loc );
         return true;
@@ -4068,7 +4066,9 @@ bool multi_farm_activity_actor::multi_activity_do( Character &you,
     } else if( reason == do_activity_reason::NEEDS_TILLING &&
                here.has_flag( ter_furn_flag::TFLAG_PLOWABLE, src_loc ) &&
                you.has_unreserved_quality( qual_DIG, 1 ) && !here.has_furn( src_loc ) ) {
-        you.assign_activity( churn_activity_actor( 18000, item_location() ) );
+        // ACT-J10: the terrain's till time
+        you.assign_activity( churn_activity_actor( here.ter( src_loc )->till_moves(),
+                             item_location() ) );
         you.activity.placement = src;
         return false;
     } else if( reason == do_activity_reason::NEEDS_PLANTING ) {

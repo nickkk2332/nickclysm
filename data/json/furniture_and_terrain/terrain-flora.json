@@ -2056,6 +2056,10 @@
     "move_cost": 4,
     "coverage": 45,
     "flags": [ "TRANSPARENT", "FLAMMABLE_ASH", "DIGGABLE", "REDUCE_SCENT", "MOUNTABLE", "SHORT" ],
+    "chop": {
+      "result": "t_dirt",
+      "byproducts": [ { "item": "log", "count": [ 2, 3 ] }, { "item": "stick_long", "count": [ 0, 3 ] } ]
+    },
     "bash": {
       "str_min": 80,
       "str_max": 180,
@@ -2078,6 +2082,10 @@
     "move_cost": 3,
     "coverage": 35,
     "flags": [ "TRANSPARENT", "FLAMMABLE_ASH", "DIGGABLE", "REDUCE_SCENT", "MOUNTABLE", "SHORT", "FLAT_SURF" ],
+    "chop": {
+      "result": "t_dirt",
+      "byproducts": [ { "item": "log", "count": [ 0, 2 ] }, { "item": "splinter", "count": [ 5, 15 ] } ]
+    },
     "bash": {
       "str_min": 80,
       "str_max": 180,
