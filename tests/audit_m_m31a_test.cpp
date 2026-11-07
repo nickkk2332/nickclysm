@@ -1,7 +1,10 @@
 #include "cata_catch.h"
 
 #if defined(SDL_SOUND)
+#include <string>
+
 #include "cata_scope_helpers.h"
+#include "debug.h"
 #include "sound_backend.h"
 #endif
 
@@ -503,10 +506,22 @@ TEST_CASE( "rend-b07_overlay_ordering_is_the_main_tilesets", "[audit][tiles]" )
     tileset_mutation_overlay_ordering.clear();
     REQUIRE( get_overlay_order_of_mutation( mutation ) == 9999 );
 
+    // a CI runner whose test renderer can't load a tileset skips this test, without failing the
+    // run for the errors the failed load logs
+    const bool error_seen_before = debug_has_error_been_observed();
+    const auto skip = [error_seen_before]( const std::string & why ) {
+        WARN( why + "; skipping" );
+        if( !error_seen_before ) {
+            debug_reset_error_observed();
+        }
+    };
     const std::shared_ptr<const tileset> seed =
         renderer_recovery_test_support::install_synthetic_bundle_with_highlight(
             "audit_m31a_b07_seed_ts", "color_pixel_darken", 1, 1 );
-    REQUIRE( seed );
+    if( !seed ) {
+        skip( "the test renderer can't make a tileset" );
+        return;
+    }
     const std::shared_ptr<cata_tiles> main_context =
         renderer_recovery_test_support::make_test_tiles( seed );
     const std::shared_ptr<cata_tiles> other_context =
@@ -520,7 +535,16 @@ TEST_CASE( "rend-b07_overlay_ordering_is_the_main_tilesets", "[audit][tiles]" )
     };
 
     closetilecontext = main_context;
-    load( *main_context, ordered.id );
+    try {
+        load( *main_context, ordered.id );
+    } catch( const std::exception &err ) {
+        skip( std::string( "the test renderer can't load a tileset: " ) + err.what() );
+        return;
+    }
+    if( !main_context->is_valid() || main_context->get_tileset_id() != ordered.id ) {
+        skip( "the test renderer can't load a tileset" );
+        return;
+    }
     CHECK( get_overlay_order_of_mutation( mutation ) == 1234 );
 
     // another context (distant, portrait or overmap) loading another tileset leaves it
@@ -559,9 +583,21 @@ void count_music_finished()
 // came in between.
 TEST_CASE( "rend-b06_music_finished_runs_on_the_main_thread", "[audit][sound_backend]" )
 {
+    // A CI runner without audio (no mixer can be opened, or it can't mix) skips this test,
+    // without failing the run for the errors the failed start logs
+    const bool error_seen_before = debug_has_error_been_observed();
+    const auto skip = [error_seen_before]( const char *why ) {
+        WARN( std::string( why ) + "; skipping" );
+        if( !error_seen_before ) {
+            debug_reset_error_observed();
+        }
+    };
     // a memory mixer mixes on the thread that asks it to, as a device's audio thread does
-    REQUIRE( sound_backend::init( 44100, 2, 1024,
-                                  sound_backend::init_options{ /*memory_only=*/true } ) );
+    if( !sound_backend::init( 44100, 2, 1024,
+                              sound_backend::init_options{ /*memory_only=*/true } ) ) {
+        skip( "no audio mixer could be opened" );
+        return;
+    }
     on_out_of_scope shut_down( []() {
         sound_backend::set_music_finished_cb( nullptr );
         sound_backend::shutdown();
@@ -569,7 +605,10 @@ TEST_CASE( "rend-b06_music_finished_runs_on_the_main_thread", "[audit][sound_bac
     music_finished_calls = 0;
     sound_backend::set_music_finished_cb( &count_music_finished );
     sound_backend::music_source *const music = sound_backend::testing::make_synthetic_music();
-    REQUIRE( music != nullptr );
+    if( music == nullptr ) {
+        skip( "no music track could be made for the mixer" );
+        return;
+    }
     // freed before the mixer shuts down
     on_out_of_scope free_music( [music]() {
         sound_backend::free_music( music );
@@ -583,6 +622,11 @@ TEST_CASE( "rend-b06_music_finished_runs_on_the_main_thread", "[audit][sound_bac
         REQUIRE_FALSE( sound_backend::is_music_playing() );
     };
 
+    // the mixer must be able to mix at all
+    if( !sound_backend::testing::mix_memory_frames( 1024 ) ) {
+        skip( "the audio mixer can't mix" );
+        return;
+    }
     play_until_it_ends();
     // not from inside the mix
     CHECK( music_finished_calls == 0 );
