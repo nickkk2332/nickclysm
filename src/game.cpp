@@ -734,6 +734,7 @@ void game::setup()
     next_mission_id = 1;
     next_item_uid = 1;
     next_monster_uid = 1;
+    next_vehicle_uid = 1;
     // Setup replaces a session; it must not finalize old injuries into the new map/checkpoint.
     executions().reset_for_load();
     executions().end_restore();
@@ -3851,6 +3852,22 @@ void game::reserve_monster_uid( int64_t uid )
     next_monster_uid = std::max( next_monster_uid, uid + 1 );
 }
 
+int64_t game::assign_vehicle_uid()
+{
+    if( next_vehicle_uid <= 0 || next_vehicle_uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Vehicle identity space exhausted" );
+    }
+    return next_vehicle_uid++;
+}
+
+void game::reserve_vehicle_uid( int64_t uid )
+{
+    if( uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Invalid saved vehicle identity" );
+    }
+    next_vehicle_uid = std::max( next_vehicle_uid, uid + 1 );
+}
+
 int64_t game::assign_item_uid()
 {
     return next_item_uid++;
@@ -4494,10 +4511,17 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
                 knockback( traj, stun, dam_mult );
                 break;
             }
-            if( here.has_flag( ter_furn_flag::TFLAG_LIQUID, pos ) && force_remaining == 0 ) {
-                avatar_action::swim( here, u, pos );
-            } else {
-                u.setpos( here,  traj[i] );
+            u.setpos( here,  traj[i] );
+            // LOOP-B11: deep water ends the flight there, with what walking into it does. It
+            // checked the starting tile, and only once the force was spent, which it never was.
+            // The map isn't re-centred here: callers go on using bubble coordinates.
+            if( here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, traj[i] ) &&
+                here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, traj[i] ) &&
+                !here.has_flag_furn( "BRIDGE", traj[i] ) && !here.veh_at( traj[i] ) &&
+                !u.has_flag( json_flag_WATERWALKING ) ) {
+                add_msg( m_bad, _( "You land in the water." ) );
+                avatar_action::enter_water( u );
+                break;
             }
         }
     }

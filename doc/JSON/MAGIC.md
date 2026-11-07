@@ -786,7 +786,7 @@ Identifier                  | Description
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
 `skills`                    | A bonus or penalty to skills. Syntax is the same as for values, using the id of the skill name.
-`spell_values`              | Changes the damage, range, area, duration, cost or casting time of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
+`spell_values`              | Changes the damage, range, area, duration, cost, casting time, fail chance, difficulty, casting XP or sound of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
 `emitter`                   | Grants the emit_id.
 `modified_bodyparts`        | Modifies the body plan (standard is human).  `gain` adds body_part_id, `lose` removes body_part_id.
 `mutations`                 | Grants the mutation/trait ID.  Note: enchantments effects added this way won't stack, due how mutations work.
@@ -1161,6 +1161,10 @@ Value       | Changes
 `DURATION`  | The spell's duration, in moves (100 per second).
 `COST`      | The spell's energy cost, after encumbrance.  Spells that cost nothing stay free.
 `CAST_TIME` | The spell's casting time, in moves, after encumbrance and `CASTING_TIME_MULTIPLIER`.
+`FAIL`      | The spell's chance to fail, as a fraction: `"add": 0.1` is 10 points more likely to fail. The result is kept between 0 and 1. Spells with `NO_FAIL` never fail.
+`DIFFICULTY` | The spell's difficulty, which the fail chance and the XP a cast gives follow. Unlike the other values it can go below 0.
+`EXP`       | The XP a successful cast gives. Studying the spell is unchanged.
+`SOUND`     | How loud casting the spell is.
 
 Filter        | The spell must
 ---           |---

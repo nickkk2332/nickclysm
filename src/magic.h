@@ -600,6 +600,8 @@ class spell
         // how often does the spell fail
         // based on difficulty, level of spell, spellcraft skill, intelligence
         float spell_fail( const Character &guy ) const;
+        // spell_fail before the caster's FAIL enchantments
+        float spell_fail_unenchanted( const Character &guy ) const;
         std::string colorized_fail_percent( const Character &guy ) const;
         // how long does it take to cast the spell
         int casting_time( const Character &guy, bool ignore_encumb = false ) const;

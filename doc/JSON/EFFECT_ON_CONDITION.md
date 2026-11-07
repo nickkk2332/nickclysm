@@ -70,22 +70,22 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | spell: "effect": "effect_on_condition"           | target (Character, Monster) | spell caster (Character, Monster) | `spell_location`, location variable, location of target for use primarily when the target isn't a creature; `spell_id` and `spell_damage_type`, strings; `spell_level` (effective level), `spell_damage`, `spell_dot`, `spell_duration` (in turns), `spell_aoe` and `spell_range`, numbers, the values computed for this cast
 | spell: "description"                             | avatar                      | avatar                      | Used for tags
 | trap: "action": "eocs"                           | triggerer (Creature, item not supported yet) | NONE | `trap_location`, location variable, location of the trap to use primarily with ranged traps
-| terrain/furniture/field "bash": "eoc_on_hit", "eoc_on_destroy" | basher (Creature), or an empty talker with no creature if the basher is not known | NONE | `loc`, location variable, the bashed tile; `old_ter`, `old_furn`, `new_ter`, `new_furn`, strings, ids before and after the bash (fields: `field`, string, the field type id). Check `u_is_character` or `u_is_monster` before manipulating the alpha talker
+| terrain/furniture/field "bash": "eoc_on_hit", "eoc_on_destroy" | basher (Creature), or an empty talker with no creature if the basher is not known | NONE | `loc`, location variable, the bashed tile; `old_ter`, `old_furn`, `new_ter`, `new_furn`, strings, ids before and after the bash (fields: `field`, string, the field type id); `cause`, string: `smash` (a creature did it), `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, or `other`. Check `u_is_character` or `u_is_monster` before manipulating the alpha talker
 | monster_attack: "eoc"                            | attacker ( Monster)         | victim (Creature)           | `damage`, int, damage dealt by attack
 | martial_art: "onattack_eocs", "onhit_eocs", "oncrit_eocs", "onkill_eocs", "onmiss_eocs" | attacker (Character) | target (Creature) | `weapon`, `technique`, `bp`, strings; `damage`, number, damage dealt; `hit`, `crit`, `killed`, 1 or 0. See [Martial art event EOCs](MARTIALART_JSON.md#martial-art-event-eocs) for which hook gets which
-| martial_art: "ongethit_eocs", "onblock_eocs", "ondodge_eocs" | defender (Character) | attacker (Creature, if exists, otherwise NONE) | `bp`, string, body part hit; `damage`, number, incoming damage (not for `ondodge_eocs`)
+| martial_art: "ongethit_eocs", "onblock_eocs", "ondodge_eocs" | defender (Character) | attacker (Creature, if exists, otherwise NONE) | `bp`, string, body part hit (none for an explosion); `damage`, number, incoming damage (not for `ondodge_eocs`; for an explosion, the blast's force); `hit_by`, string, for `ongethit_eocs`: `melee`, `projectile`, `shrapnel` or `explosion`
 | martial_art: "ongrab_eocs", "ongrabbed_eocs" | the one holding (`ongrab_eocs`) or held (`ongrabbed_eocs`) (Character) | the other one (Creature) | `grab_strength`, number, strength of the hold; `grab_part`, string, body part held (not set when a monster is held)
 | martial_art: "static_eocs", "onmove_eocs", "onpause_eocs" | character (Character) | NONE                        |
-| technique: "eocs"                                | attacker (Character)        | target (Creature)           | runs before the hit, once per repeat
+| technique: "eocs"                                | attacker (Character)        | target (Creature)           | runs before the hit, once per repeat; `weapon`, `style`, `technique`, `bp`, strings; `crit`, `hit`, 1 or 0; `damage`, number, the damage the hit will deal before armor, with the technique's bonuses
 | technique: "post_hit_eocs"                       | attacker (Character)        | target (Creature)           | runs once after the hit; same values as martial_art "onkill_eocs": `weapon`, `technique`, `bp`, `damage`, `hit`, `crit`, `killed`
 | use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile). The EOCs can set `charges` and `cancel`, see below
 | tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
 | countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
 | COMESTIBLE: "consumption_effect_on_conditions"   | user (Character)            | item (item)                 |
-| activity_type: "start_eoc"                       | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming
-| activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
-| activity_type: "cancel_eoc"                      | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
-| activity_type: "do_turn_eoc"                     | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| activity_type: "start_eoc"                       | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming; the values of `u_assign_activity`'s `context`
+| activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; the values of `u_assign_activity`'s `context`; `outcome`, string: `completed`, `canceled`, or `interrupted` (canceled, but kept to resume)
+| activity_type: "cancel_eoc"                      | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; the values of `u_assign_activity`'s `context`; `outcome`, string: `completed`, `canceled`, or `interrupted` (canceled, but kept to resume)
+| activity_type: "do_turn_eoc"                     | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; the values of `u_assign_activity`'s `context`
 | construction: "condition"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
 | construction: "do_turn_eocs"                     | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
 | construction: "post_eocs"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile that was built on
@@ -100,6 +100,8 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | recipe: "result_eocs"                            | crafter (Character)         | NONE                        | `recipe_id`, string; `batch_size`, `batch_index`, numbers; run once per batch unit
 | recipe: "result_item_eocs"                       | crafter (Character)         | result (item)               | `recipe_id`, string; `batch_size`, number; run once per result item
 | recipe: "disassembly_eocs"                       | character (Character)       | NONE                        | `recipe_id`, `item_id`, strings; `count`, number
+| recipe: "start_eocs"                             | crafter (Character)         | craft in progress (item)    | `recipe_id`, string; `batch_size`, number; run once when the craft starts
+| recipe: "fail_eocs"                              | crafter (Character)         | craft in progress (item)    | `recipe_id`, string; `batch_size`, `components_lost`, numbers; `progress_lost`, number, percent of the craft; `destroyed`, 1 when nothing is left to craft from; run each time the craft fails partway
 | monster weakpoint: "effect_on_conditions"        | attacker (Creature, if exists, otherwise NONE) | victim (Creature) | note that if weakpoint was hit without attacker, EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
 | monster death: "death_function"                  | killer (Creature, if exists, otherwise NONE)| victim (Creature) | Note that if monster was killed without a killer (falling anvil, explosion of a bomb etc), EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
 | ammo_effect: "eoc"                               | shooter (Creature), or an empty talker with no creature if there is no shooter (SPECIAL_COOKOFF detonation, NULL_SOURCE projectile) | victim (if exist, otherwise NONE) (Creature) | `targeted_location`: location_variable, the tile impacted by the projectile, `proj_damage`: int, amount of damage projectile dealt. Detonation via SPECIAL_COOKOFF ammo effect return `proj_damage` as 1. Note that if projectile miss the target, EoC would be built without beta talker, so using EoC referencing `npc_` or `n_` would result in error. Use `has_beta` condition before manipulating npc
@@ -591,6 +593,23 @@ Alpha talker is a vehicle with a fluidtank
 Beta talker is a vehicle with a stereo which is activated
 ```jsonc
 { "npc_has_part_flag": "STEREO", "enabled" : true }
+```
+
+### `u_vehicle_owner`, `npc_vehicle_owner`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is a vehicle owned by that faction; `"NULL"` (or `""`) is true for an unowned vehicle
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+#### Examples
+
+The vehicle belongs to the player's faction
+```jsonc
+{ "u_vehicle_owner": "your_followers" }
 ```
 
 ### `u_has_species`, `npc_has_species`
@@ -1904,6 +1923,17 @@ The Free Merchants shoot raiders on sight
 { "faction_has_relation": [ "free_merchants", "hells_raiders", "kill on sight" ] }
 ```
 
+### `u_has_fac_relation`, `npc_has_fac_relation`
+- type: string
+- return true if the alpha (or, for `npc_has_fac_relation`, beta) talker's faction has the relation toward the other talker's faction; the relation is one of the ones `faction_has_relation` takes, and one that isn't is a load error
+- false when either talker has no faction, or there is no other talker
+
+#### Examples
+The NPC's faction shoots the player's on sight
+```jsonc
+{ "npc_has_fac_relation": "kill on sight" }
+```
+
 ### `u_can_reach`, `npc_can_reach`
 - type: [variable object](#variable-object)
 - return true if alpha or beta talker has a way to the location: the walk `u_walk_to` would take, with the same `range`, so walls, locked doors and an unloaded spot make it false. Creatures in the way don't count, since they may move. This runs a path search, so don't check it every turn for many characters
@@ -2385,10 +2415,12 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_butchered_corpse | Triggers after succesful butchering action. Possible values of butcher_type are `ACT_BLEED`, `ACT_BUTCHER`, `ACT_BUTCHER_FULL`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | { "character", `character_id` }, { "monster_id", `mtype_id` }, { "butcher_type", `string` }, | character / NONE |
 | character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered. A spell cast without a caster (by an item, for example) has an invalid `character`, and runs no EVENT EOCs | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` }, | character / NONE |
 | character_consumes_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
+| character_crafts_item | Triggers when a character finishes crafting a recipe, after its `result_eocs` and `result_item_eocs`. `quantity` is the batch size; `itype` is the recipe's result (`null` for a recipe with none) | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` },<br/> { "quantity", `int` } | character / NONE |
+| character_disassembles_item | Triggers when a character finishes taking an item apart with a disassembly recipe, after its `disassembly_eocs` | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` } | character / NONE |
 | character_dies |  | { "character", `character_id` }, | character / NONE |
 | character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | character_effect_intensity_changed | Triggers when adding (or granting, or taking back a grant of) an effect a character already has changes its intensity; not when the effect is gained, nor when its intensity decays over time | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` },<br/> { "intensity", `int` } (the new intensity) | character / NONE |
-| character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` } | character / NONE |
+| character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work. `outcome` is `completed`, `canceled`, or `interrupted` for a cancel that left the activity in the backlog to resume | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` },<br/> { "outcome", `string` } | character / NONE |
 | character_finishes_construction | Triggers when a character finishes a construction, after its `post_special` and `post_eocs` | { "character", `character_id` },<br/> { "construction", `string` } (construction id),<br/> { "pos", `tripoint` } (location of the tile) | character / NONE |
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` },<br/> { "intensity", `int` } | character / NONE |
@@ -2397,6 +2429,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_heals_damage |  | { "character", `character_id` },<br/> { "damage", `int` }, | character / NONE |
 | character_kills_character |  | { "killer", `character_id` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` },<br/> { "victim_class", `string` } (the NPC class id of the victim; empty for the avatar), | character / NONE |
 | character_kills_monster |  | { "killer", `character_id` },<br/> { "victim_type", `mtype_id` },<br/> { "exp", `int` }, | character / monster |
+| character_learns_recipe | Triggers when a character learns a recipe it didn't know: `how` is `crafting` (memorized from a book while crafting), `disassembly` or `eoc` (`u_learn_recipe`, `u_roll_remainder`). Not sent for the recipes of a new character | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "how", `string` } | character / NONE |
 | character_learns_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_loses_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` } | character / NONE |
 | character_melee_attacks_character |  | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "hits", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
@@ -2485,6 +2518,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | teleports_into_wall | Triggers when character(only avatar is actually eligible) is teleported into wall | { "character", `character_id` },<br/> { "obstacle_name", `string` }, | character / NONE |
 | terminates_subspace_specimens | Triggers when Terminate Specimens option is activated via ("old lab" finale's?) computer | NONE | avatar / NONE |
 | throws_up | | { "character", `character_id` } | character / NONE |
+| tile_destroyed | Triggers when a bash destroys the terrain or furniture of a tile on the main map, from any cause, after the bash's `eoc_on_destroy`. `cause` is `smash` (a creature did it), `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, or `other`. Statistics don't keep it | { "location", `tripoint` },<br/> { "old_ter", `ter_str_id` },<br/> { "old_furn", `furn_str_id` },<br/> { "new_ter", `ter_str_id` },<br/> { "new_furn", `furn_str_id` },<br/> { "cause", `string` } | the creature that bashed, or an empty talker / NONE |
 | triggers_alarm | Triggers when alarm is sounded as a failure state of hacking, prying, using a computer, or (if player is sufficiently close)damaged terrain with ALARMED flag | { "character", `character_id` } | character / NONE |
 | uses_debug_menu | | { "debug_menu_option", `debug_menu_index` }, | avatar / NONE |
 | u_var_changed | | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
@@ -2870,8 +2904,8 @@ EoCs can run each other up to 250 deep, counting every EoC that runs inside anot
 | "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. An EoC queued while the queue is being worked through (by another queued EoC, or by itself) and due at once waits for the next turn's pass. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. Doesn't work with "condition" and "iterations" |
 | "randomize_time_in_future" | optional | bool | used with time_in_future; if false, entire eoc array would run at the exact same moment; if true, each eoc in array would pick it's own time again and again |
 | "alpha_loc","beta_loc" | optional | [variable object](#variable-object) | Allows to swap talker by defining `u_location_variable`, where the EoC should be run. Set the alpha/beta talker to the creature at the location. |
-| "alpha_talker","beta_talker" | optional (If you use both "alpha_loc" and "alpha_talker", "alpha_talker" will be ignored, same for beta.) | string, [variable object](#variable-object) | Set alpha/beta talker. This can be either a `character_id` (you can get from [EOC event](#event-eocs) or result of [u_set_talker](#u_set_talkernpc_set_talker) ), or some hard-coded values: <br> `""`: null talker <br> `"u"/"npc": the alpha/beta talker of the EOC`(Should be Avatar/Character/NPC/Monster) <br> `"avatar"`: your avatar|
-| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | false EOCs will run if<br>1. there is no creature at "alpha_loc"/"beta_loc",or<br>2. "alpha_talker" or "beta_talker" doesn't exist in the game (eg. dead NPC),or<br>3. alpha and beta talker are both null |
+| "alpha_talker","beta_talker" | optional (If you use both "alpha_loc" and "alpha_talker", "alpha_talker" will be ignored, same for beta.) | string, [variable object](#variable-object) | Set alpha/beta talker. This can be either a `character_id` (you can get from [EOC event](#event-eocs)), a handle to a character, monster, item or vehicle stored by [u_set_talker](#u_set_talkernpc_set_talker), or some hard-coded values: <br> `""`: null talker <br> `"u"/"npc": the alpha/beta talker of the EOC`(Should be Avatar/Character/NPC/Monster) <br> `"avatar"`: your avatar|
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | false EOCs will run if<br>1. there is no creature at "alpha_loc"/"beta_loc",or<br>2. "alpha_talker" or "beta_talker" doesn't exist in the game (eg. dead NPC, a monster or item that's gone, or one outside the reality bubble),or<br>3. alpha and beta talker are both null |
 | "variables" | optional | pair of `"variable_name": "variable"` | context variables, that would be passed to the EoC; can be either a [variable object](#variable-object), or an [inline variable](#inline-variables) ;<br/><br/> `expects_vars` condition can be used inside running eoc to ensure every variable exist before the EoC is run |
 
 ##### Inline Variables
@@ -3139,11 +3173,16 @@ runs `EOC_POWER_TOGGLE_REMOVE_EFFECTS`, but current beta talker would be made al
 ```
 
 #### `u_set_talker`, `npc_set_talker`
-Store the character_id of You or NPC into a variable object
+Store a handle to You or NPC in a variable object. `run_eocs` reads it back as `alpha_talker` or `beta_talker`, so a later EOC (one queued with `time_in_future`, an EVENT EOC, or one run on someone else) can act on the same character, monster, item or vehicle.
+
+- A character's handle is its `character_id`, a number, as EVENT EOCs give it.
+- A monster's is `monster:` and its uid, a vehicle's `vehicle:` and its uid, and an item's `item:` and its uid, followed by where the item was (such as `@map:x,y,z` or `@character:id`), which is only where it's looked for first.
+
+A handle keeps naming the same creature or vehicle when it moves and across saves, but it finds it only while it exists and is in the reality bubble. Otherwise `run_eocs` runs its `false_eocs`. A copy of a vehicle is a new vehicle with a new handle. An item's handle finds the item wherever it is in the reality bubble and across saves, but most ways of moving an item (picking it up, dropping it, wielding it, splitting it off a stack) make a new copy of it, which the old handle doesn't find. Furniture, zones and the other talkers have no handle: storing one is an error.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
-| "u_set_talker" / "npc_set_talker" | **mandatory** | [variable object](#variable-object) | the variable object to store the character_id |
+| "u_set_talker" / "npc_set_talker" | **mandatory** | [variable object](#variable-object) | the variable object to store the handle in |
 
 ##### Examples
 
@@ -3432,6 +3471,49 @@ Run EOC_KILL_SHADOW on any mon_zombie_dog, mon_dog_zombie_cop or mon_dog_zombie_
     "mtype_ids": [ "mon_zombie_dog", "mon_dog_zombie_cop", "mon_dog_zombie_rot" ]
     "monster_range": 12
   }
+```
+
+#### `u_damage_vehicle_parts`, `npc_damage_vehicle_parts`
+Damages the parts of the alpha or beta talker, which must be a vehicle. Every part is hit unless filters narrow it down; carried vehicles and fake parts are never hit.
+
+Parts already broken are skipped unless `tear_off` is true, so by default the vehicle can't break apart while the EOC runs. With `tear_off`, damaging a broken part tears it off, which can split the vehicle or leave nothing of it. Parts torn off and pieces split away are only cleaned up at the end of the turn, so the talker can still be used for the rest of the EOC. Split-off pieces are new vehicles: reach them with `u_run_vehicle_eocs` or a handle.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_damage_vehicle_parts" / "npc_damage_vehicle_parts" | **mandatory** | int or [variable object](#variable-object) | how much damage each part takes |
+| "damage_type" | optional | string or [variable object](#variable-object) | the damage type, `pure` by default |
+| "flag" | optional | string or [variable object](#variable-object) | only parts with this flag |
+| "part" | optional | string or [variable object](#variable-object) | only parts of this vehicle part id |
+| "loc" | optional | [variable object](#variable-object) | only parts on this tile |
+| "count" | optional | int or [variable object](#variable-object) | at most this many of the matching parts, picked at random |
+| "armor" | optional | bool | when true, the damage hits the tile's armor first and a random part there, as a collision does; when false (the default), it goes straight to each part |
+| "tear_off" | optional | bool | also hit parts already broken, tearing them off |
+
+The EOC's context gets `vehicle_parts_damaged`, `vehicle_parts_broken` (parts that broke now), `vehicle_parts_removed` and `vehicle_destroyed` (1 when no part is left).
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+Two random wheels take 40 bash damage
+```jsonc
+{ "u_damage_vehicle_parts": 40, "damage_type": "bash", "flag": "WHEEL", "count": 2 }
+```
+
+#### `u_set_vehicle_owner`, `npc_set_vehicle_owner`
+Sets the faction that owns the alpha or beta talker, which must be a vehicle: a faction id, `""` or `"NULL"` for none, or `"u"` / `"npc"` for that talker's faction (it must be a character). Taking ownership this way ends a theft in progress.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_vehicle_owner" / "npc_set_vehicle_owner" | **mandatory** | string or [variable object](#variable-object) | the owner |
+
+##### Examples
+The vehicle in beta now belongs to the player
+```jsonc
+{ "npc_set_vehicle_owner": "u" }
 ```
 
 #### `u_run_vehicle_eocs`, `npc_run_vehicle_eocs`
@@ -4209,6 +4291,39 @@ Removes all wounds from all body parts
   }
 ```
 
+#### `u_add_body_part`, `npc_add_body_part`, `u_lose_body_part`, `npc_lose_body_part`
+
+Gives the body a part, or takes one away, until another of these effects changes it back. The change lasts through saves and outlives whatever the anatomy, mutations and enchantments say: a part an EOC took away stays gone even if a mutation would grow it, and one an EOC gave stays when the enchantment that also gave it ends.
+
+- Adding needs the part the new one connects to (its `connected_to`) to be there already. Adding a part the body already has records it, so it outlasts its enchantment, but counts as a failure.
+- Losing a part also loses every part connected to the body through it: losing `arm_l` takes `hand_l` with it. The root part (the head) and vital parts can't be lost, and neither can a part an installed bionic is in, unless `force` is true.
+- Worn items left covering none of the remaining parts fall off. Effects on a lost part end.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_add_body_part", "npc_add_body_part", "u_lose_body_part", "npc_lose_body_part" | **mandatory** | string or [variable object](#variable-object) | id of the body part |
+| "force" | optional | bool | for losing: also lose a part a bionic is in. Default false |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the part was added or lost |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it wasn't; the context value `reason` says why |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+Grows a tail, unless the body already has one
+```jsonc
+{ "u_add_body_part": "tail", "false_eocs": [ { "id": "EOC_TAIL_ALREADY", "effect": { "u_message": "Nothing happens." } } ] }
+```
+
+Loses the left arm and the hand with it
+```jsonc
+{ "u_lose_body_part": "arm_l" }
+```
+
 #### Power ownership commands
 
 `apply_power_application`, `end_power_application`, `dispel_power_applications`,
@@ -4437,6 +4552,7 @@ Switch an installed bionic on or off.  This goes through the same code as the bi
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_activate_bionic" / "npc_activate_bionic" / "u_deactivate_bionic" / "npc_deactivate_bionic" | **mandatory** | string or [variable object](#variable-object) | id of the bionic to switch; an unknown id is reported as an error |
+| "ignore_cost" | optional | bool | when true, the bionic is switched without the power it costs, and without needing that power: `act_cost` (or `deact_cost`) isn't paid, and the activation EOCs see an `act_cost` of 0. Fuel, the `activation_condition` and the rest still apply, and so do running costs (`react_cost`). Default false |
 | "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when the bionic was switched |
 | "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when nothing was switched: the bionic isn't installed, is already in that state, or the (de)activation was refused |
 
@@ -5882,6 +5998,7 @@ NPC or character will start an activity
 | "butcher_type" | optional | string or [variable object](#variable-object) | for `ACT_BUTCHER`: `"quick"` (the default), `"full"`, `"field_dress"`, `"skin"`, `"quarter"`, `"dismember"`, `"dissect"` or `"bleed"` |
 | "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run once the activity has started (when it finishes, the `character_finished_activity` event fires) |
 | "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it can't start; the context value `reason` says why, as a sentence (for example `The book is out of reach.`) |
+| "context" | optional | object of values or [variable objects](#variable-object) | values for the activity's own EOCs (its type's `start_eoc`, `do_turn_eoc`, `completion_eoc` and `cancel_eoc`), as `run_eocs`' `variables` gives them to its EOCs. They are worked out when the activity is assigned, saved with it, and kept if it is interrupted and resumed. A name the activity sets itself, such as `activity` or `moves_left`, gets the activity's value |
 
 Activities defined only in JSON (like `ACT_GENERIC_EOC` or a mod's own activity) last `duration`.
 

@@ -660,6 +660,23 @@ void effect_type::verify() const
             debugmsg( "effect_type %s has unknown enchantment %s", id.str(), ench.str() );
         }
     }
+    // HLTH-J02: these lists were never checked, and shipped data had ids in them that pointed
+    // at nothing, so the resistance or removal silently never happened
+    for( const trait_id &trait : resist_traits ) {
+        if( !trait.is_valid() ) {
+            debugmsg( "effect_type %s has unknown trait %s in resist_traits", id.str(), trait.str() );
+        }
+    }
+    const auto check_effects = [this]( const std::vector<efftype_id> &list, const char *member ) {
+        for( const efftype_id &other : list ) {
+            if( !other.is_valid() ) {
+                debugmsg( "effect_type %s has unknown effect %s in %s", id.str(), other.str(), member );
+            }
+        }
+    };
+    check_effects( resist_effects, "resist_effects" );
+    check_effects( removes_effects, "removes_effects" );
+    check_effects( blocks_effects, "blocks_effects" );
 }
 
 bool effect_type::has_flag( const flag_id &flag ) const

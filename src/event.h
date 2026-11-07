@@ -148,6 +148,10 @@ enum class event_type : int {
     npc_dismissed,
     npc_mutinies,
     mod_setting_changed,
+    character_crafts_item,
+    character_disassembles_item,
+    character_learns_recipe,
+    tile_destroyed,
     num_event_types // last
 };
 
@@ -215,7 +219,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 124,
+static_assert( static_cast<int>( event_type::num_event_types ) == 128,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -369,10 +373,12 @@ struct event_spec<event_type::character_dies> {
 
 template<>
 struct event_spec<event_type::character_finished_activity> {
-    static constexpr std::array<event_field, 3> fields = { {
+    static constexpr std::array<event_field, 4> fields = { {
             { "character", cata_variant_type::character_id },
             { "activity", cata_variant_type::activity_id },
-            { "canceled", cata_variant_type::bool_ }
+            { "canceled", cata_variant_type::bool_ },
+            // "completed", "canceled", or "interrupted" (canceled, but kept to resume)
+            { "outcome", cata_variant_type::string }
         }
     };
 };
@@ -1005,6 +1011,58 @@ struct event_spec<event_type::mod_setting_changed> {
             { "id", cata_variant_type::string },
             { "old_value", cata_variant_type::string },
             { "new_value", cata_variant_type::string },
+        }
+    };
+};
+
+// a character finished crafting a recipe; quantity is the batch size, itype the recipe's result
+// (null for a recipe with none)
+template<>
+struct event_spec<event_type::character_crafts_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "recipe", cata_variant_type::string },
+            { "itype", cata_variant_type::itype_id },
+            { "quantity", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character finished taking an item apart with a disassembly recipe
+template<>
+struct event_spec<event_type::character_disassembles_item> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "recipe", cata_variant_type::string },
+            { "itype", cata_variant_type::itype_id },
+        }
+    };
+};
+
+// a character learned a recipe it didn't know; how: "crafting" (memorized from a book while
+// crafting), "disassembly" or "eoc"
+template<>
+struct event_spec<event_type::character_learns_recipe> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "recipe", cata_variant_type::string },
+            { "how", cata_variant_type::string },
+        }
+    };
+};
+
+// a bash destroyed the terrain or furniture of a tile on the main map; cause as for bash EOCs
+// (map.h, bash_cause_scope). Its EOCs get the basher as alpha, or an empty talker if no
+// creature did it.
+template<>
+struct event_spec<event_type::tile_destroyed> {
+    static constexpr std::array<event_field, 6> fields = {{
+            { "location", cata_variant_type::tripoint },
+            { "old_ter", cata_variant_type::ter_str_id },
+            { "old_furn", cata_variant_type::furn_str_id },
+            { "new_ter", cata_variant_type::ter_str_id },
+            { "new_furn", cata_variant_type::furn_str_id },
+            { "cause", cata_variant_type::string },
         }
     };
 };

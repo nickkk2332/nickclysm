@@ -54,12 +54,17 @@
       "effect": [
         { "math": [ "act_hooks_done++" ] },
         { "math": [ "act_hooks_done_total = _moves_total" ] },
+        { "copy_var": { "context_val": "outcome" }, "target_var": { "global_val": "act_hooks_done_outcome" } },
         { "if": "u_has_activity", "then": [ { "math": [ "act_hooks_done_while_active = 1" ] } ] }
       ]
     },
     "cancel_eoc": {
       "id": "EOC_TEST_ACT_HOOKS_CANCEL",
-      "effect": [ { "math": [ "act_hooks_cancel++" ] }, { "math": [ "act_hooks_cancel_left = _moves_left" ] } ]
+      "effect": [
+        { "math": [ "act_hooks_cancel++" ] },
+        { "math": [ "act_hooks_cancel_left = _moves_left" ] },
+        { "copy_var": { "context_val": "outcome" }, "target_var": { "global_val": "act_hooks_cancel_outcome" } }
+      ]
     }
   },
   {
@@ -71,7 +76,46 @@
     "condition": { "compare_string": [ "ACT_TEST_HOOKS", { "context_val": "activity" } ] },
     "effect": [
       { "math": [ "act_hooks_event_saw_done = act_hooks_done" ] },
-      { "math": [ "act_hooks_event_saw_cancel = act_hooks_cancel" ] }
+      { "math": [ "act_hooks_event_saw_cancel = act_hooks_cancel" ] },
+      { "copy_var": { "context_val": "outcome" }, "target_var": { "global_val": "act_hooks_event_outcome" } }
+    ]
+  },
+  {
+    "//": "ACT-J03: an activity whose EOCs read the context u_assign_activity gives it.",
+    "id": "ACT_TEST_CONTEXT",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "testing activity context",
+    "based_on": "time",
+    "start_eoc": {
+      "id": "EOC_TEST_ACT_CONTEXT_START",
+      "effect": [ { "copy_var": { "context_val": "act_note" }, "target_var": { "global_val": "act_ctx_start_note" } } ]
+    },
+    "completion_eoc": {
+      "id": "EOC_TEST_ACT_CONTEXT_DONE",
+      "effect": [
+        { "copy_var": { "context_val": "act_note" }, "target_var": { "global_val": "act_ctx_done_note" } },
+        { "copy_var": { "context_val": "act_from_global" }, "target_var": { "global_val": "act_ctx_done_global" } },
+        { "copy_var": { "context_val": "outcome" }, "target_var": { "global_val": "act_ctx_done_outcome" } }
+      ]
+    },
+    "cancel_eoc": {
+      "id": "EOC_TEST_ACT_CONTEXT_CANCEL",
+      "effect": [
+        { "copy_var": { "context_val": "act_note" }, "target_var": { "global_val": "act_ctx_cancel_note" } },
+        { "copy_var": { "context_val": "outcome" }, "target_var": { "global_val": "act_ctx_cancel_outcome" } }
+      ]
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ASSIGN_WITH_CONTEXT",
+    "effect": [
+      {
+        "u_assign_activity": "ACT_TEST_CONTEXT",
+        "duration": "10 s",
+        "context": { "act_note": "from the eoc", "act_from_global": { "global_val": "act_ctx_source" } }
+      }
     ]
   },
   {
