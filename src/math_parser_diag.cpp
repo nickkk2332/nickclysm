@@ -27,6 +27,7 @@
 #include "character.h"
 #include "character_id.h"
 #include "character_oracle.h"
+#include "city.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -47,6 +48,7 @@
 #include "itype.h"
 #include "magic.h"
 #include "map.h"
+#include "map_iterator.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mod_manager.h"
@@ -57,6 +59,7 @@
 #include "npc.h"
 #include "npc_json_goal.h"
 #include "options.h"
+#include "overmapbuffer.h"
 #include "pimpl.h"
 #include "player_activity.h"
 #include "point.h"
@@ -412,6 +415,73 @@ double distance_eval( const_dialogue const &d, char /* scope */,
         return dv.tripoint( d );
     };
     return rl_dist( get_pos( params[0] ), get_pos( params[1] ) );
+}
+
+// OMAP-J01: overmap functions. A location argument is a location variable, or "u" / "npc" for
+// that talker's position, as in distance().
+tripoint_abs_omt _omt_of( const_dialogue const &d, diag_value const &dv )
+{
+    if( dv.is_str() ) {
+        std::string const &str = dv.str( d );
+        if( str == "u" ) {
+            return d.const_actor( false )->pos_abs_omt();
+        } else if( str == "npc" ) {
+            return d.const_actor( true )->pos_abs_omt();
+        }
+        throw math::runtime_error( R"(Invalid location "%s")", str );
+    }
+    return project_to<coords::omt>( dv.tripoint( d ) );
+}
+
+double omt_distance_eval( const_dialogue const &d, char /* scope */,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    return rl_dist( _omt_of( d, params[0] ), _omt_of( d, params[1] ) );
+}
+
+double horde_size_eval( const_dialogue const &d, char /* scope */,
+                        std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const tripoint_abs_omt center = _omt_of( d, params[0] );
+    const int radius = std::max( 0, static_cast<int>( kwargs.kwarg_or( "radius", 0 ).dbl( d ) ) );
+    int total = 0;
+    for( const tripoint_abs_omt &p : points_in_radius( center, radius ) ) {
+        total += overmap_buffer.get_horde_size( p );
+    }
+    return total;
+}
+
+// The closest city matching the kwargs of city_distance() and city_size()
+city_reference _closest_city( const_dialogue const &d, std::vector<diag_value> const &params,
+                              diag_kwargs const &kwargs )
+{
+    city_filter filter;
+    filter.known_only = is_true( kwargs.kwarg_or( "known", 1 ).dbl( d ) );
+    filter.min_size = static_cast<int>( kwargs.kwarg_or( "min_size", 0 ).dbl( d ) );
+    filter.max_size = static_cast<int>( kwargs.kwarg_or( "max_size", -1 ).dbl( d ) );
+    filter.max_distance = static_cast<int>( kwargs.kwarg_or( "max_distance", -1 ).dbl( d ) );
+    diag_value const name = kwargs.kwarg_or( "name" );
+    if( !name.is_empty() ) {
+        filter.name = name.str( d );
+    }
+    return overmap_buffer.closest_city( project_to<coords::sm>( _omt_of( d, params[0] ) ), filter );
+}
+
+double city_distance_eval( const_dialogue const &d, char /* scope */,
+                           std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const city_reference city = _closest_city( d, params, kwargs );
+    if( !city ) {
+        return -1;
+    }
+    return rl_dist( project_to<coords::omt>( city.abs_sm_pos ).xy(), _omt_of( d, params[0] ).xy() );
+}
+
+double city_size_eval( const_dialogue const &d, char /* scope */,
+                       std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const city_reference city = _closest_city( d, params, kwargs );
+    return city ? city.city->size : 0;
 }
 
 double artifact_resonance_eval( const_dialogue const &d, char scope,
@@ -3292,6 +3362,11 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "monsters_nearby", { "ung", -1, monsters_nearby_eval, {}, { "radius", "attitude", "location" } } },
     { "mon_species_nearby", { "ung", -1, monster_species_nearby_eval, {}, { "radius", "attitude", "location" } } },
     { "mon_groups_nearby", { "ung", -1, monster_groups_nearby_eval, {}, { "radius", "attitude", "location" } } },
+    // OMAP-J01: overmap functions
+    { "omt_distance", { "g", 2, omt_distance_eval } },
+    { "horde_size", { "g", 1, horde_size_eval, {}, { "radius" } } },
+    { "city_distance", { "g", 1, city_distance_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
+    { "city_size", { "g", 1, city_size_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "moon_phase", { "g", 0, moon_phase_eval } },
     { "morale", { "un", 0, morale_eval, morale_ass, { "raw" } } },
     { "num_input", { "g", 2, num_input_eval } },

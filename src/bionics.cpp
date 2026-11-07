@@ -22,6 +22,7 @@
 #include "avatar_action.h"
 #include "ballistics.h"
 #include "bodypart.h"
+#include "cached_options.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
@@ -192,6 +193,8 @@ namespace
 generic_factory<bionic_data> bionic_factory( "bionic" );
 std::vector<bionic_id> faulty_bionics;
 } //namespace
+
+std::function<int()> bionic_menus::remote_test_choice;
 
 namespace io
 {
@@ -418,7 +421,14 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
         read_condition( jsobj, "activation_condition", activation_condition, false );
     }
     optional( jsobj, was_loaded, "activation_fail_message", activation_fail_message );
-    optional( jsobj, was_loaded, "npc_use", npc_use, bionic_npc_use::none );
+    if( jsobj.has_object( "npc_use" ) ) {
+        // { "when": "combat", "priority": 10 }
+        JsonObject npc_use_jo = jsobj.get_object( "npc_use" );
+        mandatory( npc_use_jo, false, "when", npc_use );
+        optional( npc_use_jo, false, "priority", npc_use_priority, 0 );
+    } else {
+        optional( jsobj, was_loaded, "npc_use", npc_use, bionic_npc_use::none );
+    }
 
     int enchant_num = 0;
     for( JsonValue jv : jsobj.get_array( "enchantments" ) ) {
@@ -1212,10 +1222,26 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         std::string dirstring = get_dirstring( weather.winddirection );
         add_msg_if_player( m_info, _( "Wind Direction: From the %s." ), dirstring );
     } else if( bio.id == bio_remote ) {
+        // The menu comes first: the activation message only if a function was picked
+        int choice = -1;
+        if( test_mode ) {
+            if( bionic_menus::remote_test_choice ) {
+                choice = bionic_menus::remote_test_choice();
+            }
+        } else {
+            choice = uilist( _( "Perform which function:" ), {
+                _( "Control vehicle" ), _( "RC radio" )
+            } );
+        }
+        if( choice < 0 || choice > 1 ) {
+            bio.powered = g->remoteveh() != nullptr || maybe_get_value( "remote_controlling" );
+            if( !bio.powered ) {
+                // Cancelled: nothing activated, nothing paid
+                refund_power();
+                return false;
+            }
+        }
         add_msg_activate();
-        int choice = uilist( _( "Perform which function:" ), {
-            _( "Control vehicle" ), _( "RC radio" )
-        } );
         if( choice >= 0 && choice <= 1 ) {
             item ctr;
             if( choice == 0 ) {
@@ -1227,8 +1253,6 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             int power_use = invoke_item( &ctr );
             mod_power_level( units::from_kilojoule( static_cast<std::int64_t>( -power_use ) ) );
             bio.powered = ctr.active;
-        } else {
-            bio.powered = g->remoteveh() != nullptr || maybe_get_value( "remote_controlling" );
         }
     } else if( bio.info().is_remote_fueled ) {
         std::vector<item_location> cables = cache_get_items_with( flag_CABLE_SPOOL );

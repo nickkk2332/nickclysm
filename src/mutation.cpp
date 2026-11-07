@@ -915,11 +915,15 @@ void Character::activate_cached_mutation( const trait_id &mut )
     }
 
     trait_flag_cache.clear();
+    // What this activation paid, refunded if an activation EOC cancels it
+    const time_duration charge_before = tdata.charge;
+    bool paid_cost = false;
     if( tdata.powered && tdata.charge > 0_turns ) {
         // Already-on units just lose a bit of charge
         tdata.charge -= 1_turns;
     } else {
         // Not-on units, or those with zero charge, have to pay the power cost
+        paid_cost = true;
         if( mdata.cooldown > 0_turns ) {
             tdata.charge = mdata.cooldown - 1_turns;
         }
@@ -960,7 +964,29 @@ void Character::activate_cached_mutation( const trait_id &mut )
         }
         if( powered_before_eocs && !powered_now() ) {
             // An activation EOC turned the mutation off (u_deactivate_trait): respect that
-            // and cancel the rest of the activation.
+            // and cancel the rest of the activation, giving back what it cost.  Not when the
+            // EOC removed the mutation: that's the activation's effect, not a cancel.
+            const auto it = cached_mutations.find( mut );
+            if( it != cached_mutations.end() ) {
+                it->second.charge = charge_before;
+                if( paid_cost ) {
+                    if( mdata.hunger ) {
+                        mod_stored_kcal( cost );
+                    }
+                    if( mdata.thirst ) {
+                        mod_thirst( -cost );
+                    }
+                    if( mdata.sleepiness ) {
+                        mod_sleepiness( -cost );
+                    }
+                    if( mdata.mana ) {
+                        magic->mod_mana( *this, cost );
+                    }
+                    if( mdata.stamina ) {
+                        mod_stamina( cost );
+                    }
+                }
+            }
             return;
         }
         // if the activation EOCs are not just setup for processing then turn the mutation off

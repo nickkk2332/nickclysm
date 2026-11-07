@@ -58,6 +58,7 @@
 #include "craft_reservation.h"
 #include "crafting_enums.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
@@ -2495,6 +2496,15 @@ void monster::load( const JsonObject &data )
     data.read( "unique_name", unique_name );
     data.read( "nickname", nickname );
     data.read( "goal", goal );
+    // A destination or target forced by an EOC; only saved while there is one
+    forced_dest = std::nullopt;
+    forced_dest_range = 0;
+    forced_target = creature_ref();
+    forced_goal_until = calendar::turn_max;
+    data.read( "forced_dest", forced_dest );
+    data.read( "forced_dest_range", forced_dest_range );
+    data.read( "forced_target", forced_target );
+    data.read( "forced_goal_until", forced_goal_until );
     data.read( "provocative_sound", provocative_sound );
     data.read( "wandf", wandf );
     data.read( "wander_pos", wander_pos );
@@ -2660,6 +2670,12 @@ void monster::store( JsonOut &json ) const
     json.member( "unique_name", unique_name );
     json.member( "nickname", nickname );
     json.member( "goal", goal );
+    if( has_forced_goal() ) {
+        json.member( "forced_dest", forced_dest );
+        json.member( "forced_dest_range", forced_dest_range );
+        json.member( "forced_target", forced_target );
+        json.member( "forced_goal_until", forced_goal_until );
+    }
     json.member( "wander_pos", wander_pos );
     json.member( "wandf", wandf );
     json.member( "provocative_sound", provocative_sound );

@@ -78,9 +78,9 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | martial_art: "static_eocs", "onmove_eocs", "onpause_eocs" | character (Character) | NONE                        |
 | technique: "eocs"                                | attacker (Character)        | target (Creature)           | runs before the hit, once per repeat; `weapon`, `style`, `technique`, `bp`, strings; `crit`, `hit`, 1 or 0; `damage`, number, the damage the hit will deal before armor, with the technique's bonuses
 | technique: "post_hit_eocs"                       | attacker (Character)        | target (Creature)           | runs once after the hit; same values as martial_art "onkill_eocs": `weapon`, `technique`, `bp`, `damage`, `hit`, `crit`, `killed`
-| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile). The EOCs can set `charges` and `cancel`, see below
-| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
-| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
+| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile); `method`, string, the use action that ran, by the name the item's use menu and `u_activate` know it by (an item has one use action of each type, so this is its type, `effect_on_conditions`); `item_pos`, location variable, where the item is (its carrier's tile when carried; it can differ from `use_location`). The EOCs can set `charges` and `cancel`, see below
+| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile; `method`, `effect_on_conditions`; `item_pos`, as for use_action
+| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile; `method`, `effect_on_conditions`; `item_pos`, as for use_action
 | COMESTIBLE: "consumption_effect_on_conditions"   | user (Character)            | item (item)                 |
 | activity_type: "start_eoc"                       | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming; the values of `u_assign_activity`'s `context`
 | activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; the values of `u_assign_activity`'s `context`; `outcome`, string: `completed`, `canceled`, or `interrupted` (canceled, but kept to resume)
@@ -123,6 +123,8 @@ An `effect_on_conditions` use action can be limited with a `condition` (u is the
 - `"condition"`: a dialogue condition checked before the action runs, together with `need_worn` and `need_wielding`.  While it is false the action can't be used, and the item menu shows `"failure_message"` (or a generic message) as the reason.
 - `_charges`: how many uses to spend.  Each use costs the item's `charges_per_use` (or `ammo_required`), so `_charges = 3` spends three times that.  0 spends nothing; values outside 0 to 10000 are clamped to that range with an error.  It replaces `consume` (which spends 1 use) for this activation.
 - `_cancel`: when set to a non-zero value, the activation is cancelled: nothing is spent, the time the user spent is refunded, and the remaining EOCs of the action don't run.  Effects that already ran are not undone.
+
+The EOCs can also read, besides `_id` and `_use_location`: `_method`, the use action's name as the item's use menu and `u_activate` know it (with one use action of each type per item, that's its type, `effect_on_conditions`), and `_item_pos`, where the item is: the carrier's tile for a carried item, or the item's own tile on the ground or in a vehicle, while `_use_location` is the tile it's used at.  For example `{ "math": [ "distance(_item_pos, _use_location) > 1" ] }` is true for a rune used on a tile two steps away.
 
 Each EOC listed in the action runs on its own copy of the context, so it must set these values itself (in its own `effect` or `false_effect`); values set by EOCs it runs with `run_eocs` are not seen.  If several EOCs set them, the last one wins.  Activating a comestible never uses it up: an action on a comestible can't have `"consume": true` (a load error) and ignores `_charges`; use `consumption_effect_on_conditions` for effects when it is eaten.
 
@@ -3830,6 +3832,27 @@ Alert horde in 200 meter range
   },
 ```
 
+#### `spawn_overmap_horde`
+Places an overmap horde: monsters from a monster group, stored on the overmap, at a location. Like any overmap horde they stay there until something they hear (`signal_hordes`, noise) draws them, and they appear when the map around them is loaded; ones placed on the loaded map appear at once. They fill the submap (12x12 tiles, a quarter of an overmap tile) holding the location, one monster per free tile, so a larger population needs several effects at nearby locations. Their number can be read with the `horde_size` math function.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "spawn_overmap_horde" | **mandatory** | string or [variable object](#variable-object) | id of the monster group. A literal id that doesn't exist is a load error |
+| "target_var" | **mandatory** | [variable object](#variable-object) | location variable where the horde is placed |
+| "population" | optional | int or [variable object](#variable-object) | default 1; how many monsters the group rolls, counting each monster's `cost_multiplier` as the monster group's own spawns do. 0 or less places none |
+
+##### Examples
+
+Twenty zombies gather 5 overmap tiles north of you, and the noise you make brings them
+```jsonc
+[
+  { "u_location_variable": { "context_val": "horde_loc" }, "x_adjust": 0, "y_adjust": -120 },
+  { "spawn_overmap_horde": "GROUP_ZOMBIE", "target_var": { "context_val": "horde_loc" }, "population": 20 },
+  { "u_location_variable": { "context_val": "your_pos" } },
+  { "signal_hordes": { "context_val": "your_pos" }, "signal_power": 200 }
+]
+```
+
 #### `reveal_map`
 Reveal the overmap area around specific location variable
 
@@ -3970,14 +3993,18 @@ Reveal the route between you and `house_02`
 ```
 
 #### `closest_city`
-Store coordinates of the closest city nearby in a variable
+Store coordinates of the closest city nearby in a variable. The closest city is the one whose edge (its center's distance less its size) is nearest. Cities are looked for in the overmaps generated so far within 180 overmap tiles (one overmap), or within `max_distance` if that is farther. If no city passes the filters, the variable is left alone.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
-| "closest_city" | **mandatory** | [variable object](#variable-object) | location variable, center of the found city |
+| "closest_city" | **mandatory** | [variable object](#variable-object) | location variable; the search starts there, and the center of the found city is stored in it |
 | "known" | optional | boolean | default true; if true, picks the closest city you know (has yellow text of the city name on your map), otherwise picks the closest city even if you didn't visit it yet |
+| "min_size", "max_size" | optional | int or [variable object](#variable-object) | only cities of at least / at most this size (the `city_size` below) |
+| "name" | optional | string or [variable object](#variable-object) | only the city with this name |
+| "max_distance" | optional | int or [variable object](#variable-object) | only cities whose center is at most this many overmap tiles away |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | `true_eocs` run if a city was found, `false_eocs` otherwise |
 
-Additionally sends context variables `city_name` (string) and `city_size` (int)
+Additionally sends context variables `city_name` (string), `city_size` (int) and `city_distance` (int, overmap tiles from the search location to the city's center). The math functions `city_distance()` and `city_size()` give the same values without an effect.
 
 ##### Examples
 
@@ -4005,6 +4032,24 @@ Same, but return any city nearby
       { "u_message": "Unknown city: <context_val:city>" },
       { "u_message": "city_name: <context_val:city_name>" },
       { "u_message": "city_size: <context_val:city_size>" }
+    ]
+  },
+```
+
+Find the closest known town of size 8 or more within 100 overmap tiles of you, and reveal it
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_REVEAL_BIG_TOWN",
+    "effect": [
+      { "u_location_variable": { "context_val": "city" } },
+      {
+        "closest_city": { "context_val": "city" },
+        "min_size": 8,
+        "max_distance": 100,
+        "true_eocs": [ { "id": "EOC_REVEAL_BIG_TOWN_FOUND", "effect": { "reveal_map": { "context_val": "city" }, "radius": 10 } } ],
+        "false_eocs": [ { "id": "EOC_REVEAL_BIG_TOWN_NONE", "effect": { "u_message": "There is no big town near here." } } ]
+      }
     ]
   },
 ```
@@ -7071,6 +7116,55 @@ Moves a monster to another monster faction, which changes which monsters it figh
 The charmed monster (beta) joins the bees
 ```jsonc
 { "npc_set_monster_faction": "bee" }
+```
+
+#### `u_set_monster_destination`, `npc_set_monster_destination`, `u_set_monster_target`, `npc_set_monster_target`, `u_clear_monster_goal`, `npc_clear_monster_goal`
+Forces a destination or a target on a monster. The monster's AI normally makes new plans every turn; while it has a forced goal it heads for that instead, ignoring the creatures it would otherwise chase or flee from, even if its species would normally just stand around. It still attacks hostile creatures in its way, and fights the creature at the end of its path as it would fight a target of its own choosing (a forced target that is friendly to it is followed but not attacked). The goal is saved with the monster and ends when:
+- the monster gets to the destination (within `range` tiles, on the destination's z-level);
+- the forced target is gone: dead, or no longer on the loaded map;
+- the `duration` is up;
+- another forced goal replaces it (a monster has one at a time), or `u_clear_monster_goal` / `npc_clear_monster_goal` (a plain string, no parameters) clears it.
+
+Then the monster goes back to its own plans. Nothing happens if the talker isn't a monster.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_monster_destination" / "npc_set_monster_destination" | **mandatory** | [variable object](#variable-object) | location variable of the destination |
+| "range" | optional | int or [variable object](#variable-object) | destination only; default 0, the tile itself; the monster has arrived within this many tiles |
+| "u_set_monster_target" / "npc_set_monster_target" | **mandatory** | [variable object](#variable-object) | location variable; the creature standing there when the effect runs becomes the target, and is followed wherever it goes. Nothing happens if there is no creature there |
+| "duration" | optional | int, duration or [variable object](#variable-object) | how long the goal lasts (an int is turns). Without it, it lasts until the destination is reached or the target is gone. A value of 0 or less from a variable counts as not given |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+The pack leader calls its pack: every wolf within 10 tiles of the avatar (u) goes after the avatar for half a minute
+```jsonc
+[
+  { "u_location_variable": { "context_val": "prey" } },
+  {
+    "u_run_monster_eocs": [ { "id": "EOC_PACK_FOCUS", "effect": { "u_set_monster_target": { "context_val": "prey" }, "duration": "30 s" } } ],
+    "mtype_ids": [ "mon_wolf" ],
+    "monster_range": 10
+  }
+]
+```
+
+A taunt: the monster (beta) goes after the caster (u) for a minute
+```jsonc
+[
+  { "u_location_variable": { "context_val": "taunter" } },
+  { "npc_set_monster_target": { "context_val": "taunter" }, "duration": "1 m" }
+]
+```
+
+The monster walks to the altar, and its other EOC sends it back to its own business
+```jsonc
+{ "u_set_monster_destination": { "global_val": "altar" }, "range": 1, "duration": "10 m" },
+"u_clear_monster_goal"
 ```
 
 #### `u_ranged_attack`, `npc_ranged_attack`

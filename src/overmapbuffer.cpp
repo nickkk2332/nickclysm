@@ -2026,6 +2026,25 @@ city_reference overmapbuffer::closest_known_city( const tripoint_abs_sm &center 
     return city_reference::invalid;
 }
 
+city_reference overmapbuffer::closest_city( const tripoint_abs_sm &center,
+        const city_filter &filter )
+{
+    const tripoint_abs_omt center_omt = project_to<coords::omt>( center );
+    const int radius = std::max( OMAPX, filter.max_distance );
+    const std::vector<city_reference> cities = get_cities_near( center, omt_to_sm_copy( radius ) );
+    const auto it = std::find_if( cities.begin(), cities.end(),
+    [this, &filter, &center_omt]( const city_reference & elem ) {
+        const tripoint_abs_omt p = project_to<coords::omt>( elem.abs_sm_pos );
+        return elem.city->size >= filter.min_size &&
+               ( filter.max_size < 0 || elem.city->size <= filter.max_size ) &&
+               ( filter.name.empty() || elem.city->name == filter.name ) &&
+               ( filter.max_distance < 0 ||
+                 rl_dist( p.xy(), center_omt.xy() ) <= filter.max_distance ) &&
+               ( !filter.known_only || seen_more_than( p, om_vision_level::outlines ) );
+    } );
+    return it != cities.end() ? *it : city_reference::invalid;
+}
+
 void overmap_feature_grid::clear()
 {
     grid_origin = point_abs_om::invalid;

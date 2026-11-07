@@ -6187,6 +6187,18 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
     write_var_value( var_type::context, "id", &d, it.typeId().str() );
     // The tile the item is used at: u_activate's target_var, else the user's or item's tile.
     write_var_value( var_type::context, "use_location", &d, here->get_abs( pos ) );
+    // _method: the use action, by the name the item's use menu and u_activate give it (the key
+    // of its use_action entry; the actor type for a tick, countdown or drop action).
+    std::string method = type;
+    for( const std::pair<const std::string, use_function> &use : it.type->use_methods ) {
+        if( use.second.get_actor_ptr() == this ) {
+            method = use.first;
+            break;
+        }
+    }
+    write_var_value( var_type::context, "method", &d, method );
+    // _item_pos: where the item is, its carrier's tile when carried
+    write_var_value( var_type::context, "item_pos", &d, loc ? loc.pos_abs() : here->get_abs( pos ) );
     // Read before the EOCs run: they may destroy the item.
     const bool comestible = static_cast<bool>( it.type->comestible );
     eoc_use_request request;

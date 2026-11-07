@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <list>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -30,6 +31,8 @@
 #include "clzones.h"
 #include "color.h"
 #include "construction.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "cursesdef.h"
 #include "damage.h"
@@ -79,6 +82,7 @@
 #include "move_mode.h"
 #include "mtype.h"
 #include "mutation.h"
+#include "npc.h"
 #include "options.h"
 #include "output.h"
 #include "overmap_ui.h"
@@ -1978,15 +1982,53 @@ bool Character::cast_spell( spell &sp, bool fake_spell,
     return true;
 }
 
+// Where an NPC casts a spell CBM: at the creature it fights if the spell can hit it from here,
+// otherwise at itself if the spell can target the caster.
+static std::optional<tripoint_bub_ms> npc_bionic_spell_target( const npc &guy, const spell &sp )
+{
+    const map &here = get_map();
+    const tripoint_bub_ms own_pos = guy.pos_bub( here );
+    if( const Creature *target = guy.current_target() ) {
+        const tripoint_bub_ms target_pos = target->pos_bub( here );
+        if( rl_dist( own_pos, target_pos ) <= sp.range( guy ) && guy.sees( here, *target ) &&
+            sp.is_valid_target( guy, target_pos ) ) {
+            return target_pos;
+        }
+    }
+    if( sp.is_valid_target( spell_target::self ) && sp.is_valid_target( guy, own_pos ) ) {
+        return own_pos;
+    }
+    return std::nullopt;
+}
+
 // this is here because it shares some things in common with cast_spell
 bool bionic::activate_spell( Character &caster ) const
 {
-    if( !caster.is_avatar() || !id->spell_on_activate ) {
+    if( !id->spell_on_activate ) {
         // the return value tells us if the spell fails. if it has no spell it can't fail
         return true;
     }
     spell sp = id->spell_on_activate->get_spell( caster );
-    return caster.cast_spell( sp, true );
+    if( caster.is_avatar() ) {
+        return caster.cast_spell( sp, true );
+    }
+    npc *guy = caster.as_npc();
+    if( guy == nullptr ) {
+        return true;
+    }
+    // An NPC casts it like its attack spells, at a target it picks itself.  A spell it can't
+    // cast fails the activation quietly, before anything is paid.
+    // (cast_spell()'s own checks would tell the player why it failed)
+    const std::optional<tripoint_bub_ms> target = npc_bionic_spell_target( *guy, sp );
+    const bool needs_hands = !sp.no_hands() && !guy->has_flag( json_flag_SUBTLE_SPELL );
+    if( !target || !sp.can_cast( *guy ) || ( needs_hands && guy->has_effect( effect_stunned ) ) ||
+        ( needs_hands && guy->is_armed() &&
+          !guy->get_wielded_item()->has_flag( flag_MAGIC_FOCUS ) &&
+          !sp.check_if_component_in_hand( *guy ) ) ||
+        ( sp.energy_source() == magic_energy_type::hp && !guy->has_quality( qual_CUT ) ) ) {
+        return false;
+    }
+    return guy->cast_spell( sp, true, target );
 }
 
 void game::open_consume_item_menu()
