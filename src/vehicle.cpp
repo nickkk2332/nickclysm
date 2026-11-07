@@ -8286,6 +8286,36 @@ int vehicle::damage_direct( map &here, vehicle_part &vp, int dmg, const damage_t
     return std::max( overkill_dmg, 0 );
 }
 
+bool vehicle::restore_part_hp( map &here, vehicle_part &vp, int hp )
+{
+    const int durability = vp.info().durability;
+    if( vp.removed || vp.is_fake || hp <= 0 || durability <= 0 ) {
+        return false;
+    }
+    const int damage_before = vp.damage();
+    const bool was_broken = vp.is_broken();
+    // mod_hp() scales by the durability, so more than that would only risk an overflow
+    mod_hp( vp, std::min( hp, durability ) );
+    if( vp.damage() >= damage_before ) {
+        return false;
+    }
+    const tripoint_bub_ms vppos = bub_part_pos( here, vp );
+    here.memory_cache_dec_set_dirty( vppos, true );
+    if( vp.has_fake && vp.fake_part_at < static_cast<int>( parts.size() ) ) {
+        parts[vp.fake_part_at].base = vp.base;
+    }
+    if( was_broken && !vp.is_broken() ) {
+        // undo what breaking it changed in damage_direct()
+        insides_dirty = true;
+        pivot_dirty = true;
+        invalidate_mass();
+        coeff_air_changed = true;
+        refresh( false );
+        here.set_transparency_cache_dirty( vppos );
+    }
+    return true;
+}
+
 void vehicle::leak_fuel( map &here, vehicle_part &pt ) const
 {
     // only liquid fuels from non-empty tanks can leak out onto map tiles

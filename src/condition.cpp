@@ -670,6 +670,19 @@ conditional_t::func f_vehicle_owner( const JsonObject &jo, std::string_view memb
     };
 }
 
+// VINT-J01: u_vehicle_type: "humvee" - the vehicle talker was built from that vehicle
+// prototype ("none" for one built in the game or split off another). False for a talker that
+// isn't a vehicle.
+conditional_t::func f_vehicle_type( const JsonObject &jo, std::string_view member,
+                                    bool is_npc )
+{
+    str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    return [type, is_npc]( const_dialogue const & d ) {
+        const vehicle *veh = d.const_actor( is_npc )->get_const_vehicle();
+        return veh != nullptr && veh->type.str() == type.evaluate( d );
+    };
+}
+
 // NPC-J05: u_has_fac_relation: "kill on sight" - the u_ talker's faction has that relation
 // to the npc_ talker's faction (see faction_has_relation for two named factions)
 conditional_t::func f_has_fac_relation( const JsonObject &jo, std::string_view member,
@@ -3221,6 +3234,13 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
         return [ret_func]( const_dialogue const & d ) {
             return ret_func( d.cur_item.str() );
         };
+    } else if( mutator == "u_vehicle_type" || mutator == "npc_vehicle_type" ) {
+        // VINT-J01: the vehicle prototype the talker was built from, "" for another talker
+        const bool is_npc = mutator == "npc_vehicle_type";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const vehicle *veh = d.const_actor( is_npc )->get_const_vehicle();
+            return ret_func( veh != nullptr ? veh->type.str() : std::string() );
+        };
     }
 
     return nullptr;
@@ -3667,6 +3687,7 @@ parsers = {
     {"test_eoc", jarg::member, &conditional_fun::f_test_eoc },
     {"u_has_part_flag", "npc_has_part_flag", jarg::string, &conditional_fun::f_has_part_flag },
     {"u_vehicle_owner", "npc_vehicle_owner", jarg::member, &conditional_fun::f_vehicle_owner },
+    {"u_vehicle_type", "npc_vehicle_type", jarg::member, &conditional_fun::f_vehicle_type },
     {"u_has_fac_relation", "npc_has_fac_relation", jarg::string, &conditional_fun::f_has_fac_relation },
     {"u_contains_item", "npc_contains_item", jarg::member, &conditional_fun::f_contains_item },
     {"u_is_contained_in", "npc_is_contained_in", jarg::member, &conditional_fun::f_is_contained_in },

@@ -902,6 +902,10 @@ class vehicle
         // @returns damage still left to apply
         int damage_direct( map &here, vehicle_part &vp, int dmg,
                            const damage_type_id &type = damage_type_id( "pure" ) );
+        // Gives back up to hp of the part's durability, as far as its wear (degradation)
+        // allows, without the repair menu's requirements. A broken part works again, in place.
+        // @returns whether the part's damage went down
+        bool restore_part_hp( map &here, vehicle_part &vp, int hp );
     private:
         // Removes the part, breaks it into pieces and possibly removes parts attached to it
         int break_off( map &here, vehicle_part &vp, int dmg );
