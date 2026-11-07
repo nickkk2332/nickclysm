@@ -50,12 +50,15 @@
 #include "ui_manager.h"
 #include "uilist.h"
 #include "vitamin.h"
+#include "widget.h"
 
 template <typename T> struct enum_traits;
 
 static const faction_id faction_your_followers( "your_followers" );
 
 static const flag_id json_flag_TWO_WAY_RADIO( "TWO_WAY_RADIO" );
+
+static const widget_id widget_follower_needs( "follower_needs" );
 
 template<>
 struct enum_traits<tab_mode> {
@@ -616,6 +619,14 @@ void faction_ui::your_follower_display()
     cataimgui::draw_colored_text( hunger_text, hunger_color, col_width );
     cataimgui::draw_colored_text( thirst_text, thirst_color, col_width );
     cataimgui::draw_colored_text( sleepiness_text, sleepiness_color, col_width );
+    // A mod's "follower_needs" widget, shown for this follower (doc/WIDGETS.md, UI slots)
+    const size_t char_width = cataimgui::get_string_width( "X" );
+    const unsigned int slot_width = char_width > 0 ? static_cast<unsigned int>( col_width /
+                                    char_width ) : 40;
+    for( const std::string &line : widget::slot_lines( widget_follower_needs, *picked_follower,
+            slot_width ) ) {
+        cataimgui::draw_colored_text( line, col_width );
+    }
 
     // Wield
     const std::string wielding_text = string_format( _( "Wielding: %s" ),

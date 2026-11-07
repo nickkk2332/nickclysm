@@ -348,6 +348,20 @@ struct enum_traits<mdeath_type> {
     static constexpr mdeath_type last = mdeath_type::LAST;
 };
 
+// Whether seeing a monster stops safe mode ("safemode" in JSON), decided before the player's
+// safe mode rules
+enum class monster_safemode : int {
+    rules,  // the player's rules decide (hostile monsters stop safe mode when there are none)
+    always, // stops safe mode whatever its attitude or the rules, unless it is your pet
+    ignore, // never stops safe mode
+    last
+};
+
+template<>
+struct enum_traits<monster_safemode> {
+    static constexpr monster_safemode last = monster_safemode::last;
+};
+
 struct monster_death_effect {
     bool was_loaded = false;
     bool has_effect = false;
@@ -707,6 +721,9 @@ struct mtype {
 
         // Do we indiscriminately attack characters, or should we wait until one annoys us?
         bool aggro_character = true;
+
+        // Whether seeing it stops safe mode, before the player's rules (UIHUD-J07)
+        monster_safemode safemode = monster_safemode::rules;
 
         mtype();
         /**

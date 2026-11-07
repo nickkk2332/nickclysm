@@ -1860,6 +1860,35 @@ Fault group is a combination of a fault and corresponding weight, made so multip
 
 The list of possible faults, their weight and actual chances can be checked in item info with a debug mode on
 
+### Keybindings
+
+A mod can add a hotkey to the main game that runs an effect_on_condition. The player sees it in
+the keybindings menu (`?`) under its `name` and can rebind or unbind it there; their keys win
+over the mod's.
+
+```jsonc
+{
+  "type": "keybinding",
+  "id": "MOM_TELEPORT",
+  "name": "Psionic teleport",
+  "bindings": [ { "input_method": "keyboard_any", "key": "T", "mod": [ "ctrl" ] } ],
+  "effect_on_condition": "EOC_MOM_TELEPORT_MENU",
+  "condition": { "u_has_trait": "TELEPORTER" }
+}
+```
+
+| Field                 | Description
+|---                    |---
+| `id`                  | (_mandatory_) The action id. It must differ from every built-in action (`pause`, `sleep`...).
+| `name`                | (_mandatory_) Name shown in the keybindings menu.
+| `bindings`            | (_optional_) Default keys, in the format of `data/raw/keybindings.json`: `input_method` (`keyboard_any`, `keyboard_char`, `keyboard_code`, `gamepad` or `mouse`), `key`, and optionally `mod` (`ctrl`, `alt`, `shift`). A key another main game action already uses is left out, so the hotkey starts unbound there. Without `bindings` the player has to bind it.
+| `effect_on_condition` | (_mandatory_) The EOC to run (an id or an inline EOC). Alpha is you, there is no beta.
+| `condition`           | (_optional_) A [dialogue condition](NPCs.md#dialogue-conditions); while false the key does nothing.
+| `category`            | (_optional_) Only `"DEFAULTMODE"` (the main game, the default) is supported.
+
+Pressing the key takes a turn only when the EOC spends moves (for example `u_mod_moves`). The
+hotkey only works on the main game screen, not inside menus.
+
 ### Materials
 
 | Identifier             | Description

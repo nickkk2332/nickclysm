@@ -90,6 +90,7 @@
 #include "material.h"
 #include "math_parser_jmath.h"
 #include "mission.h"
+#include "mod_keybinding.h"
 #include "mod_manager.h"
 #include "mod_setting.h"
 #include "mod_tileset.h"
@@ -686,6 +687,7 @@ void DynamicDataLoader::initialize()
     add( "achievement", &achievement::load_achievement );
     add( "conduct", &achievement::load_achievement );
     add( "widget", &widget::load_widget );
+    add( "keybinding", &mod_keybindings::load );
     add( "weakpoint_set", &weakpoints::load_weakpoint_sets );
     add( "damage_type", &damage_type::load_damage_types );
     add( "damage_info_order", &damage_info_order::load_damage_info_orders );
@@ -792,6 +794,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "item_group", json_inheritance::partial },
         { "jmath_function", json_inheritance::copy_from },
         { "json_flag", json_inheritance::copy_from },
+        { "keybinding", json_inheritance::copy_from },
         { "limb_score", json_inheritance::copy_from },
         { "magic_type", json_inheritance::copy_from },
         { "map_extra", json_inheritance::copy_from },
@@ -1231,6 +1234,7 @@ void DynamicDataLoader::unload_data()
     weather_generator::reset();
     weather_types::reset();
     widget::reset();
+    mod_keybindings::reset();
     zone_type::reset();
 }
 
@@ -1389,6 +1393,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Mutations" ), &mutation_branch::finalize_all },
             { _( "Achievements" ), &achievement::finalize_all },
             { _( "Widgets" ), &widget::finalize_all },
+            { _( "Keybindings" ), &mod_keybindings::finalize },
             { _( "Weakpoint Families" ), &weakpoints::finalize_all },
             { _( "Weapon Categories" ), &weapon_category::finalize_all },
             { _( "Wounds" ), &wound_type::finalize_all },
@@ -1434,6 +1439,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Weather types" ), &weather_types::check_consistency },
             { _( "Weapon categories" ), &weapon_category::verify_weapon_categories },
             { _( "Effect on conditions" ), &effect_on_conditions::check_consistency },
+            { _( "Keybindings" ), &mod_keybindings::check },
             { _( "Dialogue topic overrides" ), &dialogue_topic_override::check_all },
             { _( "Field types" ), &field_types::check_consistency },
             { _( "Field type migrations" ), &field_type_migrations::check },

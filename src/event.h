@@ -209,6 +209,7 @@ enum class event_type : int {
     character_levels_spell,
     monster_casts_spell,
     monster_triggers_trap,
+    avatar_spots_hostile,
     num_event_types // last
 };
 
@@ -276,7 +277,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 184,
+static_assert( static_cast<int>( event_type::num_event_types ) == 185,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1768,6 +1769,20 @@ struct event_spec<event_type::monster_triggers_trap> {
             { "trap", cata_variant_type::trap_str_id },
             // map squares; the statistics don't keep it
             { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// UIHUD-J07: more hostiles are in view than on the last check (when safe mode stops you); the
+// spotted one is beta. For an NPC monster_id is the null id, for a monster npc is the invalid id
+template<>
+struct event_spec<event_type::avatar_spots_hostile> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+            { "npc", cata_variant_type::character_id },
+            { "distance", cata_variant_type::int_ },
+            { "hostiles", cata_variant_type::int_ },
         }
     };
 };

@@ -241,6 +241,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `item_group` | partial |
 | `jmath_function` | copy-from |
 | `json_flag` | copy-from |
+| `keybinding` | copy-from |
 | `limb_score` | copy-from |
 | `LOOT_ZONE` | copy-from |
 | `magic_type` | copy-from |

@@ -171,6 +171,7 @@
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
+#include "mod_keybinding.h"
 #include "mod_manager.h"
 #include "monexamine.h"
 #include "monfaction.h"
@@ -2836,7 +2837,10 @@ input_context get_default_mode_input_context()
         ctxt.register_action( "SEC_SELECT" );
         return ctxt;
     }();
-    return default_ctxt;
+    // Plus the hotkeys of the loaded mods ("keybinding" objects)
+    input_context ctxt = default_ctxt;
+    mod_keybindings::register_actions( ctxt );
+    return ctxt;
 }
 
 vehicle *game::remoteveh()
@@ -4060,6 +4064,8 @@ void game::mon_info_update( )
     static time_point previous_turn = calendar::turn_zero;
     const time_duration sm_ignored_turns =
         time_duration::from_turns( get_option<int>( "SAFEMODEIGNORETURNS" ) );
+    // The last hostile NPC in view, for avatar_spots_hostile when no monster is
+    npc *hostile_npc = nullptr;
 
     for( Creature *c : u.get_visible_creatures( MAPSIZE_X ) ) {
         monster *m = dynamic_cast<monster *>( c );
@@ -4132,7 +4138,11 @@ void game::mon_info_update( )
 
             const monster_attitude matt = critter.attitude( &u );
             const int mon_dist = rl_dist( pos, critter.pos_bub( here ) );
-            if( !safemode_empty ) {
+            if( critter.type->safemode != monster_safemode::rules ) {
+                // The monster's "safemode" decides before the player's rules
+                need_processing = critter.type->safemode == monster_safemode::always &&
+                                  !critter.is_pet();
+            } else if( !safemode_empty ) {
                 need_processing = get_safemode().check_monster(
                                       critter.name(),
                                       critter.attitude_to( u ),
@@ -4197,11 +4207,30 @@ void game::mon_info_update( )
             if( need_processing ) {
                 mon_visible.has_dangerous_creature_in_proximity = true;
                 newseen++;
+                hostile_npc = p;
             }
             unique_types[index].push_back( p );
         }
     }
 
+    if( newseen > mostseen ) {
+        // More hostiles in view than on the last check: the one the "spotted!" message names
+        // (the last monster in view, else the last hostile NPC) is beta
+        Creature *spotted = nullptr;
+        if( !new_seen_mon.empty() ) {
+            spotted = new_seen_mon.back().get();
+        } else {
+            spotted = hostile_npc;
+        }
+        if( spotted != nullptr ) {
+            const monster *spotted_mon = spotted->as_monster();
+            const cata::event e = cata::event::make<event_type::avatar_spots_hostile>( u.getID(),
+                                  spotted_mon != nullptr ? spotted_mon->type->id : mtype_id::NULL_ID(),
+                                  spotted->is_npc() ? spotted->as_npc()->getID() : character_id(),
+                                  rl_dist( u.pos_abs(), spotted->pos_abs() ), newseen );
+            get_event_bus().send_with_talker( &u, spotted, e );
+        }
+    }
     if( uistate.distraction_hostile_spotted && newseen > mostseen ) {
         if( newseen - mostseen == 1 ) {
             if( !new_seen_mon.empty() ) {

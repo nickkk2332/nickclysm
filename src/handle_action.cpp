@@ -78,6 +78,7 @@
 #include "math_parser_diag_value.h"
 #include "mdarray.h"
 #include "messages.h"
+#include "mod_keybinding.h"
 #include "monster.h"
 #include "move_mode.h"
 #include "mtype.h"
@@ -3438,6 +3439,14 @@ bool game::handle_action()
             // timeout delay.
             player_character.clear_destination();
             destination_preview.clear();
+        }
+    }
+
+    // A hotkey a mod added runs its effect_on_condition; it takes a turn only if that spends moves
+    if( act == ACTION_NULL && uquit != QUIT_WATCH && !player_character.is_dead_state() ) {
+        const int moves_before = player_character.get_moves();
+        if( mod_keybindings::run( action, player_character ) ) {
+            return player_character.get_moves() != moves_before;
         }
     }
 

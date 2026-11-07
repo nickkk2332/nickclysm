@@ -125,6 +125,7 @@ Property                 | Description
 `aggression`             | (integer) Starting aggression, the monster will become hostile when it reaches 10
 `morale`                 | (integer) Starting morale, monster will flee when (current aggression + current morale) < 0
 `aggro_character`        | (bool) If true the monster will always attack characters when angry.
+`safemode`               | (string) Whether seeing the monster stops safe mode, before the player's rules, see [safemode](#safemode)
 `mountable_weight_ratio` | (float) For mounts, max ratio of mount to rider weight, ex. `0.2` for `<=20%`
 `mount_rules`            | (object) For mounts, the skill and size a rider needs, see [mount_rules](#mount_rules)
 `melee_skill`            | (integer) Monster skill in melee combat, from `0-10`, with `4` being an average mob. Also see [monster melee skill scaling in GAME_BALANCE.md](/doc/design-balance-lore/GAME_BALANCE.md#monster-melee-skill-scaling)
@@ -358,6 +359,20 @@ Baseline morale, modified by fear triggers dynamically and tending towards this 
 (bool, optional, default true)
 
 If the monster will differentiate between monsters and characters when deciding on targets - if false the monster will ignore characters regardless of current anger/morale until a character trips and anger trigger. Resets randomly when the monster is at its base anger level.
+
+## "safemode"
+(string, optional, default `"rules"`)
+
+Whether seeing the monster stops safe mode, decided before the player's safe mode rules:
+
+- `"rules"`: the player's rules decide; without rules, monsters hostile to you do.
+- `"always"`: it stops safe mode whatever its attitude and the rules (a stalker that looks
+  harmless), unless it is your pet. The safe mode proximity option still applies when there are no rules.
+- `"ignore"`: it never stops safe mode.
+
+Players' own rules can name monsters by id (`id:mon_zombie*`) or species (`species:ZOMBIE`) as
+well as by name, so they keep working in another language. The `avatar_spots_hostile` event fires
+when safe mode would stop you.
 
 ## "speed"
 (integer, required)
