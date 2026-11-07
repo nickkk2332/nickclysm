@@ -94,6 +94,8 @@ static const faction_mission_id faction_mission_camp_survey_expansion( "camp_sur
 static const faction_mission_id faction_mission_camp_survey_field( "camp_survey_field" );
 static const faction_mission_id faction_mission_camp_trapping( "camp_trapping" );
 
+static const flag_id json_flag_NO_CAMP_FARMING( "NO_CAMP_FARMING" );
+
 static const furn_str_id furn_f_plant_harvest( "f_plant_harvest" );
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 
@@ -105,8 +107,6 @@ static const item_group_id Item_spawn_data_forage_winter( "forage_winter" );
 static const item_group_id Item_spawn_data_npc_weapon_random( "npc_weapon_random" );
 
 static const itype_id itype_FMCNote( "FMCNote" );
-static const itype_id itype_fungal_seeds( "fungal_seeds" );
-static const itype_id itype_marloss_seed( "marloss_seed" );
 
 static const oter_str_id oter_looted_hospital( "looted_hospital" );
 static const oter_str_id oter_looted_hospital_roof( "looted_hospital_roof" );
@@ -184,6 +184,18 @@ static const std::string role_id_faction_camp = "FACTION_CAMP";
 
 static const std::string omt_evac_center_18 = "evac_center_18";
 static const std::string omt_ranch_camp_63 = "ranch_camp_63";
+
+// What the outpost missions of @ref giver pay (and charge) in: its faction's currency, or merch
+// for a faction with none (CAMP-J11)
+static itype_id outpost_currency( const npc &giver )
+{
+    const faction *fac = giver.get_faction();
+    if( fac != nullptr && !fac->currency.is_empty() && !fac->currency.is_null() &&
+        fac->currency.is_valid() ) {
+        return fac->currency;
+    }
+    return itype_FMCNote;
+}
 
 static const std::string return_ally_question_string =
     translate_marker( "\n\nDo you wish to bring your allies back into your party?" );
@@ -589,6 +601,9 @@ void talk_function::companion_mission( npc &p )
         field_harvest( p, omt_ranch_camp_63 );
         return;
     } else {
+        debugmsg( "%s has no companion missions for the role \"%s\": the companion_mission effect "
+                  "knows SCAVENGER, COMMUNE CROPS, FOREMAN, REFUGEE MERCHANT, PLANT FIELD and "
+                  "HARVEST FIELD", p.get_name(), role_id );
         return;
     }
     if( display_and_choose_opts( mission_key, omt_pos, role_id, title ) ) {
@@ -1404,7 +1419,7 @@ void talk_function::caravan_return( npc &p, const std::string &dest, const missi
     }
 
     if( merch_amount != 0 ) {
-        item merch = item( itype_FMCNote );
+        item merch = item( outpost_currency( p ) );
         get_player_character().i_add_or_drop( merch, merch_amount );
         popup( _( "The caravan party has returned.  Your share of the profits are %d merch!" ),
                merch_amount );
@@ -1510,7 +1525,7 @@ void talk_function::field_plant( npc &p, const std::string &place )
     std::vector<item_location> seed_inv = player_character.cache_get_items_with( "is_seed",
                                           &item::is_seed,
     []( const item_location & itm ) {
-        return itm->typeId() != itype_marloss_seed && itm->typeId() != itype_fungal_seeds;
+        return !itm->has_flag( json_flag_NO_CAMP_FARMING );
     } );
     if( seed_inv.empty() ) {
         popup( _( "You have no seeds to plant." ) );
@@ -1572,7 +1587,7 @@ void talk_function::field_plant( npc &p, const std::string &place )
         limiting_number = empty_plots;
     }
 
-    int player_merch = player_character.amount_of( itype_FMCNote );
+    int player_merch = player_character.amount_of( outpost_currency( p ) );
     if( player_merch == 0 ) {
         popup( _( "I'm sorry, you don't have any money to plant those seeds…" ) );
         return;
@@ -1593,7 +1608,7 @@ void talk_function::field_plant( npc &p, const std::string &place )
         }
     }
 
-    player_character.use_amount( itype_FMCNote, limiting_number );
+    player_character.use_amount( outpost_currency( p ), limiting_number );
 
     //Plant the actual seeds
     for( const tripoint_omt_ms &plot : bay.points_on_zlevel() ) {
@@ -1713,7 +1728,7 @@ void talk_function::field_harvest( npc &p, const std::string &place )
     int merch_amount = std::max( 0, ( number_plants * tmp.price( true ) / 250 ) - number_plots );
     bool liquidate = false;
 
-    if( !player_character.has_amount( itype_FMCNote, number_plots ) ) {
+    if( !player_character.has_amount( outpost_currency( p ), number_plots ) ) {
         liquidate = true;
         popup( _( "You don't have enough to pay the workers to harvest the crop, so you are forced "
                   "to sell…" ) );
@@ -1725,7 +1740,7 @@ void talk_function::field_harvest( npc &p, const std::string &place )
     //Add fruit
     if( liquidate ) {
         add_msg( _( "The %s are sold for %d merch…" ), plant_names[plant_index], merch_amount );
-        item merch = item( itype_FMCNote );
+        item merch = item( outpost_currency( p ) );
         player_character.i_add_or_drop( merch, merch_amount );
     } else {
         if( tmp.count_by_charges() ) {
@@ -1807,7 +1822,7 @@ bool talk_function::scavenging_patrol_return( npc &p )
                   "participate in daring raids." ), p.get_name() );
     }
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     get_player_character().i_add_or_drop( merch, merch_amount );
 
     companion_return( *comp );
@@ -1914,7 +1929,7 @@ bool talk_function::scavenging_raid_return( npc &p )
     }
     distribute_items_to_npc_zones( to_distribute, p );
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     player_character.i_add_or_drop( merch, merch_amount );
 
     companion_return( *comp );
@@ -2045,7 +2060,7 @@ bool talk_function::labor_return( npc &p )
                   "participate in advanced tasks." ), p.get_name() );
     }
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     get_player_character().i_add_or_drop( merch, merch_amount );
 
     return true;
@@ -2100,7 +2115,7 @@ bool talk_function::carpenter_return( npc &p )
     popup( _( "%s returns from working as a carpenter having earned %d merch and a bit of "
               "experience…" ), comp->get_name(), merch_amount );
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     get_player_character().i_add_or_drop( merch, merch_amount );
 
     companion_return( *comp );
@@ -2168,7 +2183,7 @@ bool talk_function::forage_return( npc &p )
     popup( _( "%s returns from working as a forager having earned %d merch and a bit of "
               "experience…" ), comp->get_name(), merch_amount );
 
-    item merch = item( itype_FMCNote );
+    item merch = item( outpost_currency( p ) );
     player_character.i_add_or_drop( merch, merch_amount );
     // the following doxygen aliases do not yet exist. this is marked for future reference
 

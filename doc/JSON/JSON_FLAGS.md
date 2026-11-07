@@ -911,6 +911,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```NANOFAB_TEMPLATE``` This item is nanofabricator template, and can use related syntax.
 - ```NEEDS_UNFOLD``` Has an additional time penalty upon wielding.  For melee weapons and guns this is offset by the relevant skill.  Stacks with `SLOW_WIELD`.
 - ```NO_ACTIVE_SUFFIX``` The item's name doesn't get " (active)" while it is active (for an active form whose name already says so).  Items whose id ends in `_on` never get it either.
+- ```NO_CAMP_FARMING``` A seed that camp companions won't plant or harvest (the camp's Plant Fields and Harvest Fields missions skip it).  Vanilla Marloss and fungal seeds have it.
 - ```NO_CLEAN``` this item is impossible to clean.
 - ```NO_PACKED``` This item is not protected against contamination and won't stay sterile.  Only applies to CBMs.
 - ```NO_REPAIR``` Prevents repairing of this item even if otherwise suitable tools exist.

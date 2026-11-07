@@ -226,6 +226,8 @@ class basecamp
         bool has_provides( const std::string &req, const expansion_data &e_data, int level = 0 ) const;
         bool has_provides( const std::string &req, const std::optional<point_rel_omt> &dir = std::nullopt,
                            int level = 0 ) const;
+        /// How much of @ref req the expansion that has the most of it provides; 0 if none does
+        int provides_amount( const std::string &req ) const;
         void update_resources( const std::string &bldg );
         void update_provides( const std::string &bldg, expansion_data &e_data );
         /// Whether companions out at @ref dir are building @ref making (in any variant) or
@@ -241,8 +243,10 @@ class basecamp
         std::vector<basecamp_upgrade> available_upgrades( const point_rel_omt &dir );
 
         // camp utility functions
-        int recruit_evaluation() const;
-        int recruit_evaluation( int &sbase, int &sexpansions, int &sfaction, int &sbonus ) const;
+        /// The camp's recruiting score for recruiting mission @ref def
+        int recruit_evaluation( const faction_mission &def ) const;
+        int recruit_evaluation( const faction_mission &def, int &sbase, int &sexpansions,
+                                int &sfaction, int &sbonus ) const;
         // confirm there is at least 1 loot destination and 1 unsorted loot zone in the camp
         bool validate_sort_points();
         // Validates the expansion data
@@ -355,7 +359,7 @@ class basecamp
         void add_available_recipes( mission_data &mission_key, mission_kind kind,
                                     const point_rel_omt &dir );
 
-        std::string recruit_description( int npc_count ) const;
+        std::string recruit_description( const faction_mission &def, int npc_count ) const;
         /// Provides a "guess" for some of the things your gatherers will return with
         /// from @ref group
         static std::vector<std::string> gathering_description( const item_group_id &group );

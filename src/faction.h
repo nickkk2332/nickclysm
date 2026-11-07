@@ -15,6 +15,7 @@
 #include "calendar.h"
 #include "character_id.h"
 #include "color.h"
+#include "dialogue_helpers.h"
 #include "generic_factory.h"
 #include "list.h"
 #include "shop_cons_rate.h"
@@ -68,17 +69,20 @@ const std::unordered_map<std::string, relationship> relation_strs = { {
 } // namespace npc_factions
 
 struct faction_price_rule: public icg_entry {
-    double markup = 1.0;
-    double premium = 1.0;
-    std::optional<double> fixed_adj = std::nullopt;
+    // numbers, or math that sees the item as the condition does (icg_entry::trade_dialogue)
+    dbl_or_var markup = dbl_or_var( 1.0 );
+    dbl_or_var premium = dbl_or_var( 1.0 );
+    std::optional<dbl_or_var> fixed_adj = std::nullopt;
     std::optional<int> price = std::nullopt;
 
     faction_price_rule() = default;
     faction_price_rule( itype_id const &id, double m, double f )
-        : icg_entry{ id, {}, {}, {}, {} }, markup( m ), fixed_adj( f ) {};
+        : icg_entry{ id, {}, {}, {}, {} }, markup( m ), fixed_adj( dbl_or_var( f ) ) {};
     explicit faction_price_rule( icg_entry const &rhs ) : icg_entry( rhs ) {}
 
     void deserialize( JsonObject const &jo );
+    /// @ref value (markup, premium or fixed_adj) for @ref it, traded with @ref trader
+    static double value_for( dbl_or_var const &value, item const &it, npc const &trader );
 };
 
 class faction_price_rules_reader : public generic_typed_reader<faction_price_rules_reader>

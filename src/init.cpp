@@ -1487,6 +1487,8 @@ void DynamicDataLoader::check_consistency()
             { _( "Map extras" ), &MapExtras::check_consistency },
             { _( "Scenarios" ), &scenario::check_all },
             { _( "Shop rates" ), &shopkeeper_cons_rates::check_all },
+            { _( "Shopkeeper blacklists" ), &shopkeeper_blacklist::check_all },
+            { _( "Shopkeeper whitelists" ), &shopkeeper_whitelist::check_all },
             { _( "Start locations" ), &start_locations::check_consistency },
             { _( "Ammunition types" ), &ammunition_type::check_consistency },
             { _( "Traps" ), &trap::check_consistency },

@@ -30,6 +30,7 @@ class Character;
 class basecamp;
 class item_location;
 class npc;
+struct camp_mission_recruiting;
 
 namespace base_camps
 {
@@ -49,6 +50,7 @@ struct enum_traits<farm_ops> {
 
 class JsonObject;
 class JsonValue;
+struct const_dialogue;
 
 namespace talk_function
 {
@@ -83,6 +85,9 @@ struct mass_volume {
 /// @ref take, whether you take the item or count it
 mass_volume om_harvest_itm( const shared_ptr_fast<npc> &comp, const tripoint_abs_omt &omt_tgt,
                             int chance = 100, bool take = true );
+/// A new NPC for a recruiting mission to find: of one of @ref recruiting's classes or templates,
+/// picked by weight, or a random one with no class.  Not yet on the map or in the overmap buffer.
+shared_ptr_fast<npc> camp_new_recruit( const camp_mission_recruiting &recruiting );
 /// Sends a companion from @ref camp to plant @ref seeds, each a location and a count. The
 /// companion carries copies; the chosen counts leave storage only once a companion has set off.
 /// Returns the companion, or nullptr if no one went.
@@ -155,8 +160,43 @@ struct camp_mission_encounter {
     int threat = 0;
     // what the companion was doing, "While %s, ..."
     translation task;
+    // runs instead of the built-in encounter, with the companion as alpha; the companion dies
+    // on the mission if it sets the context variable encounter_survived to 0.  Null for the
+    // built-in encounter
+    effect_on_condition_id eoc = effect_on_condition_id::NULL_ID();
 
     void deserialize( const JsonObject &jo );
+};
+
+/// A bonus to a recruiting mission's score while its condition holds (the avatar is alpha)
+struct camp_recruit_bonus {
+    std::function<bool( const_dialogue const & )> condition;
+    int bonus = 0;
+};
+
+/// Who a recruiting mission finds and how hard they are to win over (behavior "recruiting")
+struct camp_mission_recruiting {
+    // the recruit is of one of these classes or templates, picked by weight; with neither it is
+    // a random NPC with no class
+    std::vector<std::pair<npc_class_id, int>> npc_classes;
+    std::vector<std::pair<npc_template_id, int>> npc_templates;
+    // a recruit is found when rng( 1, 20 ) + the companion's find_skill > find_difficulty
+    skill_id find_skill;
+    int find_difficulty = 17;
+    // it hears the offer when rng( 1, 20 ) + convince_skill + score / 100 > convince_difficulty
+    skill_id convince_skill;
+    int convince_difficulty = 19;
+    // it joins when rng( 1, 20 ) + its appeal >= join_difficulty
+    int join_difficulty = 10;
+    // added to the camp's recruiting score
+    std::vector<camp_recruit_bonus> bonuses;
+    // run with the recruit as alpha and the avatar as beta once it has joined
+    std::vector<effect_on_condition_id> recruit_eocs;
+
+    camp_mission_recruiting();
+    void load( const JsonObject &jo, std::string_view src );
+    /// The sum of the bonuses whose condition holds
+    int bonus() const;
 };
 
 /// What a camp mission trains when its companion comes back
@@ -208,7 +248,19 @@ class faction_mission
         translation return_message;
         std::optional<camp_mission_training> train;
         camp_mission_results results;
+        // used instead of results from a camp in that region (a region_settings id)
+        std::map<region_settings_id, camp_mission_results> regional_results;
         std::optional<camp_mission_encounter> encounter;
+        // recruiting only
+        std::optional<camp_mission_recruiting> recruit;
+        // cut_logs, clearcut and setup_hide_site: the overmap terrain types the companion can be
+        // sent to
+        std::vector<oter_type_str_id> target_terrains;
+        // cut_logs and clearcut: what a logged-out tile of each type becomes
+        std::map<oter_type_str_id, oter_type_str_id> cleared_terrains;
+        // survey_field: the terrains every tile of a neighbour needs to be turned into field_terrain
+        std::vector<ter_str_id> field_terrains;
+        oter_str_id field_terrain = oter_str_id::NULL_ID();
         // run with the companion as alpha and the avatar as beta
         std::vector<effect_on_condition_id> start_eocs;
         std::vector<effect_on_condition_id> return_eocs;
@@ -238,6 +290,9 @@ class faction_mission
         std::string progress_text() const;
         std::string depart_text() const;
         std::string return_text() const;
+        /// What the mission brings back to a camp at @ref camp_pos: its results for the region
+        /// there, or else its results
+        const camp_mission_results &results_at( const tripoint_abs_omt &camp_pos ) const;
         /// The behaviour a JSON "behavior" name selects
         static std::optional<mission_kind> behavior_of( std::string_view name );
         static std::string behavior_name( mission_kind kind );

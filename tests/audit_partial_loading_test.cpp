@@ -268,7 +268,7 @@ TEST_CASE( "npc-j02_faction_templates_load_through_generic_factory", "[audit][np
         REQUIRE( child->price_rules.size() == 2 );
         CHECK( child->price_rules[0].itype == itype_FMCNote );
         CHECK( child->price_rules[1].category == item_category_guns );
-        CHECK( child->price_rules[1].markup == 2.0 );
+        CHECK( child->price_rules[1].markup.constant() == 2.0 );
 
         CHECK( has_relation( *parent, "hells_raiders", npc_factions::relationship::kill_on_sight ) );
         CHECK( child->relations.count( "hells_raiders" ) == 0 );

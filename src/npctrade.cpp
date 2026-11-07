@@ -18,6 +18,8 @@
 #include "character_attire.h"
 #include "debug.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "item.h"
 #include "item_category.h" // IWYU pragma: keep
@@ -201,9 +203,9 @@ int npc_trading::adjusted_price( item const *it, int amount, Character const &bu
 
     double price = it->price_no_contents( true, fpr != nullptr ? fpr->price : std::nullopt );
     if( fpr != nullptr ) {
-        price *= fpr->premium;
+        price *= faction_price_rule::value_for( fpr->premium, *it, *faction_party );
         if( seller.is_npc() ) {
-            price *= fpr->markup;
+            price *= faction_price_rule::value_for( fpr->markup, *it, *faction_party );
         }
     }
     if( it->count_by_charges() && amount >= 0 ) {
@@ -216,7 +218,8 @@ int npc_trading::adjusted_price( item const *it, int amount, Character const &bu
     }
 
     if( fpr != nullptr && fpr->fixed_adj.has_value() ) {
-        double const fixed_adj = fpr->fixed_adj.value();
+        double const fixed_adj = faction_price_rule::value_for( *fpr->fixed_adj, *it,
+                                 *faction_party );
         price *= 1 + ( seller.is_npc() ? fixed_adj : -fixed_adj );
     } else {
         double const adjust = npc_trading::net_price_adjustment( buyer, seller );
@@ -365,6 +368,10 @@ bool npc_trading::trade( npc &np, int cost, const std::string &deal )
             update_npc_owed( np, trade_result.balance, trade_result.value_you );
             player_character.practice( skill_speech, trade_result.value_you / 10000 );
         }
+        // CAMP-J12: EOCs can react to a trade (the avatar is alpha, the trader beta)
+        get_event_bus().send_with_talker( &player_character, &np,
+                                          cata::event::make<event_type::avatar_trades>( np.getID(), np.get_fac_id(),
+                                                  trade_result.value_you, trade_result.value_trader ) );
     }
     return trade_result.traded ;
 }

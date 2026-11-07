@@ -150,6 +150,9 @@ void npc_class::check_consistency()
                 debugmsg( "npc class %s: invalid proficiency %s", cl.id.str(), prof.str() );
             }
         }
+        for( const faction_price_rule &rule : cl.shop_price_rules ) {
+            rule.check( string_format( "npc_class %s shopkeeper_price_rules", cl.id.str() ) );
+        }
     }
 }
 

@@ -14,10 +14,12 @@
 #include "calendar.h"
 #include "character.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "generic_factory.h"
 #include "pimpl.h"
+#include "shop_cons_rate.h"
 #include "string_formatter.h"
 #include "translations.h"
 #include "type_id.h"
@@ -134,6 +136,9 @@ void faction_template::check_consistency()
             debugmsg( "faction %s has mutiny_faction %s, which isn't a faction", fac.id.str(),
                       fac.mutiny_faction.str() );
         }
+        for( const faction_price_rule &rule : fac.price_rules ) {
+            rule.check( string_format( "faction %s price_rules", fac.id.str() ) );
+        }
     }
 }
 
@@ -194,6 +199,14 @@ void faction_template::change_relations( const JsonObject &jsobj, const bool was
             }
         }
     }
+}
+
+double faction_price_rule::value_for( dbl_or_var const &value, item const &it, npc const &trader )
+{
+    if( value.is_constant() ) {
+        return value.constant();
+    }
+    return value.evaluate( icg_entry::trade_dialogue( it, trader ) );
 }
 
 faction_price_rule faction_price_rules_reader::get_next( JsonValue &jv )

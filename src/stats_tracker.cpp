@@ -370,7 +370,7 @@ bool stats_tracker::records( const event_type type )
     // setting and pair of values, per tile destroyed or overmap tile generated, per teleport, sound
     // heard or step, per reload or unload, per armor hit or wound on each part, per bionic or trait
     // switched on or off, per monster special attack used, or per item type and
-    // count moved: kept for good, they would grow every save
+    // count moved, or per trade: kept for good, they would grow every save
     switch( type ) {
         case event_type::npc_goal_changed:
         case event_type::npc_attitude_changed:
@@ -396,6 +396,7 @@ bool stats_tracker::records( const event_type type )
         case event_type::activates_mutation:
         case event_type::deactivates_mutation:
         case event_type::monster_uses_special:
+        case event_type::avatar_trades:
             return false;
         default:
             return true;
