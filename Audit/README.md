@@ -186,7 +186,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 
 **Group 4 (performance).** Seven of the eight quick wins are in; MAP-P01 was reverted because it broke a wakeup test and gained little. Before-and-after numbers are in [benchmarks/README.md](benchmarks/README.md).
 
-**Group 5 (modding gaps).** All six are in. EOC-J01 and OMAP-J01 cover the core of each finding; what is left is listed in each row.
+**Group 5 (modding gaps).** All six are in. EOC-J01 and OMAP-J01 were finished later, in PR B and PR D.
 
 | ID | Status | Commit | Regression test |
 |---|---|---|---|
