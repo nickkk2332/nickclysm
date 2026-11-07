@@ -668,7 +668,7 @@ refusal start_read( const activity_id &, Character &who, const eoc_activity_targ
         return reasons.empty() ? string_format( _( "%s can't read that." ), who.get_name() ) :
                reasons.front();
     }
-    if( book->type->use_methods.count( "MA_MANUAL" ) != 0 ) {
+    if( book->type->can_use( "MA_MANUAL" ) ) {
         // The actor ends at once for an NPC: they can't learn from manuals yet.
         if( !who.is_avatar() ) {
             return std::string( _( "Only the avatar can train from a martial arts manual." ) );
@@ -1056,8 +1056,9 @@ refusal start_firstaid( const activity_id &, Character &who, const eoc_activity_
         return no;
     }
     item *used = med->get_usable_item( "heal" );
-    const heal_actor *actor = used == nullptr ? nullptr :
-                              dynamic_cast<const heal_actor *>( used->get_use( "heal" )->get_actor_ptr() );
+    const use_function *heal_use = used == nullptr ? nullptr : used->get_use( "heal" );
+    const heal_actor *actor = heal_use == nullptr ? nullptr :
+                              dynamic_cast<const heal_actor *>( heal_use->get_actor_ptr() );
     if( actor == nullptr ) {
         return string_format( _( "The %s doesn't heal." ), med->tname() );
     }
@@ -1100,7 +1101,8 @@ refusal start_firstaid( const activity_id &, Character &who, const eoc_activity_
     cost = who.has_proficiency( proficiency_prof_wound_care_expert ) ? cost / 2 : cost;
     cost = who.has_proficiency( proficiency_prof_wound_care ) ? cost / 2 : cost;
     const std::string name = med->tname();
-    who.assign_activity( firstaid_activity_actor( cost, name, who.getID(), false ) );
+    who.assign_activity( firstaid_activity_actor( cost, name, who.getID(), false,
+                         heal_use->get_id() ) );
     if( !now_doing( who, { ACT_FIRSTAID } ) ) {
         return did_not_start( *med );
     }

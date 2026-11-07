@@ -78,9 +78,9 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | martial_art: "static_eocs", "onmove_eocs", "onpause_eocs" | character (Character) | NONE                        |
 | technique: "eocs"                                | attacker (Character)        | target (Creature)           | runs before the hit, once per repeat; `weapon`, `style`, `technique`, `bp`, strings; `crit`, `hit`, 1 or 0; `damage`, number, the damage the hit will deal before armor, with the technique's bonuses
 | technique: "post_hit_eocs"                       | attacker (Character)        | target (Creature)           | runs once after the hit; same values as martial_art "onkill_eocs": `weapon`, `technique`, `bp`, `damage`, `hit`, `crit`, `killed`
-| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile); `method`, string, the use action that ran, by the name the item's use menu and `u_activate` know it by (an item has one use action of each type, so this is its type, `effect_on_conditions`); `item_pos`, location variable, where the item is (its carrier's tile when carried; it can differ from `use_location`). The EOCs can set `charges` and `cancel`, see below
-| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile; `method`, `effect_on_conditions`; `item_pos`, as for use_action
-| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile; `method`, `effect_on_conditions`; `item_pos`, as for use_action
+| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile); `method`, string, the id of the use action that ran, which the item's use menu and `u_activate` know it by (its `"id"`, or its type, `effect_on_conditions`, when it has none); `item_pos`, location variable, where the item is (its carrier's tile when carried; it can differ from `use_location`). The EOCs can set `charges` and `cancel`, see below
+| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile; `method`, the action's id (`effect_on_conditions` unless it has an `"id"`); `item_pos`, as for use_action
+| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile; `method`, the action's id (`effect_on_conditions` unless it has an `"id"`); `item_pos`, as for use_action
 | COMESTIBLE: "consumption_effect_on_conditions"   | user (Character)            | item (item)                 |
 | activity_type: "start_eoc"                       | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming; the values of `u_assign_activity`'s `context`
 | activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; the values of `u_assign_activity`'s `context`; `outcome`, string: `completed`, `canceled`, or `interrupted` (canceled, but kept to resume)
@@ -124,7 +124,7 @@ An `effect_on_conditions` use action can be limited with a `condition` (u is the
 - `_charges`: how many uses to spend.  Each use costs the item's `charges_per_use` (or `ammo_required`), so `_charges = 3` spends three times that.  An item with no charges to spend (no ammo, charges or tool uses) has one use, itself: any number above 0 uses it up (one of a stack counted by charges).  0 spends nothing; values outside 0 to 10000 are clamped to that range with an error.  It replaces `consume` (which spends 1 use) for this activation.
 - `_cancel`: when set to a non-zero value, the activation is cancelled: nothing is spent, the time the user spent is refunded, and the remaining EOCs of the action don't run.  Effects that already ran are not undone.
 
-The EOCs can also read, besides `_id` and `_use_location`: `_method`, the use action's name as the item's use menu and `u_activate` know it (with one use action of each type per item, that's its type, `effect_on_conditions`), and `_item_pos`, where the item is: the carrier's tile for a carried item, or the item's own tile on the ground or in a vehicle, while `_use_location` is the tile it's used at.  For example `{ "math": [ "distance(_item_pos, _use_location) > 1" ] }` is true for a rune used on a tile two steps away.
+The EOCs can also read, besides `_id` and `_use_location`: `_method`, the id of the use action that ran, which the item's use menu and `u_activate` know it by (its `"id"`, or its type, `effect_on_conditions`, when it has none; see [Use Actions](ITEM.md#use-actions)), so one EOC can serve several actions of an item, and `_item_pos`, where the item is: the carrier's tile for a carried item, or the item's own tile on the ground or in a vehicle, while `_use_location` is the tile it's used at.  For example `{ "math": [ "distance(_item_pos, _use_location) > 1" ] }` is true for a rune used on a tile two steps away.
 
 Each EOC listed in the action runs on its own copy of the context, so it must set these values itself (in its own `effect` or `false_effect`); values set by EOCs it runs with `run_eocs` are not seen.  If several EOCs set them, the last one wins.  Activating a comestible never uses it up: an action on a comestible can't have `"consume": true` (a load error) and ignores `_charges`; use `consumption_effect_on_conditions` for effects when it is eaten.
 
@@ -7296,7 +7296,7 @@ You activate beta talker / NPC activates alpha talker. One must be a Character a
 
 | Syntax | Optionality | Value  | Info |
 | ------ | ----------- | ------ | ---- |
-| "u_activate" / "npc_activate" | **mandatory** | string or [variable object](#variable-object) |  use action id of item that activate |
+| "u_activate" / "npc_activate" | **mandatory** | string or [variable object](#variable-object) | id of the item's use action to use: its `"id"`, or its type when it has none (see [Use Actions](ITEM.md#use-actions)).  A type names the item's first use action of that type, by id, so `"cast_spell"` still finds a `cast_spell` action that has an id |
 | "target_var" | optional | [variable object](#variable-object) | if set, target location is forced this variable's coordinates |
 
 ##### Valid talkers:
@@ -7309,6 +7309,11 @@ You activate beta talker / NPC activates alpha talker. One must be a Character a
 Force you consume drug item
 ```jsonc
 { "u_activate": "consume_drug" }
+```
+
+Use the staff's `cast_spell` action with the id `staff_heal` (the staff has two)
+```jsonc
+{ "u_activate": "staff_heal" }
 ```
 
 #### `u_set_fault`, `npc_set_fault`

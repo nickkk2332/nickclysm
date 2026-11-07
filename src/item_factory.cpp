@@ -1101,8 +1101,10 @@ void Item_factory::finalize_pre( itype &obj )
         obj.book->martial_art = matype_id( "style_" + obj.get_id().str().substr( 7 ) );
     }
 
-    if( obj.can_use( "link_up" ) ) {
-        obj.ammo_scale.emplace( "link_up", 0 );
+    for( const std::pair<const std::string, use_function> &use : obj.use_methods ) {
+        if( use.second.get_type() == "link_up" ) {
+            obj.ammo_scale.emplace( use.first, 0 );
+        }
     }
 
     if( obj.longest_side == -1_mm ) {
@@ -1115,13 +1117,14 @@ void Item_factory::finalize_pre( itype &obj )
 void Item_factory::register_cached_uses( const itype &obj )
 {
     for( const auto &e : obj.use_methods ) {
+        const std::string use_type = e.second.get_type();
         // can this item function as a repair tool?
-        if( repair_actions.count( e.first ) ) {
+        if( repair_actions.count( use_type ) ) {
             repair_tools.insert( obj.id );
         }
 
         // can this item be used to repair complex firearms?
-        if( e.first == "GUN_REPAIR" ) {
+        if( use_type == "GUN_REPAIR" ) {
             gun_tools.insert( obj.id );
         }
     }
@@ -2200,10 +2203,19 @@ use_function Item_factory::usage_from_string( const std::string &type )
     return use_function();
 }
 
-// Helper to safely look up and store iuse actions.
+// Helper to safely look up and store iuse actions. An action the item already has, by id or
+// by type, keeps its own data: one with an "id" isn't joined by a default one of its type.
 void Item_factory::emplace_usage( std::map<std::string, use_function> &container,
                                   const std::string &iuse_id )
 {
+    if( container.count( iuse_id ) != 0 ) {
+        return;
+    }
+    for( const std::pair<const std::string, use_function> &use : container ) {
+        if( use.second.get_actor_ptr() != nullptr && use.second.get_actor_ptr()->type == iuse_id ) {
+            return;
+        }
+    }
     use_function use_func = usage_from_string( iuse_id );
     if( use_func ) {
         container.emplace( iuse_id, use_func );
@@ -2224,8 +2236,24 @@ use_function Item_factory::read_use_function( const JsonObject &jo,
     use_function method = usage_from_string( type );
 
     if( method ) {
+        // The use action's key among the item's use actions, and its ammo_scale's key.
+        std::string id = type;
+        if( jo.has_member( "id" ) ) {
+            id = jo.get_string( "id" );
+            if( id.empty() ) {
+                jo.throw_error_at( "id", "a use action's id can't be empty" );
+            }
+            // Code that looks a use action up by its type would find this one by its id instead.
+            if( id != type && has_iuse( id ) ) {
+                jo.throw_error_at( "id", string_format(
+                                       "\"%s\" is the name of a use action type, so a use action of type "
+                                       "\"%s\" can't have it as its id", id, type ) );
+            }
+        }
+        method.get_actor_ptr()->id = id;
+        optional( jo, false, "menu_text", method.get_actor_ptr()->menu_text );
         if( jo.has_int( "ammo_scale" ) ) {
-            ammo_scale.emplace( type, static_cast<int>( jo.get_float( "ammo_scale" ) ) );
+            ammo_scale.emplace( id, static_cast<int>( jo.get_float( "ammo_scale" ) ) );
         }
     }
     return method;
@@ -2245,7 +2273,7 @@ static std::pair<std::string, use_function> use_function_reader_helper(
             return std::make_pair( type, use_function() );
         }
         method.get_actor_ptr()->load( use_obj, std::string( src ) );
-        return std::make_pair( type, method );
+        return std::make_pair( method.get_actor_ptr()->id, method );
     } else if( val.test_array() ) {
         JsonArray use_arr = val.get_array();
         std::string type = use_arr.get_string( 0 );
@@ -2261,6 +2289,28 @@ static std::pair<std::string, use_function> use_function_reader_helper(
     return std::make_pair( "", use_function() );
 }
 
+// The key of the use action a "delete" entry names: a string is the action's id (its type when
+// it has no "id"); the array and object forms name the action they would load as. Nothing else
+// of them is read.
+static std::string use_function_key_to_delete( const JsonValue &val )
+{
+    if( val.test_string() ) {
+        return val.get_string();
+    } else if( val.test_array() ) {
+        return val.get_array().get_string( 0 );
+    } else if( val.test_object() ) {
+        JsonObject use_obj = val.get_object();
+        use_obj.allow_omitted_members();
+        if( use_obj.has_member( "id" ) ) {
+            return use_obj.get_string( "id" );
+        }
+        const std::string type = use_obj.get_string( "type" );
+        return type == "repair_item" ? use_obj.get_string( "item_action_type" ) : type;
+    }
+    val.throw_error( "use_function_reader element must be string, array, or object" );
+    return std::string();
+}
+
 //reads use_function as either an object, array, or string into a map
 namespace
 {
@@ -2273,6 +2323,15 @@ class use_function_reader_map : public generic_typed_reader<use_function_reader_
             ammo_scale( ammo_scale ), src( src ) {};
         std::pair<std::string, use_function> get_next( const JsonValue &val ) const {
             return use_function_reader_helper( ammo_scale, src, val );
+        }
+        // "delete" removes a use action by its id, with its ammo_scale, without loading it.
+        template<typename C>
+        void erase_next( const JsonValue &val, C &container ) const {
+            const std::string key = use_function_key_to_delete( val );
+            if( container.erase( key ) == 0 ) {
+                val.throw_error( string_format( "no use action with the id \"%s\" to delete", key ) );
+            }
+            ammo_scale.erase( key );
         }
 };
 } // namespace
@@ -4251,7 +4310,7 @@ void hflesh_to_flesh( itype &item_template )
 
 void Item_factory::npc_implied_flags( itype &item_template )
 {
-    if( item_template.use_methods.count( "explosion" ) > 0 ) {
+    if( item_template.can_use( "explosion" ) ) {
         item_template.item_tags.insert( flag_DANGEROUS );
     }
 

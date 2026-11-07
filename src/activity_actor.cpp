@@ -1373,8 +1373,7 @@ void hacksaw_activity_actor::do_turn( player_activity &act, Character &who )
 
     if( !veh_pos.has_value() ) {
         if( tool->ammo_sufficient( &who, method ) ) {
-            std::map<std::string, int>::const_iterator iter = tool->type->ammo_scale.find( method );
-            const int uses = iter == tool->type->ammo_scale.end() ? 1 : iter->second;
+            const int uses = tool->type->get_ammo_scale( method );
 
             tool->consume_tool_uses( uses, here, tool.pos_bub( here ), &who );
             sfx::play_activity_sound( "tool", "hacksaw", sfx::get_heard_volume( target ) );
@@ -2142,7 +2141,7 @@ void read_activity_actor::start( player_activity &act, Character &who )
 
     using_ereader = !!ereader;
 
-    bktype = book->type->use_methods.count( "MA_MANUAL" ) ?
+    bktype = book->type->can_use( "MA_MANUAL" ) ?
              book_type::martial_art : book_type::normal;
 
     // push copy of book for focus calculation
@@ -2168,7 +2167,7 @@ void read_activity_actor::do_turn( player_activity &act, Character &who )
     }
 
     if( !bktype.has_value() ) {
-        bktype = book->type->use_methods.count( "MA_MANUAL" ) ?
+        bktype = book->type->can_use( "MA_MANUAL" ) ?
                  book_type::martial_art : book_type::normal;
     }
 
@@ -2408,9 +2407,8 @@ bool read_activity_actor::player_readma( avatar &you )
         return true;
     }
 
-    // std::map<std::string, use_function>::const_iterator
-    auto mart_iter = book->type->use_methods.find( "MA_MANUAL" );
-    if( mart_iter == book->type->use_methods.end() ) {
+    const use_function *martial_art_use = book->type->get_use( "MA_MANUAL" );
+    if( martial_art_use == nullptr ) {
         debugmsg( "ACT_READ MARTIAL ARTS BOOK HAS NO MARTIAL ART" );
         return true;
     }
@@ -2424,7 +2422,7 @@ bool read_activity_actor::player_readma( avatar &you )
 
     if( one_in( difficulty ) ) {
         // learn martial art
-        mart_iter->second.call( &you, *book, you.pos_bub() );
+        martial_art_use->call( &you, *book, you.pos_bub() );
         return true;
     } else if( continuous ) {
         switch( rng( 1, 5 ) ) {
@@ -10105,8 +10103,7 @@ void prying_activity_actor::do_turn( player_activity &/*act*/, Character &who )
     std::string method = "CROWBAR";
 
     if( tool->ammo_sufficient( &who, method ) ) {
-        std::map<std::string, int>::const_iterator iter = tool->type->ammo_scale.find( method );
-        const int uses = iter == tool->type->ammo_scale.end() ? 1 : iter->second;
+        const int uses = tool->type->get_ammo_scale( method );
         tool->consume_tool_uses( uses, here, tool.pos_bub( here ), &who );
         if( prying_nails ) {
             sfx::play_activity_sound( "tool", "hammer", sfx::get_heard_volume( target ) );
@@ -11156,7 +11153,7 @@ void firstaid_activity_actor::finish( player_activity &act, Character &who )
 {
     map &here = get_map();
 
-    static const std::string iuse_name_string( "heal" );
+    const std::string &iuse_name_string = method;
 
     item_location it = act.targets.front();
     if( !it ) {
@@ -11231,6 +11228,7 @@ void firstaid_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "name", name );
     jsout.member( "patientID", patientID );
     jsout.member( "reopen_menu", reopen_menu );
+    jsout.member( "method", method );
 
     jsout.end_object();
 }
@@ -11245,6 +11243,8 @@ std::unique_ptr<activity_actor> firstaid_activity_actor::deserialize( JsonValue 
     data.read( "name", actor.name );
     data.read( "patientID", actor.patientID );
     data.read( "reopen_menu", actor.reopen_menu );
+    // Old saves have no method: the item's heal action
+    data.read( "method", actor.method );
 
     return actor.clone();
 }
@@ -13100,7 +13100,7 @@ void fire_start_activity_actor::do_turn( player_activity &act, Character &who )
         }
     }
 
-    const use_function *usef = firestarter.type->get_use( "firestarter" );
+    const use_function *usef = firestarter.type->get_use( method );
     if( usef == nullptr || usef->get_actor_ptr() == nullptr ) {
         add_msg( m_bad, _( "You have lost the item you were using to start the fire." ) );
         who.cancel_activity();
@@ -13121,7 +13121,7 @@ void fire_start_activity_actor::finish( player_activity &act, Character &who )
 {
     map &here = get_map();
 
-    static const std::string iuse_name_string( "firestarter" );
+    const std::string &iuse_name_string = method;
 
     item &it = *fire_starter;
     item *used_tool = it.get_usable_item( iuse_name_string );
@@ -13180,6 +13180,7 @@ void fire_start_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "fire_starter", fire_starter );
     jsout.member( "potential_skill_gain", potential_skill_gain );
     jsout.member( "used_tinder", used_tinder );
+    jsout.member( "method", method );
     jsout.end_object();
 }
 
@@ -13191,6 +13192,8 @@ std::unique_ptr<activity_actor> fire_start_activity_actor::deserialize( JsonValu
     data.read( "fire_starter", actor.fire_starter );
     data.read( "potential_skill_gain", actor.potential_skill_gain );
     data.read( "used_tinder", actor.used_tinder );
+    // Old saves have no method: the item's firestarter action
+    data.read( "method", actor.method );
     return actor.clone();
 }
 

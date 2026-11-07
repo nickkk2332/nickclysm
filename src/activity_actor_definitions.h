@@ -3443,12 +3443,13 @@ class fire_start_activity_actor : public activity_actor
     private:
         fire_start_activity_actor() = default;
     public:
+        /** @param method the id of the item's firestarter action that is used */
         fire_start_activity_actor( const tripoint_abs_ms &fire_placement, const item_location &fire_starter,
                                    int potential_skill_gain, int initial_moves,
-                                   bool tinder_consumed = false ) :
+                                   bool tinder_consumed = false, const std::string &method = "firestarter" ) :
             fire_placement( fire_placement ), fire_starter( fire_starter ),
             potential_skill_gain( potential_skill_gain ), initial_moves( initial_moves ),
-            used_tinder( tinder_consumed ) {
+            used_tinder( tinder_consumed ), method( method ) {
         };
         const activity_id &get_type() const override {
             static const activity_id ACT_START_FIRE( "ACT_START_FIRE" );
@@ -3472,6 +3473,8 @@ class fire_start_activity_actor : public activity_actor
         int potential_skill_gain;
         int initial_moves; // NOLINT(cata-serialize)
         bool used_tinder;
+        // The firestarter action's id (old saves have none: the item's firestarter action)
+        std::string method = "firestarter";
 };
 
 class wear_activity_actor : public activity_actor
@@ -3829,10 +3832,14 @@ class firstaid_activity_actor : public activity_actor
 {
     public:
         firstaid_activity_actor() = default;
-        /** @param reopen_menu the avatar gets the consume menu again when done */
+        /**
+         * @param reopen_menu the avatar gets the consume menu again when done
+         * @param method the id of the item's heal action that is used
+         */
         firstaid_activity_actor( int moves, std::string name, character_id patientID,
-                                 bool reopen_menu = true ) : moves( moves ),
-            name( std::move( name ) ), patientID( patientID ), reopen_menu( reopen_menu ) {}
+                                 bool reopen_menu = true, std::string method = "heal" ) : moves( moves ),
+            name( std::move( name ) ), patientID( patientID ), reopen_menu( reopen_menu ),
+            method( std::move( method ) ) {}
 
         const activity_id &get_type() const override {
             static const activity_id ACT_FIRSTAID( "ACT_FIRSTAID" );
@@ -3856,6 +3863,8 @@ class firstaid_activity_actor : public activity_actor
         std::string name;
         character_id patientID;
         bool reopen_menu = true;
+        // The heal action's id (old saves have none: the item's heal action)
+        std::string method = "heal";
 };
 
 class forage_activity_actor : public activity_actor
