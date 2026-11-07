@@ -530,13 +530,18 @@ class json_talk_topic
         // FIXME: Use real null IDs not std::optional juggling :(
         std::optional<character_portrait_id> portrait_override;
 
+        // Removes the responses `match` ("text" and/or "topic") selects; throws if there are none.
+        void delete_responses( const JsonObject &match );
+
     public:
         json_talk_topic() = default;
         /**
          * Load data from json.
-         * This will append responses (not change existing ones).
-         * It will override dynamic_line and replace_built_in_responses if those entries
-         * exist in the input, otherwise they will not be changed at all.
+         * This will append responses (not change existing ones), after removing the earlier
+         * ones that "delete": { "responses": [ ... ] } names, or all of them with
+         * "replace_responses": true.
+         * It will override dynamic_line, portrait_override and replace_built_in_responses if
+         * those entries exist in the input, otherwise they will not be changed at all.
          */
         void load( const JsonObject &jo, std::string_view src );
 
@@ -556,7 +561,7 @@ class json_talk_topic
 
         cata::flat_set<std::string> get_directly_reachable_topics( bool only_unconditional ) const;
 
-        std::vector<json_talk_response> get_responses();
+        std::vector<json_talk_response> get_responses() const;
 };
 
 void unload_talk_topics();

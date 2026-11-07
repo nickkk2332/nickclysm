@@ -125,12 +125,19 @@ class faction_template
         void load_relations( const JsonObject &jsobj );
 
     private:
-        explicit faction_template( const JsonObject &jsobj );
+        // The generic_factory entry that holds each template (faction.cpp, NPC-J02)
+        friend class faction_template_entry;
+        // was_loaded: it starts from a copy-from parent
+        void load_members( const JsonObject &jsobj, bool was_loaded );
+        void change_relations( const JsonObject &jsobj, bool was_loaded );
 
     public:
-        static void load( const JsonObject &jsobj );
+        static void load( const JsonObject &jsobj, const std::string &src );
+        static void finalize();
         static void check_consistency();
         static void reset();
+        // The template of a faction id, or nullptr if no "faction" defines it
+        static const faction_template *find( const faction_id &id );
         // summary nutrients of the current food supply
         nutrients food_supply() const;
         void add_kcal( int kcal, time_point expires );

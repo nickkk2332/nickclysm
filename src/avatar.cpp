@@ -149,8 +149,8 @@ avatar &avatar::operator=( avatar && ) = default;
 
 void avatar::control_npc( npc &np, const bool debug )
 {
-    if( death_finalizing_ || death_finalized_ || execution_fatal::pending( *this ) ||
-        execution_fatal::pending( np ) ) {
+    if( ( death_finalizing_ && !death_switch_open_ ) || death_finalized_ ||
+        execution_fatal::pending( *this ) || execution_fatal::pending( np ) ) {
         return;
     }
     if( !np.is_player_ally() ) {
@@ -170,8 +170,10 @@ void avatar::control_npc( npc &np, const bool debug )
     // move shadow npc character data into avatar
     swap_character( get_shadow_npc() );
     // the avatar character is no longer a follower NPC; a change of bodies recruits and
-    // dismisses no one
+    // dismisses no one. A death the switch interrupts is still finishing (finalize_death ends it).
+    const bool finalizing = death_finalizing_;
     reset_death_state();
+    death_finalizing_ = finalizing;
     remove_npc_follower_quietly( getID() );
     // the previous avatar character is now a follower
     add_npc_follower_quietly( np.getID() );
@@ -611,7 +613,7 @@ bool avatar::read( item_location &book, item_location ereader )
     }
 
     int learner_id = -1;
-    const bool is_martialarts = book->type->use_methods.count( "MA_MANUAL" );
+    const bool is_martialarts = book->type->can_use( "MA_MANUAL" );
 
     //only show the menu if there's useful information or multiple options
     if( ( skill || !nonlearners.empty() || !fun_learners.empty() ) && !is_martialarts ) {
@@ -862,7 +864,7 @@ void avatar::identify( const item &item )
         add_msg( m_info, _( "Reading this book affects your morale by %d." ), book_fun_for( book, *this ) );
     }
 
-    if( book.type->use_methods.count( "MA_MANUAL" ) ) {
+    if( book.type->can_use( "MA_MANUAL" ) ) {
         const matype_id style_to_learn = martial_art_learned_from( *book.type );
         add_msg( m_info, _( "You can learn %s style from it." ), style_to_learn->name );
         add_msg( m_info, _( "This fighting style is %s to learn." ),

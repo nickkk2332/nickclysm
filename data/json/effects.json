@@ -2414,7 +2414,8 @@
     "max_duration": "3 m",
     "max_intensity": 4,
     "int_decay_tick": 40,
-    "resist_effects": [ "steroid_eye", "PAINRESIST" ],
+    "resist_effects": [ "steroid_eye" ],
+    "resist_traits": [ "PAINRESIST" ],
     "base_mods": { "per_mod": [ -1, 0 ], "pain_amount": [ 2, 0 ] },
     "scaling_mods": { "per_mod": [ -1 ], "pain_amount": [ 2, 1 ] },
     "limb_score_mods": [
@@ -3715,7 +3716,6 @@
       "poison",
       "venom_dmg",
       "venom_weaken",
-      "stung",
       "badpoison",
       "foodpoison",
       "paralyzepoison",
@@ -4157,7 +4157,7 @@
     "remove_message": "The fever breaks.",
     "rating": "bad",
     "immune_bp_flags": [ "BIONIC_LIMB", "NON_FLESH_LIMB" ],
-    "resist_effects": [ "aspirin" ],
+    "resist_effects": [ "pkill1_nsaid" ],
     "base_mods": {
       "stamina_min": [ -50 ],
       "stamina_max": [ -100 ],
@@ -5391,7 +5391,7 @@
     "name": [ "Exsanguination" ],
     "desc": [ "The monster is drinking your blood, you vile feral!" ],
     "rating": "bad",
-    "resist_traits": [ "BLEED_IMMUNE" ],
+    "immune_flags": [ "BLEED_IMMUNE" ],
     "max_intensity": 1,
     "show_in_info": true,
     "chance_kill": [ [ 1, 20 ] ]

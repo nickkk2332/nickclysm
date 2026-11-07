@@ -39,8 +39,28 @@
     "id": "EOC_TEST_BASH_CRATE_BROKEN",
     "effect": [
       { "if": "u_is_monster", "then": [ { "math": [ "test_bash_crate_by_monster = 1" ] } ] },
+      { "copy_var": { "context_val": "cause" }, "target_var": { "global_val": "test_bash_crate_cause" } },
       { "copy_var": { "context_val": "old_furn" }, "target_var": { "global_val": "test_bash_crate_old_furn" } },
       { "copy_var": { "context_val": "new_furn" }, "target_var": { "global_val": "test_bash_crate_new_furn" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TILE_DESTROYED",
+    "//": "MAP-J01: records the tile_destroyed event of a test crate.",
+    "eoc_type": "EVENT",
+    "required_event": "tile_destroyed",
+    "condition": { "compare_string": [ { "context_val": "old_furn" }, "test_f_bash_eoc_crate" ] },
+    "effect": [
+      { "math": [ "test_tile_destroyed_count += 1" ] },
+      {
+        "if": "u_is_avatar",
+        "then": [ { "math": [ "test_tile_destroyed_alpha = 1" ] } ],
+        "else": [ { "math": [ "test_tile_destroyed_alpha = 0" ] } ]
+      },
+      { "copy_var": { "context_val": "cause" }, "target_var": { "global_val": "test_tile_destroyed_cause" } },
+      { "copy_var": { "context_val": "location" }, "target_var": { "global_val": "test_tile_destroyed_loc" } },
+      { "copy_var": { "context_val": "new_furn" }, "target_var": { "global_val": "test_tile_destroyed_new_furn" } }
     ]
   },
   {

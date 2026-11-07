@@ -139,5 +139,14 @@
   {
     "type": "mutation_type",
     "id": "HERITAGE"
+  },
+  {
+    "type": "mutation_category",
+    "id": "GRACKEN",
+    "name": "Gracken",
+    "threshold_mut": "",
+    "mutagen_message": "",
+    "vitamin": "null",
+    "skip_test": true
   }
 ]

@@ -190,7 +190,7 @@
     "qualities": [ [ { "id": "DIG", "level": 1 } ] ],
     "byproducts": [ { "item": "clay_lump", "count": [ 6, 12 ] } ],
     "pre_terrain": "t_clay",
-    "post_special": "done_extract_maybe_revert_to_dirt",
+    "post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ],
     "activity_level": "EXTRA_EXERCISE"
   },
   {
@@ -204,7 +204,7 @@
     "qualities": [ [ { "id": "DIG", "level": 1 } ] ],
     "byproducts": [ { "item": "clay_lump", "count": [ 6, 12 ] } ],
     "pre_terrain": "t_claymound",
-    "post_special": "done_extract_maybe_revert_to_dirt",
+    "post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ],
     "activity_level": "EXTRA_EXERCISE"
   },
   {
@@ -231,7 +231,7 @@
     "qualities": [ [ { "id": "DIG", "level": 1 } ] ],
     "byproducts": [ { "item": "material_sand", "count": [ 300, 600 ] } ],
     "pre_terrain": "t_sand",
-    "post_special": "done_extract_maybe_revert_to_dirt"
+    "post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ]
   },
   {
     "type": "construction",
@@ -243,7 +243,7 @@
     "qualities": [ [ { "id": "DIG", "level": 1 } ] ],
     "byproducts": [ { "item": "material_sand", "count": [ 300, 600 ] } ],
     "pre_terrain": "t_sandmound",
-    "post_special": "done_extract_maybe_revert_to_dirt"
+    "post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ]
   },
   {
     "type": "construction",
@@ -255,7 +255,7 @@
     "qualities": [ [ { "id": "DIG", "level": 1 } ] ],
     "byproducts": [ { "item": "material_sand", "count": [ 300, 600 ] } ],
     "pre_terrain": "t_sand_underground",
-    "post_special": "done_extract_maybe_revert_to_dirt"
+    "post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ]
   },
   {
     "type": "construction",
@@ -266,7 +266,12 @@
     "time": "0 m",
     "pre_note": "Firewood or other flammable materials on a nearby tile marked in this way may be used to automatically refuel fires.  This will be done to maintain light during long-running tasks that require it such as crafting or reading, but not (for example) if you are simply waiting nearby.",
     "pre_special": "check_no_trap",
-    "post_special": "done_mark_firewood",
+    "post_eocs": [
+      {
+        "id": "EOC_constr_firewood_source_mark",
+        "effect": [ { "set_trap": "tr_firewood_source", "location": { "context_val": "pos" }, "radius": 0 } ]
+      }
+    ],
     "dark_craftable": true,
     "post_flags": [ "keep_items" ],
     "activity_level": "NO_EXERCISE"
@@ -280,7 +285,12 @@
     "time": "0 m",
     "pre_note": "Mark a spot for target practice.  Firing will automatically target the first practice target location found in gun range, if no enemies are around.",
     "pre_special": "check_no_trap",
-    "post_special": "done_mark_practice_target",
+    "post_eocs": [
+      {
+        "id": "EOC_constr_practice_target_mark",
+        "effect": [ { "set_trap": "tr_practice_target", "location": { "context_val": "pos" }, "radius": 0 } ]
+      }
+    ],
     "dark_craftable": true,
     "post_flags": [ "keep_items" ],
     "activity_level": "NO_EXERCISE"

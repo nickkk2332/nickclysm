@@ -1016,7 +1016,7 @@ bool Character::natural_attack_restricted_on( const sub_bodypart_id &bp ) const
     return worn.natural_attack_restricted_on( bp );
 }
 
-std::vector<const item *> Character::get_pseudo_items() const
+const std::vector<const item *> &Character::get_pseudo_items() const
 {
     if( !pseudo_items_valid ) {
         pseudo_items.clear();
@@ -1035,7 +1035,7 @@ std::vector<const item *> Character::get_pseudo_items() const
 
 std::vector<item> Character::crafting_pseudo_items() const
 {
-    const std::vector<const item *> pseudo_items = get_pseudo_items();
+    const std::vector<const item *> &pseudo_items = get_pseudo_items();
     std::vector<item> ret;
     ret.reserve( pseudo_items.size() + 2 );
     for( const item *pseudo : pseudo_items ) {

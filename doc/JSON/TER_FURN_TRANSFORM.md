@@ -76,6 +76,8 @@ You can also use flags instead of specific IDs for furniture, terrain and traps.
 
 A `ter_furn_transform` can have field, furniture, terrain, and trap fields.  It treats them separately, so no "if dirt, add chair".
 
+Every id is checked when the game loads: each `result` and `valid_*` id must exist and be of its block's kind (a furniture id under `"terrain"` is an error), a terrain or furniture `valid_flags` entry must be a flag some loaded terrain (or furniture) has, and a trap flag must be a `json_flag`.
+
 
 ## How to use
 
