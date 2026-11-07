@@ -17,7 +17,7 @@
 
 class Character;
 class JsonObject;
-class const_dialogue;
+struct const_dialogue;
 template<typename T>
 class generic_factory;
 

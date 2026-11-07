@@ -19,7 +19,7 @@
 #include "type_id.h"
 
 class JsonObject;
-class const_dialogue;
+struct const_dialogue;
 class map;
 class mapgendata;
 class tinymap;
