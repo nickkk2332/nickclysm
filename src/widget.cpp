@@ -362,6 +362,31 @@ bool widget_clause::meets_condition( const std::set<bodypart_id> &bps ) const
     return false;
 }
 
+// Expands the tags in txt as dialogue does, with the avatar as u (and npc) and the body part
+// the widget shows as context var "widget", as in the clause conditions
+static void parse_widget_tags( std::string &txt, const std::string &bp_str )
+{
+    avatar &ava = get_avatar();
+    dialogue d( get_talker_for( ava ), nullptr );
+    write_var_value( var_type::context, "widget", &d, bp_str );
+    parse_tags( txt, ava, ava, d );
+}
+
+void widget_clause::parse_text( std::string &txt, const std::set<bodypart_id> &bps ) const
+{
+    if( !should_parse_tags || txt.empty() ) {
+        return;
+    }
+    std::string bp_str;
+    for( const bodypart_id &bid : bps ) {
+        if( !has_condition || meets_condition( bid.id().str() ) ) {
+            bp_str = bid.id().str();
+            break;
+        }
+    }
+    parse_widget_tags( txt, bp_str );
+}
+
 const widget_clause *widget_clause::get_clause_for_id( const std::string &clause_id,
         const widget_id &wgt, int thresh_val, bool skip_condition )
 {
@@ -532,17 +557,17 @@ void widget::load( const JsonObject &jo, std::string_view )
 
     if( jo.has_array( "colors" ) ) {
         _colors.clear();
+        // New colors drop the inherited breaks, unless breaks are given too
         _breaks.clear();
         for( const std::string color_name : jo.get_array( "colors" ) ) {
             _colors.emplace_back( get_all_colors().name_to_color( color_name ) );
         }
-        if( jo.has_array( "breaks" ) ) {
-            for( const int value : jo.get_array( "breaks" ) ) {
-                _breaks.emplace_back( value );
-            }
-            if( _breaks.size() != _colors.size() - 1 ) {
-                debugmsg( "Widget property 'breaks' must have one element less than 'colors'" );
-            }
+    }
+    // A copy can change the breaks alone; the load check compares them with the colors
+    if( jo.has_array( "breaks" ) ) {
+        _breaks.clear();
+        for( const int value : jo.get_array( "breaks" ) ) {
+            _breaks.emplace_back( value );
         }
     }
 
@@ -553,6 +578,78 @@ void widget::load( const JsonObject &jo, std::string_view )
             phs.load( jobj );
             _clauses.emplace_back( phs );
         }
+    }
+    // A copy can delete clauses and body parts by id, and add more; an added clause with the
+    // id of one already there replaces it
+    if( jo.has_object( "delete" ) ) {
+        JsonObject jdel = jo.get_object( "delete" );
+        jdel.allow_omitted_members();
+        if( jdel.has_array( "clauses" ) ) {
+            for( const std::string clause_id : jdel.get_array( "clauses" ) ) {
+                _clauses.erase( std::remove_if( _clauses.begin(), _clauses.end(),
+                [&clause_id]( const widget_clause & wc ) {
+                    return wc.id == clause_id;
+                } ), _clauses.end() );
+            }
+        }
+        if( jdel.has_array( "bodyparts" ) ) {
+            for( const std::string bp : jdel.get_array( "bodyparts" ) ) {
+                _bps.erase( bodypart_id( bp ) );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject jext = jo.get_object( "extend" );
+        jext.allow_omitted_members();
+        if( jext.has_array( "clauses" ) ) {
+            for( JsonObject jobj : jext.get_array( "clauses" ) ) {
+                widget_clause phs;
+                phs.load( jobj );
+                auto same = phs.id.empty() ? _clauses.end() :
+                            std::find_if( _clauses.begin(), _clauses.end(),
+                [&phs]( const widget_clause & wc ) {
+                    return wc.id == phs.id;
+                } );
+                if( same != _clauses.end() ) {
+                    *same = phs;
+                } else {
+                    _clauses.emplace_back( phs );
+                }
+            }
+        }
+        if( jext.has_array( "bodyparts" ) ) {
+            for( const std::string bp : jext.get_array( "bodyparts" ) ) {
+                _bps.emplace( bp );
+            }
+        }
+    }
+    optional( jo, was_loaded, "clause_mode", _clause_mode, "all" );
+    optional( jo, was_loaded, "parse_tags", _parse_tags, false );
+
+    // A copy inherits the section; "sidebar_section": false drops it
+    if( jo.has_bool( "sidebar_section" ) ) {
+        if( jo.get_bool( "sidebar_section" ) ) {
+            jo.throw_error_at( "sidebar_section", "must be an object, or false to drop an inherited one" );
+        }
+        _sidebar_section.reset();
+    } else if( jo.has_object( "sidebar_section" ) ) {
+        JsonObject jsec = jo.get_object( "sidebar_section" );
+        widget_sidebar_section sec;
+        if( jsec.has_member( "sidebars" ) ) {
+            bool every_sidebar = false;
+            for( const std::string sidebar : jsec.get_array( "sidebars" ) ) {
+                if( sidebar == "*" ) {
+                    every_sidebar = true;
+                } else {
+                    sec.sidebars.emplace_back( sidebar );
+                }
+            }
+            if( every_sidebar ) {
+                sec.sidebars.clear();
+            }
+        }
+        optional( jsec, false, "after", sec.after, widget_id::NULL_ID() );
+        _sidebar_section = sec;
     }
 
     if( jo.has_object( "default_clause" ) ) {
@@ -580,7 +677,10 @@ int widget::finalize_label_width_recursive( const widget_id &id )
     // None found, return 0 as the label width.
     if( w == nullptr ) {
         return 0;
-    } else if( w->_widgets.empty() ) {
+    }
+    // A sidebar's sections include the widgets that add themselves to it
+    const std::vector<widget_id> rows = w->sidebar_sections();
+    if( rows.empty() ) {
         // No more nested layouts, we've found an individual widget.
         // Return the widget's label width, or 0 if the label or pad_labels is disabled.
         return w->_label.empty() || w->has_flag( json_flag_W_LABEL_NONE ) ||
@@ -590,7 +690,7 @@ int widget::finalize_label_width_recursive( const widget_id &id )
 
     // Find the longest label width within this layout.
     int width = 0;
-    for( const widget_id &wid : w->_widgets ) {
+    for( const widget_id &wid : rows ) {
         // Dive deeper to retrieve the nested element's label width.
         int tmpw = widget::finalize_label_width_recursive( wid );
         if( tmpw > width ) {
@@ -629,7 +729,7 @@ void widget::finalize_inherited_fields_recursive( const widget_id &id,
     }
 
     // If we get here, we have a layout that contains nested widgets.
-    for( const widget_id &wid : w->_widgets ) {
+    for( const widget_id &wid : w->sidebar_sections() ) {
         widget::finalize_inherited_fields_recursive( wid,
                 w->explicit_separator ? w->_separator : label_separator,
                 w->explicit_padding ? w->_padding : col_padding );
@@ -658,6 +758,154 @@ void widget::finalize()
     if( _style == "sidebar" ) {
         widget::finalize_inherited_fields_recursive( getId(), _separator, _padding );
         widget::finalize_label_width_recursive( getId() );
+    }
+}
+
+bool widget_sidebar_section::applies_to( const widget_id &sidebar ) const
+{
+    return sidebars.empty() ||
+           std::find( sidebars.begin(), sidebars.end(), sidebar ) != sidebars.end();
+}
+
+void widget::add_sidebar_sections( const widget_id &sidebar, std::vector<widget_id> &rows )
+{
+    // Sections added after the same section of the sidebar keep their load order
+    std::set<widget_id> added;
+    for( const widget &wgt : widget::get_all() ) {
+        if( !wgt._sidebar_section || wgt._style == "sidebar" ||
+            !wgt._sidebar_section->applies_to( sidebar ) ||
+            std::find( rows.begin(), rows.end(), wgt.getId() ) != rows.end() ) {
+            continue;
+        }
+        auto pos = std::find( rows.begin(), rows.end(), wgt._sidebar_section->after );
+        if( pos == rows.end() ) {
+            rows.push_back( wgt.getId() );
+        } else {
+            ++pos;
+            while( pos != rows.end() && added.count( *pos ) ) {
+                ++pos;
+            }
+            rows.insert( pos, wgt.getId() );
+        }
+        added.insert( wgt.getId() );
+    }
+}
+
+std::vector<widget_id> widget::sidebar_sections() const
+{
+    std::vector<widget_id> rows = _widgets;
+    if( _style == "sidebar" ) {
+        add_sidebar_sections( id, rows );
+    }
+    return rows;
+}
+
+std::vector<widget_id> widget::child_widgets() const
+{
+    std::vector<widget_id> ret = sidebar_sections();
+    for( const widget_clause &clause : _clauses ) {
+        ret.insert( ret.end(), clause.widgets.begin(), clause.widgets.end() );
+    }
+    ret.insert( ret.end(), _default_clause.widgets.begin(), _default_clause.widgets.end() );
+    return ret;
+}
+
+void widget::check_consistency()
+{
+    // The widgets reachable from a sidebar are the ones drawn. Others may be templates for
+    // copy-from, or layouts a mod fills in, so missing parts are only reported in drawn ones.
+    std::set<widget_id> drawn;
+    std::vector<widget_id> todo;
+    for( const widget &wgt : widget::get_all() ) {
+        if( wgt._style == "sidebar" || wgt._sidebar_section ) {
+            todo.push_back( wgt.getId() );
+        }
+    }
+    while( !todo.empty() ) {
+        const widget_id cur = todo.back();
+        todo.pop_back();
+        if( !cur.is_valid() || !drawn.insert( cur ).second ) {
+            continue;
+        }
+        for( const widget_id &child : cur->child_widgets() ) {
+            todo.push_back( child );
+        }
+    }
+    for( const widget &wgt : widget::get_all() ) {
+        wgt.check( drawn.count( wgt.getId() ) > 0 );
+    }
+}
+
+void widget::check( bool drawn ) const
+{
+    static const std::set<std::string> styles = {
+        "number", "graph", "text", "symbol", "legend", "layout", "sidebar", "clause"
+    };
+    if( styles.count( _style ) == 0 ) {
+        debugmsg( "widget %s has unknown style \"%s\"", id.str(), _style );
+    }
+    if( _fill != "bucket" && _fill != "pool" ) {
+        debugmsg( "widget %s has unknown fill \"%s\" (bucket or pool)", id.str(), _fill );
+    }
+    if( _arrange != "columns" && _arrange != "minimum_columns" && _arrange != "rows" ) {
+        debugmsg( "widget %s has unknown arrange \"%s\" (columns, minimum_columns or rows)",
+                  id.str(), _arrange );
+    }
+    if( _clause_mode != "all" && _clause_mode != "first" && _clause_mode != "threshold" ) {
+        debugmsg( "widget %s has unknown clause_mode \"%s\" (all, first or threshold)", id.str(),
+                  _clause_mode );
+    }
+    if( _style == "graph" && !uses_text_function() && utf8_to_utf32( _symbols ).size() < 2 ) {
+        debugmsg( "widget %s is a graph with fewer than 2 symbols (\"%s\"): the first one is "
+                  "the empty cell", id.str(), _symbols );
+    }
+    if( !_breaks.empty() ) {
+        if( _breaks.size() + 1 != _colors.size() ) {
+            debugmsg( "widget %s has %d breaks for %d colors: breaks must have one less", id.str(),
+                      _breaks.size(), _colors.size() );
+        }
+        if( !std::is_sorted( _breaks.begin(), _breaks.end() ) ) {
+            debugmsg( "widget %s has breaks that aren't in ascending order", id.str() );
+        }
+    }
+    switch( _var ) {
+        case widget_var::body_graph:
+        case widget_var::body_graph_temp:
+        case widget_var::body_graph_encumb:
+        case widget_var::body_graph_status:
+        case widget_var::body_graph_wet:
+            if( !bodygraph_id( _body_graph ).is_valid() ) {
+                debugmsg( "widget %s has unknown body_graph \"%s\"", id.str(), _body_graph );
+            }
+            break;
+        default:
+            break;
+    }
+    if( _sidebar_section ) {
+        if( _style == "sidebar" ) {
+            debugmsg( "widget %s is a sidebar: it can't be a sidebar_section", id.str() );
+        }
+        if( !_sidebar_section->after.is_null() && !_sidebar_section->after.is_valid() ) {
+            debugmsg( "widget %s's sidebar_section comes after unknown widget \"%s\"", id.str(),
+                      _sidebar_section->after.str() );
+        }
+    }
+    if( !drawn ) {
+        return;
+    }
+    for( const widget_id &child : child_widgets() ) {
+        if( !child.is_valid() ) {
+            debugmsg( "widget %s shows unknown widget \"%s\"", id.str(), child.str() );
+        } else if( child->_style == "clause" ) {
+            debugmsg( "widget %s shows %s, a clause template (style \"clause\") that can't be drawn",
+                      id.str(), child.str() );
+        }
+    }
+    if( _style == "graph" && !uses_text_function() ) {
+        const bool vertical = _arrange == "rows";
+        if( ( vertical ? _height_max : _width ) <= 0 ) {
+            debugmsg( "widget %s is a graph with no %s", id.str(), vertical ? "height" : "width" );
+        }
     }
 }
 
@@ -966,7 +1214,7 @@ int widget::get_var_value( const avatar &ava ) const
             value = ava.get_cardio_acc();
             break;
         case widget_var::carry_weight:
-            value = ( 100 * ava.weight_carried() ) / ava.weight_capacity();
+            value = ava.weight_carried_percent();
             break;
         case widget_var::custom:
             value = _custom_var.get_var_value( ava );
@@ -1056,6 +1304,9 @@ static int custom_draw_func( const draw_args &args )
     } else if( wgt->_style == "layout" ) {
         if( wgt->_arrange == "rows" ) {
             // Layout widgets in rows
+            if( wgt->_clause_mode == "threshold" ) {
+                wgt->_clause_value = wgt->get_var_value( u );
+            }
             std::vector<string_id<widget>> widgets = wgt->widgets( !wgt->_clauses.empty() );
             int row_num = 0;
             for( const widget_id &row_wid : widgets ) {
@@ -1407,6 +1658,8 @@ std::string widget::color_value_string( int value, int width_max )
 
 std::string widget::value_string( int value, int width_max )
 {
+    // The "threshold" clause_mode picks clauses by this value
+    _clause_value = value;
     std::string ret;
     // Use the available horizontal space unless widget has an explicit width
     const int w = _width > 0 ? _width : width_max;
@@ -1446,7 +1699,9 @@ nc_color widget::value_color( int value )
 
     if( var_range > 0 && ! _breaks.empty() ) {
         const int value_offset = ( 100 * ( value - _var_min ) ) / var_range;
-        for( int i = 0; i < color_max; i++ ) {
+        // Too few breaks (reported at load) leave the top colors out instead of reading past them
+        const int num_breaks = std::min( color_max, static_cast<int>( _breaks.size() ) );
+        for( int i = 0; i < num_breaks; i++ ) {
             if( value_offset < _breaks[i] ) {
                 return _colors[i];
             }
@@ -1499,7 +1754,11 @@ std::string widget::text( bool from_condition, int width )
     if( from_condition ) {
         return text_cond( false, width );
     }
-    return _string.translated();
+    std::string txt = _string.translated();
+    if( _parse_tags ) {
+        parse_widget_tags( txt, _bps.empty() ? std::string() : only_bp().id().str() );
+    }
+    return txt;
 }
 
 std::string widget::sym( bool from_condition )
@@ -1512,7 +1771,7 @@ std::string widget::sym_text( bool from_condition, int width )
     if( from_condition ) {
         return sym_text_cond( true, width );
     }
-    return _string.translated();
+    return text( false, width );
 }
 
 std::vector<string_id<widget>> widget::widgets( bool from_condition )
@@ -1545,6 +1804,7 @@ std::string widget::text_cond( bool no_join, int width )
     if( wplist.empty() ) {
         // All clauses returned false conditions, use default
         std::string txt = _default_clause.text.translated();
+        _default_clause.parse_text( txt, _bps );
         return txt.empty() ? "" : _default_clause.color == c_unset ? txt : colorize( txt,
                 _default_clause.color );
     }
@@ -1552,9 +1812,7 @@ std::string widget::text_cond( bool no_join, int width )
     strings.reserve( wplist.size() );
     for( const widget_clause *wp : wplist ) {
         std::string txt = wp->text.translated();
-        if( wp->should_parse_tags ) {
-            parse_tags( txt, get_player_character(), get_player_character() );
-        }
+        wp->parse_text( txt, _bps );
         txt = wp->color == c_unset ? txt : colorize(
                   txt, wp->color );
         strings.emplace_back( txt );
@@ -1574,21 +1832,25 @@ std::string widget::sym_cond( bool no_join, enumeration_conjunction join_type ) 
     if( wplist.empty() ) {
         // All clauses returned false conditions, use default
         std::string txt = _default_clause.sym;
+        _default_clause.parse_text( txt, _bps );
         return txt.empty() ? "" : _default_clause.color == c_unset ? txt : colorize( txt,
                 _default_clause.color );
     }
+    const auto clause_sym = [this]( const widget_clause * wp ) {
+        std::string sym_str = wp->sym;
+        wp->parse_text( sym_str, _bps );
+        return wp->color == c_unset ? sym_str : colorize( sym_str, wp->color );
+    };
     // No string joining, just show symbols one-after-the-other
     if( no_join ) {
         std::string ret;
         for( const widget_clause *wp : wplist ) {
-            ret += wp->color == c_unset ? wp->sym : colorize( wp->sym, wp->color );
+            ret += clause_sym( wp );
         }
         return ret;
     }
     // Get values as a comma-separated list
-    return enumerate_as_string( wplist.begin(), wplist.end(), []( const widget_clause * wp ) {
-        return wp->color == c_unset ? wp->sym : colorize( wp->sym, wp->color );
-    }, join_type );
+    return enumerate_as_string( wplist.begin(), wplist.end(), clause_sym, join_type );
 }
 
 std::string widget::sym_text_cond( bool no_join, int width )
@@ -1597,18 +1859,21 @@ std::string widget::sym_text_cond( bool no_join, int width )
     if( wplist.empty() ) {
         // All clauses returned false conditions, use default
         std::string txt = _default_clause.sym;
-        txt += ( txt.empty() ? "" : " " ) + _default_clause.text.translated();
+        std::string default_text = _default_clause.text.translated();
+        _default_clause.parse_text( txt, _bps );
+        _default_clause.parse_text( default_text, _bps );
+        txt += ( txt.empty() ? "" : " " ) + default_text;
         return txt.empty() ? "" : _default_clause.color == c_unset ? txt : colorize( txt,
                 _default_clause.color );
     }
     std::vector<std::string> strings;
     strings.reserve( wplist.size() );
     for( const widget_clause *wp : wplist ) {
-        std::string s = wp->color == c_unset ? wp->sym : colorize( wp->sym, wp->color );
+        std::string sym_str = wp->sym;
+        wp->parse_text( sym_str, _bps );
+        std::string s = wp->color == c_unset ? sym_str : colorize( sym_str, wp->color );
         std::string txt_str = wp->text.translated();
-        if( wp->should_parse_tags ) {
-            parse_tags( txt_str, get_player_character(), get_player_character() );
-        }
+        wp->parse_text( txt_str, _bps );
         std::string txt = string_format( "%s %s", s, txt_str );
         strings.emplace_back( txt );
     }
@@ -1653,22 +1918,46 @@ const widget_clause *widget::get_clause( const std::string &clause_id ) const
 std::vector<const widget_clause *> widget::get_clauses() const
 {
     std::vector<const widget_clause *> ret;
+    const bool threshold = _clause_mode == "threshold";
+    // "threshold": the clause with the largest value not above the var's (first of equals)
+    const widget_clause *best = nullptr;
     // Look for clauses with satisfied conditions
     for( const widget_clause &wp : _clauses ) {
-        // Include this clause if it has no condition or the condition is true
-        if( !wp.has_condition || wp.meets_condition( _bps ) ) {
-            ret.emplace_back( &wp );
+        if( threshold && ( wp.value > _clause_value || ( best != nullptr &&
+                           wp.value <= best->value ) ) ) {
+            continue;
         }
+        // Include this clause if it has no condition or the condition is true
+        if( wp.has_condition && !wp.meets_condition( _bps ) ) {
+            continue;
+        }
+        if( threshold ) {
+            best = &wp;
+            continue;
+        }
+        ret.emplace_back( &wp );
+        if( _clause_mode == "first" ) {
+            break;
+        }
+    }
+    if( best != nullptr ) {
+        ret.emplace_back( best );
     }
     return ret;
 }
 
 std::string widget::graph( int value ) const
 {
+    const std::u32string syms = utf8_to_utf32( _symbols );
     // graph "depth is equal to the number of nonzero symbols
-    int depth = utf8_width( _symbols ) - 1;
+    // (counted in symbols, not columns, so wide symbols don't index past the end)
+    const int depth = static_cast<int>( syms.size() ) - 1;
     // Number of graph characters
     const int w = _arrange == "rows" ? _height : _width;
+    // No cells or no symbols: nothing to draw (the load check reports both)
+    if( w <= 0 || syms.empty() ) {
+        return "";
+    }
     // Max integer value this graph can show
     int max_graph_val = w * depth;
     // Scale value range to current graph resolution (width x depth)
@@ -1689,9 +1978,11 @@ std::string widget::graph( int value ) const
     int quot;
     int rem;
 
-    const std::u32string syms = utf8_to_utf32( _symbols );
     std::u32string ret;
-    if( _fill == "bucket" ) {
+    if( depth <= 0 ) {
+        // Only the empty symbol: every cell shows it
+        ret = std::u32string( w, syms[0] );
+    } else if( _fill == "bucket" ) {
         quot = value / depth; // number of full cells/buckets
         rem = value % depth;  // partly full next cell, maybe
         // Full cells at the front
@@ -1850,6 +2141,9 @@ std::string widget::layout( const avatar &ava, unsigned int max_width, int label
 {
     std::string ret;
     if( _style == "layout" ) {
+        if( _clause_mode == "threshold" ) {
+            _clause_value = get_var_value( ava );
+        }
         std::vector<string_id<widget>> wgts = widgets( !_clauses.empty() );
         int layout_label_width = ( label_width == 0 || ! _pad_labels ) ? _label_width : label_width;
 

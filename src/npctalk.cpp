@@ -68,6 +68,7 @@
 #include "dialogue_chatbin.h"
 #include "dialogue_helpers.h"
 #include "dialogue_imgui.h"
+#include "display.h"
 #include "effect.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
@@ -2585,6 +2586,19 @@ static std::string faction_or_fallback( const_talker const &guy )
     return fac->get_name();
 }
 
+// A variable's value as a tag shows it: whole numbers in full (the default formatting writes
+// 1234567 as "1.23457e+06"), anything else as diag_value prints it
+static std::string tag_value_string( const diag_value &v )
+{
+    if( v.is_dbl() ) {
+        const double d = v.dbl();
+        if( std::isfinite( d ) && d == std::trunc( d ) && std::fabs( d ) < 1e15 ) {
+            return std::to_string( static_cast<int64_t>( d ) );
+        }
+    }
+    return v.to_string();
+}
+
 void parse_tags( std::string &phrase, const Character &u, const Creature &me,
                  const itype_id &item_type )
 {
@@ -2724,7 +2738,7 @@ void parse_tags( std::string &phrase, const_talker const &u, const_talker const 
             var.pop_back();
             // resolve nest
             parse_tags( var, u, me, d, item_type );
-            phrase.replace( fa, l, u.get_value( var ).to_string() );
+            phrase.replace( fa, l, tag_value_string( u.get_value( var ) ) );
         } else if( tag.find( "<npc_val:" ) == 0 ) {
             //adding a npc variable to the string
             std::string var = tag.substr( tag.find( ':' ) + 1 );
@@ -2732,7 +2746,7 @@ void parse_tags( std::string &phrase, const_talker const &u, const_talker const 
             var.pop_back();
             // resolve nest
             parse_tags( var, u, me, d, item_type );
-            phrase.replace( fa, l, me.get_value( var ).to_string() );
+            phrase.replace( fa, l, tag_value_string( me.get_value( var ) ) );
         } else if( tag.find( "<global_val:" ) == 0 ) {
             //adding a global variable to the string
             std::string var = tag.substr( tag.find( ':' ) + 1 );
@@ -2741,7 +2755,7 @@ void parse_tags( std::string &phrase, const_talker const &u, const_talker const 
             // resolve nest
             parse_tags( var, u, me, d, item_type );
             global_variables &globvars = get_globals();
-            phrase.replace( fa, l, globvars.get_global_value( var ).to_string() );
+            phrase.replace( fa, l, tag_value_string( globvars.get_global_value( var ) ) );
         } else if( tag.find( "<context_val:" ) == 0 ) {
             //adding a context variable to the string requires dialogue to exist
             std::string var = tag.substr( tag.find( ':' ) + 1 );
@@ -2749,7 +2763,7 @@ void parse_tags( std::string &phrase, const_talker const &u, const_talker const 
             var.pop_back();
             // resolve nest
             parse_tags( var, u, me, d, item_type );
-            phrase.replace( fa, l, d.get_value( var ).to_string() );
+            phrase.replace( fa, l, tag_value_string( d.get_value( var ) ) );
         } else if( tag.find( "<item_name:" ) == 0 ) {
             //embedding an items name in the string
             std::string var = tag.substr( tag.find( ':' ) + 1 );
@@ -12365,8 +12379,15 @@ talk_effect_fun_t::func f_add_overmap_note( const JsonObject &jo, std::string_vi
     if( jo.has_member( "danger_radius" ) ) {
         danger_radius = get_dbl_or_var( jo, "danger_radius" );
     }
-    return [target_var, text, symbol, color, danger_radius]( dialogue & d ) {
+    // UIHUD-J04: false leaves a note already there (the player's, or an earlier one) alone
+    const bool overwrite = jo.get_bool( "overwrite", true );
+    return [target_var, text, symbol, color, danger_radius, overwrite]( dialogue & d ) {
         const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
+        if( !overwrite && overmap_buffer.has_note( omt ) ) {
+            return;
+        }
+        // The sidebar's overmap shows notes
+        display::invalidate_overmap_cache();
         // Overmap notes encode their symbol and color as "S:color;text".
         std::string note;
         const std::string sym = symbol.evaluate( d );
@@ -12389,9 +12410,24 @@ talk_effect_fun_t::func f_delete_overmap_note( const JsonObject &jo, std::string
         std::string_view )
 {
     var_info target_var = read_var_info( jo.get_object( member ) );
-    return [target_var]( dialogue & d ) {
-        overmap_buffer.delete_note( project_to<coords::omt>( read_var_value( target_var,
-                                    d ).tripoint() ) );
+    // UIHUD-J04: only delete a note with this text (what follows its "S:color;" prefix)
+    std::optional<str_or_var> only_if_text;
+    if( jo.has_member( "only_if_text" ) ) {
+        only_if_text = get_str_or_var( jo.get_member( "only_if_text" ), "only_if_text" );
+    }
+    return [target_var, only_if_text]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var,
+                                     d ).tripoint() );
+        if( only_if_text ) {
+            const std::string &note = overmap_buffer.note( omt );
+            const size_t text_start = std::get<2>( overmap_ui::get_note_display_info( note ) );
+            if( !overmap_buffer.has_note( omt ) ||
+                note.substr( text_start ) != only_if_text->evaluate( d ) ) {
+                return;
+            }
+        }
+        display::invalidate_overmap_cache();
+        overmap_buffer.delete_note( omt );
     };
 }
 

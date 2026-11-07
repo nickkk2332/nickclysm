@@ -563,6 +563,13 @@ double omt_distance_eval( const_dialogue const &d, char /* scope */,
     return rl_dist( _omt_of( d, params[0] ), _omt_of( d, params[1] ) );
 }
 
+// UIHUD-J04: the danger radius of the note at the location, -1 without a dangerous note there
+double map_note_danger_eval( const_dialogue const &d, char /* scope */,
+                             std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    return overmap_buffer.note_danger_radius( _omt_of( d, params[0] ) );
+}
+
 double horde_size_eval( const_dialogue const &d, char /* scope */,
                         std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
@@ -4848,6 +4855,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     // OMAP-J01: overmap functions
     { "omt_distance", { "g", 2, omt_distance_eval } },
     { "horde_size", { "g", 1, horde_size_eval, {}, { "radius" } } },
+    { "map_note_danger", { "g", 1, map_note_danger_eval } },
     { "city_distance", { "g", 1, city_distance_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "city_size", { "g", 1, city_size_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "moon_phase", { "g", 0, moon_phase_eval } },

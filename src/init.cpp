@@ -1514,6 +1514,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Body parts" ), &body_part_type::check_consistency },
             { _( "Sub body parts" ), &sub_body_part_type::check_consistency },
             { _( "Body graphs" ), &bodygraph::check_all },
+            { _( "Widgets" ), &widget::check_consistency },
             { _( "Anatomies" ), &anatomy::check_consistency },
             { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },

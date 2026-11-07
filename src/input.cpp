@@ -380,12 +380,31 @@ void input_manager::save()
 {
     write_to_file( PATH_INFO::user_keybindings(), [&]( std::ostream & data_file ) {
         JsonOut jsout( data_file, true );
+        serialize_changed_bindings( jsout, action_contexts, basic_action_contexts );
+    }, _( "key bindings configuration" ) );
+}
 
+void input_manager::serialize_changed_bindings( JsonOut &jsout, const t_action_contexts &current,
+        const t_action_contexts &defaults ) const
+{
+    {
         jsout.start_array();
-        for( const auto &a : action_contexts ) {
+        for( const auto &a : current ) {
             const t_actions &actions = a.second;
+            const auto default_actions = defaults.find( a.first );
             for( const auto &action : actions ) {
                 const t_input_event_list &events = action.second.input_events;
+                // Untouched defaults stay out of the user's file: written there, they would
+                // replace the defaults for good, hiding keys added to the defaults later.
+                // An action the user unbound differs (no events), so it is written.
+                if( default_actions != defaults.end() ) {
+                    const auto default_action = default_actions->second.find( action.first );
+                    if( default_action != default_actions->second.end() &&
+                        default_action->second.input_events == events &&
+                        default_action->second.is_user_created == action.second.is_user_created ) {
+                        continue;
+                    }
+                }
                 jsout.start_object();
 
                 jsout.member( "id", action.first );
@@ -456,7 +475,7 @@ void input_manager::save()
             }
         }
         jsout.end_array();
-    }, _( "key bindings configuration" ) );
+    }
 }
 
 void input_manager::add_keyboard_char_keycode_pair( int ch, const std::string &name )

@@ -5645,7 +5645,7 @@ void iexamine::ledge( Character &you, const tripoint_bub_ms &examp )
 
             if( you.get_str() < 4 ) {
                 add_msg( m_warning, _( "You are too weak to jump over an obstacle." ) );
-            } else if( 100 * you.weight_carried() / you.weight_capacity() > 25 ) {
+            } else if( you.weight_carried_percent() > 25 ) {
                 add_msg( m_warning, _( "You are too burdened to jump over an obstacle." ) );
             } else if( !here.valid_move( examp, jump_target, false, true ) ) {
                 add_msg( m_warning, _( "You cannot jump over an obstacle - something is blocking the way." ) );

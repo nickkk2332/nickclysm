@@ -9,6 +9,7 @@
 #include "input_enums.h"
 #include "translation.h"
 
+class JsonOut;
 class cata_path;
 
 // Curses key constants
@@ -304,6 +305,15 @@ class input_manager
          * and possibly been modified.
          */
         void save();
+        /**
+         * Writes the actions of @p current (context -> action -> attributes) whose bindings
+         * differ from @p defaults, as save() writes them to the user's keybindings file.
+         * An action left as it is in the defaults isn't written, so later changes to the
+         * defaults still reach the player.
+         */
+        void serialize_changed_bindings( JsonOut &jsout,
+                                         const std::map<std::string, std::map<std::string, action_attributes>> &current,
+                                         const std::map<std::string, std::map<std::string, action_attributes>> &defaults ) const;
 
         /**
          * Return the previously pressed key, or 0 if there is no previous input

@@ -14,6 +14,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -1517,6 +1518,28 @@ conditional_t::func f_map_has_extra( const JsonObject &jo, std::string_view memb
         const tripoint_abs_omt omt = read_omt_or_alpha( loc_var, d );
         return overmap_buffer.has_extra( omt ) &&
                overmap_buffer.extra( omt ).str() == extra.evaluate( d );
+    };
+}
+
+// UIHUD-J04: the overmap tile at the location has a note (with this text, if "text" is given)
+conditional_t::func f_map_has_note( const JsonObject &jo, std::string_view member )
+{
+    var_info loc_var = read_var_info( jo.get_object( member ) );
+    std::optional<str_or_var> text;
+    if( jo.has_member( "text" ) ) {
+        text = get_str_or_var( jo.get_member( "text" ), "text" );
+    }
+    return [loc_var, text]( const_dialogue const & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( loc_var, d ).tripoint() );
+        if( !overmap_buffer.has_note( omt ) ) {
+            return false;
+        }
+        if( !text ) {
+            return true;
+        }
+        const std::string &note = overmap_buffer.note( omt );
+        const size_t text_start = std::get<2>( overmap_ui::get_note_display_info( note ) );
+        return note.substr( text_start ) == text->evaluate( d );
     };
 }
 
@@ -3992,6 +4015,7 @@ parsers = {
     {"map_in_overmap_special", jarg::member, &conditional_fun::f_map_in_overmap_special },
     {"map_has_extra", jarg::member, &conditional_fun::f_map_has_extra },
     {"map_omt_seen", jarg::member, &conditional_fun::f_map_omt_seen },
+    {"map_has_note", jarg::object, &conditional_fun::f_map_has_note },
     {"map_omt_has_flag", jarg::member, &conditional_fun::f_map_omt_has_flag },
     {"compare_string", jarg::member, &conditional_fun::f_compare_string },
     {"compare_string_match_all", jarg::member, &conditional_fun::f_compare_string_match_all },
