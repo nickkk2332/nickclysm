@@ -195,6 +195,8 @@ The only spells that require migration are one that are actual spells that chara
   },
 ```
 
+Migrations are applied when a save is loaded, before the saved spell ids are checked, so the `from` spell's JSON can be deleted.  The new spell keeps the old one's experience (of two old spells migrated into one, the higher), and its hotkey and favorite.  Migrations can chain (`spell_a` to `spell_b`, then `spell_b` to `spell_c`).
+
 # Monster migration
 
 A monster type can be removed without a migration: a saved monster whose type no longer exists loads as a `mon_breather`.  A `monster_migration` renames the type of saved monsters, or removes them, when a save loads:

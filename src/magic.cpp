@@ -814,9 +814,15 @@ skill_id spell::skill() const
 int spell::field_intensity( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
-    return std::min( static_cast<int>( type->max_field_intensity.evaluate( d ) ),
-                     static_cast<int>( type->min_field_intensity.evaluate( d ) + std::round( get_effective_level() *
-                                       type->field_intensity_increment.evaluate( d ) ) ) );
+    const double min_intensity = type->min_field_intensity.evaluate( d );
+    const double max_intensity = type->max_field_intensity.evaluate( d );
+    const int leveled_intensity = static_cast<int>( min_intensity + std::round(
+                                      get_effective_level() * type->field_intensity_increment.evaluate( d ) ) );
+    // max_field_intensity bounds the value whichever way it moves with level
+    if( max_intensity >= min_intensity ) {
+        return std::min( leveled_intensity, static_cast<int>( max_intensity ) );
+    }
+    return std::max( leveled_intensity, static_cast<int>( max_intensity ) );
 }
 
 double spell::bash_scaling( const Creature &caster ) const
@@ -884,10 +890,11 @@ int spell::damage( const Creature &caster ) const
         base_damage = rng( std::min( leveled_damage, max_damage() ),
                            std::max( leveled_damage, max_damage() ) );
     } else {
-        if( type->min_damage.evaluate( d ) >= 0 ||
-            type->max_damage.evaluate( d ) >= type->min_damage.evaluate( d ) ) {
+        // max_damage bounds the damage whichever way it moves with level: damage that falls
+        // with level, and healing (negative damage) that grows, stop at it from above
+        if( type->max_damage.evaluate( d ) >= type->min_damage.evaluate( d ) ) {
             base_damage = std::min( leveled_damage, max_damage() );
-        } else { // if it's negative, min and max work differently
+        } else {
             base_damage = std::max( leveled_damage, max_damage() );
         }
     }
@@ -927,10 +934,10 @@ int spell::accuracy( Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int leveled_accuracy = min_leveled_accuracy( caster );
-    if( type->min_accuracy.evaluate( d ) >= 0 ||
-        type->max_accuracy.evaluate( d ) >= type->min_accuracy.evaluate( d ) ) {
+    // max_accuracy bounds the value whichever way it moves with level
+    if( type->max_accuracy.evaluate( d ) >= type->min_accuracy.evaluate( d ) ) {
         return std::min( leveled_accuracy, static_cast<int>( type->max_accuracy.evaluate( d ) ) );
-    } else { // if it's negative, min and max work differently
+    } else {
         return std::max( leveled_accuracy, static_cast<int>( type->max_accuracy.evaluate( d ) ) );
     }
 }
@@ -946,10 +953,10 @@ double spell::damage_dot( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const double leveled_dot = min_leveled_dot( caster );
-    if( type->min_dot.evaluate( d ) >= 0.0 ||
-        type->max_dot.evaluate( d ) >= type->min_dot.evaluate( d ) ) {
+    // max_dot bounds the value whichever way it moves with level
+    if( type->max_dot.evaluate( d ) >= type->min_dot.evaluate( d ) ) {
         return std::min( leveled_dot, type->max_dot.evaluate( d ) );
-    } else { // if it's negative, min and max work differently
+    } else {
         return std::max( leveled_dot, type->max_dot.evaluate( d ) );
     }
 }
@@ -986,6 +993,12 @@ std::string spell::damage_string( const Character &caster ) const
     return damage_string;
 }
 
+// RANDOM_TARGET and RANDOM_CRITTER spells pick a random target in range when cast
+static bool has_random_target( const spell &sp )
+{
+    return sp.has_flag( spell_flag::RANDOM_TARGET ) || sp.has_flag( spell_flag::RANDOM_CRITTER );
+}
+
 std::optional<tripoint_bub_ms> spell::select_target( Creature *source )
 {
     const map &here = get_map();
@@ -993,7 +1006,7 @@ std::optional<tripoint_bub_ms> spell::select_target( Creature *source )
     tripoint_bub_ms target = source->pos_bub();
     bool target_is_valid = false;
     if( range( *source ) > 0 && !is_valid_target( spell_target::none ) &&
-        !has_flag( spell_flag::RANDOM_TARGET ) ) {
+        !has_random_target( *this ) ) {
         if( source->is_avatar() ) {
             do {
                 avatar &source_avatar = *source->as_avatar();
@@ -1016,7 +1029,13 @@ std::optional<tripoint_bub_ms> spell::select_target( Creature *source )
             } while( !target_is_valid );
         } else if( source->is_npc() ) {
             npc &source_npc = *source->as_npc();
-            npc_attack_spell npc_spell( id() );
+            // A spell cast from the npc's spellbook is rated as known, and must still be
+            // castable. Any other instance (an EOC's targeted cast, an item's spell) is rated
+            // as it is: the npc may not know it.
+            const bool from_spellbook = source_npc.magic->knows_spell( id() ) &&
+                                        &source_npc.magic->get_spell( id() ) == this;
+            const npc_attack_spell npc_spell = from_spellbook ? npc_attack_spell( id() ) :
+                                               npc_attack_spell( *this );
             // recalculate effectiveness because it's been a few turns since the npc started casting.
             const npc_attack_rating effectiveness = npc_spell.evaluate( source_npc,
                                                     source_npc.last_target.lock().get() );
@@ -1027,8 +1046,16 @@ std::optional<tripoint_bub_ms> spell::select_target( Creature *source )
             } else {
                 target = effectiveness.target();
             }
-        } // TODO: move monster spell attack targeting here
-    } else if( has_flag( spell_flag::RANDOM_TARGET ) ) {
+        } else if( monster *source_mon = source->as_monster() ) {
+            // a monster aims at what it is fighting, when the spell can reach and hit it
+            if( const Creature *enemy = source_mon->attack_target() ) {
+                const tripoint_bub_ms enemy_pos = enemy->pos_bub();
+                if( is_target_in_range( *source, enemy_pos ) && is_valid_target( *source, enemy_pos ) ) {
+                    target = enemy_pos;
+                }
+            }
+        }
+    } else if( has_random_target( *this ) ) {
         const std::optional<tripoint_bub_ms> target_ = random_valid_target( *source, source->pos_bub() );
         if( !target_ ) {
             if( !type->description.empty() ) {
@@ -2522,8 +2549,8 @@ void cast_extra_spell_effects_casterless( const spell &sp, casterless_caster &ca
     }
 }
 
-void cast_all_effects_casterless( const spell &sp, casterless_caster &caster,
-                                  const tripoint_bub_ms &target )
+void cast_all_effects_casterless_at_selected_target( const spell &sp, casterless_caster &caster,
+        const tripoint_bub_ms &target )
 {
     const execution_combat::effect_scope execution_cast( caster.get(), sp, false );
 
@@ -2554,6 +2581,24 @@ void cast_all_effects_casterless( const spell &sp, casterless_caster &caster,
             cast_spell_effect_casterless( sp, caster, target );
             cast_extra_spell_effects_casterless( sp, caster, target );
         }
+    }
+}
+
+void cast_all_effects_casterless( const spell &sp, casterless_caster &caster,
+                                  const tripoint_bub_ms &target )
+{
+    if( !has_random_target( sp ) ) {
+        cast_all_effects_casterless_at_selected_target( sp, caster, target );
+        return;
+    }
+    // The fake caster stands at the target: as spell::cast_all_effects( Creature &, ... ) does
+    // for a cast at the caster's own tile, pick a random target in range, or keep this one only
+    // if it is valid.
+    if( const std::optional<tripoint_bub_ms> random_target = sp.random_valid_target( caster.get(),
+            target ) ) {
+        cast_all_effects_casterless_at_selected_target( sp, caster, *random_target );
+    } else if( sp.is_valid_target( caster.get(), target ) ) {
+        cast_all_effects_casterless_at_selected_target( sp, caster, target );
     }
 }
 
@@ -2597,7 +2642,42 @@ void spell::cast_all_effects( const tripoint_bub_ms &target ) const
     cast_all_effects_casterless( *this, caster, target );
 }
 
+// A sub-spell (an extra effect, or a WONDER spell's pick) cast by @source at @center. A
+// RANDOM_TARGET one picks its target in range of @center, and isn't cast without one.
+static void cast_sub_spell( const spell &sp, Creature &source, const tripoint_bub_ms &center )
+{
+    if( !has_random_target( sp ) ) {
+        sp.cast_all_effects( source, center );
+    } else if( const std::optional<tripoint_bub_ms> new_target = sp.random_valid_target( source,
+               center ) ) {
+        sp.cast_all_effects_at_selected_target( source, *new_target );
+    }
+}
+
 void spell::cast_all_effects( Creature &source, const tripoint_bub_ms &target ) const
+{
+    // A RANDOM_TARGET (or RANDOM_CRITTER) spell cast at its caster's own tile, as enchantments,
+    // relics, monsters' self casts and EOCs without a target cast, picks a random valid target
+    // in range. With none, it is cast at the caster's tile only if that is a valid target (a
+    // spell that only targets "self"). One cast at a chosen target (the creature an enchantment's
+    // hit_you_effect hit, an EOC's "loc", a monster's foe) is cast there.
+    if( has_random_target( *this ) && target == source.pos_bub() ) {
+        if( const std::optional<tripoint_bub_ms> random_target = random_valid_target( source,
+                target ) ) {
+            cast_all_effects_at_selected_target( source, *random_target );
+        } else if( is_valid_target( source, target ) ) {
+            cast_all_effects_at_selected_target( source, target );
+        } else {
+            add_msg_debug( debugmode::DF_GAME, "%s finds no target for %s", source.disp_name(),
+                           id().str() );
+        }
+        return;
+    }
+    cast_all_effects_at_selected_target( source, target );
+}
+
+void spell::cast_all_effects_at_selected_target( Creature &source,
+        const tripoint_bub_ms &target ) const
 {
     const execution_combat::effect_scope execution_cast( source, *this, false );
     if( has_flag( spell_flag::WONDER ) ) {
@@ -2616,18 +2696,7 @@ void spell::cast_all_effects( Creature &source, const tripoint_bub_ms &target ) 
             // if a message is added to the casting spell, it will be sent as well.
             source.add_msg_if_player( sp.message() );
 
-            if( sp.has_flag( spell_flag::RANDOM_TARGET ) ) {
-                if( const std::optional<tripoint_bub_ms> new_target = sp.random_valid_target( source,
-                        _self ? source.pos_bub() : target ) ) {
-                    sp.cast_all_effects( source, *new_target );
-                }
-            } else {
-                if( _self ) {
-                    sp.cast_all_effects( source, source.pos_bub() );
-                } else {
-                    sp.cast_all_effects( source, target );
-                }
-            }
+            cast_sub_spell( sp, source, _self ? source.pos_bub() : target );
         }
     } else {
         if( has_flag( spell_flag::EXTRA_EFFECTS_FIRST ) ) {
@@ -2651,18 +2720,7 @@ void spell::cast_extra_spell_effects( Creature &source, const tripoint_bub_ms &t
     for( const fake_spell &extra_spell : type->additional_spells ) {
         spell sp = extra_spell.get_spell_with_context( source, get_effective_level(), *this );
         const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
-        if( sp.has_flag( spell_flag::RANDOM_TARGET ) ) {
-            if( const std::optional<tripoint_bub_ms> new_target = sp.random_valid_target( source,
-                    extra_spell.self ? source.pos_bub() : target ) ) {
-                sp.cast_all_effects( source, *new_target );
-            }
-        } else {
-            if( extra_spell.self ) {
-                sp.cast_all_effects( source, source.pos_bub() );
-            } else {
-                sp.cast_all_effects( source, target );
-            }
-        }
+        cast_sub_spell( sp, source, extra_spell.self ? source.pos_bub() : target );
     }
 }
 
@@ -2713,6 +2771,10 @@ void known_magic::serialize( JsonOut &json ) const
     json.end_array();
     json.member( "invlets", spells_to_invlets );
     json.member( "favorites", favorites );
+    if( !channeled_spell.is_null() ) {
+        json.member( "channeled_spell", channeled_spell );
+        json.member( "channeled_level", channeled_level );
+    }
 
     json.end_object();
 }
@@ -2721,12 +2783,45 @@ void known_magic::deserialize( const JsonObject &data )
 {
     data.read( "mana", mana );
 
+    // Saved spells a spell_migration renames, added after the others: a spell the character
+    // already knows under the new id isn't modified.
+    std::map<spell_id, spell> migrated;
+    std::map<spell_id, spell_id> renamed;
+    std::set<spell_id> removed;
     for( JsonObject jo : data.get_array( "spellbook" ) ) {
         std::string id = jo.get_string( "id" );
-        spell_id sp = spell_id( id );
+        const spell_id saved_id( id );
+        spell_id sp = saved_id;
         int xp = jo.get_int( "xp" );
+        // Migrations are looked up before the spell: the one they replace may be gone. A chain
+        // of them is followed, a few steps at most in case they loop.
+        bool dropped = false;
+        for( int step = 0; step < 10; step++ ) {
+            const spell_migration *migration = spell_migration::find_migration( sp );
+            if( migration == nullptr ) {
+                break;
+            }
+            if( !migration->id_new.has_value() ) {
+                dropped = true;
+                break;
+            }
+            sp = migration->id_new.value();
+        }
+        if( dropped ) {
+            removed.insert( saved_id );
+            continue;
+        }
         if( !sp.is_valid() ) {
             DebugLog( D_WARNING, D_MAIN ) << "Tried to load bad spell: " << sp.c_str();
+            continue;
+        }
+        if( sp != saved_id ) {
+            renamed[saved_id] = sp;
+            // of two spells migrated into one, the one with more experience counts
+            const auto [it, added] = migrated.emplace( sp, spell( sp, xp ) );
+            if( !added && it->second.xp() < xp ) {
+                it->second.set_exp( xp );
+            }
             continue;
         }
         if( knows_spell( sp ) ) {
@@ -2735,9 +2830,28 @@ void known_magic::deserialize( const JsonObject &data )
             spellbook.emplace( sp, spell( sp, xp ) );
         }
     }
+    spellbook.merge( migrated );
     data.read( "invlets", spells_to_invlets );
-    build_invlets_to_spells();
     data.read( "favorites", favorites );
+    // hotkeys and favorites follow a migrated spell, and go with a removed one
+    for( const spell_id &gone : removed ) {
+        spells_to_invlets.erase( gone );
+        favorites.erase( gone );
+    }
+    for( const std::pair<const spell_id, spell_id> &rename : renamed ) {
+        const auto invlet = spells_to_invlets.find( rename.first );
+        if( invlet != spells_to_invlets.end() ) {
+            const int letter = invlet->second;
+            spells_to_invlets.erase( invlet );
+            spells_to_invlets.emplace( rename.second, letter );
+        }
+        if( favorites.erase( rename.first ) > 0 ) {
+            favorites.insert( rename.second );
+        }
+    }
+    build_invlets_to_spells();
+    data.read( "channeled_spell", channeled_spell );
+    data.read( "channeled_level", channeled_level );
 }
 
 bool known_magic::knows_spell( const std::string &sp ) const
@@ -2832,8 +2946,19 @@ void known_magic::forget_spell( const spell_id &sp )
         return;
     }
     add_msg( m_bad, _( "All knowledge of %s leaves you." ), sp->name );
-    // TODO: add parameter for owner of known_magic for this function
+    // without an owner, these are taken to be the avatar's spells
     get_event_bus().send<event_type::character_forgets_spell>( get_player_character().getID(), sp->id );
+    spellbook.erase( sp );
+}
+
+void known_magic::forget_spell( const spell_id &sp, Character &guy )
+{
+    if( !knows_spell( sp ) ) {
+        debugmsg( "Can't forget a spell you don't know!" );
+        return;
+    }
+    guy.add_msg_if_player( m_bad, _( "All knowledge of %s leaves you." ), sp->name );
+    get_event_bus().send<event_type::character_forgets_spell>( guy.getID(), sp->id );
     spellbook.erase( sp );
 }
 
@@ -2958,9 +3083,14 @@ void known_magic::update_mana( const Character &guy, float turns )
     // mana should replenish in 8 hours.
     const double full_replenish = to_turns<double>( 8_hours );
     const double ratio = turns / full_replenish;
-    mod_mana( guy, std::floor( ratio * std::max( 0.0,
-                               guy.calculate_by_enchantment( static_cast<double>( max_mana(
-                                           guy ) ), enchant_vals::mod::REGEN_MANA ) ) ) );
+    // A tick's regeneration is often a fraction of a point (a pool under 160 regains less
+    // than one point per 3-minute tick): carry the fraction to the next tick, not drop it.
+    const double regen = ratio * std::max( 0.0,
+                                           guy.calculate_by_enchantment( static_cast<double>( max_mana(
+                                                   guy ) ), enchant_vals::mod::REGEN_MANA ) ) + mana_regen_remainder;
+    const double whole = std::floor( regen );
+    mana_regen_remainder = regen - whole;
+    mod_mana( guy, static_cast<int>( whole ) );
 }
 
 std::vector<spell_id> known_magic::spells() const
@@ -2984,13 +3114,21 @@ bool known_magic::can_cast_any_spell( const Character &guy,
     return any_success;
 }
 
+void known_magic::start_channeling( const spell &sp )
+{
+    channeled_spell = sp.id();
+    channeled_level = sp.get_effective_level();
+}
+
 void known_magic::channel_magic( Character &guy )
 {
-    spell_id sp_id = guy.magic->last_spell;
-    if( !sp_id.is_valid() ) {
+    // the spell whose cast started the channeling, not the last one picked from the spell menu
+    const spell_id sp_id = channeled_spell;
+    if( sp_id.is_null() || !sp_id.is_valid() ) {
         return;
     }
-    if( !guy.has_effect( effect_magic_channeling ) ||  !( sp_id->channelling_turns >= 1 ) ) {
+    if( !guy.has_effect( effect_magic_channeling ) ||  !( sp_id->channelling_turns >= 1 ) ||
+        !guy.last_magic_target_pos ) {
         return;
     }
 
@@ -3004,7 +3142,7 @@ void known_magic::channel_magic( Character &guy )
         return;
     }
     spell channel_spell( channel_spell_id );
-    channel_spell.set_level( guy, guy.magic->get_spell( sp_id ).get_effective_level() );
+    channel_spell.set_level( guy, channeled_level );
 
     if( sp_id->channel_uses_energy ) {
         if( channel_spell.can_cast( guy ) ) {
@@ -3021,6 +3159,7 @@ void known_magic::channel_magic( Character &guy )
         //channeling completed without triggering the interrupt spell
         guy.add_msg_if_player( m_good, _( "You finish channeling %s." ), sp_id->name );
         guy.remove_effect( effect_magic_channeling );
+        channeled_spell = spell_id::NULL_ID();
         return;
     }
 }
@@ -3030,13 +3169,15 @@ void known_magic::break_channeling( Character &guy )
     if( guy.has_effect( effect_magic_channeling ) ) {
         guy.remove_effect( effect_magic_channeling );
         guy.add_msg_if_player( m_bad, _( "Your concentration falters!" ) );
-        // cast the interrupt spell if it exists
-        spell_id sp_id = guy.magic->last_spell;
-        if( sp_id.is_valid() && spell_id( sp_id->channel_interrupt_spell ).is_valid() ) {
+        // cast the interrupt spell of the channeled spell, if it has one
+        const spell_id sp_id = channeled_spell;
+        channeled_spell = spell_id::NULL_ID();
+        if( !sp_id.is_null() && sp_id.is_valid() &&
+            spell_id( sp_id->channel_interrupt_spell ).is_valid() && guy.last_magic_target_pos ) {
             guy.add_msg_if_player( m_bad, _( "The disruption causes %s to go off!" ),
                                    spell_id( sp_id->channel_interrupt_spell )->name );
             spell interrupt_spell( spell_id( sp_id->channel_interrupt_spell ) );
-            interrupt_spell.set_level( guy, guy.magic->get_spell( sp_id ).get_effective_level() );
+            interrupt_spell.set_level( guy, channeled_level );
             tripoint_bub_ms target = get_map().get_bub( guy.last_magic_target_pos.value() );
             interrupt_spell.cast_all_effects( guy, target );
         }
@@ -3807,22 +3948,27 @@ void known_magic::on_mutation_gain( const trait_id &mid, Character &guy )
 {
     for( const std::pair<const spell_id, int> &sp : mid->spells_learned ) {
         learn_spell( sp.first, guy, true );
-        spell &temp_sp = get_spell( sp.first );
-        for( int level = 0; level < sp.second; level++ ) {
-            temp_sp.gain_level( guy );
+        if( !knows_spell( sp.first ) ) {
+            continue;
         }
+        // the levels the trait grants, up to the spell's max level
+        get_spell( sp.first ).gain_levels( guy, sp.second );
     }
 }
 
 void known_magic::on_mutation_loss( const trait_id &mid, Character &guy )
 {
     for( const std::pair<const spell_id, int> &sp : mid->spells_learned ) {
+        // the spell may already be gone (forgotten, or taken by another trait or bionic)
+        if( !knows_spell( sp.first ) ) {
+            continue;
+        }
         spell &temp_sp = get_spell( sp.first );
         int new_level = temp_sp.get_level() - sp.second;
         if( new_level > 0 ) {
             temp_sp.set_level( guy, new_level );
         } else {
-            forget_spell( sp.first );
+            forget_spell( sp.first, guy );
         }
     }
 }

@@ -23,6 +23,12 @@ tripoint_bub_ms spell_effect_epicenter( const spell &sp, const tripoint_bub_ms &
 std::set<tripoint_bub_ms> calculate_spell_effect_area( const spell &sp,
         const tripoint_bub_ms &target, const Creature &caster );
 
+// The share of an "attack" spell's damage that one of the target's defences (its block bonus,
+// dodge or spell resistance) takes off, for the d20 roll made for it: 5% per point of the roll,
+// at most the margin of the defence over the spell's accuracy, of a third of the damage. So
+// 0 to 1/3, and 0 when the defence isn't above the accuracy.
+double spell_defence_mitigation( int defence, int spell_accuracy, int roll );
+
 // calculate_spell_effect_area() for many targets of one spell and caster, as an NPC rating
 // its attack spells needs it: the map and creature questions are answered once per tile,
 // lines are walked without building vectors, and a cone's rays reuse their trigonometry and

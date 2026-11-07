@@ -736,8 +736,14 @@ class spell
         void cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_all_effects( const tripoint_bub_ms &target ) const;
-        // goes through the spell effect and all of its internal spells
+        // goes through the spell effect and all of its internal spells. A RANDOM_TARGET or
+        // RANDOM_CRITTER spell cast at @source's own tile first picks a random valid target in
+        // range (see RANDOM_TARGET in doc/JSON/MAGIC.md).
         void cast_all_effects( Creature &source, const tripoint_bub_ms &target ) const;
+        // cast_all_effects() at a target select_target() returned: it has already picked a
+        // RANDOM_TARGET spell's target, so this doesn't pick again.
+        void cast_all_effects_at_selected_target( Creature &source,
+                const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_extra_spell_effects( const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
@@ -785,6 +791,13 @@ class known_magic
         int mana_base = 0; // NOLINT(cata-serialize)
         // current mana
         int mana = 0;
+        // regeneration short of a whole point, carried to the next update_mana(); losing it
+        // on save costs less than a point
+        double mana_regen_remainder = 0.0; // NOLINT(cata-serialize)
+        // the spell channel_magic() and break_channeling() follow, and its effective level
+        // when cast; set when a cast starts channeling (start_channeling())
+        spell_id channeled_spell = spell_id::NULL_ID();
+        int channeled_level = 0;
 
     public:
         // ignores all distractions when casting a spell when true
@@ -797,6 +810,8 @@ class known_magic
         void learn_spell( const spell_type *sp, Character &guy, bool force = false );
         void forget_spell( const std::string &sp );
         void forget_spell( const spell_id &sp );
+        // @guy, whose spells these are, forgets @sp: the message and event are about @guy
+        void forget_spell( const spell_id &sp, Character &guy );
         void set_spell_level( const spell_id &, int, const Character * );
         void set_spell_exp( const spell_id &, int, const Character * );
         // time for the Character to memorize the spell
@@ -839,6 +854,8 @@ class known_magic
         void clear_opens_spellbook_data();
         // uses data received from EoC
         void evaluate_opens_spellbook_data();
+        // a finished cast of the channeling spell @sp starts channeling it, at its level
+        void start_channeling( const spell &sp );
         void channel_magic( Character &guy );
         void break_channeling( Character &guy );
 

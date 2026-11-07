@@ -372,21 +372,37 @@ npc_attack_rating npc_attack_rating::operator-=( const int rhs )
     return *this;
 }
 
+npc_attack_spell::npc_attack_spell( const spell &instance ) : attack_spell_id( instance.id() ),
+    being_cast( &instance ) {}
+
+const spell &npc_attack_spell::get_attack_spell( const npc &source ) const
+{
+    return being_cast != nullptr ? *being_cast : source.magic->get_spell( attack_spell_id );
+}
+
 void npc_attack_spell::use( npc &source, const tripoint_bub_ms &location ) const
 {
-    spell &sp = source.magic->get_spell( attack_spell_id );
-    if( source.has_weapon() && !source.get_wielded_item()->has_flag( flag_MAGIC_FOCUS ) &&
-        !sp.has_flag( spell_flag::NO_HANDS ) && !source.has_flag( json_flag_SUBTLE_SPELL ) ) {
-        source.unwield();
+    const auto cast = [&]( spell & sp, const bool as_fake ) {
+        if( source.has_weapon() && !source.get_wielded_item()->has_flag( flag_MAGIC_FOCUS ) &&
+            !sp.has_flag( spell_flag::NO_HANDS ) && !source.has_flag( json_flag_SUBTLE_SPELL ) ) {
+            source.unwield();
+        }
+        add_msg_debug( debugmode::debug_filter::DF_NPC, "%s is casting %s", source.disp_name(), sp.name() );
+        source.cast_spell( sp, as_fake, location );
+    };
+    if( being_cast != nullptr ) {
+        // a spell instance the npc may not know is cast as a fake spell of its level
+        spell instance = *being_cast;
+        cast( instance, true );
+    } else {
+        cast( source.magic->get_spell( attack_spell_id ), false );
     }
-    add_msg_debug( debugmode::debug_filter::DF_NPC, "%s is casting %s", source.disp_name(), sp.name() );
-    source.cast_spell( sp, false, location );
 }
 
 npc_attack_rating npc_attack_spell::evaluate( const npc &source,
         const Creature *target ) const
 {
-    const spell &attack_spell = source.magic->get_spell( attack_spell_id );
+    const spell &attack_spell = get_attack_spell( source );
     npc_attack_rating effectiveness;
     if( !can_use( source ) ) {
         return effectiveness;
@@ -410,7 +426,7 @@ npc_attack_rating npc_attack_spell::evaluate( const npc &source,
 std::vector<npc_attack_rating> npc_attack_spell::all_evaluations( const npc &source,
         const Creature *target ) const
 {
-    const spell &attack_spell = source.magic->get_spell( attack_spell_id );
+    const spell &attack_spell = get_attack_spell( source );
     std::vector<npc_attack_rating> effectiveness;
     if( !can_use( source ) ) {
         return effectiveness;
@@ -427,6 +443,10 @@ std::vector<npc_attack_rating> npc_attack_spell::all_evaluations( const npc &sou
 
 bool npc_attack_spell::can_use( const npc &source ) const
 {
+    if( being_cast != nullptr ) {
+        // the cast has started: only where to aim it is left
+        return true;
+    }
     const spell &attack_spell = source.magic->get_spell( attack_spell_id );
     // missing components or energy or something
     return attack_spell.can_cast( source ) &&
@@ -437,7 +457,7 @@ bool npc_attack_spell::can_use( const npc &source ) const
 
 int npc_attack_spell::base_time_penalty( const npc &source ) const
 {
-    const spell &attack_spell = source.magic->get_spell( attack_spell_id );
+    const spell &attack_spell = get_attack_spell( source );
     int time_penalty = 0;
     if( source.has_weapon() && !source.get_wielded_item()->has_flag( flag_MAGIC_FOCUS ) &&
         !attack_spell.has_flag( spell_flag::NO_HANDS ) && !source.has_flag( json_flag_SUBTLE_SPELL ) ) {
@@ -453,7 +473,7 @@ npc_attack_rating npc_attack_spell::evaluate_tripoint(
 {
     const map &here = get_map();
 
-    const spell &attack_spell = source.magic->get_spell( attack_spell_id );
+    const spell &attack_spell = get_attack_spell( source );
 
     double total_potential = 0;
 
