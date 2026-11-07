@@ -492,6 +492,8 @@ class vpart_info
 
         /*Comfort data for sleeping in vehicles*/
         int comfort = 0;
+        /** Volume a sound loses passing through this part's tile, unless the part is broken or open */
+        int sound_attenuation = 0;
         units::temperature_delta floor_bedding_warmth = 0_C_delta;
         units::temperature_delta bonus_fire_warmth_feet = 0.6_C_delta;
 

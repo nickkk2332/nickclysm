@@ -3347,7 +3347,10 @@ bool Character::can_hear( const tripoint_bub_ms &source, const int volume ) cons
     }
     const int dist = rl_dist( source, pos_bub() );
     const float volume_multiplier = hearing_ability();
-    return ( volume - get_weather().weather_id->sound_attn ) * volume_multiplier >= dist;
+    const float heard = ( volume - get_weather().weather_id->sound_attn ) * volume_multiplier;
+    // walls, doors and fields between muffle it; only looked up when it could matter
+    return heard >= dist &&
+           heard >= dist + get_map().sound_attenuation_between( source, pos_bub() );
 }
 
 float Character::hearing_ability() const

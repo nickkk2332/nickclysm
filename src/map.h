@@ -558,6 +558,28 @@ class map
         void set_lightmap_cache_dirty_below( int zlev );
         void set_pathfinding_cache_dirty( int zlev );
         void set_pathfinding_cache_dirty( const tripoint_bub_ms &p );
+        // the sound_attenuation of tile p's terrain, furniture or fields changed; every
+        // change that dirties the transparency cache dirties this one too
+        void set_sound_attenuation_dirty( const tripoint_bub_ms &p );
+        /*@}*/
+
+        /**
+         * Sound muffling: the sound_attenuation of terrain, furniture, fields and vehicle
+         * parts. Terrain, furniture and fields come from a per-level cache built on first
+         * use after a change; vehicle parts are read where a sound crosses them.
+         */
+        /*@{*/
+        // Volume a sound loses crossing tile p
+        int sound_attenuation_at( const tripoint_bub_ms &p ) const;
+        // Volume a sound from `from` loses on its way to `to`: the sum of
+        // sound_attenuation_at over the tiles strictly between them on the line from one
+        // to the other. 0 without a walk when nothing loaded muffles sound, or when nothing
+        // on the levels the line crosses does. The walk stops once the sum reaches stop_at,
+        // for a caller to whom any more makes no difference.
+        int sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_bub_ms &to,
+                                       int stop_at = INT_MAX ) const;
+        // Whether anything on level zlev may muffle sound; brings its cache up to date
+        bool sound_muffled_on_level( int zlev ) const;
         /*@}*/
 
         void invalidate_map_cache( int zlev );
@@ -2159,6 +2181,8 @@ class map
         // true if any value changed.
         bool build_transparency_cache( int zlev );
         bool build_vision_transparency_cache( int zlev );
+        // rebuilds the dirty submaps of level zlev's sound_attenuation_cache
+        void build_sound_attenuation_cache( int zlev ) const;
         // cover cells the avatar's posture overrides in vision_transparency_cache
         // on level zlev, with the value each takes
         std::vector<std::pair<point_bub_ms, float>> observer_vision_overrides( int zlev ) const;

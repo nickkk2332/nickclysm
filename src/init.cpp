@@ -1159,6 +1159,8 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Wounds" ), &wound_type::finalize_all },
             { _( "Wound Fixes" ), &wound_fix::finalize_all },
             { _( "Zone Types" ), &zone_type::finalize_all },
+            // after terrain, furniture, field types and vehicle parts
+            { _( "Sound muffling" ), &sounds::finalize_muffling },
 #if defined(TILES)
             { _( "Tileset" ), &load_tileset },
 #endif
