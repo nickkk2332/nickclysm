@@ -1229,6 +1229,7 @@ void Character::load( const JsonObject &data )
         temp.eoc = effect_on_condition_id( elem.get_string( "eoc" ) );
         elem.read( "context", temp.context );
         game::legacy_migrate_npctalk_var_prefix( temp.context );
+        elem.read( "beta", temp.beta );
 
         queued_effect_on_conditions.push( temp );
     }
@@ -1472,11 +1473,18 @@ void Character::store( JsonOut &json ) const
     json.member( "queued_effect_on_conditions" );
     json.start_array();
     while( !temp_queued.empty() ) {
-        json.start_object();
-        json.member( "time", temp_queued.top().time );
-        json.member( "eoc", temp_queued.top().eoc );
-        json.member( "context", temp_queued.top().context );
-        json.end_object();
+        const queued_eoc &top = temp_queued.top();
+        if( !top.cancelled ) {
+            json.start_object();
+            json.member( "time", top.time );
+            json.member( "eoc", top.eoc );
+            json.member( "context", top.context );
+            // the npc kept by run_eocs' keep_talkers
+            if( !top.beta.empty() ) {
+                json.member( "beta", top.beta );
+            }
+            json.end_object();
+        }
         temp_queued.pop();
     }
 

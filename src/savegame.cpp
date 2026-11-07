@@ -160,11 +160,21 @@ void game::serialize_json( std::ostream &fout )
     json.member( "queued_global_effect_on_conditions" );
     json.start_array();
     while( !temp_queued.empty() ) {
-        json.start_object();
-        json.member( "time", temp_queued.top().time );
-        json.member( "eoc", temp_queued.top().eoc );
-        json.member( "context", temp_queued.top().context );
-        json.end_object();
+        const queued_eoc &top = temp_queued.top();
+        if( !top.cancelled ) {
+            json.start_object();
+            json.member( "time", top.time );
+            json.member( "eoc", top.eoc );
+            json.member( "context", top.context );
+            // the u and npc kept by run_eocs' keep_talkers
+            if( !top.alpha.empty() ) {
+                json.member( "alpha", top.alpha );
+            }
+            if( !top.beta.empty() ) {
+                json.member( "beta", top.beta );
+            }
+            json.end_object();
+        }
         temp_queued.pop();
     }
     json.end_array();
@@ -340,6 +350,8 @@ void game::unserialize_impl( const JsonObject &data )
         temp.time = time_point( elem.get_int( "time" ) );
         temp.eoc = effect_on_condition_id( elem.get_string( "eoc" ) );
         elem.read( "context", temp.context );
+        elem.read( "alpha", temp.alpha );
+        elem.read( "beta", temp.beta );
         queued_global_effect_on_conditions.push( temp );
     }
     global_variables_instance.unserialize( data );

@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <ostream>
 #include <queue>
+#include <string>
 
 #include "avatar.h"
 #include "calendar.h"
@@ -26,10 +27,12 @@
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "generic_factory.h"
+#include "item_location.h"
 #include "math_parser_diag_value.h"
 #include "mod_tracker.h"
 #include "monster.h"
 #include "npc.h"
+#include "npctalk.h"
 #include "profession.h"
 #include "scenario.h"
 #include "string_formatter.h"
@@ -249,9 +252,11 @@ static void process_new_eocs( queued_eocs &eoc_queue,
 {
     queued_eocs temp_queued_eocs;
     while( !eoc_queue.empty() ) {
-        // Check if EoC is moved from global to local, or vice versa
-        if( global_queue == eoc_queue.top().eoc->global ) {
-            if( eoc_queue.top().eoc.is_valid() ) {
+        // Check if EoC is moved from global to local, or vice versa.  One queued for a u kept by
+        // run_eocs' keep_talkers is on the game's queue either way.
+        if( global_queue == eoc_queue.top().eoc->global ||
+            ( global_queue && !eoc_queue.top().alpha.empty() ) ) {
+            if( eoc_queue.top().eoc.is_valid() && !eoc_queue.top().cancelled ) {
                 temp_queued_eocs.push( eoc_queue.top() );
             }
             new_eocs[eoc_queue.top().eoc] = false;
@@ -302,6 +307,22 @@ void effect_on_conditions::queue_effect_on_condition( time_duration duration,
 {
     queued_eoc new_eoc = queued_eoc{ eoc, calendar::turn + duration, context };
     if( eoc->global ) {
+        g->queued_global_effect_on_conditions.push( new_eoc );
+    } else if( eoc->type == eoc_type::ACTIVATION || eoc->type == eoc_type::RECURRING ) {
+        you.queued_effect_on_conditions.push( new_eoc );
+    } else {
+        debugmsg( "Invalid effect_on_condition and/or target.  EOC: %s", eoc->id.c_str() );
+    }
+}
+
+void effect_on_conditions::queue_effect_on_condition( time_duration duration,
+        effect_on_condition_id eoc, Character &you, global_variables::impl_t const &context,
+        const std::string &alpha, const std::string &beta )
+{
+    queued_eoc new_eoc = queued_eoc{ eoc, calendar::turn + duration, context };
+    new_eoc.alpha = alpha;
+    new_eoc.beta = beta;
+    if( eoc->global || !alpha.empty() ) {
         g->queued_global_effect_on_conditions.push( new_eoc );
     } else if( eoc->type == eoc_type::ACTIVATION || eoc->type == eoc_type::RECURRING ) {
         you.queued_effect_on_conditions.push( new_eoc );
@@ -390,7 +411,26 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
         const queued_eocs::storage_iter &it = due[i];
         queued_eoc &top = *it;
 
-        dialogue nested_d{ d };
+        if( top.cancelled ) {
+            queue->list.erase( it );
+            continue;
+        }
+        // The u and npc run_eocs' keep_talkers kept, found again: without the u it doesn't run;
+        // without the npc it runs with none, as without keep_talkers
+        std::list<item_location> kept_items;
+        std::optional<dialogue> kept_d;
+        if( !top.alpha.empty() || !top.beta.empty() ) {
+            std::unique_ptr<talker> alpha = top.alpha.empty() ? d.actor( false )->clone() :
+                                            find_talker_by_handle( top.alpha, kept_items );
+            if( !alpha ) {
+                queue->list.erase( it );
+                continue;
+            }
+            kept_d.emplace( std::move( alpha ), find_talker_by_handle( top.beta, kept_items ),
+                            d.get_conditionals(), d.get_context() );
+        }
+
+        dialogue nested_d{ kept_d ? *kept_d : d };
         for( const auto &val : top.context ) {
             nested_d.set_value( val.first, val.second );
         }

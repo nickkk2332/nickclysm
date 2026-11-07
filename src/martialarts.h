@@ -15,6 +15,7 @@
 
 #include "bonuses.h"
 #include "calendar.h"
+#include "dialogue_helpers.h"
 #include "flat_set.h"
 #include "translation.h"
 #include "type_id.h"
@@ -604,6 +605,10 @@ class martialart
         std::vector<std::pair<std::string, int>> autolearn_skills;
         skill_id primary_skill;
         bool teachable = true;
+        // How long an NPC lesson takes and what it costs, when JSON says (u is the student, npc
+        // the teacher); otherwise the built-in values
+        std::optional<duration_or_var> training_time;
+        std::optional<dbl_or_var> training_cost;
         int learn_difficulty = 0;
         int arm_block = 0;
         int leg_block = 0;

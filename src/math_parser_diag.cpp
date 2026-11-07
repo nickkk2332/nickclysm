@@ -12,6 +12,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -57,6 +58,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "npc_json_goal.h"
+#include "npctalk.h"
 #include "options.h"
 #include "overmapbuffer.h"
 #include "pimpl.h"
@@ -2068,25 +2070,35 @@ double time_until_eval( const_dialogue const &d, char /* scope */,
 }
 
 // Time until the EOC next runs, or -1 if it isn't queued. Global EOCs are queued in the game,
-// the others on the character they run for (u_ and n_ scopes).
+// the others on the character they run for (u_ and n_ scopes).  With u_ and n_, it also finds
+// those queued in the game for that talker with run_eocs' keep_talkers, whatever it is.
 double time_until_eoc_eval( const_dialogue const &d, char scope,
                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     diag_value unit_val = kwargs.kwarg_or( "unit" );
 
     effect_on_condition_id eoc_id( params[0].str( d ) );
-    queued_eocs const *queue = &g->queued_global_effect_on_conditions;
-    if( scope != 'g' ) {
-        Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character();
-        if( chr == nullptr ) {
-            return -1;
-        }
-        queue = &chr->queued_effect_on_conditions;
-    }
     std::optional<time_point> soonest;
-    for( queued_eoc const &eoc : queue->list ) {
-        if( eoc.eoc == eoc_id && ( !soonest || eoc.time < *soonest ) ) {
-            soonest = eoc.time;
+    const auto find_in = [&eoc_id, &soonest]( queued_eocs const & queue,
+    std::string_view for_handle ) {
+        for( queued_eoc const &eoc : queue.list ) {
+            if( eoc.eoc == eoc_id && !eoc.cancelled && ( !soonest || eoc.time < *soonest ) &&
+                ( for_handle.empty() || ( !eoc.alpha.empty() &&
+                                          same_talker_handle( eoc.alpha, for_handle ) ) ) ) {
+                soonest = eoc.time;
+            }
+        }
+    };
+    if( scope == 'g' ) {
+        find_in( g->queued_global_effect_on_conditions, {} );
+    } else {
+        const_talker const &who = *d.const_actor( is_beta( scope ) );
+        if( Character const *chr = who.get_const_character() ) {
+            find_in( chr->queued_effect_on_conditions, {} );
+        }
+        const std::string handle = talker_handle( who );
+        if( !handle.empty() ) {
+            find_in( g->queued_global_effect_on_conditions, handle );
         }
     }
     if( !soonest ) {

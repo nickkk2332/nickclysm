@@ -37,6 +37,8 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "initiate": [ "You stand ready.", "%s stands ready." ],    // Message shown when player or NPC selects this MA
   "autolearn": [ [ "unarmed", "2" ] ],   // A list of skill requirements that if met, automatically teach the player the MA
   "teachable": true,                     // Whether it's possible to teach this style between characters
+  "training_time": "1 h",                // How long an NPC lesson in this style takes: a duration, a variable object or math in seconds (u is the student, npc the teacher, context value `style`). Default 30 minutes
+  "training_cost": 2000,                 // What that lesson costs, in cents: a number, variable object or math as for training_time. A follower teaches for free. Default 800
   "allow_all_weapons": true,             // This MA always works, no matter what weapon is equipped (including no weapon)
   "force_unarmed": true,                 // You never use the equipped item to make attacks with this MA, and will use only your fist, legs or another limbs you have
   "prevent_weapon_blocking": true,       // You never block using weapon with this MA

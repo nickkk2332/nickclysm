@@ -137,6 +137,7 @@
 #include "npc.h"
 #include "npc_ai_ids.h"
 #include "npc_attitude_cause.h"
+#include "npc_class.h"
 #include "npc_opinion.h"
 #include "npctalk.h"
 #include "npctalk_rules.h"
@@ -634,10 +635,50 @@ load_eoc_vector_id_and_var(
 } // namespace
 
 
+// The dialogue a JSON training_time or training_cost is worked out in: u is the student and npc
+// the teacher, with the context values each kind of lesson gives.
+static const_dialogue training_dialogue( const Character &teacher, const Character &student,
+        const global_variables::impl_t &context )
+{
+    return const_dialogue( get_const_talker_for( student ), get_const_talker_for( teacher ), {},
+                           context );
+}
+
+// A JSON training_time: at least a turn
+static time_duration training_time_from( const duration_or_var &formula, const Character &teacher,
+        const Character &student, const global_variables::impl_t &context )
+{
+    return std::max( 1_turns, formula.evaluate( training_dialogue( teacher, student, context ) ) );
+}
+
+// A JSON training_cost, in cents: not below 0
+static int training_cost_from( const dbl_or_var &formula, const Character &teacher,
+                               const Character &student, const global_variables::impl_t &context )
+{
+    const double cost = formula.evaluate( training_dialogue( teacher, student, context ) );
+    return std::max( 0, static_cast<int>( std::round( cost ) ) );
+}
+
+// What a skill's training_time and training_cost can read
+static global_variables::impl_t skill_training_context( const Character &teacher,
+        const Character &student, const skill_id &skill )
+{
+    return {
+        { "skill", diag_value{ skill.str() } },
+        { "level", diag_value{ student.get_skill_level( skill ) } },
+        { "knowledge_level", diag_value{ student.get_knowledge_level( skill ) } },
+        { "teacher_level", diag_value{ teacher.get_skill_level( skill ) } }
+    };
+}
+
 /** Time (in turns) and cost (in cent) for training: */
 time_duration calc_skill_training_time_char( const Character &teacher, const Character &student,
         const skill_id &skill )
 {
+    if( const std::optional<duration_or_var> &formula = skill->training_time() ) {
+        return training_time_from( *formula, teacher, student,
+                                   skill_training_context( teacher, student, skill ) );
+    }
     return 1_hours + 30_minutes * student.get_skill_level( skill ) -
            1_minutes * teacher.get_skill_level( skill );
 }
@@ -647,6 +688,10 @@ int calc_skill_training_cost_char( const Character &teacher, const Character &st
 {
     if( friendly_teacher( student, teacher ) ) {
         return 0;
+    }
+    if( const std::optional<dbl_or_var> &formula = skill->training_cost() ) {
+        return training_cost_from( *formula, teacher, student,
+                                   skill_training_context( teacher, student, skill ) );
     }
     int skill_level = student.get_knowledge_level( skill );
     return 1000 * ( 1 + skill_level ) * ( 1 + skill_level );
@@ -667,22 +712,39 @@ int calc_proficiency_training_cost( const Character &teacher, const Character &s
     return to_seconds<int>( calc_proficiency_training_time( teacher, student, proficiency ) );
 }
 
-// TODO: all styles cost the same and take the same time to train,
-// maybe add values to the ma_style class to makes this variable
-// TODO: maybe move this function into the ma_style class? Or into the NPC class?
-time_duration calc_ma_style_training_time( const Character &, const Character &,
-        const matype_id & )
+// A style's training_time and training_cost (JSON) can change these
+time_duration calc_ma_style_training_time( const Character &teacher, const Character &student,
+        const matype_id &style )
 {
+    if( const std::optional<duration_or_var> &formula = style->training_time ) {
+        return training_time_from( *formula, teacher, student, { { "style", diag_value{ style.str() } } } );
+    }
     return 30_minutes;
 }
 
 int calc_ma_style_training_cost( const Character &teacher, const Character &student,
-                                 const matype_id & )
+                                 const matype_id &style )
 {
     if( friendly_teacher( student, teacher ) ) {
         return 0;
     }
+    if( const std::optional<dbl_or_var> &formula = style->training_cost ) {
+        return training_cost_from( *formula, teacher, student, { { "style", diag_value{ style.str() } } } );
+    }
     return 800;
+}
+
+// What a spell's training_time and training_cost can read
+static global_variables::impl_t spell_training_context( const Character &teacher,
+        const Character &student, const spell_id &id )
+{
+    const spell &taught = teacher.magic->get_spell( id );
+    return {
+        { "spell", diag_value{ id.str() } },
+        { "known", diag_value{ student.magic->knows_spell( id ) ? 1 : 0 } },
+        { "level", diag_value{ taught.get_level() } },
+        { "difficulty", diag_value{ taught.get_difficulty( student ) } }
+    };
 }
 
 // quicker to learn with instruction as opposed to books.
@@ -691,9 +753,13 @@ int calc_ma_style_training_cost( const Character &teacher, const Character &stud
 // which takes max 6 hours, min 3 hours.
 // TODO: a system for NPCs to train new stuff in bits and pieces
 // and remember the progress.
-time_duration calc_spell_training_time( const Character &, const Character &student,
+time_duration calc_spell_training_time( const Character &teacher, const Character &student,
                                         const spell_id &id )
 {
+    if( const std::optional<duration_or_var> &formula = id->training_time ) {
+        return training_time_from( *formula, teacher, student,
+                                   spell_training_context( teacher, student, id ) );
+    }
     if( student.magic->knows_spell( id ) ) {
         return 1_hours;
     } else {
@@ -716,6 +782,10 @@ int calc_spell_training_cost( const Character &teacher, const Character &student
 {
     if( friendly_teacher( student, teacher ) ) {
         return 0;
+    }
+    if( const std::optional<dbl_or_var> &formula = id->training_cost ) {
+        return training_cost_from( *formula, teacher, student,
+                                   spell_training_context( teacher, student, id ) );
     }
     const spell &temp_spell = teacher.magic->get_spell( id );
     const bool knows = student.magic->knows_spell( id );
@@ -2322,12 +2392,17 @@ static int total_price( const_talker const &seller, const itype_id &item_type )
     return price;
 }
 
+int talk_trial::get_difficulty( const_dialogue const &d ) const
+{
+    return static_cast<int>( std::round( difficulty.evaluate( d ) ) );
+}
+
 int talk_trial::calc_chance( const_dialogue const &d ) const
 {
     if( d.const_actor( false )->has_trait( trait_DEBUG_MIND_CONTROL ) ) {
         return 100;
     }
-    int chance = difficulty;
+    int chance = get_difficulty( d );
     switch( type ) {
         case NUM_TALK_TRIALS:
             dbg( D_ERROR ) << "called calc_chance with invalid talk_trial value: "
@@ -2337,7 +2412,8 @@ int talk_trial::calc_chance( const_dialogue const &d ) const
             chance = 100;
             break;
         case TALK_TRIAL_SKILL_CHECK:
-            chance = d.const_actor( false )->get_skill_level( skill_id( skill_required ) ) >= difficulty ? 100 :
+            // chance is still the difficulty here
+            chance = d.const_actor( false )->get_skill_level( skill_id( skill_required ) ) >= chance ? 100 :
                      0;
             break;
         case TALK_TRIAL_CONDITION:
@@ -2383,7 +2459,15 @@ bool talk_trial::roll( dialogue &d ) const
                               type == TALK_TRIAL_LIE;
     if( speech_trial && d.actor( false )->get_character() ) {
         Character &u = *d.actor( false )->get_character();
-        if( success ) {
+        if( speech_practice ) {
+            const_dialogue how_it_went( d );
+            how_it_went.set_value( "chance", chance );
+            how_it_went.set_value( "success", success ? 1 : 0 );
+            const int amount = static_cast<int>( std::round( speech_practice->evaluate( how_it_went ) ) );
+            if( amount > 0 ) {
+                u.practice( skill_speech, amount );
+            }
+        } else if( success ) {
             u.practice( skill_speech, ( 100 - chance ) / 10 );
         } else {
             u.practice( skill_speech, ( 100 - chance ) / 7 );
@@ -2861,11 +2945,12 @@ talk_data talk_response::create_option_line( dialogue &d, const input_event &hot
         ftext = text;
     } else if( trial.type == TALK_TRIAL_SKILL_CHECK ) {
         const Skill &req_skill = skill_id( trial.skill_required ).obj();
+        const int difficulty = trial.get_difficulty( d );
         ftext = string_format( pgettext( "talk option", "[%1$s %2$d/%3$d] %4$s" ),
                                req_skill.name(),
                                std::min( d.actor( false )->get_skill_level( req_skill.ident() ),
-                                         trial.difficulty ),
-                               trial.difficulty,
+                                         difficulty ),
+                               difficulty,
                                text );
     } else {
         // dialogue w/ a % chance to work
@@ -3310,7 +3395,10 @@ talk_trial::talk_trial( const JsonObject &jo )
     }
     type = iter->second;
     if( type != TALK_TRIAL_NONE && type != TALK_TRIAL_CONDITION ) {
-        difficulty = jo.get_int( "difficulty" );
+        difficulty = get_dbl_or_var( jo, "difficulty", true );
+    }
+    if( type == TALK_TRIAL_LIE || type == TALK_TRIAL_PERSUADE || type == TALK_TRIAL_INTIMIDATE ) {
+        optional( jo, false, "speech_practice", speech_practice );
     }
     if( type == TALK_TRIAL_SKILL_CHECK ) {
         skill_required = jo.get_string( "skill_required" );
@@ -3368,18 +3456,18 @@ talk_effect_fun_t::likely_rewards_t &talk_effect_fun_t::get_likely_rewards()
 // is its character id, as before; the others name the monster, item or vehicle by its uid, so the
 // handle still finds it after it moves and across saves.  An item's also says where it was, to
 // look there first.
-static std::string talker_handle( talker &who )
+std::string talker_handle( const_talker const &who )
 {
-    if( who.get_character() != nullptr ) {
+    if( who.get_const_character() != nullptr ) {
         return std::to_string( who.getID().get_value() );
     }
-    if( const monster *mon = who.get_monster() ) {
+    if( const monster *mon = who.get_const_monster() ) {
         return "monster:" + std::to_string( mon->persistent_id() );
     }
-    if( const vehicle *veh = who.get_vehicle() ) {
+    if( const vehicle *veh = who.get_const_vehicle() ) {
         return "vehicle:" + std::to_string( veh->persistent_id() );
     }
-    const item_location *it = who.get_item();
+    const item_location *it = who.get_const_item();
     if( it == nullptr || !*it || !( *it )->uid().is_valid() ) {
         return {};
     }
@@ -3521,6 +3609,27 @@ static Character *get_character_from_id( const std::string &id_str, game *g )
         temp_guy = g->find_npc( char_id );
     }
     return temp_guy;
+}
+
+std::unique_ptr<talker> find_talker_by_handle( const std::string &handle,
+        std::list<item_location> &items )
+{
+    std::unique_ptr<talker> found;
+    if( handle.empty() || talker_from_handle( handle, found, items ) ) {
+        return found;
+    }
+    Character *guy = get_character_from_id( handle, g.get() );
+    if( guy == nullptr || guy->is_dead_state() ||
+        ( guy->is_npc() && guy->as_npc()->is_dead() ) ) {
+        return nullptr;
+    }
+    return get_talker_for( *guy );
+}
+
+bool same_talker_handle( std::string_view a, std::string_view b )
+{
+    // an item's handle also says where it was, which isn't part of what it names
+    return a.substr( 0, a.find( '@' ) ) == b.substr( 0, b.find( '@' ) );
 }
 
 namespace
@@ -6191,6 +6300,33 @@ talk_effect_fun_t::func f_npc_first_topic( const JsonObject &jo, std::string_vie
     };
 }
 
+talk_effect_fun_t::func f_set_chatbin_topic( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var which = get_str_or_var( jo.get_member( member ), member, true );
+    str_or_var topic = get_str_or_var( jo.get_member( "topic" ), "topic", true );
+    if( which.is_constant() ) {
+        dialogue_chatbin probe;
+        if( chatbin_topic( probe, which.constant() ) == nullptr ) {
+            jo.throw_error_at( member, string_format( "no chatbin topic \"%s\"", which.constant() ) );
+        }
+    }
+    return [which, topic, is_npc, effect = std::string( member )]( dialogue const & d ) {
+        npc *guy = d.actor( is_npc )->get_npc();
+        if( guy == nullptr ) {
+            debugmsg( "%s: only an NPC has chatbin topics\n%s", effect, d.get_callstack() );
+            return;
+        }
+        const std::string name = which.evaluate( d );
+        std::string *slot = chatbin_topic( guy->chatbin, name );
+        if( slot == nullptr ) {
+            debugmsg( "%s: no chatbin topic \"%s\"\n%s", effect, name, d.get_callstack() );
+            return;
+        }
+        *slot = topic.evaluate( d );
+    };
+}
+
 talk_effect_fun_t::func f_message( const JsonObject &jo, std::string_view member,
                                    std::string_view, bool is_npc )
 {
@@ -8020,11 +8156,32 @@ talk_effect_fun_t::func f_make_sound( const JsonObject &jo, std::string_view mem
     };
 }
 
+// With keep_talkers, the u and npc are kept as handles (as u_set_talker stores them) and found
+// again when the EOC runs, whatever they are.
 void process_eoc( const effect_on_condition_id &eoc, dialogue &d,
-                  time_duration time_in_future )
+                  time_duration time_in_future, bool keep_talkers )
 {
     if( eoc->type == eoc_type::ACTIVATION ) {
         Character *alpha = d.has_alpha ? d.actor( false )->get_character() : nullptr;
+        if( keep_talkers ) {
+            const std::string alpha_handle = d.has_alpha ? talker_handle( *d.actor( false ) ) :
+                                             std::string();
+            const std::string beta_handle = d.has_beta ? talker_handle( *d.actor( true ) ) :
+                                            std::string();
+            if( alpha && !eoc->global ) {
+                // on u's own queue, which keeps who it is
+                effect_on_conditions::queue_effect_on_condition( time_in_future, eoc, *alpha,
+                        d.get_context(), {}, beta_handle );
+                return;
+            }
+            if( !alpha_handle.empty() || eoc->global ) {
+                // on the game's queue, with u found again (the avatar if it has no handle)
+                effect_on_conditions::queue_effect_on_condition( time_in_future, eoc,
+                        get_player_character(), d.get_context(), alpha_handle, beta_handle );
+            }
+            // a u with no handle (a computer...) isn't queued, as without keep_talkers
+            return;
+        }
         if( alpha ) {
             effect_on_conditions::queue_effect_on_condition( time_in_future, eoc, *alpha, d.get_context() );
         } else if( eoc->global ) {
@@ -8039,16 +8196,16 @@ void process_eoc( const effect_on_condition_id &eoc, dialogue &d,
 }
 
 void queue_eocs( const std::vector<eoc_entry> &eocs, dialogue &d, dialogue newDialog,
-                 duration_or_var const &dov_time, bool random_time )
+                 duration_or_var const &dov_time, bool random_time, bool keep_talkers )
 {
     time_duration time_in_future = dov_time.evaluate( d );
     for( const eoc_entry &entry : eocs ) {
         effect_on_condition_id eoc_id =
             entry.var ? effect_on_condition_id( entry.var->evaluate( d ) ) : entry.id;
         if( random_time ) {
-            process_eoc( eoc_id, newDialog, dov_time.evaluate( d ) );
+            process_eoc( eoc_id, newDialog, dov_time.evaluate( d ), keep_talkers );
         } else {
-            process_eoc( eoc_id, newDialog, time_in_future );
+            process_eoc( eoc_id, newDialog, time_in_future, keep_talkers );
         }
     }
 }
@@ -8145,6 +8302,7 @@ talk_effect_fun_t::func f_run_eocs( const JsonObject &jo, std::string_view membe
 
     std::optional<duration_or_var> dov_time;
     bool random_time = false;
+    bool keep_talkers = false;
     if( jo.has_member( "time_in_future" ) ) {
         if( iterations || cond ) {
             jo.throw_error_at(
@@ -8153,6 +8311,9 @@ talk_effect_fun_t::func f_run_eocs( const JsonObject &jo, std::string_view membe
         }
         mandatory( jo, false, "time_in_future", dov_time );
         random_time = jo.get_bool( "randomize_time_in_future", false );
+        keep_talkers = jo.get_bool( "keep_talkers", false );
+    } else if( jo.has_member( "keep_talkers" ) ) {
+        jo.throw_error_at( "keep_talkers", R"("keep_talkers" is for EOCs queued with "time_in_future")" );
     }
 
     std::unordered_map<std::string, diag_value_or_var> context;
@@ -8184,8 +8345,8 @@ talk_effect_fun_t::func f_run_eocs( const JsonObject &jo, std::string_view membe
 
     std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
 
-    return [eocs, cond, iterations, dov_time, random_time, alpha_var, beta_var, alpha_loc,
-          beta_loc, false_eocs, context]( dialogue & d ) {
+    return [eocs, cond, iterations, dov_time, random_time, keep_talkers, alpha_var, beta_var,
+          alpha_loc, beta_loc, false_eocs, context]( dialogue & d ) {
 
         // the items the talkers point to, for as long as the EOCs run
         std::list<item_location> items;
@@ -8208,7 +8369,7 @@ talk_effect_fun_t::func f_run_eocs( const JsonObject &jo, std::string_view membe
         }
 
         if( dov_time ) {
-            queue_eocs( eocs, d, newDialog, *dov_time, random_time );
+            queue_eocs( eocs, d, newDialog, *dov_time, random_time, keep_talkers );
         } else {
             run_eocs( eocs, d, newDialog, iterations, cond );
         }
@@ -8266,6 +8427,53 @@ talk_effect_fun_t::func f_trigger_custom_event( const JsonObject &jo, std::strin
         for( const effect_on_condition_id &eoc : eocs ) {
             dialogue each( alpha ? alpha->clone() : nullptr, beta ? beta->clone() : nullptr, {}, values );
             eoc->activate( each );
+        }
+    };
+}
+
+// Drops the queued runs of these EOCs that would run with this talker as u: those on its own
+// queue (a character's), and those on the game's queue for it (queued with keep_talkers, or a
+// global EOC for the avatar).
+talk_effect_fun_t::func f_cancel_queued_eocs( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    std::vector<eoc_entry> eocs = load_eoc_vector_id_and_var( jo, member, src );
+    if( eocs.empty() ) {
+        jo.throw_error_at( member, "no EOCs to cancel" );
+    }
+    return [eocs, is_npc, effect = std::string( member )]( dialogue & d ) {
+        talker &who = *d.actor( is_npc );
+        const std::string handle = talker_handle( who );
+        Character *owner = who.get_character();
+        for( const eoc_entry &entry : eocs ) {
+            const effect_on_condition_id eoc_id =
+                entry.var ? effect_on_condition_id( entry.var->evaluate( d ) ) : entry.id;
+            if( !eoc_id.is_valid() ) {
+                debugmsg( "%s: no EOC \"%s\"\n%s", effect, eoc_id.str(), d.get_callstack() );
+                continue;
+            }
+            if( eoc_id->type == eoc_type::RECURRING ) {
+                debugmsg( "%s: %s is recurring, so it's back when the game loads; give it a "
+                          "deactivate_condition instead\n%s", effect, eoc_id.str(), d.get_callstack() );
+                continue;
+            }
+            if( owner != nullptr ) {
+                for( queued_eoc &queued : owner->queued_effect_on_conditions.list ) {
+                    if( queued.eoc == eoc_id ) {
+                        queued.cancelled = true;
+                    }
+                }
+            }
+            const bool is_avatar = owner != nullptr && owner->is_avatar();
+            for( queued_eoc &queued : g->queued_global_effect_on_conditions.list ) {
+                if( queued.eoc != eoc_id ) {
+                    continue;
+                }
+                if( queued.alpha.empty() ? is_avatar :
+                    !handle.empty() && same_talker_handle( queued.alpha, handle ) ) {
+                    queued.cancelled = true;
+                }
+            }
         }
     };
 }
@@ -12180,6 +12388,7 @@ parsers = {
     { "u_buy_monster", jarg::member, &talk_effect_fun::f_u_buy_monster },
     { "u_add_faction_trust", jarg::member | jarg::array, &talk_effect_fun::f_add_faction_trust },
     { "npc_first_topic", jarg::member, &talk_effect_fun::f_npc_first_topic },
+    { "u_set_chatbin_topic", "npc_set_chatbin_topic", jarg::member, &talk_effect_fun::f_set_chatbin_topic },
     { "sound_effect", jarg::member, &talk_effect_fun::f_sound_effect },
     { "give_achievement", jarg::member, &talk_effect_fun::f_give_achievment },
     { "assign_mission", jarg::member, &talk_effect_fun::f_assign_mission },
@@ -12187,6 +12396,7 @@ parsers = {
     { "remove_active_mission", jarg::member, &talk_effect_fun::f_remove_active_mission },
     { "offer_mission", jarg::member, &talk_effect_fun::f_offer_mission },
     { "run_eocs", jarg::member | jarg::array, &talk_effect_fun::f_run_eocs },
+    { "u_cancel_queued_eocs", "npc_cancel_queued_eocs", jarg::member | jarg::array, &talk_effect_fun::f_cancel_queued_eocs },
     { "run_eoc_selector", jarg::member, &talk_effect_fun::f_run_eoc_selector },
     { "run_eoc_checklist", jarg::member, &talk_effect_fun::f_run_eoc_checklist },
     { "u_show_text", "npc_show_text", jarg::member, &talk_effect_fun::f_show_text },
@@ -13134,9 +13344,53 @@ void load_talk_topic( const JsonObject &jo, std::string_view src )
     }
 }
 
-std::string npc::pick_talk_topic( const Character &/*u*/ )
+std::string *chatbin_topic( dialogue_chatbin &chatbin, std::string_view name )
+{
+    static const std::array<std::pair<std::string_view, std::string dialogue_chatbin::*>, 15> topics
+    = { {
+            { "first_topic", &dialogue_chatbin::first_topic },
+            { "talk_radio", &dialogue_chatbin::talk_radio },
+            { "talk_leader", &dialogue_chatbin::talk_leader },
+            { "talk_friend", &dialogue_chatbin::talk_friend },
+            { "talk_stole_item", &dialogue_chatbin::talk_stole_item },
+            { "talk_wake_up", &dialogue_chatbin::talk_wake_up },
+            { "talk_mug", &dialogue_chatbin::talk_mug },
+            { "talk_stranger_aggressive", &dialogue_chatbin::talk_stranger_aggressive },
+            { "talk_stranger_scared", &dialogue_chatbin::talk_stranger_scared },
+            { "talk_stranger_wary", &dialogue_chatbin::talk_stranger_wary },
+            { "talk_stranger_friendly", &dialogue_chatbin::talk_stranger_friendly },
+            { "talk_stranger_neutral", &dialogue_chatbin::talk_stranger_neutral },
+            { "talk_friend_guard", &dialogue_chatbin::talk_friend_guard },
+            { "talk_mission_inquire", &dialogue_chatbin::talk_mission_inquire },
+            { "talk_mission_describe_urgent", &dialogue_chatbin::talk_mission_describe_urgent }
+        }
+    };
+    for( const std::pair<std::string_view, std::string dialogue_chatbin::*> &topic : topics ) {
+        if( topic.first == name ) {
+            return &( chatbin.*topic.second );
+        }
+    }
+    return nullptr;
+}
+
+std::string npc::pick_talk_topic( const Character &u )
 {
     const npc_attitude_cause cause( npc_attitude_cause::opinion );
+    // the class's own stranger_topics first, the first that holds
+    if( myclass.is_valid() && !myclass->get_stranger_topics().empty() ) {
+        const const_dialogue d( get_const_talker_for( u ), get_const_talker_for( *this ) );
+        for( const npc_stranger_topic &rule : myclass->get_stranger_topics() ) {
+            if( rule.condition && !rule.condition( d ) ) {
+                continue;
+            }
+            if( rule.attitude ) {
+                set_attitude( *rule.attitude );
+            }
+            if( const std::string *topic = chatbin_topic( chatbin, rule.topic ) ) {
+                return *topic;
+            }
+        }
+    }
     if( personality.aggression > 0 ) {
         if( op_of_u.fear * 2 < personality.bravery && personality.altruism < 0 ) {
             set_attitude( NPCATT_MUG );

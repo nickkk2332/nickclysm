@@ -2990,8 +2990,9 @@ EoCs can run each other up to 250 deep, counting every EoC that runs inside anot
 | "run_eocs" | **mandatory** | string (eoc id or inline eoc) or [variable object](#variable-object)) or array of eocs | EoC or EoCs that would be run |
 | "iterations" | optional | int or [variable object](#variable-object)) | if used, all eocs in run_eocs would be repeated this amount of times. Eocs are repeated in order; having `"run_eocs": [ "A", "B" ], "repeat": 3` would look like `A, B, A, B, A, B`. Default 1 |
 | "condition" | optional | int or [variable object](#variable-object)) | if used, eoc would be run as long as this condition will return true. if "condition" is used, "iterations" can be used to limit amount of runs to specific amount (default is 100 runs until terminated) |
-| "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. An EoC queued while the queue is being worked through (by another queued EoC, or by itself) and due at once waits for the next turn's pass. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. Doesn't work with "condition" and "iterations" |
+| "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. An EoC queued while the queue is being worked through (by another queued EoC, or by itself) and due at once waits for the next turn's pass. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. `keep_talkers` keeps both talkers instead. Doesn't work with "condition" and "iterations" |
 | "randomize_time_in_future" | optional | bool | used with time_in_future; if false, entire eoc array would run at the exact same moment; if true, each eoc in array would pick it's own time again and again |
+| "keep_talkers" | optional | bool | used with time_in_future; default false. If true, the queued EoC runs with the same u and npc it was queued with, whatever they are (avatar, NPC, monster, item or vehicle), found again when it's due the way [u_set_talker](#u_set_talkernpc_set_talker) handles are (so an item moved since, which is a new copy, isn't found), and kept across saves. A non-global EoC whose u is a character is queued for that character as usual; any other is queued in the game for its u, so a monster, item or vehicle u works too, and a global EoC keeps its u instead of running for the avatar. If the u is gone when it's due (dead, or a monster, item or vehicle no longer in the reality bubble), it doesn't run; if the npc is gone, it runs without one (check with `has_beta`). A u with no handle (furniture, a zone) isn't kept: a global EoC then runs for the avatar, and any other isn't queued. See [u_cancel_queued_eocs](#u_cancel_queued_eocsnpc_cancel_queued_eocs) to call one off |
 | "alpha_loc","beta_loc" | optional | [variable object](#variable-object) | Allows to swap talker by defining `u_location_variable`, where the EoC should be run. Set the alpha/beta talker to the creature at the location. |
 | "alpha_talker","beta_talker" | optional (If you use both "alpha_loc" and "alpha_talker", "alpha_talker" will be ignored, same for beta.) | string, [variable object](#variable-object) | Set alpha/beta talker. This can be either a `character_id` (you can get from [EOC event](#event-eocs)), a handle to a character, monster, item or vehicle stored by [u_set_talker](#u_set_talkernpc_set_talker), or some hard-coded values: <br> `""`: null talker <br> `"u"/"npc": the alpha/beta talker of the EOC`(Should be Avatar/Character/NPC/Monster) <br> `"avatar"`: your avatar|
 | "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | false EOCs will run if<br>1. there is no creature at "alpha_loc"/"beta_loc",or<br>2. "alpha_talker" or "beta_talker" doesn't exist in the game (eg. dead NPC, a monster or item that's gone, or one outside the reality bubble),or<br>3. alpha and beta talker are both null |
@@ -3259,6 +3260,43 @@ runs `EOC_POWER_TOGGLE_REMOVE_EFFECTS`, but current beta talker would be made al
     "id": "EOC_MELEE_MONSTER_CANCEL_TOGGLES",
     "effect": [ { "run_eocs": "EOC_POWER_TOGGLE_REMOVE_EFFECTS", "alpha_talker": "npc" } ]
   },
+```
+
+a mark on a monster (u, here from a spell or a monster attack) that wears off an hour later, on the same monster; `EOC_MARK_WEARS_OFF` doesn't run if the monster is dead or gone by then
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_MARK_MONSTER",
+    "effect": [
+      { "u_add_effect": "marked", "duration": "PERMANENT" },
+      { "run_eocs": "EOC_MARK_WEARS_OFF", "time_in_future": "1 h", "keep_talkers": true }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_MARK_WEARS_OFF",
+    "effect": [ { "u_lose_effect": "marked" } ]
+  },
+```
+
+#### `u_cancel_queued_eocs`, `npc_cancel_queued_eocs`
+Calls off the queued runs of these EoCs that would run with You or NPC as u: those queued for the character (a non-global EoC queued with `time_in_future`), those queued with [`keep_talkers`](#run_eocs) for this talker (a monster, item or vehicle too), and, for the avatar, global ones. Recurring EoCs can't be cancelled (they would be back when the game loads): give them a `deactivate_condition`. [`time_until_eoc`](NPCs.md#math) tells whether one is still queued.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_cancel_queued_eocs" / "npc_cancel_queued_eocs" | **mandatory** | string (eoc id), [variable object](#variable-object), or array of them | the EoCs to call off |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ❌ | ✔️ | ✔️ |
+
+##### Examples
+
+The detonation queued when the grenade was armed is called off when it's disarmed (the grenade is u in both)
+```jsonc
+{ "u_cancel_queued_eocs": [ "EOC_GRENADE_GOES_OFF" ] }
 ```
 
 #### `u_reactivate_eocs`, `npc_reactivate_eocs`
@@ -5611,6 +5649,27 @@ You forget a recipe, that was passes by `recipe_id` context value
 { "u_forget_recipe": { "context_val": "recipe_id" } }
 ```
 
+
+#### `u_set_chatbin_topic`, `npc_set_chatbin_topic`
+Changes which topic an NPC (You or NPC) opens a conversation with in a situation, as the [`npc` template fields](NPCs.md#writing-dialogues) of the same names set it; the change is saved with the NPC. `first_topic` is the template's `chat`, what [`npc_first_topic`](#npc_first_topic) sets. The others are `talk_radio`, `talk_leader`, `talk_friend`, `talk_stole_item`, `talk_wake_up`, `talk_mug`, `talk_stranger_aggressive`, `talk_stranger_scared`, `talk_stranger_wary`, `talk_stranger_friendly`, `talk_stranger_neutral`, `talk_friend_guard`, `talk_mission_inquire` and `talk_mission_describe_urgent`.  Any other name is an error.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_chatbin_topic" / "npc_set_chatbin_topic" | **mandatory** | string or [variable object](#variable-object) | the situation |
+| "topic" | **mandatory** | string or [variable object](#variable-object) | the topic id it opens with |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+Once you've helped them, the NPC greets you as a friend
+```jsonc
+{ "npc_set_chatbin_topic": "talk_friend", "topic": "TALK_GRATEFUL_FRIEND" }
+```
 
 #### `npc_first_topic`
 Changes the initial talk_topic of the NPC in all future dialogues.

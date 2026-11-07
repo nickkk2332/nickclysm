@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "calendar.h"
+#include "dialogue_helpers.h"
 #include "game_constants.h"
 #include "translation.h"
 #include "type_id.h"
@@ -56,6 +58,10 @@ class Skill
         bool consumes_focus = true;
         std::set<std::string> _requires_all_traits;
         std::set<std::string> _requires_any_traits;
+        // How long an NPC lesson takes and what it costs, when JSON says (u is the student, npc
+        // the teacher); otherwise the built-in formulas
+        std::optional<duration_or_var> _training_time;
+        std::optional<dbl_or_var> _training_cost;
         // When the definition this skill holds was loaded: `skills` keeps that order, so a
         // redefinition moves the skill to the end as it always did.
         uint64_t _load_order = 0;
@@ -127,6 +133,12 @@ class Skill
         }
         bool is_teachable() const {
             return _teachable;
+        }
+        const std::optional<duration_or_var> &training_time() const {
+            return _training_time;
+        }
+        const std::optional<dbl_or_var> &training_cost() const {
+            return _training_cost;
         }
 
         bool operator==( const Skill &b ) const {
