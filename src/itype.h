@@ -1792,5 +1792,7 @@ struct itype {
 
 void load_charge_removal_blacklist( const JsonObject &jo, std::string_view src );
 void load_temperature_removal_blacklist( const JsonObject &jo, std::string_view src );
+// Empties both blacklists, so they don't carry over to the next world loaded
+void reset_removal_blacklists();
 
 #endif // CATA_SRC_ITYPE_H

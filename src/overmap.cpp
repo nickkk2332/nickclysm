@@ -334,7 +334,13 @@ void overmap::ter_set( const tripoint_om_omt &p, const oter_id &id )
     oter_id &current_oter = layer[p.z() + OVERMAP_DEPTH].terrain[p.xy()];
     const oter_type_str_id &current_type_id = current_oter->get_type_id();
     const oter_type_str_id &incoming_type_id = id->get_type_id();
-    const bool current_type_same = current_type_id == incoming_type_id;
+    // A road that needs a predecessor replacing another such road (a manhole over a road) takes
+    // over that road's predecessor, as a road of the same type does, rather than stacking the
+    // replaced road on it and generating the road twice.
+    const bool current_type_same = current_type_id == incoming_type_id ||
+                                   ( current_oter->is_road() && id->is_road() &&
+                                     current_oter->has_flag( oter_flags::requires_predecessor ) &&
+                                     id->has_flag( oter_flags::requires_predecessor ) );
 
     // Mapgen refinement can push multiple different roads over each other.
     // Roads require a predecessor. A road pushed over a road might cause a

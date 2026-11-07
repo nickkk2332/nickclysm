@@ -206,7 +206,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | MATH-B02 | fixed | `8e063988` | `tests/audit_eoc_math_test.cpp` |
 | PROG-B01 | fixed | `43d8122f` | `tests/audit_progression_test.cpp` |
 | PROG-B02 | fixed | `811496ae` | `tests/audit_progression_test.cpp` |
-| PROG-B03 | partial | `2e3e06e6` | `tests/audit_progression_test.cpp`. Still open: NPC professions and hobbies still come from different scenario sources |
+| PROG-B03 | fixed | `2e3e06e6`, PR D | `tests/audit_progression_test.cpp`, `tests/audit_partial_data_test.cpp`. NPC hobbies now come from the generic scenario, as their professions do (the player's scenario hobby limits, such as Mind Over Matter's challenge scenarios, no longer apply to every NPC); the avatar keeps its own scenario |
 | ITEM-B01 | fixed | `fe9050ad`, `494287b0` | `tests/audit_items_terrain_test.cpp` |
 | IINF-B02 | fixed | `ff1bb2f9` | `tests/audit_items_terrain_test.cpp` |
 | INV-B01 | fixed | `538d692f` | `tests/audit_items_terrain_test.cpp` |
@@ -332,15 +332,15 @@ Bug sweep:
 | SPAT-B07 | fixed | `042a6fc0`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
 | SPAT-B08 | fixed | `cdaa9b92`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
 | SPAT-B09 | fixed | `9012c702` | `tests/audit_spatial_sweep_test.cpp` |
-| SPAT-B10 | partial | `0d52b78c` | `tests/audit_spatial_sweep_test.cpp`. Still open: an optional `scent_neutralization_radius`, and a load warning for scent-neutralizing fields that do not spread |
+| SPAT-B10 | fixed | `0d52b78c`, PR D | `tests/audit_spatial_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. Adds `scent_neutralization_radius` (0 to 3, default 1) and a load error for scent neutralization on a field that doesn't spread as a gas; removed the dead values from Xedra Evolved's two fogs (no gas phase) and Desert Region's dust storm (no spread) |
 | MGEN-B02 | fixed | `efa28db1`, `f99a8cbf` | `tests/audit_mapgen_test.cpp` |
-| MGEN-B03 | partial | `2bfdf130`, `f24378f3` | `tests/audit_mapgen_test.cpp`. Still open: validating `remove_npcs` classes (the robofac intercom map removes NPC classes that no longer exist on purpose, as a save migration) |
+| MGEN-B03 | fixed | `2bfdf130`, `f24378f3`, PR D | `tests/audit_mapgen_test.cpp`, `tests/audit_partial_data_test.cpp`. `remove_npcs` checks its class at load; the robofac intercom migration marks its two gone classes `"obsolete_class": true`, which is itself an error on a class that exists |
 | MGEN-B04 | fixed | `30fae9f2` | `tests/audit_mapgen_test.cpp` |
 | MGEN-B05 | fixed | `9ff01839`, `359d63d0`, `737dcfd6` | `tests/audit_mapgen_test.cpp` |
-| MGEN-B06 | partial | `d34e62ee` | `tests/audit_mapgen_test.cpp`. Still open: the consistency check between variable-weight mapgens and their predecessors (`road_nesw_manhole` needs its own data fix first) |
+| MGEN-B06 | fixed | `d34e62ee`, PR D | `tests/audit_mapgen_test.cpp`, `tests/audit_partial_data_test.cpp`. The predecessor check covers variable-weight mapgens. `road_nesw_manhole` gets `REQUIRES_PREDECESSOR`, and a road needing a predecessor placed over another such road takes over its predecessor (as a road of the same type did), so the manhole doesn't generate the road under it twice. Aftershock's bridge and bridgehead get the flag vanilla's have (vanilla's bridge mapgens, weight 0 there, expect one) |
 | MGEN-B07 | fixed | `38d80875`, `6755a3ea` | `tests/audit_mapgen_test.cpp` |
 | OMAP-B01 | fixed in working tree | `5322035b` + follow-up | `tests/audit_overmap_worldgen_test.cpp` and `tests/audit_worldgen_correctness_test.cpp`. Non-root mutable pieces now honor unexplored-only placement; see [scope](correctness-fixes.md). |
-| OMAP-B02 | partial | `e1f926a7` | `tests/audit_overmap_worldgen_test.cpp`. Still open: generating overmaps to find a mission target that does not exist yet (too costly) |
+| OMAP-B02 | fixed | `e1f926a7`, PR D | `tests/audit_overmap_worldgen_test.cpp`, `tests/audit_partial_data_test.cpp`. A special search allowed to make overmaps (the mission target retry) makes the missing overmaps next to the origin's, nearest first and only those within range (8 at most), when no existing one holds the special; `find_all` (random targets) too. A match on existing overmaps still makes none |
 | OMAP-B03 | fixed | `ab91d69d` | `tests/audit_overmap_worldgen_test.cpp` |
 | OMAP-B04 | fixed | `1d3f3350`, `3d7bce37` | `tests/audit_overmap_worldgen_test.cpp` |
 | OMAP-B05 | fixed | `75c6455b` | `tests/audit_overmap_worldgen_test.cpp` |
@@ -355,11 +355,11 @@ Bug sweep:
 | ITEM-B09 | fixed | `755dc3f8`, `3aba34c5` | `tests/audit_items_sweep_test.cpp` |
 | IINF-B03 | fixed | `032ba713` | `tests/audit_items_sweep_test.cpp` |
 | IINF-B04 | fixed | `fc6dbacb` | `tests/audit_items_sweep_test.cpp` |
-| IINF-B05 | partial | `459fe6a2` | `tests/audit_items_sweep_test.cpp`. Still open: filtering the summed `ammo_remaining()` by ammo type |
+| IINF-B05 | fixed | `459fe6a2`, PR D | `tests/audit_items_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. With several ammo pockets, `ammo_remaining()` counts only magazines loaded with an asked-for ammo type (no battery charge as rounds); one magazine always counts, since modular guns such as the robofac gun have a placeholder ammo type |
 | HLTH-B02 | fixed | `dd7947b4` | `tests/audit_health_test.cpp` |
 | HLTH-B03 | fixed | `69cc6806` | `tests/audit_health_test.cpp` |
 | HLTH-B04 | fixed | `56649dbb` | `tests/audit_health_test.cpp` |
-| HLTH-B05 | partial | `7dbca179`, `87629287` | `tests/audit_health_test.cpp`. Still open: clamping a defined chance to at least 1 (vanilla effects use negative chances to mean "never") |
+| HLTH-B05 | fixed | `7dbca179`, `87629287`, PR D | `tests/audit_health_test.cpp`, `tests/audit_partial_data_test.cpp`. A chance an effect gives works as written: 0 or less never fires, a positive one is at least 1; only a chance left out fires every time (documented). Changes TropiCataclysm's termite glue pain at intensity 68-74 (normal) and 64 (reduced) from every turn to never, as it already was above that, and vanilla fungus and Deadly Bites' zombie virus at intensity 4 (reduced) from never to 1 in 10015 |
 | HLTH-B06 | fixed | `a6bbbcaa` | `tests/audit_health_test.cpp` |
 | HLTH-B07 | fixed | `f83a3649` | `tests/audit_health_test.cpp` |
 | HLTH-B08 | fixed | `99a20b73`, `f8b2a332`, `cd38b39a` | `tests/audit_health_test.cpp` |
@@ -392,7 +392,7 @@ Modding features:
 | HLTH-J02 | partial | `c47dbf59`, `58e3fada` | `tests/audit_mod_overrides_test.cpp`. Still open: validating resist, remove and block lists in effects, because shipped data still has stale ids there |
 | NPC-J02 | partial | `92f0de07` | `tests/audit_mod_overrides_test.cpp`. Still open: moving NPC templates and factions onto `generic_factory`, and `extend`/`delete` on their lists |
 | MONDT-J01 | partial | `eb828cdb` | `tests/audit_mod_validation_test.cpp`. Still open: a location context value, and spawn data such as effects, variables and factions on group entries |
-| MAGIC-J03 | partial | `9c38b68a`, `e15db0f0`, `12c7974f` | `tests/audit_mod_validation_test.cpp`. Still open: enchantment and terrain-transform consistency checks (MAGIC-J06) |
+| MAGIC-J03 | fixed | `9c38b68a`, `e15db0f0`, `12c7974f`, PR D | `tests/audit_mod_validation_test.cpp`, `tests/audit_partial_data_test.cpp`. Adds `ter_furn_transform` checks (every id, terrain and furniture flags nothing has, trap json flags) and enchantment checks (mutations, effects, emitter, skills, body parts, damage types, spells), both registered. Data fixed: the vitrified farm's doll and bookcase transforms (furniture listed as terrain, now work), dead `FLOWER`/`GRAZEABLE`/furniture `WALL` flags and terrain ids among furniture (vanilla, Magiclysm, Xedra Evolved, XedraWood), XedraWood's Magiclysm-only plants, Xedra's fungicide (`t_dirt`, Magiclysm's barren dirt through mod_interactions), Mind Over Matter's unused transform to undefined furniture, and typos `head`→`heat` (Mind Over Matter), `pierce`→`stab` (Aftershock), `computers`→`computer` and the revenant's `BLEED_IMMUNE` given as a mutation (now a flag; Xedra Evolved). Relic passive enchantments (not in the factory) are still unchecked |
 | USE-J01 | partial | `9ee18e2d`, `4cbf0b89` | `tests/audit_mod_validation_test.cpp`. Still open: `_method` and `_item_pos` context values (they need USE-J02, several use actions per item) |
 
 **Gameplay changes from the third round:**
@@ -600,7 +600,7 @@ For modders (documented in `doc/JSON/EFFECT_ON_CONDITION.md`, `NPCs.md`, `NPC_BE
 | MATH-B12 | already fixed | by LOOP-J01 (`a17a8639`, `e1b3f7ef`) | existing `loop-j01_eoc_weather_overrides_hold_until_they_run_out` |
 | EVT-B03 to EVT-B10 | fixed | `6c203ba4` to `cbe83093`, follow-ups `3218e2c6`, `8c7b137f`, `5cc75dd7`, `94ea0bb4` | `tests/audit_events_sweep_test.cpp` (EVT-B06 needs a full game setup and is checked by reading) |
 | DATA-B04, DATA-B06, DATA-B07, DATA-B08 | fixed | `ef1af991`, `70395ba2`, `5e336317`, `42771b3b`, follow-ups `28d1c58b`, `bbc9087d`, `423cafa9`, `bb3e39f4` | `tests/audit_data_sweep_test.cpp` |
-| DATA-B05 | partial | `108c2b82` | `tests/audit_data_sweep_test.cpp`. Still open: mutation types and the charge/temperature removal blacklists still carry over between worlds in one session (the fix needs widely included headers; no shipped content shows it) |
+| DATA-B05 | fixed | `108c2b82`, PR D | `tests/audit_data_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. Unloading data clears the mutation types and both removal blacklists |
 | DATA-B09 | fixed | `3cbe8ccc`, `f67fe1f3` | `tests/audit_data_sweep_test.cpp` |
 | LOOP-B05, LOOP-B12 | already fixed | by EVT-B01 (`90c08ef9`) and MAP-B03 | existing tests |
 | LOOP-B06 to LOOP-B09, LOOP-B13 to LOOP-B15 | fixed | `12247a06` to `d27488aa`, follow-ups `858c62d4` to `e37c37f7` | `tests/audit_loop_sweep_test.cpp` (LOOP-B07 is a menu and is checked by reading) |

@@ -4279,6 +4279,8 @@ A list of allowed hobbies that can be chosen when using this scenario. If this i
 
 When set to false, the hobbies in `hobbies` are hobbies that _cannot_ be chosen when using this scenario. This value defaults to true.
 
+`professions`, `hobbies` and `whitelist_hobbies` limit the player's own character. Randomly generated NPCs take both their profession and their hobbies from the generic scenario (the `GENERIC_SCENARIO_ID` external option, `evacuee` by default, or the first scenario not blacklisted if that one is), whatever scenario the player picked.
+
 ## `map_special`
 (optional, string)
 
@@ -4591,7 +4593,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "concentration": 1, // How concentrated this intensity of gas is. Generally the thin/hazy cloud intensity will be 1, the standard gas will be 2, and thick gas will be 4. The amount of time a gas mask filter will last will be divided by this value.
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
-        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on its tile and the 8 around it by this value
+        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on the tiles within scent_neutralization_radius of it by this value. Only a field with the gas phase and a percent_spread does this; on any other field it is an error at load
     ],
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below
@@ -4603,6 +4605,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     "outdoor_age_speedup": "20 minutes", // Increase the field's age by this duration if it's on an outdoor tile
     "accelerated_decay": true, // If the field should use a more simple decay calculation, used for cosmetic fields like gibs
     "percent_spread": 90, // The field must succeed on a `rng( 1, 100 - local windpower ) > percent_spread` roll to spread. The field must have a non-zero spread percent and the GAS phase to be eligible to spread in the first place
+    "scent_neutralization_radius": 1, // How far, in tiles, the field's scent_neutralization reaches: 0 is only its own tile, the default 1 its tile and the 8 around it. At most 3
     "phase": "gas", // Phase of the field. Gases can spread after spawning and can be spawned out of emitters through impassable terrain with the PERMEABLE flag
     "apply_slime_factor": 10, // Each turn the field raises the scent on its tile to at least its intensity times this value (of the scent map's single scent type, normally the player's)
     "gas_absorption_factor": "80m", // Length a full 100 charge gas mask filter will last in this gas. Will be divided by the concentration of the gas, and should be 80m for concentration 1 toxic gas or similar. The worst gas should still be kept out for 20 minutes in a concentration 4 thick gas.

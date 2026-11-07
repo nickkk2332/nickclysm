@@ -886,6 +886,7 @@ void DynamicDataLoader::unload_data()
     harvest_list::reset();
     item_category::reset();
     items::reset();
+    reset_removal_blacklists();
     jmath_func::reset();
     json_flag::reset();
     connect_group::reset();
@@ -903,6 +904,7 @@ void DynamicDataLoader::unload_data()
     mutation_branch::reset_all();
     mutation_category_trait::reset();
     mutations_category.clear();
+    reset_mutation_types();
     npc_class::reset_npc_classes();
     npc_template::reset();
     option_slider::reset();
@@ -1253,6 +1255,8 @@ void DynamicDataLoader::check_consistency()
             { _( "Anatomies" ), &anatomy::check_consistency },
             { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },
+            { _( "Enchantments" ), &enchantment::check_consistency },
+            { _( "Terrain/Furniture Transforms" ), &ter_furn_transform::check_all },
             { _( "Executions" ), &executions::check },
             { _( "Abilities" ), &abilities::check },
             { _( "Damage rules" ), &damage_rules::check },

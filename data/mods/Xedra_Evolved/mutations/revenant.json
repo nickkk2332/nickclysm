@@ -61,8 +61,7 @@
           "PARAIMMUNE",
           "NOHEAL",
           "TOUGH_FEET",
-          "DREAMLESS",
-          "BLEED_IMMUNE"
+          "DREAMLESS"
         ]
       },
       {
@@ -72,6 +71,7 @@
     ],
     "flags": [
       "HERITAGE",
+      "BLEED_IMMUNE",
       "INHALED_TOXIN_IMMUNE ",
       "SUFFOCATION_IMMUNE",
       "GILLS",

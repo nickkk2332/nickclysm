@@ -48,6 +48,7 @@
     - [Place monsters from a monster group with "monsters"](#place-monsters-from-a-monster-group-with-monsters)
     - [Place a vehicle by type or group with "vehicles"](#place-a-vehicle-by-type-or-group-with-vehicles)
     - [Remove vehicles by type](#remove-vehicles-by-type)
+    - [Remove NPCs with "remove_npcs"](#remove-npcs-with-remove_npcs)
     - [Place a specific item with "item"](#place-a-specific-item-with-item)
     - [Place a specific monster with "monster"](#place-a-specific-monster-with-monster)
     - [Place a trap with "traps"](#place-a-trap-with-traps)
@@ -1002,6 +1003,23 @@ Note that vehicles cannot be placed over overmap boundaries. So it needs to be 2
 ]
 ```
 
+### Remove NPCs with "remove_npcs"
+
+Removes the living NPCs on the overmap terrain the mapgen runs on (the coordinates only pick the z-level, through `z`).
+
+| Field          | Description
+| ---            | ---
+| class          | (optional, string) only remove NPCs made from this NPC template (`"type": "npc"`). Checked at load: an unknown template is an error.
+| unique_id      | (optional, string) only remove the unique NPC with this id; it may then spawn again.
+| obsolete_class | (optional, boolean) `class` names an NPC template that no longer exists, to remove NPCs left in older saves. Skips the load check, and is an error when the template does exist. Default false.
+
+```jsonc
+"remove_npcs": [
+    { "class": "BEM_anchor_seller", "x": 0, "y": 0 },
+    { "class": "NC_BOUNTY_HUNTER", "obsolete_class": true, "x": 0, "y": 0 }
+]
+```
+
 ### Place a specific item with "item"
 
 | Field  | Description
@@ -1521,7 +1539,14 @@ However, to support savegame migration across changes to mapgen definitions,
 you must provide a fallback value which will be used in the event that the game
 doesn't know what the previous terrain was.
 
-Example: `"predecessor_mapgen": "field"`
+Every overmap terrain the mapgen is used for must have the `REQUIRES_PREDECESSOR`
+flag, or the game only remembers the previous terrain by accident; this is
+checked at load for every mapgen, including those with a variable or math
+`"weight"`.  A road that needs a predecessor (both `ROAD` and
+`REQUIRES_PREDECESSOR`) placed over another such road keeps that road's
+predecessor rather than generating the replaced road underneath it.
+
+Example: `"fallback_predecessor_mapgen": "field"`
 
 
 # Palettes

@@ -793,6 +793,8 @@ Identifier                  | Description
 
 All fields except for `type` and `id` are optional.  This includes the otherwise obligatory `name` and `description`.  If a name and description are set, they will be displayed in the EFFECTS tab.
 
+The ids an enchantment names are checked when the game loads, for enchantments defined on their own and inline ones (in mutations, bionics, effects and vehicle parts): the mutations, `ench_effects` effects, emitter, skills, body parts (`encumbrance_modifier` also takes `"all"`, and `modified_bodyparts`), damage types (`melee_damage_bonus`, `incoming_damage_mod`, `incoming_damage_mod_post_absorbed`) and the spells of `hit_you_effect`, `hit_me_effect` and `intermittent_activation` must exist.  An item's inline relic `passive_effects` are not checked.
+
 There are two possible syntaxes.  The first is by defining an enchantment object and then referencing the ID, the second is by directly defining the inline enchantment inside something (in this case, an item):
 
 ```jsonc
