@@ -1154,19 +1154,21 @@ void spellcasting_adjustment_ass( double val, dialogue &d, char scope,
     diag_value whitelist = kwargs.kwarg_or( "flag_whitelist" );
     diag_value blacklist = kwargs.kwarg_or( "flag_blacklist" );
 
+    // Only characters have a spellbook; a monster, item, furniture or vehicle u has none
+    Character *const caster = d.actor( is_beta( scope ) )->get_character();
+    if( caster == nullptr ) {
+        throw math::runtime_error( "spellcasting_adjustment needs a character talker" );
+    }
     diag_value const &spellcasting_property = params[0];
     std::string const &filter_str = filter.str( d );
     switch( spellsearch_scope ) {
         case scope_spell:
-            d.actor( is_beta( scope ) )
-            ->get_character()
-            ->magic->get_spell( spell_id( filter_str ) )
+            caster->magic->get_spell( spell_id( filter_str ) )
             .set_temp_adjustment( spellcasting_property.str( d ), val );
             break;
         case scope_school: {
             const trait_id school_id( filter_str );
-            for( spell *spellIt :
-                 d.actor( is_beta( scope ) )->get_character()->magic->get_spells() ) {
+            for( spell *spellIt : caster->magic->get_spells() ) {
                 if( spellIt->spell_class() == school_id &&
                     ( whitelist.str( d ).empty() || spellIt->has_flag( whitelist.str( d ) ) ) &&
                     ( blacklist.str( d ).empty() || !spellIt->has_flag( blacklist.str( d ) ) ) ) {
@@ -1177,8 +1179,7 @@ void spellcasting_adjustment_ass( double val, dialogue &d, char scope,
         }
         case scope_mod: {
             const mod_id target_mod_id( filter_str );
-            for( spell *spellIt :
-                 d.actor( is_beta( scope ) )->get_character()->magic->get_spells() ) {
+            for( spell *spellIt : caster->magic->get_spells() ) {
                 if( get_mod_base_id_from_src( spellIt->get_src() ) == target_mod_id &&
                     ( whitelist.str( d ).empty() || spellIt->has_flag( whitelist.str( d ) ) ) &&
                     ( blacklist.str( d ).empty() || !spellIt->has_flag( blacklist.str( d ) ) ) ) {
@@ -1188,8 +1189,7 @@ void spellcasting_adjustment_ass( double val, dialogue &d, char scope,
             break;
         }
         case scope_all:
-            for( spell *spellIt :
-                 d.actor( is_beta( scope ) )->get_character()->magic->get_spells() ) {
+            for( spell *spellIt : caster->magic->get_spells() ) {
                 if( ( whitelist.str( d ).empty() || spellIt->has_flag( whitelist.str( d ) ) ) &&
                     ( blacklist.str( d ).empty() || !spellIt->has_flag( blacklist.str( d ) ) ) ) {
                     spellIt->set_temp_adjustment( spellcasting_property.str( d ), val );
