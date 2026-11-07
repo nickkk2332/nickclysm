@@ -369,7 +369,7 @@ bool stats_tracker::records( const event_type type )
     // these would keep a summary per NPC and pair of goals, attitudes or movement modes, per mod
     // setting and pair of values, per tile destroyed or overmap tile generated, per teleport, sound
     // heard or step, per reload or unload, per armor hit or wound on each part, per bionic or trait
-    // switched on or off, or per item type and
+    // switched on or off, per monster special attack used, or per item type and
     // count moved: kept for good, they would grow every save
     switch( type ) {
         case event_type::npc_goal_changed:
@@ -395,6 +395,7 @@ bool stats_tracker::records( const event_type type )
         case event_type::deactivates_bionic:
         case event_type::activates_mutation:
         case event_type::deactivates_mutation:
+        case event_type::monster_uses_special:
             return false;
         default:
             return true;

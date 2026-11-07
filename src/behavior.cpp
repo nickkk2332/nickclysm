@@ -228,11 +228,19 @@ std::vector<std::string> link_problems;
 // The leaves add_custom_need_leaves() made, which it may replace.
 std::unordered_set<string_id<node_t>> custom_need_leaves;
 
-// The subject as u. The beta is an empty talker, so beta conditions are false and beta math
-// reads 0 (a null beta would crash them).
-const_dialogue subject_dialogue( const Creature &subject )
+// The subject as u, and its target (MONAI-J09: a monster's attack target) as npc. Without a
+// target the beta is an empty talker, so beta conditions are false and beta math reads 0 (a null
+// beta would crash them).
+const_dialogue subject_dialogue( const oracle_t &oracle, const Creature &subject )
 {
-    return const_dialogue( get_const_talker_for( subject ), std::make_unique<talker>() );
+    const Creature *target = oracle.target();
+    std::unique_ptr<const_talker> beta;
+    if( target != nullptr ) {
+        beta = get_const_talker_for( *target );
+    } else {
+        beta = std::make_unique<talker>();
+    }
+    return const_dialogue( get_const_talker_for( subject ), std::move( beta ) );
 }
 
 // A problem in a node's JSON that loading can skip: reported with its place in the JSON.
@@ -259,7 +267,7 @@ read_dialogue_condition( const JsonObject &jo )
         if( who == nullptr ) {
             return status_t::failure;
         }
-        return cond( subject_dialogue( *who ) ) ? status_t::running : status_t::failure;
+        return cond( subject_dialogue( *subject, *who ) ) ? status_t::running : status_t::failure;
     };
 }
 
@@ -273,7 +281,7 @@ node_t::score_type read_math_score( const JsonObject &jo )
         if( who == nullptr ) {
             return 0.0f;
         }
-        const const_dialogue d = subject_dialogue( *who );
+        const const_dialogue d = subject_dialogue( *subject, *who );
         return static_cast<float>( math.act( d ) );
     };
 }

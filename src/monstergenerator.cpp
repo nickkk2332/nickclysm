@@ -57,6 +57,77 @@ static const spell_id spell_pseudo_dormant_trap_setup( "pseudo_dormant_trap_setu
 namespace
 {
 generic_factory<mon_flag> mon_flags( "monster flags" );
+
+// MONAI-J07: an "effect_immunities" entry, "EFFECT" (always immune) or
+// { "id": "EFFECT", "chance": 0-100 } (the chance in percent of resisting it each time)
+class effect_immunity_reader : public generic_typed_reader<effect_immunity_reader>
+{
+    public:
+        std::pair<efftype_id, int> get_next( const JsonValue &jv ) const {
+            if( jv.test_string() ) {
+                return { efftype_id( jv.get_string() ), 100 };
+            }
+            JsonObject jo = jv.get_object();
+            int chance = 100;
+            optional( jo, false, "chance", chance, numeric_bound_reader<int> { 0, 100 }, 100 );
+            return { efftype_id( jo.get_string( "id" ) ), chance };
+        }
+};
+
+// MONAI-J08: a trigger, "NAME" or { "id": "NAME", ... } (mtype::load_trigger_tunings reads the
+// rest of the object)
+class mon_trigger_reader : public generic_typed_reader<mon_trigger_reader>
+{
+    public:
+        mon_trigger get_next( const JsonValue &jv ) const {
+            std::string name;
+            if( jv.test_object() ) {
+                JsonObject jo = jv.get_object();
+                jo.allow_omitted_members();
+                name = jo.get_string( "id" );
+            } else {
+                name = jv.get_string();
+            }
+            try {
+                return io::string_to_enum<mon_trigger>( name );
+            } catch( const io::InvalidEnumString & ) {
+                jv.throw_error( string_format( "invalid monster trigger: \"%s\"", name ) );
+                throw; // ^^ throws already
+            }
+        }
+};
+
+// MONAI-J08: which members of a trigger's object form the code reads, for each list
+bool trigger_takes( mon_trigger_kind kind, mon_trigger trig, const std::string_view setting )
+{
+    const bool anger = kind == mon_trigger_kind::anger;
+    const bool anger_or_fear = anger || kind == mon_trigger_kind::fear;
+    if( setting == "amount" ) {
+        switch( trig ) {
+            case mon_trigger::STALK:
+            case mon_trigger::BRIGHT_LIGHT:
+            case mon_trigger::FIRE:
+            case mon_trigger::FRIEND_DIED:
+            case mon_trigger::FRIEND_ATTACKED:
+                return true;
+            case mon_trigger::HOSTILE_CLOSE:
+            case mon_trigger::HOSTILE_SEEN:
+                return anger_or_fear;
+            case mon_trigger::MATING_SEASON:
+            case mon_trigger::PLAYER_NEAR_BABY:
+                return anger;
+            default:
+                return false;
+        }
+    }
+    if( setting == "range" ) {
+        return trig == mon_trigger::FIRE || ( trig == mon_trigger::HOSTILE_CLOSE && anger_or_fear ) ||
+               ( trig == mon_trigger::PLAYER_NEAR_BABY && anger );
+    }
+    // "cap"
+    return anger && ( trig == mon_trigger::HOSTILE_CLOSE || trig == mon_trigger::HOSTILE_SEEN ||
+                      trig == mon_trigger::MATING_SEASON || trig == mon_trigger::HOSTILE_WEAK );
+}
 } // namespace
 
 namespace behavior
@@ -84,6 +155,7 @@ std::string enum_to_string<mon_trigger>( mon_trigger data )
         case mon_trigger::PLAYER_NEAR_BABY: return "PLAYER_NEAR_BABY";
         case mon_trigger::MATING_SEASON: return "MATING_SEASON";
         case mon_trigger::BRIGHT_LIGHT: return "BRIGHT_LIGHT";
+        case mon_trigger::CONDITION: return "CONDITION";
         // *INDENT-ON*
         case mon_trigger::LAST:
             break;
@@ -346,8 +418,15 @@ void load_monster_adjustment( const JsonObject &jsobj )
 static void build_behavior_tree( mtype &type )
 {
     type.set_strategy();
+    // MONAI-J09: the monster's own "behavior" nodes come first
+    std::set<std::string> added;
+    for( const string_id<behavior::node_t> &node : type.behaviors ) {
+        if( node.is_valid() && added.insert( node.str() ).second ) {
+            type.add_goal( node.str() );
+        }
+    }
     for( const std::pair<const std::string, mtype_special_attack> &attack : type.special_attacks ) {
-        if( string_id<behavior::node_t>( attack.first ).is_valid() ) {
+        if( string_id<behavior::node_t>( attack.first ).is_valid() && added.count( attack.first ) == 0 ) {
             type.add_goal( attack.first );
         } /* TODO: Make this an error once all the special attacks are migrated. */
     }
@@ -585,6 +664,10 @@ mtype MonsterGenerator::generate_fake_pseudo_dormant_monster( const mtype &mon )
 
 void MonsterGenerator::apply_species_attributes( mtype &mon )
 {
+    // MONAI-J07: of its species, the highest chance for each effect, and the bleed effect of the
+    // first species (by id) that has one
+    mon.effect_immunity_chances.clear();
+    std::optional<species_id> bleed_from;
     for( const auto &spec : mon.species ) {
         if( !spec.is_valid() ) {
             continue;
@@ -598,6 +681,26 @@ void MonsterGenerator::apply_species_attributes( mtype &mon )
         mon.anger |= mspec.anger;
         mon.fear |= mspec.fear;
         mon.placate |= mspec.placate;
+        for( const std::pair<const efftype_id, int> &immunity : mspec.effect_immunities ) {
+            const auto [it, inserted] = mon.effect_immunity_chances.emplace( immunity );
+            if( !inserted ) {
+                it->second = std::max( it->second, immunity.second );
+            }
+        }
+        if( !mspec.bleed_effect.is_null() && ( !bleed_from || spec.str() < bleed_from->str() ) ) {
+            bleed_from = spec;
+        }
+    }
+    // ... and the monster's own entries replace those of its species
+    for( const std::pair<const efftype_id, int> &immunity : mon.effect_immunities ) {
+        mon.effect_immunity_chances.insert_or_assign( immunity.first, immunity.second );
+    }
+    if( !mon.bleed_effect_json.is_null() ) {
+        mon.bleed_effect = mon.bleed_effect_json;
+    } else if( bleed_from ) {
+        mon.bleed_effect = bleed_from->obj().bleed_effect;
+    } else {
+        mon.bleed_effect = efftype_id::NULL_ID();
     }
 }
 
@@ -995,6 +1098,8 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "no_absorb_material", no_absorb_material );
 
     optional( jo, was_loaded, "bleed_rate", bleed_rate, 100 );
+    optional( jo, was_loaded, "effect_immunities", effect_immunities, effect_immunity_reader{} );
+    optional( jo, was_loaded, "bleed_effect", bleed_effect_json, efftype_id::NULL_ID() );
 
     optional( jo, was_loaded, "petfood", petfood );
 
@@ -1105,6 +1210,8 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
             jo.throw_error( string_format( "Invalid special attack format for %s", atk.first ) );
         }
     }
+
+    optional( jo, was_loaded, "behavior", behaviors, string_id_reader<behavior::node_t> {} );
 
     optional( jo, was_loaded, "melee_training_cap", melee_training_cap, std::min( melee_skill + 2,
               MAX_SKILL ) );
@@ -1223,10 +1330,14 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
         optional( jo, was_loaded, "bash_skill", bash_skill );
     }
 
-    const auto trigger_reader = enum_flags_reader<mon_trigger> { "monster trigger" };
+    // MONAI-J08: also { "id": ..., "amount": ..., "range": ..., "cap": ... }, and CONDITION
+    const mon_trigger_reader trigger_reader{};
     optional( jo, was_loaded, "anger_triggers", anger, trigger_reader );
     optional( jo, was_loaded, "placate_triggers", placate, trigger_reader );
     optional( jo, was_loaded, "fear_triggers", fear, trigger_reader );
+    load_trigger_tunings( jo, "anger_triggers", mon_trigger_kind::anger );
+    load_trigger_tunings( jo, "placate_triggers", mon_trigger_kind::placate );
+    load_trigger_tunings( jo, "fear_triggers", mon_trigger_kind::fear );
 
     if( jo.has_member( "path_settings" ) ) {
         JsonObject jop = jo.get_object( "path_settings" );
@@ -1255,6 +1366,114 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     }
 }
 
+void mtype::load_trigger_tunings( const JsonObject &jo, const std::string &member,
+                                  const mon_trigger_kind kind )
+{
+    std::map<mon_trigger, mon_trigger_tuning> &tunings = trigger_tunings[static_cast<size_t>( kind )];
+    std::vector<mon_condition_trigger> &conditions = condition_triggers[static_cast<size_t>( kind )];
+    const auto trigger_of = []( const JsonObject & entry ) {
+        return io::string_to_enum<mon_trigger>( entry.get_string( "id" ) );
+    };
+    const auto read_entry = [&]( const JsonObject & entry ) {
+        const mon_trigger trig = trigger_of( entry );
+        if( trig == mon_trigger::CONDITION ) {
+            mon_condition_trigger cond;
+            if( !entry.has_member( "condition" ) ) {
+                entry.throw_error( R"(A "CONDITION" trigger needs a "condition".)" );
+            }
+            read_condition( entry, "condition", cond.condition, false );
+            cond.amount = get_dbl_or_var( entry, "amount", true );
+            if( entry.has_member( "aggro_character" ) && kind != mon_trigger_kind::anger ) {
+                entry.throw_error_at( "aggro_character", R"("aggro_character" is for anger triggers.)" );
+            }
+            optional( entry, false, "aggro_character", cond.aggro_character, false );
+            conditions.push_back( cond );
+            return;
+        }
+        mon_trigger_tuning tuning;
+        for( const std::string_view setting : {
+                 std::string_view( "amount" ), std::string_view( "range" ), std::string_view( "cap" )
+             } ) {
+            if( entry.has_member( setting ) && !trigger_takes( kind, trig, setting ) ) {
+                entry.throw_error_at( setting, string_format( "Trigger %s in %s has no \"%s\".",
+                                      io::enum_to_string( trig ), member, setting ) );
+            }
+        }
+        const auto read_setting = [&entry]( const std::string_view setting, int low, int high,
+        std::optional<int> &out ) {
+            if( entry.has_member( setting ) ) {
+                int value = 0;
+                optional( entry, false, setting, value, numeric_bound_reader<int> { low, high }, 0 );
+                out = value;
+            }
+        };
+        read_setting( "amount", 0, 100, tuning.amount );
+        read_setting( "range", 0, 60, tuning.range );
+        read_setting( "cap", -100, 100, tuning.cap );
+        tunings.insert_or_assign( trig, tuning );
+    };
+    // An array of entries, or a single one, as the trigger reader takes them
+    const auto read_entries = [&]( const JsonValue & jv ) {
+        if( jv.test_array() ) {
+            for( const JsonValue entry : jv.get_array() ) {
+                if( entry.test_object() ) {
+                    read_entry( entry.get_object() );
+                }
+            }
+        } else if( jv.test_object() ) {
+            read_entry( jv.get_object() );
+        }
+    };
+    if( jo.has_member( member ) ) {
+        tunings.clear();
+        conditions.clear();
+        read_entries( jo.get_member( member ) );
+    } else if( was_loaded ) {
+        // as the trigger reader does: delete, then extend
+        if( jo.has_object( "delete" ) ) {
+            JsonObject del = jo.get_object( "delete" );
+            del.allow_omitted_members();
+            if( del.has_member( member ) ) {
+                const auto erase = [&]( const JsonValue & entry ) {
+                    mon_trigger trig;
+                    if( entry.test_object() ) {
+                        JsonObject eo = entry.get_object();
+                        eo.allow_omitted_members();
+                        trig = trigger_of( eo );
+                    } else {
+                        trig = io::string_to_enum<mon_trigger>( entry.get_string() );
+                    }
+                    tunings.erase( trig );
+                    if( trig == mon_trigger::CONDITION ) {
+                        conditions.clear();
+                    }
+                };
+                const JsonValue jv = del.get_member( member );
+                if( jv.test_array() ) {
+                    for( const JsonValue entry : jv.get_array() ) {
+                        erase( entry );
+                    }
+                } else {
+                    erase( jv );
+                }
+            }
+        }
+        if( jo.has_object( "extend" ) ) {
+            JsonObject ext = jo.get_object( "extend" );
+            ext.allow_omitted_members();
+            if( ext.has_member( member ) ) {
+                read_entries( ext.get_member( member ) );
+            }
+        }
+    }
+    const enum_bitset<mon_trigger> &listed = kind == mon_trigger_kind::anger ? anger :
+            kind == mon_trigger_kind::fear ? fear : placate;
+    if( listed[mon_trigger::CONDITION] != !conditions.empty() ) {
+        jo.throw_error_at( member, R"(A "CONDITION" trigger is an object with a "condition" and an )"
+                           R"("amount", not a name.)" );
+    }
+}
+
 void MonsterGenerator::load_species( const JsonObject &jo, const std::string &src )
 {
     mon_species->load( jo, src );
@@ -1276,8 +1495,14 @@ void species_type::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "anger_triggers", anger, trigger_reader );
     optional( jo, was_loaded, "placate_triggers", placate, trigger_reader );
     optional( jo, was_loaded, "fear_triggers", fear, trigger_reader );
+    if( anger[mon_trigger::CONDITION] || fear[mon_trigger::CONDITION] ||
+        placate[mon_trigger::CONDITION] ) {
+        jo.throw_error( R"(A species can't have a "CONDITION" trigger; its monsters can.)" );
+    }
 
     optional( jo, was_loaded, "bleeds", bleeds, string_id_reader<::field_type> {}, fd_null );
+    optional( jo, was_loaded, "effect_immunities", effect_immunities, effect_immunity_reader{} );
+    optional( jo, was_loaded, "bleed_effect", bleed_effect, efftype_id::NULL_ID() );
 }
 
 void mon_flag::load_mon_flags( const JsonObject &jo, const std::string &src )
@@ -1440,8 +1665,37 @@ void MonsterGenerator::load_monster_attack( const JsonObject &jo, const std::str
     add_attack( create_actor( jo, src ) );
 }
 
+// MONAI-J09: the "eoc:ID" goals of a monster's goal tree name EOCs
+static void check_goal_eocs( const mtype &mon, const behavior::node_t &node,
+                             std::set<const behavior::node_t *> &seen )
+{
+    if( !seen.insert( &node ).second ) {
+        return;
+    }
+    const std::string goal = node.goal();
+    if( goal.rfind( "eoc:", 0 ) == 0 && !effect_on_condition_id( goal.substr( 4 ) ).is_valid() ) {
+        debugmsg( "monster %s has the behavior goal %s, which names no effect_on_condition",
+                  mon.id.c_str(), goal );
+    }
+    for( const behavior::node_t *child : node.get_children() ) {
+        check_goal_eocs( mon, *child, seen );
+    }
+}
+
 void MonsterGenerator::check_monster_definitions() const
 {
+    for( const species_type &spec : mon_species->get_all() ) {
+        for( const std::pair<const efftype_id, int> &immunity : spec.effect_immunities ) {
+            if( !immunity.first.is_valid() ) {
+                debugmsg( "species %s has unknown effect %s in effect_immunities", spec.id.c_str(),
+                          immunity.first.c_str() );
+            }
+        }
+        if( !spec.bleed_effect.is_null() && !spec.bleed_effect.is_valid() ) {
+            debugmsg( "species %s has unknown bleed_effect %s", spec.id.c_str(),
+                      spec.bleed_effect.c_str() );
+        }
+    }
     for( const mtype &mon : mon_templates->get_all() ) {
         if( !mon.src.empty() && mon.src.back().second.str() == "dda" ) {
             std::string mon_id = mon.id.str();
@@ -1565,6 +1819,25 @@ void MonsterGenerator::check_monster_definitions() const
             if( !e.id.is_valid() ) {
                 debugmsg( "attack effect %s of monster %s is unknown", e.id.c_str(), mon.id.c_str() );
             }
+        }
+        for( const std::pair<const efftype_id, int> &immunity : mon.effect_immunities ) {
+            if( !immunity.first.is_valid() ) {
+                debugmsg( "monster %s has unknown effect %s in effect_immunities", mon.id.c_str(),
+                          immunity.first.c_str() );
+            }
+        }
+        if( !mon.bleed_effect_json.is_null() && !mon.bleed_effect_json.is_valid() ) {
+            debugmsg( "monster %s has unknown bleed_effect %s", mon.id.c_str(),
+                      mon.bleed_effect_json.c_str() );
+        }
+        for( const string_id<behavior::node_t> &node : mon.behaviors ) {
+            if( !node.is_valid() ) {
+                debugmsg( "monster %s has unknown behavior %s", mon.id.c_str(), node.c_str() );
+            }
+        }
+        if( !mon.behaviors.empty() ) {
+            std::set<const behavior::node_t *> seen;
+            check_goal_eocs( mon, *mon.get_goals(), seen );
         }
 
         for( const std::pair<const emit_id, time_duration> &e : mon.emit_fields ) {

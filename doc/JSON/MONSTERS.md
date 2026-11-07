@@ -40,6 +40,8 @@
   - ["light_color"](#light_color)
   - ["hp"](#hp)
   - ["bleed_rate"](#bleed_rate)
+  - ["effect_immunities"](#effect_immunities)
+  - ["bleed_effect"](#bleed_effect)
   - ["death_drops"](#death_drops)
   - ["death_function"](#death_function)
   - ["emit_fields"](#emit_fields)
@@ -65,6 +67,7 @@
   - ["path_settings"](#path_settings)
   - ["move_skills"](#move_skills)
   - ["special_attacks"](#special_attacks)
+  - ["behavior"](#behavior)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -142,6 +145,8 @@ Property                 | Description
 `trap_avoids`            | (array of strings) trap_id of traps that are not triggered by this monster. Default behaviour is to trigger all traps.
 `luminance`              | (float) Amount of light passively emitted by the monster, must be >0 to have any effect
 `light_color`            | (array of three ints) Colour of that light, red, green and blue from 0 to 255
+`effect_immunities`      | (array of strings or objects) Effects the monster resists, always or with a chance. See [effect_immunities](#effect_immunities)
+`bleed_effect`           | (string) The effect a bleeding monster gets instead of `bleed`. See [bleed_effect](#bleed_effect)
 `death_drops`            | (string or item group) Item group to spawn when the monster dies
 `death_function`         | (object) How the monster behaves on death: its corpse, death message, spell and EOC. See [death_function](#death_function)
 `emit_fields`            | (array of objects) What field the monster emits, and how frequently
@@ -151,9 +156,9 @@ Property                 | Description
 `regen_morale`           | (bool) True if monster will stop fleeing at max HP to regenerate anger and morale
 `special_attacks`        | (array of objects) Special attacks the monster has
 `flags`                  | (array of strings) Any number of attributes like SEES, HEARS, SMELLS, STUMBLES, REVIVES
-`fear_triggers`          | (array of strings) Triggers that lower monster morale (see JSON_FLAGS.md)
-`anger_triggers`         | (array of strings) Triggers that raise monster aggression (same flags as fear)
-`placate_triggers`       | (array of strings) Triggers that lower monster aggression (same flags as fear)
+`fear_triggers`          | (array of strings or objects) Triggers that lower monster morale (see JSON_FLAGS.md, and [here](#fear_triggers-anger_triggers-placate_triggers) for objects)
+`anger_triggers`         | (array of strings or objects) Triggers that raise monster aggression (same flags as fear)
+`placate_triggers`       | (array of strings or objects) Triggers that lower monster aggression (same flags as fear)
 `chat_topics`            | (array of strings) Conversation topics if dialog is opened with the monster
 `revert_to_itype`        | (string) Item monster can be converted to when friendly (ex. to deconstruct turrets)
 `emp_deactivate_one_in`  | (integer) One in this many EMP blasts switch an `ELECTRONIC` monster with a `revert_to_itype` off, dropping it as that item (otherwise the blast fries it); 0 never.  Default: 6 for tiny monsters, 3 for small ones, never for bigger ones
@@ -230,7 +235,9 @@ Monster categories. Can be NULL, CLASSIC (only mobs found in classic zombie movi
 ## "species"
 (array of strings, optional)
 
-A list of species ids. Properties (currently only triggers) from species are added to the properties of each monster that belong to the species.
+A list of species ids. Properties from species (their flags, triggers, `effect_immunities` and `bleed_effect`) are added to the properties of each monster that belong to the species.
+
+A species is a `"type": "SPECIES"` object (vanilla ones are in `data/json/species.json`) with a `description`, and optionally `footsteps`, `flags`, `anger_triggers`, `fear_triggers`, `placate_triggers` (strings only), `bleeds` (the blood field), and [`effect_immunities`](#effect_immunities) and [`bleed_effect`](#bleed_effect) as for a monster.  A mod that redefines a species without `copy-from` replaces it whole, so it must repeat what it keeps: zombies, nether creatures, mi-go and leech plants resist poison (and all but zombies, venom) through their species' `effect_immunities`, plants tpollen, and robots drip `dripping_mechanical_fluid` through `bleed_effect`.
 
 In mainline game it can be HUMAN, ROBOT, ZOMBIE, MAMMAL, BIRD, FISH, REPTILE, WORM, MOLLUSK, AMPHIBIAN, INSECT, SPIDER, FUNGUS, PLANT, NETHER, MUTANT, BLOB, HORROR, ABERRATION, HALLUCINATION and UNKNOWN.
 
@@ -572,6 +579,22 @@ Monster hit points.
 
 Percent multiplier on all bleed effects' duration applied to the monster. Values below the default of 100 mean a resistance to bleed, values above 100 make the monster bleed longer and more intensive. 0 translates to bleed immunity.
 
+## "effect_immunities"
+(array of strings or objects, optional; also on species)
+
+Effects the monster resists: an effect id (always resisted), or `{ "id": "downed", "chance": 75 }` (resisted that percentage of the times the effect would be applied).  Supports `copy-from` with `extend` (which replaces the chance of an effect already listed) and `delete`.
+
+```jsonc
+"effect_immunities": [ "poison", { "id": "downed", "chance": 75 } ]
+```
+
+An entry, from the monster or one of its species, replaces the built-in rules for that effect.  Without one, these still apply: a monster not made of flesh resists venom and poison, a fire immunity resists `onfire`, a monster that doesn't bleed resists `bleed`, `STUN_IMMUNE` resists `stunned`, and some body types, flying and immobile monsters resist `downed`.  The monster's own entry wins over its species' (of several species, the highest chance counts), so `{ "id": "poison", "chance": 0 }` makes a zombie poisonable.  The effect's own `immune_flags` (a monster flag, or a flag of one of the monster's effects) are checked first and always protect.  `knocked_out` follows its own rules (see the knockout effect).
+
+## "bleed_effect"
+(string, optional; also on species)
+
+The effect a bleeding monster gets instead of `bleed`, for its duration (scaled by `bleed_rate`), at intensity 1.  It drips the monster's blood field, as bleeding does, but doesn't hurt.  The monster's own wins over its species'; of several species, the one first by id counts.  Vanilla robots use `dripping_mechanical_fluid` (from the `ROBOT` species).
+
 ## "death_drops"
 (string or item group, optional)
 
@@ -623,9 +646,33 @@ Will stop fleeing if at max hp, and regen anger and morale.
 Monster flags. See [JSON_FLAGS.md](JSON_FLAGS.md) for a full list. These are IDs that point to a `"monster_flag"` object, which usually can be found in `data/json/monsters/monster_flags.json`.
 
 ## "fear_triggers", "anger_triggers", "placate_triggers"
-(array of strings, optional)
+(array of strings or objects, optional)
 
-What makes the monster afraid / angry / what calms it. See [JSON_FLAGS.md](JSON_FLAGS.md) for a full list
+What makes the monster afraid / angry / what calms it. See [JSON_FLAGS.md](JSON_FLAGS.md#anger-fear-and-placation-triggers) for a full list.  Those of the monster's species are added.
+
+An entry can be an object, to change the trigger's built-in numbers for this monster (and the ones that `copy-from` it):
+
+```jsonc
+"anger_triggers": [ "HURT", { "id": "PLAYER_CLOSE", "amount": 8, "range": 7, "cap": 50 } ],
+"fear_triggers": [ { "id": "FIRE", "amount": 10, "range": 5 } ]
+```
+
+- `amount` (0 to 100): the trigger's strength, or for `HOSTILE_SEEN` the most of its random strength, for `FIRE` the strength per fire intensity.  `STALK`, `BRIGHT_LIGHT`, `FIRE`, `FRIEND_DIED` and `FRIEND_ATTACKED` in any list; `PLAYER_CLOSE` and `HOSTILE_SEEN` as anger or fear; `MATING_SEASON` and `PLAYER_NEAR_BABY` as anger.  0 turns the trigger off (and its character aggro).
+- `range` (0 to 60 tiles): `FIRE`; `PLAYER_CLOSE` as anger or fear (each its own); `PLAYER_NEAR_BABY`.  (`MATING_SEASON` keeps 5.)
+- `cap` (-100 to 100): the anger above which the anger trigger stops adding: `PLAYER_CLOSE`, `HOSTILE_SEEN`, `MATING_SEASON`, `PLAYER_WEAK`.
+
+Any other member is an error.  `HURT`, `SOUND` and the amounts of the others stay as they are.
+
+A `CONDITION` trigger, only as an object, is a dialogue condition checked each time the monster plans (about once a turn), with the monster as `u` and the creature it targets (if it has one) as `npc`.  While it is true, its `amount` (a number or math, evaluated with the same talkers) is added to the anger (anger triggers; with `"aggro_character": true` the monster also gets angry at characters), taken from the morale (fear) or taken from the anger (placate).  A list can have several:
+
+```jsonc
+"anger_triggers": [
+  { "id": "CONDITION", "condition": { "npc_has_effect": "bleed" }, "amount": { "math": [ "rng(1, 5)" ] }, "aggro_character": true }
+],
+"fear_triggers": [ { "id": "CONDITION", "condition": { "u_has_effect": "onfire" }, "amount": 20 } ]
+```
+
+With `copy-from`, `extend` adds entries (an object replaces that trigger's numbers) and `delete` removes triggers by name (`"CONDITION"` removes all of that list's conditions).  Anger and morale are kept between -100 and 100 at the end of each turn.
 
 ## "chat_topics"
 (string, optional)
@@ -841,6 +888,11 @@ Field                | Description
 `dig`                | (int or null, 0-10, optional) swimming monsters ignore DIGGABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
 `climb`              | (int or null, 0-10, optional) climbing monsters can climb CLIMBABLE ter/furn and can use DIFFICULT_Z ter/furn (i.e. ladders). The ter/furn cost gets multiplied by the skill modifier
 
+
+## "behavior"
+(string or array of strings, optional)
+
+Behavior nodes (`"type": "behavior"`) the monster's goals start with, before the nodes named like its special attacks.  A goal `"eoc:ID"` runs that EOC with the monster as `u` and its attack target as `npc`; `"special:NAME"` or a bare `"NAME"` uses that special attack.  See [NPC_BEHAVIOR.md](NPC_BEHAVIOR.md#monster-goals).
 
 ## "special_attacks"
 

@@ -1230,6 +1230,9 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_fires_gun:
         case event_type::monster_melee_attacks_character:
         case event_type::monster_melee_attacks_monster:
+        case event_type::monster_upgrades:
+        case event_type::monster_reproduces:
+        case event_type::monster_uses_special:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

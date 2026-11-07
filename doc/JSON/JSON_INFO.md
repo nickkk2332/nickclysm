@@ -1978,6 +1978,7 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 | `neutral`       | Always be neutral towards this faction.
 | `friendly`      | Always be friendly towards this faction. By default a faction is friendly towards itself.
 | `hate`          | Always be hostile towards this faction. Will change target to monsters of this faction if available.
+| `ignores_npcs_if_option` | Optional name of a boolean option (usually an `EXTERNAL_OPTION` a mod sets): while it is on, this faction's monsters ignore every NPC, whatever their anger. Not inherited through `base_faction` (`copy-from` does copy it). Vanilla's `nether_player_hate` uses `PORTAL_STORM_IGNORE_NPC`, which the Personal Portal Storms mod turns on.
 
 ```jsonc
 {

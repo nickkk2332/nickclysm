@@ -238,7 +238,8 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "scent_intensity": 800,                     // int affecting the target scent toward which you current smell gravitates (default: 500).
   "scent_type": "sc_flower",                  // The scent_types you emit, as defined in scent_types.json (default: empty).
   "ignored_by": [ "ZOMBIE" ],                 // List of species ignoring you (default: empty).
-  "anger_relations": [ [ "MARSHMALLOW", 20 ], [ "GUMMY", 5 ], [ "CHEWGUM", 20 ] ], // List of species angered by you and how much, negative values calm instead  (default: empty).
+  "anger_relations": [ [ "MARSHMALLOW", 20 ], [ "GUMMY", 5 ], [ "CHEWGUM", 20 ] ], // List of species angered by you and how much, negative values calm instead  (default: empty).  Only a positive value makes a monster that ignores characters see you.
+  "monster_relations": [ { "species": "MAMMAL", "min_anger": 10, "anger": -20 } ], // How monsters of a species, faction or flag see you: anger, morale or attitude.  See Monster relations (default: empty).
   "can_only_eat": [ "junk" ],                 // List of comestible materials (default: empty).
   "edible_food_flags": [ "CATTLE" ],          // Food with any of these flags is edible even if INEDIBLE, and doesn't taste bad.  See Diet rules (default: empty).
   "food_allergies": [ { "vitamin": "meat_allergen", "morale": "morale_antimeat" } ], // Food containing the vitamin is an allergen: eating it gives the morale penalty.  See Diet rules (default: empty).
@@ -406,6 +407,30 @@ A trait that copies another (`copy-from`, also a mod copying a trait under its o
 ```
 
 The other lists (`restricts_gear`, `encumbrance_always`, `wet_protection`, `no_cbm_on_bp`, ...) still add to the parent's when restated.
+
+### Monster relations
+
+`monster_relations` changes how monsters see a character with the mutation.  Each entry is an object:
+
+| Identifier     | Type                     | Description
+|----------------|--------------------------|-------------
+| `species`      | string or array          | The entry is about monsters of any of these species.
+| `faction`      | string or array          | ... and of any of these monster factions (their current faction).
+| `monster_flag` | string or array          | ... and with any of these monster flags.  An entry with none of the three is about every monster.
+| `min_anger`, `max_anger` | integer        | Only while the monster's anger toward the character is at least / at most this (with the entries before it applied).
+| `anger`        | integer                  | Added to the monster's anger toward the character; negative calms it.
+| `morale`       | integer                  | Added to its morale toward the character; negative scares it.
+| `attitude`     | `"FRIEND"` or `"IGNORE"` | The monster is friendly to the character, or ignores it, whatever its anger (`anger` and `morale` are then not used).
+
+```jsonc
+"monster_relations": [
+  { "faction": "bee", "attitude": "FRIEND" },
+  { "species": [ "REPTILE" ], "min_anger": 10, "anger": -20 },
+  { "monster_flag": "ANIMAL", "anger": -10, "morale": 5 }
+]
+```
+
+Vanilla's bee, mycus, pheromone, flower and terrifying traits use it.  The character's mutations are taken in order of their ids, and each one's entries in order.  An entry with an `attitude` that applies decides first; then the others add their anger and morale, each seeing the anger the ones before it left (so a pheromone's `min_anger` sees the anger after a flower's calming).  They apply before the animal empathy and discord flags, `anger_relations` and `ignored_by`, and only after the monster's own reasons to ignore the character: a monster that only attacks characters that annoyed it (`aggro_character` false) still ignores the character unless an entry with a positive `anger` (or a positive `anger_relations` value) is about it.  Like other mutation members, the list is inherited by `copy-from` and replaced whole when given.
 
 ### Comfort Conditions
 

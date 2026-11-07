@@ -18,6 +18,11 @@ const Creature *monster_oracle_t::creature() const
     return subject;
 }
 
+const Creature *monster_oracle_t::target() const
+{
+    return subject == nullptr ? nullptr : subject->attack_target();
+}
+
 status_t monster_oracle_t::not_hallucination( std::string_view ) const
 {
     return subject->is_hallucination() ? status_t::failure : status_t::running;

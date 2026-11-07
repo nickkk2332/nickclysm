@@ -109,7 +109,9 @@ condition is true and fails when it is false, so a `fallback` parent moves on to
 - The NPC is `u`. The beta talker is empty: `npc_` conditions are false and `n_` math reads 0.
 - A condition can limit a branch to some NPCs: by class (`u_has_class`), trait
   (`u_has_trait`), faction (`u_is_in_faction`), or a variable that an EOC sets.
-- Monster goal nodes take them too, with the monster as `u`.
+- Monster goal nodes take them too, with the monster as `u` and its attack target (the creature
+  at its destination it can see, if it isn't friendly to it) as `npc`; without one, `npc` is
+  empty as for NPCs.
 
 ```jsonc
 {
@@ -166,6 +168,28 @@ gives 0), with an error; a tree that uses both kinds is reported at load.
 | `npc_has_camp_job` | a camp resident in its camp has a job, last searched for over 10 minutes ago | failure
 | `npc_is_away_from_camp` | a camp resident is outside its camp | failure
 | `npc_is_camp_idle` | a camp resident in its camp is not busy with an activity | failure
+
+### Monster goals
+
+A monster's goals are the nodes its type's `"behavior"` lists (a node id or an array of them, see
+[MONSTERS.md](MONSTERS.md#behavior)), then the nodes whose ids are the names of its special
+attacks (`SPLIT`, `ABSORB_ITEMS`, `EAT_CROP` in vanilla), tried in that order until one is running
+(`sequential_until_done`). The goal a monster's walk ends at, each turn before its special
+attacks, is:
+
+- `"eoc:ID"`: runs that effect_on_condition, with the monster as `u` and its attack target (if
+  any) as `npc`. A load error names an unknown EOC in the tree of a monster with a `behavior`.
+- `"special:NAME"` or `"NAME"`: uses the monster's special attack `NAME`, if it has it. The goal
+  doesn't wait for the attack's cooldown (check it with `monster_special_available`), which then
+  restarts. Any other goal does nothing.
+
+Conditions and math scores read the monster as `u` and its target as `npc`; math scores rank a
+`utility` node's children, as for NPCs. The goal can't yet make a monster flee, wander or follow.
+
+```jsonc
+{ "type": "behavior", "id": "mymod_hive_call", "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_hp('torso') < 20" ] } } ], "goal": "eoc:EOC_MYMOD_CALL_HIVE" }
+// and in the monster: "behavior": "mymod_hive_call"
+```
 
 Monster goal trees use these:
 

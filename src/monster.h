@@ -38,6 +38,7 @@ class item;
 class item_location;
 class map;
 enum class mon_trigger : int;
+enum class mon_trigger_kind : int;
 enum class phase_id : int;
 struct monster_plan;
 struct mtype;
@@ -250,7 +251,7 @@ class monster : public Creature
         // Returns point at the end of the monster's current plans
         tripoint_abs_ms get_dest() const;
         // Returns the creature at the end of plans (if hostile)
-        Creature *attack_target();
+        Creature *attack_target() const;
         // Go towards p using the monster's pathfinding settings.
         void set_dest( const tripoint_abs_ms &p );
         // Reset our plans, we've become aimless.
@@ -381,6 +382,8 @@ class monster : public Creature
         monster_attitude attitude( const Character *u = nullptr ) const; // See the enum above
         Attitude attitude_to( const Creature &other ) const override;
         void process_triggers(); // Process things that anger/scare us
+        // MONAI-J08: the CONDITION triggers, with `target` (if any) as beta; from plan()
+        void process_condition_triggers( Creature *target );
 
         bool is_underwater() const override;
         bool is_on_ground() const override;
@@ -485,6 +488,8 @@ class monster : public Creature
 
         /** Resets a given special to its monster type cooldown value */
         void reset_special( const std::string &special_name );
+        /** MONAI-J05: sends monster_uses_special, after a special attack worked */
+        void notify_special_used( const std::string &special_name );
         /** Resets a given special to a value between 0 and its monster type cooldown value. */
         void reset_special_rng( const std::string &special_name );
         /** Sets a given special to the given value */
@@ -670,7 +675,9 @@ class monster : public Creature
         std::vector<std::pair<std::string, std::string>> get_overlay_ids() const;
     private:
         void process_trigger( mon_trigger trig, int amount );
-        void process_trigger( mon_trigger trig, const std::function<int()> &amount_func );
+        // MONAI-J08: amount_func is given the list (anger, fear, placate) it is for
+        void process_trigger( mon_trigger trig,
+                              const std::function<int( mon_trigger_kind )> &amount_func );
 
         int hp = 60;
         std::map<std::string, mon_special_attack, std::less<>> special_attacks;
