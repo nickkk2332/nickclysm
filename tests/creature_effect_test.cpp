@@ -412,8 +412,13 @@ TEST_CASE( "monster_is_immune_effect", "[creature][monster][effect][immune]" )
 
         THEN( "they can be poisoned by stronger poisons" ) {
             CHECK_FALSE( zed.is_immune_effect( effect_venom_dmg ) );
-            CHECK_FALSE( zed.is_immune_effect( effect_venom_player1 ) );
-            CHECK_FALSE( zed.is_immune_effect( effect_venom_player2 ) );
+        }
+
+        // MONAI-J07: the ZOMBIE species' VENOM_IMMUNE, the immune flag of the venom of the
+        // POISONOUS mutations, now counts for monsters too
+        THEN( "they resist the venom of a character's mutations" ) {
+            CHECK( zed.is_immune_effect( effect_venom_player1 ) );
+            CHECK( zed.is_immune_effect( effect_venom_player2 ) );
         }
 
         THEN( "they can't be poisoned by weaker poisons" ) {

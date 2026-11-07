@@ -407,6 +407,36 @@ bool mtype::has_placate_trigger( mon_trigger trigger ) const
     return placate[trigger];
 }
 
+int mtype::trigger_amount( mon_trigger_kind kind, mon_trigger trigger, int def ) const
+{
+    const std::map<mon_trigger, mon_trigger_tuning> &tunings =
+        trigger_tunings[static_cast<size_t>( kind )];
+    const auto iter = tunings.find( trigger );
+    return iter == tunings.end() ? def : iter->second.amount.value_or( def );
+}
+
+int mtype::trigger_range( mon_trigger_kind kind, mon_trigger trigger, int def ) const
+{
+    const std::map<mon_trigger, mon_trigger_tuning> &tunings =
+        trigger_tunings[static_cast<size_t>( kind )];
+    const auto iter = tunings.find( trigger );
+    return iter == tunings.end() ? def : iter->second.range.value_or( def );
+}
+
+int mtype::trigger_cap( mon_trigger_kind kind, mon_trigger trigger, int def ) const
+{
+    const std::map<mon_trigger, mon_trigger_tuning> &tunings =
+        trigger_tunings[static_cast<size_t>( kind )];
+    const auto iter = tunings.find( trigger );
+    return iter == tunings.end() ? def : iter->second.cap.value_or( def );
+}
+
+const std::vector<mon_condition_trigger> &mtype::get_condition_triggers(
+    mon_trigger_kind kind ) const
+{
+    return condition_triggers[static_cast<size_t>( kind )];
+}
+
 bool mtype::in_category( const std::string &category ) const
 {
     return categories.find( category ) != categories.end();

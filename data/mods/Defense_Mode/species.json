@@ -15,7 +15,8 @@
     "description": "a plant",
     "fear_triggers": [ "HURT", "FIRE" ],
     "flags": [ "ALL_SEEING", "NEMESIS" ],
-    "bleeds": "fd_blood_veggy"
+    "bleeds": "fd_blood_veggy",
+    "effect_immunities": [ "tpollen" ]
   },
   {
     "type": "SPECIES",
@@ -23,7 +24,8 @@
     "description": "a zombie",
     "footsteps": "shuffling.",
     "flags": [ "ALL_SEEING", "NEMESIS" ],
-    "bleeds": "fd_blood"
+    "bleeds": "fd_blood",
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ]
   },
   {
     "type": "SPECIES",
@@ -39,19 +41,22 @@
     "description": "a robot",
     "footsteps": "mechanical whirring.",
     "flags": [ "ALL_SEEING", "NEMESIS" ],
-    "bleeds": "fd_mechanical_fluid"
+    "bleeds": "fd_mechanical_fluid",
+    "bleed_effect": "dripping_mechanical_fluid"
   },
   {
     "type": "SPECIES",
     "id": "MIGO",
     "description": "a creature from the mi-go homeworld",
     "flags": [ "ALL_SEEING", "NEMESIS" ],
-    "fear_triggers": [ "HURT" ]
+    "fear_triggers": [ "HURT" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   },
   {
     "type": "SPECIES",
     "id": "NETHER",
     "flags": [ "ALL_SEEING", "NEMESIS" ],
-    "description": "a nether creature"
+    "description": "a nether creature",
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   }
 ]

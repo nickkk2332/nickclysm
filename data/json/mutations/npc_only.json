@@ -124,7 +124,8 @@
     "threshold": true,
     "points": 0,
     "player_display": false,
-    "valid": false
+    "valid": false,
+    "monster_relations": [ { "faction": "bee", "attitude": "FRIEND" } ]
   },
   {
     "type": "mutation",
@@ -133,7 +134,8 @@
     "description": "NPC trait that makes fungaloid monsters see this NPC as a friend.",
     "points": 0,
     "player_display": false,
-    "valid": false
+    "valid": false,
+    "monster_relations": [ { "species": "FUNGUS", "attitude": "FRIEND" } ]
   },
   {
     "type": "mutation",

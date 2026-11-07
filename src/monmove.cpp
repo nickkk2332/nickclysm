@@ -27,7 +27,9 @@
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
@@ -446,6 +448,15 @@ struct monster_plan {
     const int fears_hostile_near;
     const int fears_hostile_seen;
 
+    // MONAI-J08: the triggers' ranges and caps, as the monster's JSON may set them
+    const int hostile_near_range;
+    const int fear_near_range;
+    const int hostile_near_cap;
+    const int hostile_seen_cap;
+    const int mating_season_cap;
+    const int cub_range;
+    const int hostile_weak_cap;
+
     Creature *target = nullptr;
 };
 
@@ -456,19 +467,39 @@ monster_plan::monster_plan( const monster &mon )
       placate_hostile_weak(
           mon.type->has_placate_trigger( mon_trigger::HOSTILE_WEAK ) ),
       angers_hostile_near(
-          mon.type->has_anger_trigger( mon_trigger::HOSTILE_CLOSE ) ? 5 : 0 ),
+          mon.type->has_anger_trigger( mon_trigger::HOSTILE_CLOSE ) ?
+          mon.type->trigger_amount( mon_trigger_kind::anger, mon_trigger::HOSTILE_CLOSE, 5 ) : 0 ),
       angers_hostile_seen( mon.type->has_anger_trigger( mon_trigger::HOSTILE_SEEN )
-                           ? rng( 0, 2 )
+                           ? rng( 0, mon.type->trigger_amount( mon_trigger_kind::anger,
+                                   mon_trigger::HOSTILE_SEEN, 2 ) )
                            : 0 ),
       angers_mating_season(
-          mon.type->has_anger_trigger( mon_trigger::MATING_SEASON ) ? 3 : 0 ),
+          mon.type->has_anger_trigger( mon_trigger::MATING_SEASON ) ?
+          mon.type->trigger_amount( mon_trigger_kind::anger, mon_trigger::MATING_SEASON, 3 ) : 0 ),
       angers_cub_threatened(
-          mon.type->has_anger_trigger( mon_trigger::PLAYER_NEAR_BABY ) ? 8 : 0 ),
+          mon.type->has_anger_trigger( mon_trigger::PLAYER_NEAR_BABY ) ?
+          mon.type->trigger_amount( mon_trigger_kind::anger, mon_trigger::PLAYER_NEAR_BABY, 8 ) : 0 ),
       fears_hostile_near(
-          mon.type->has_fear_trigger( mon_trigger::HOSTILE_CLOSE ) ? 5 : 0 ),
+          mon.type->has_fear_trigger( mon_trigger::HOSTILE_CLOSE ) ?
+          mon.type->trigger_amount( mon_trigger_kind::fear, mon_trigger::HOSTILE_CLOSE, 5 ) : 0 ),
       fears_hostile_seen( mon.type->has_fear_trigger( mon_trigger::HOSTILE_SEEN )
-                          ? rng( 0, 2 )
-                          : 0 )
+                          ? rng( 0, mon.type->trigger_amount( mon_trigger_kind::fear,
+                                  mon_trigger::HOSTILE_SEEN, 2 ) )
+                          : 0 ),
+      hostile_near_range( mon.type->trigger_range( mon_trigger_kind::anger,
+                          mon_trigger::HOSTILE_CLOSE, 5 ) ),
+      fear_near_range( mon.type->trigger_range( mon_trigger_kind::fear, mon_trigger::HOSTILE_CLOSE,
+                       5 ) ),
+      hostile_near_cap( mon.type->trigger_cap( mon_trigger_kind::anger, mon_trigger::HOSTILE_CLOSE,
+                        30 ) ),
+      hostile_seen_cap( mon.type->trigger_cap( mon_trigger_kind::anger, mon_trigger::HOSTILE_SEEN,
+                        20 ) ),
+      mating_season_cap( mon.type->trigger_cap( mon_trigger_kind::anger,
+                         mon_trigger::MATING_SEASON, 30 ) ),
+      cub_range( mon.type->trigger_range( mon_trigger_kind::anger, mon_trigger::PLAYER_NEAR_BABY,
+                                          3 ) ),
+      hostile_weak_cap( mon.type->trigger_cap( mon_trigger_kind::anger, mon_trigger::HOSTILE_WEAK,
+                        40 ) )
 {
     smart_planning = mon.has_flag( mon_flag_PRIORITIZE_TARGETS );
     max_sight_range = std::max( mon.type->vision_day, mon.type->vision_night );
@@ -503,7 +534,7 @@ void monster::anger_hostile_seen( const monster_plan &mon_plan )
 
 void monster::anger_mating_season( const monster_plan &mon_plan )
 {
-    if( mon_plan.angers_mating_season > 0 && anger <= 30 ) {
+    if( mon_plan.angers_mating_season > 0 && anger <= mon_plan.mating_season_cap ) {
         if( mating_angry() ) {
             anger += mon_plan.angers_mating_season;
             if( x_in_y( anger, 100 ) ) {
@@ -545,7 +576,7 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
             // must not overwrite this monster's own target distance.)
             const float baby_dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
                                     mon_plan.smart_planning );
-            if( baby_dist <= 3 ) {
+            if( baby_dist <= mon_plan.cub_range ) {
                 // proximity to baby; monster gets furious and less likely to flee
                 anger += mon_plan.angers_cub_threatened;
                 morale += mon_plan.angers_cub_threatened / 2;
@@ -603,14 +634,15 @@ void monster::plan()
             rate_target( player_character, mon_plan.dist, mon_plan.smart_planning );
         mon_plan.fleeing = mon_plan.fleeing || is_fleeing( player_character );
         mon_plan.target = &player_character;
-        if( !mon_plan.fleeing && anger <= 20 ) {
+        if( !mon_plan.fleeing && anger <= mon_plan.hostile_seen_cap ) {
             anger += mon_plan.angers_hostile_seen;
         }
 
         anger_hostile_seen( mon_plan );
 
-        if( mon_plan.dist <= 5 ) {
-            if( anger <= 30 ) {
+        // MONAI-J08: each with its own range (5 unless the JSON says)
+        if( mon_plan.dist <= mon_plan.hostile_near_range ) {
+            if( anger <= mon_plan.hostile_near_cap ) {
                 anger += mon_plan.angers_hostile_near;
             }
             if( mon_plan.angers_hostile_near && x_in_y( anger, 100 ) ) {
@@ -618,7 +650,11 @@ void monster::plan()
                                "%s's character aggro triggered by proximity", name() );
                 aggro_character = true;
             }
+        }
+        if( mon_plan.dist <= mon_plan.fear_near_range ) {
             morale -= mon_plan.fears_hostile_near;
+        }
+        if( mon_plan.dist <= 5 ) {
             anger_mating_season( mon_plan );
         }
         anger_cub_threatened( mon_plan );
@@ -683,8 +719,8 @@ void monster::plan()
             valid_targets = 1;
         }
         mon_plan.fleeing = mon_plan.fleeing || fleeing_from;
-        if( rating <= 5 ) {
-            if( anger <= 30 ) {
+        if( rating <= mon_plan.hostile_near_range ) {
+            if( anger <= mon_plan.hostile_near_cap ) {
                 anger += mon_plan.angers_hostile_near;
             }
             if( mon_plan.angers_hostile_near && x_in_y( anger, 100 ) ) {
@@ -693,10 +729,14 @@ void monster::plan()
                                name(), who.name );
                 aggro_character = true;
             }
+        }
+        if( rating <= mon_plan.fear_near_range ) {
             morale -= mon_plan.fears_hostile_near;
+        }
+        if( rating <= 5 ) {
             anger_mating_season( mon_plan );
         }
-        if( !mon_plan.fleeing && anger <= 20 && valid_targets != 0 ) {
+        if( !mon_plan.fleeing && anger <= mon_plan.hostile_seen_cap && valid_targets != 0 ) {
             anger += mon_plan.angers_hostile_seen;
         }
         if( !mon_plan.fleeing && valid_targets != 0 ) {
@@ -704,6 +744,9 @@ void monster::plan()
             anger_hostile_seen( mon_plan );
         }
     }
+
+    // MONAI-J08: the CONDITION triggers, about the target chosen so far
+    process_condition_triggers( mon_plan.target );
 
     mon_plan.fleeing = mon_plan.fleeing || ( mood == MATT_FLEE );
     // Throttle monster thinking, if there are no apparent threats, stop paying
@@ -905,7 +948,7 @@ void monster::plan()
             att_to_target != Attitude::FRIENDLY ) {
             int hp_per = mon_plan.target->hp_percentage();
             if( hp_per <= 70 ) {
-                if( mon_plan.angers_hostile_weak && anger <= 40 ) {
+                if( mon_plan.angers_hostile_weak && anger <= mon_plan.hostile_weak_cap ) {
                     anger += 10 - static_cast<int>( hp_per / 10 );
                     if( x_in_y( anger, 100 ) ) {
                         add_msg_debug( debugmode::DF_MONSTER,
@@ -1046,6 +1089,22 @@ void monster::move()
     behavior::tree goals;
     goals.add( type->get_goals() );
     std::string action = goals.tick( &oracle );
+    // MONAI-J09: a goal "eoc:ID" runs that EOC, with the monster as u and its attack target (if
+    // any) as npc; "special:NAME" is the special attack NAME, as a bare NAME is
+    if( action.rfind( "eoc:", 0 ) == 0 ) {
+        const effect_on_condition_id eoc( action.substr( 4 ) );
+        action.clear();
+        if( eoc.is_valid() ) {
+            Creature *const target = attack_target();
+            dialogue d( get_talker_for( this ), target == nullptr ? nullptr : get_talker_for( target ) );
+            eoc->activate( d );
+            if( is_dead() ) {
+                return;
+            }
+        }
+    } else if( action.rfind( "special:", 0 ) == 0 ) {
+        action.erase( 0, 8 );
+    }
     // The monster can consume objects it stands on. Check if there are any.
     // If there are. Consume them.
     //  TODO: Stick this in a map and dispatch to it via the action string.
@@ -1057,6 +1116,7 @@ void monster::move()
         if( special_attacks.count( action ) != 0 ) {
             reset_special( action );
         }
+        notify_special_used( action );
     }
     // record position before moving to put the player there if we're dragging
     tripoint_abs_ms drag_to = pos_abs();
@@ -1091,6 +1151,7 @@ void monster::move()
                     add_msg_debug( debugmode::DF_MATTACK, "Attack failed" );
                     continue;
                 }
+                notify_special_used( special_name );
 
                 // `special_attacks` might have changed at this point. Sadly
                 // `reset_special` doesn't check the attack name, so we need to do it

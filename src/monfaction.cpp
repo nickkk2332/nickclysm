@@ -8,6 +8,7 @@
 #include "debug.h"
 #include "debug_menu.h"
 #include "generic_factory.h"
+#include "options.h"
 
 // for legacy reasons "monfaction::id" is called "name" in json
 static generic_factory<monfaction> faction_factory( "MONSTER_FACTION", "name" );
@@ -155,6 +156,12 @@ void monfaction::finalize()
         // break the cycle
         base_faction = mfaction_str_id::NULL_ID();
     }
+    if( !ignores_npcs_if_option.empty() && ( !get_options().has_option( ignores_npcs_if_option ) ||
+            get_options().get_option( ignores_npcs_if_option ).getType() != "bool" ) ) {
+        debugmsg( "MONSTER_FACTION %s: ignores_npcs_if_option \"%s\" is not a boolean option.",
+                  id.c_str(), ignores_npcs_if_option );
+        ignores_npcs_if_option.clear();
+    }
 }
 
 void monfactions::finalize()
@@ -189,6 +196,7 @@ void monfaction::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "neutral", _att_neutral, string_id_reader<monfaction>() );
     optional( jo, was_loaded, "friendly", _att_friendly, string_id_reader<monfaction>() );
     optional( jo, was_loaded, "hate", _att_hate, string_id_reader<monfaction>() );
+    optional( jo, was_loaded, "ignores_npcs_if_option", ignores_npcs_if_option );
 
     attitude_map.clear();
     for( const mfaction_str_id &mfac : _att_by_mood ) {

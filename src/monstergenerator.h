@@ -41,6 +41,10 @@ struct species_type {
     enum_bitset<mon_trigger> fear;
     enum_bitset<mon_trigger> placate;
     field_type_str_id bleeds;
+    // MONAI-J07: "effect_immunities", effect -> chance in percent of resisting it
+    std::map<efftype_id, int> effect_immunities;
+    // MONAI-J07: "bleed_effect", what its monsters get instead of "bleed" (null for "bleed")
+    efftype_id bleed_effect = efftype_id::NULL_ID();
     std::string get_footsteps() const {
         return footsteps.translated();
     }

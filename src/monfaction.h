@@ -61,6 +61,10 @@ class monfaction
         mfaction_str_id id = mfaction_str_id::NULL_ID();
         std::vector<std::pair<mfaction_str_id, mod_id>> src;
         mfaction_str_id base_faction = mfaction_str_id::NULL_ID();
+        // MONAI-J06: "ignores_npcs_if_option", a boolean (external) option: while it is on, the
+        // faction's monsters ignore every NPC (Personal Portal Storms' PORTAL_STORM_IGNORE_NPC).
+        // Not inherited by factions based on this one. Empty for none.
+        std::string ignores_npcs_if_option;
 
     private:
         // used by generic_factory

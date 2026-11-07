@@ -350,6 +350,30 @@ void mutation_variant::deserialize( const JsonObject &jo )
     load( jo );
 }
 
+void monster_relation::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "species", species, string_id_reader<species_type> {} );
+    optional( jo, false, "faction", factions, string_id_reader<monfaction> {} );
+    optional( jo, false, "monster_flag", monster_flags, string_id_reader<mon_flag> {} );
+    optional( jo, false, "min_anger", min_anger );
+    optional( jo, false, "max_anger", max_anger );
+    optional( jo, false, "anger", anger, 0 );
+    optional( jo, false, "morale", morale, 0 );
+    if( jo.has_member( "attitude" ) ) {
+        const std::string att = jo.get_string( "attitude" );
+        if( att == "FRIEND" ) {
+            attitude = attitude_t::friendly;
+        } else if( att == "IGNORE" ) {
+            attitude = attitude_t::ignore;
+        } else {
+            jo.throw_error_at( "attitude", R"(A monster relation's "attitude" is "FRIEND" or "IGNORE".)" );
+        }
+    }
+    if( attitude == attitude_t::none && anger == 0 && morale == 0 ) {
+        jo.throw_error( R"(A monster relation needs an "anger", a "morale" or an "attitude".)" );
+    }
+}
+
 // One object of a mutation's "eat_condition" (HLTH-J03)
 static mutation_eat_condition load_eat_condition( const JsonObject &eat_jo )
 {
@@ -474,6 +498,7 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "scent_intensity", scent_intensity, std::nullopt );
     optional( jo, was_loaded, "scent_type", scent_typeid, std::nullopt );
     optional( jo, was_loaded, "ignored_by", ignored_by );
+    optional( jo, was_loaded, "monster_relations", monster_relations );
     optional( jo, was_loaded, "empathize_with", empathize_with );
     optional( jo, was_loaded, "no_empathize_with", no_empathize_with );
     optional( jo, was_loaded, "can_only_eat", can_only_eat );
@@ -802,6 +827,26 @@ void mutation_branch::check_consistency()
         for( const std::pair<const species_id, int> &elem : an_id ) {
             if( !elem.first.is_valid() ) {
                 debugmsg( "mutation %s refers to undefined species id %s", mid.c_str(), elem.first.c_str() );
+            }
+        }
+        for( const monster_relation &rel : mdata.monster_relations ) {
+            for( const species_id &spe : rel.species ) {
+                if( !spe.is_valid() ) {
+                    debugmsg( "mutation %s has a monster relation with undefined species %s", mid.c_str(),
+                              spe.c_str() );
+                }
+            }
+            for( const mfaction_str_id &fac : rel.factions ) {
+                if( !fac.is_valid() ) {
+                    debugmsg( "mutation %s has a monster relation with undefined monster faction %s",
+                              mid.c_str(), fac.c_str() );
+                }
+            }
+            for( const mon_flag_str_id &flag : rel.monster_flags ) {
+                if( !flag.is_valid() ) {
+                    debugmsg( "mutation %s has a monster relation with undefined monster flag %s",
+                              mid.c_str(), flag.c_str() );
+                }
             }
         }
         if( s_id && !s_id.value().is_valid() ) {

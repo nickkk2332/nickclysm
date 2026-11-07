@@ -302,10 +302,14 @@ void talker_monster::attack_target( Creature &t, bool allow_special,
         // Special attack actors aim at the creature at the monster's destination
         me_mon->set_dest( t.pos_abs() );
         if( !is_own ) {
-            ( *json_attack )->call( *me_mon );
-        } else if( own_special->second->call( *me_mon ) &&
-                   me_mon->special_cooldown( special_name ) ) {
-            me_mon->reset_special( special_name );
+            if( ( *json_attack )->call( *me_mon ) ) {
+                me_mon->notify_special_used( special_name );
+            }
+        } else if( own_special->second->call( *me_mon ) ) {
+            if( me_mon->special_cooldown( special_name ) ) {
+                me_mon->reset_special( special_name );
+            }
+            me_mon->notify_special_used( special_name );
         }
     } else {
         if( !me_mon->is_adjacent( &t, true ) || !me_mon->sees( get_map(), t ) ) {

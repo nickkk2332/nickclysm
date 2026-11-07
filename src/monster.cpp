@@ -155,7 +155,6 @@ static const efftype_id effect_spooked_recent( "spooked_recent" );
 static const efftype_id effect_stunned( "stunned" );
 static const efftype_id effect_supercharged( "supercharged" );
 static const efftype_id effect_tied( "tied" );
-static const efftype_id effect_tpollen( "tpollen" );
 static const efftype_id effect_venom_dmg( "venom_dmg" );
 static const efftype_id effect_venom_player1( "venom_player1" );
 static const efftype_id effect_venom_player2( "venom_player2" );
@@ -195,23 +194,12 @@ static const material_id material_steel( "steel" );
 static const material_id material_stone( "stone" );
 static const material_id material_veggy( "veggy" );
 
-static const mfaction_str_id monfaction_acid_ant( "acid_ant" );
-static const mfaction_str_id monfaction_ant( "ant" );
-static const mfaction_str_id monfaction_bee( "bee" );
-static const mfaction_str_id monfaction_nether_player_hate( "nether_player_hate" );
-static const mfaction_str_id monfaction_wasp( "wasp" );
-
-static const species_id species_AMPHIBIAN( "AMPHIBIAN" );
 static const species_id species_CYBORG( "CYBORG" );
 static const species_id species_FISH( "FISH" );
 static const species_id species_FUNGUS( "FUNGUS" );
 static const species_id species_HORROR( "HORROR" );
-static const species_id species_LEECH_PLANT( "LEECH_PLANT" );
-static const species_id species_MAMMAL( "MAMMAL" );
-static const species_id species_MIGO( "MIGO" );
 static const species_id species_MOLLUSK( "MOLLUSK" );
 static const species_id species_NETHER( "NETHER" );
-static const species_id species_PLANT( "PLANT" );
 static const species_id species_PSI_NULL( "PSI_NULL" );
 static const species_id species_ROBOT( "ROBOT" );
 static const species_id species_ZOMBIE( "ZOMBIE" );
@@ -220,15 +208,7 @@ static const species_id species_nether_player_hate( "nether_player_hate" );
 static const ter_str_id ter_t_gas_pump( "t_gas_pump" );
 static const ter_str_id ter_t_gas_pump_a( "t_gas_pump_a" );
 
-static const trait_id trait_BEE( "BEE" );
-static const trait_id trait_FLOWERS( "FLOWERS" );
 static const trait_id trait_INATTENTIVE( "INATTENTIVE" );
-static const trait_id trait_MYCUS_FRIEND( "MYCUS_FRIEND" );
-static const trait_id trait_PHEROMONE_AMPHIBIAN( "PHEROMONE_AMPHIBIAN" );
-static const trait_id trait_PHEROMONE_INSECT( "PHEROMONE_INSECT" );
-static const trait_id trait_PHEROMONE_MAMMAL( "PHEROMONE_MAMMAL" );
-static const trait_id trait_TERRIFYING( "TERRIFYING" );
-static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
 
 // Limit the number of iterations for next upgrade_time calculations.
 // This also sets the percentage of monsters that will never upgrade.
@@ -500,6 +480,17 @@ void monster::try_upgrade( bool pin_time )
         }
     }
 
+    // MONAI-J05: becomes `into`, and sends monster_upgrades; false if an EOC of the event killed it
+    const auto upgrade_to = [this]( const mtype_id & into ) {
+        const mtype_id old_type = type->id;
+        poly( into );
+        if( type->id != old_type ) {
+            const cata::event e = cata::event::make<event_type::monster_upgrades>( old_type, type->id );
+            get_event_bus().send_with_talker( this, static_cast<Creature *>( nullptr ), e );
+        }
+        return !is_dead();
+    };
+
     // Here we iterate until we either are before upgrade_time or can't upgrade any more.
     // This is so that late into game new monsters can 'catch up' with all that half-life
     // upgrades they'd get if we were simulating whole world.
@@ -514,7 +505,9 @@ void monster::try_upgrade( bool pin_time )
             if( MonsterGroupManager::monster_is_blacklisted( type->upgrade_into ) ) {
                 return;
             }
-            poly( type->upgrade_into );
+            if( !upgrade_to( type->upgrade_into ) ) {
+                return;
+            }
         } else {
             mtype_id new_type;
             if( type->upgrade_multi_range ) {
@@ -546,7 +539,9 @@ void monster::try_upgrade( bool pin_time )
             }
             if( !new_type.is_empty() ) {
                 if( new_type ) {
-                    poly( new_type );
+                    if( !upgrade_to( new_type ) ) {
+                        return;
+                    }
                 } else {
                     // "upgrading" to mon_null
                     if( type->upgrade_null_despawn ) {
@@ -622,6 +617,7 @@ void monster::try_reproduce()
         chance += 2;
         if( season_match && female && one_in( chance ) ) {
             int spawn_cnt = rng( 1, type->baby_count );
+            const int rolled_count = spawn_cnt;
             if( !type->baby_type.baby_monster.is_null() ) {
                 here.add_spawn( type->baby_type.baby_monster, spawn_cnt, pos_bub(), friendly );
             }
@@ -641,6 +637,13 @@ void monster::try_reproduce()
             }
             if( !type->baby_type.baby_egg_group.is_null() ) {
                 here.spawn_items( pos_bub(), item_group::items_from( type->baby_type.baby_egg_group ) );
+            }
+            // MONAI-J05
+            const cata::event e = cata::event::make<event_type::monster_reproduces>( type->id,
+                                  rolled_count );
+            get_event_bus().send_with_talker( this, static_cast<Creature *>( nullptr ), e );
+            if( is_dead() || !baby_timer || !type->baby_timer ) {
+                return;
             }
         }
         *baby_timer += *type->baby_timer;
@@ -1741,7 +1744,7 @@ bool monster::follow_forced_goal()
     return true;
 }
 
-Creature *monster::attack_target()
+Creature *monster::attack_target() const
 {
     const map &here = get_map();
 
@@ -1856,6 +1859,79 @@ Creature::Attitude monster::attitude_to( const Creature &other ) const
     return Attitude::NEUTRAL;
 }
 
+// MONAI-J06: whether a mutation's monster relation is about this monster
+static bool relation_applies_to( const monster_relation &rel, const monster &mon )
+{
+    if( !rel.species.empty() ) {
+        bool of_species = false;
+        for( const species_id &spe : rel.species ) {
+            of_species = of_species || mon.in_species( spe );
+        }
+        if( !of_species ) {
+            return false;
+        }
+    }
+    if( !rel.factions.empty() &&
+        std::find( rel.factions.begin(), rel.factions.end(), mon.faction.id() ) == rel.factions.end() ) {
+        return false;
+    }
+    if( !rel.monster_flags.empty() ) {
+        bool flagged = false;
+        for( const mon_flag_str_id &flag : rel.monster_flags ) {
+            flagged = flagged || mon.has_flag( mon_flag_id( flag ) );
+        }
+        if( !flagged ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// MONAI-J06: the character's mutations' "monster_relations", mutation by mutation in order of
+// id (so the result doesn't depend on how the mutations are stored), each in JSON order. The
+// first relation with an "attitude" that applies decides the attitude; else the others that
+// apply change the monster's anger and morale, each seeing the anger the ones before it left.
+static std::optional<monster_attitude> apply_monster_relations(
+    const std::vector<trait_id> &mutations, const monster &mon, int &eff_anger, int &eff_morale )
+{
+    std::vector<const mutation_branch *> with_relations;
+    for( const trait_id &mut : mutations ) {
+        const mutation_branch &branch = *mut;
+        if( !branch.monster_relations.empty() ) {
+            with_relations.push_back( &branch );
+        }
+    }
+    if( with_relations.empty() ) {
+        return std::nullopt;
+    }
+    std::sort( with_relations.begin(), with_relations.end(),
+    []( const mutation_branch * a, const mutation_branch * b ) {
+        return a->id.str() < b->id.str();
+    } );
+    const auto in_range = [&eff_anger]( const monster_relation & rel ) {
+        return ( !rel.min_anger || eff_anger >= *rel.min_anger ) &&
+               ( !rel.max_anger || eff_anger <= *rel.max_anger );
+    };
+    for( const mutation_branch *branch : with_relations ) {
+        for( const monster_relation &rel : branch->monster_relations ) {
+            if( rel.attitude != monster_relation::attitude_t::none && in_range( rel ) &&
+                relation_applies_to( rel, mon ) ) {
+                return rel.attitude == monster_relation::attitude_t::friendly ? MATT_FRIEND : MATT_IGNORE;
+            }
+        }
+    }
+    for( const mutation_branch *branch : with_relations ) {
+        for( const monster_relation &rel : branch->monster_relations ) {
+            if( rel.attitude == monster_relation::attitude_t::none && in_range( rel ) &&
+                relation_applies_to( rel, mon ) ) {
+                eff_anger += rel.anger;
+                eff_morale += rel.morale;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 monster_attitude monster::attitude( const Character *u ) const
 {
     if( g && u ) {
@@ -1864,11 +1940,10 @@ monster_attitude monster::attitude( const Character *u ) const
                    *owned == Attitude::FRIENDLY ? MATT_FRIEND : MATT_FPASSIVE;
         }
     }
-    // override for the Personal Portal Storms Mod
-    // if the monster is a nether portal monster and the character is an NPC then ignore
-    if( u != nullptr && faction == monfaction_nether_player_hate && u->is_npc() &&
-        get_option<bool>( "PORTAL_STORM_IGNORE_NPC" ) ) {
-        // portal storm creatures ignore NPCs no matter what with this mod on
+    // MONAI-J06: a faction that ignores NPCs while an option is on, whatever its anger (the
+    // Personal Portal Storms mod turns on PORTAL_STORM_IGNORE_NPC for nether_player_hate)
+    if( u != nullptr && u->is_npc() && !faction->ignores_npcs_if_option.empty() &&
+        get_option<bool>( faction->ignores_npcs_if_option ) ) {
         return MATT_FPASSIVE;
     }
 
@@ -1897,12 +1972,22 @@ monster_attitude monster::attitude( const Character *u ) const
     }
 
     // CHECK FOR ANGER RELATIONS **HERE**
+    // MONAI-J06: only a relation that can anger the monster lets it see a character it would
+    // otherwise ignore; a calming one (a negative anger) no longer does
     bool target_has_anger_relation = false;
+    std::vector<trait_id> u_mutations;
     if( u != nullptr ) {
-        for( const trait_id &mut : u->get_functioning_mutations() ) {
+        u_mutations = u->get_functioning_mutations();
+        for( const trait_id &mut : u_mutations ) {
             const mutation_branch &branch = *mut;
             for( const std::pair<const species_id, int> &elem : branch.anger_relations ) {
-                if( type->in_species( elem.first ) ) {
+                if( elem.second > 0 && type->in_species( elem.first ) ) {
+                    target_has_anger_relation = true;
+                    break;
+                }
+            }
+            for( const monster_relation &rel : branch.monster_relations ) {
+                if( rel.anger > 0 && relation_applies_to( rel, *this ) ) {
                     target_has_anger_relation = true;
                     break;
                 }
@@ -1922,40 +2007,16 @@ monster_attitude monster::attitude( const Character *u ) const
     int effective_morale = morale;
 
     if( u != nullptr ) {
-        if( faction == monfaction_bee ) {
-            if( u->has_trait( trait_BEE ) ) {
-                return MATT_FRIEND;
-            } else if( u->has_trait( trait_FLOWERS ) ) {
-                effective_anger -= 10;
-            }
-        }
         auto *u_fac = u->get_faction();
         if( u_fac && u_fac->mon_faction && faction == u_fac->mon_faction ) {
             return MATT_FRIEND;
         }
 
-        if( type->in_species( species_FUNGUS ) && ( u->has_trait( trait_THRESH_MYCUS ) ||
-                u->has_trait( trait_MYCUS_FRIEND ) ) ) {
-            return MATT_FRIEND;
-        }
-
-        if( effective_anger >= 10 &&
-            type->in_species( species_MAMMAL ) && u->has_trait( trait_PHEROMONE_MAMMAL ) ) {
-            effective_anger -= 20;
-        }
-
-        if( effective_anger >= 10 &&
-            type->in_species( species_AMPHIBIAN ) && u->has_trait( trait_PHEROMONE_AMPHIBIAN ) ) {
-            effective_anger -= 20;
-        }
-
-        if( ( faction == monfaction_acid_ant || faction == monfaction_ant || faction == monfaction_bee ||
-              faction == monfaction_wasp ) && effective_anger >= 10 && u->has_trait( trait_PHEROMONE_INSECT ) ) {
-            effective_anger -= 20;
-        }
-
-        if( u->has_trait( trait_TERRIFYING ) ) {
-            effective_morale -= 10;
+        // MONAI-J06: the mutations' "monster_relations" (the bee, mycus, pheromone, flower and
+        // terrifying rules are there now)
+        if( const std::optional<monster_attitude> set = apply_monster_relations( u_mutations, *this,
+                effective_anger, effective_morale ) ) {
+            return *set;
         }
 
         // Animal Discord/Empathy
@@ -1988,7 +2049,7 @@ monster_attitude monster::attitude( const Character *u ) const
             }
         }
 
-        for( const trait_id &mut : u->get_functioning_mutations() ) {
+        for( const trait_id &mut : u_mutations ) {
             const mutation_branch &branch = *mut;
             if( branch.ignored_by.empty() && branch.anger_relations.empty() ) {
                 continue;
@@ -2045,29 +2106,32 @@ int monster::get_eff_per() const
 
 void monster::process_triggers()
 {
-    process_trigger( mon_trigger::STALK, [this]() {
-        return anger > 0 && one_in( 5 ) ? 1 : 0;
+    // MONAI-J08: the amounts (and the fire's range) can be set in the monster's JSON
+    process_trigger( mon_trigger::STALK, [this]( mon_trigger_kind kind ) {
+        return anger > 0 && one_in( 5 ) ? type->trigger_amount( kind, mon_trigger::STALK, 1 ) : 0;
     } );
 
-    process_trigger( mon_trigger::BRIGHT_LIGHT, [this]() {
+    process_trigger( mon_trigger::BRIGHT_LIGHT, [this]( mon_trigger_kind kind ) {
         int ret = 0;
         static const int dim_light = round( .75 * default_daylight_level() );
         int light = round( get_map().ambient_light_at( pos_bub() ) );
         if( light >= dim_light ) {
-            ret += 10;
+            ret += type->trigger_amount( kind, mon_trigger::BRIGHT_LIGHT, 10 );
         }
         return ret;
     } );
 
-    process_trigger( mon_trigger::FIRE, [this]() {
+    process_trigger( mon_trigger::FIRE, [this]( mon_trigger_kind kind ) {
         int ret = 0;
         map &here = get_map();
         const field_type_id fd_fire = ::fd_fire; // convert to int_id once
-        for( const tripoint_bub_ms &p : here.points_in_radius( pos_bub(), 3 ) ) {
+        const int per_intensity = type->trigger_amount( kind, mon_trigger::FIRE, 5 );
+        const int radius = type->trigger_range( kind, mon_trigger::FIRE, 3 );
+        for( const tripoint_bub_ms &p : here.points_in_radius( pos_bub(), radius ) ) {
             // note using `has_field_at` without bound checks,
             // as points that come from `points_in_radius` are guaranteed to be in bounds
-            const int fire_intensity =
-                here.has_field_at( p, false ) ? 5 * here.get_field_intensity( p, fd_fire ) : 0;
+            const int fire_intensity = here.has_field_at( p, false ) ?
+                                       per_intensity * here.get_field_intensity( p, fd_fire ) : 0;
             ret += fire_intensity;
         }
         return ret;
@@ -2116,16 +2180,46 @@ void monster::process_trigger( mon_trigger trig, int amount )
     }
 }
 
-void monster::process_trigger( mon_trigger trig, const std::function<int()> &amount_func )
+void monster::process_trigger( mon_trigger trig,
+                               const std::function<int( mon_trigger_kind )> &amount_func )
 {
     if( type->has_anger_trigger( trig ) ) {
-        anger += amount_func();
+        anger += amount_func( mon_trigger_kind::anger );
     }
     if( type->has_fear_trigger( trig ) ) {
-        morale -= amount_func();
+        morale -= amount_func( mon_trigger_kind::fear );
     }
     if( type->has_placate_trigger( trig ) ) {
-        anger -= amount_func();
+        anger -= amount_func( mon_trigger_kind::placate );
+    }
+}
+
+void monster::process_condition_triggers( Creature *target )
+{
+    for( const mon_trigger_kind kind : {
+             mon_trigger_kind::anger, mon_trigger_kind::fear, mon_trigger_kind::placate
+         } ) {
+        const std::vector<mon_condition_trigger> &triggers = type->get_condition_triggers( kind );
+        if( triggers.empty() ) {
+            continue;
+        }
+        dialogue d( get_talker_for( this ), target == nullptr ? nullptr : get_talker_for( target ) );
+        for( const mon_condition_trigger &trig : triggers ) {
+            if( !trig.condition( d ) ) {
+                continue;
+            }
+            const int amount = static_cast<int>( trig.amount.evaluate( d ) );
+            if( kind == mon_trigger_kind::anger ) {
+                anger += amount;
+                if( trig.aggro_character ) {
+                    aggro_character = true;
+                }
+            } else if( kind == mon_trigger_kind::fear ) {
+                morale -= amount;
+            } else {
+                anger -= amount;
+            }
+        }
     }
 }
 
@@ -2163,8 +2257,20 @@ bool monster::is_elec_immune() const
 
 bool monster::is_immune_effect( const efftype_id &effect ) const
 {
+    // MONAI-J07: the effect's own "immune_flags" come first, so that they also work for the
+    // effects below (venom_player1 and venom_player2 name VENOM_IMMUNE)
+    for( const flag_id &flag : effect->immune_flags ) {
+        if( has_flag( flag ) ) {
+            return true;
+        }
+    }
     if( effect.str() == "knocked_out" ) {
         return !incapacitation::supported_physiology( *this ) || incapacitation::immune( *this );
+    }
+    // MONAI-J07: "effect_immunities" of the monster or its species replace the rules below
+    const auto immunity = type->effect_immunity_chances.find( effect );
+    if( immunity != type->effect_immunity_chances.end() ) {
+        return immunity->second >= 100 || ( immunity->second > 0 && x_in_y( immunity->second, 100 ) );
     }
     if( effect == effect_onfire ) {
         return is_immune_damage( damage_heat ) ||
@@ -2176,25 +2282,19 @@ bool monster::is_immune_effect( const efftype_id &effect ) const
         return ( type->bloodType() == fd_null || type->bleed_rate == 0 );
     }
 
+    // The species that resist these (zombies, nether creatures, mi-go, leech plants, and plants
+    // for tpollen) say so in data/json/species.json
     if( effect == effect_venom_dmg ||
         effect == effect_venom_player1 ||
         effect == effect_venom_player2 ) {
-        return ( !made_of( material_flesh ) && !made_of( material_iflesh ) ) ||
-               type->in_species( species_NETHER ) || type->in_species( species_MIGO ) ||
-               type->in_species( species_LEECH_PLANT );
+        return !made_of( material_flesh ) && !made_of( material_iflesh );
     }
 
     if( effect == effect_paralyzepoison ||
         effect == effect_badpoison ||
         effect == effect_venom_weaken ||
         effect == effect_poison ) {
-        return type->in_species( species_ZOMBIE ) || type->in_species( species_NETHER ) ||
-               type->in_species( species_MIGO ) ||
-               !made_of_any( Creature::cmat_flesh ) || type->in_species( species_LEECH_PLANT );
-    }
-
-    if( effect == effect_tpollen ) {
-        return type->in_species( species_PLANT );
+        return !made_of_any( Creature::cmat_flesh );
     }
 
     if( effect == effect_stunned ) {
@@ -2208,11 +2308,6 @@ bool monster::is_immune_effect( const efftype_id &effect ) const
         } else {
             return type->bodytype == "snake" || type->bodytype == "blob" || type->bodytype == "fish" ||
                    has_flag( mon_flag_FLIES ) || has_flag( mon_flag_IMMOBILE ) || has_flag( json_flag_CANNOT_MOVE );
-        }
-    }
-    for( const flag_id &flag : effect->immune_flags ) {
-        if( has_flag( flag ) ) {
-            return true;
         }
     }
     return false;
@@ -2256,8 +2351,9 @@ void monster::make_bleed( const effect_source &source, time_duration duration, i
     }
 
     duration = ( duration * type->bleed_rate ) / 100;
-    if( type->in_species( species_ROBOT ) ) {
-        add_effect( source, effect_dripping_mechanical_fluid, duration, bodypart_str_id::NULL_ID() );
+    // MONAI-J07: "bleed_effect" of the monster or its species (robots: dripping_mechanical_fluid)
+    if( !type->bleed_effect.is_null() ) {
+        add_effect( source, type->bleed_effect, duration, bodypart_str_id::NULL_ID() );
     } else {
         add_effect( source, effect_bleed, duration, bodypart_str_id::NULL_ID(), permanent, intensity, force,
                     defferred );
@@ -3203,6 +3299,14 @@ bool monster::has_special( const std::string &special_name ) const
     return iter != special_attacks.end() && iter->second.enabled;
 }
 
+void monster::notify_special_used( const std::string &special_name )
+{
+    Creature *target = attack_target();
+    const cata::event e = cata::event::make<event_type::monster_uses_special>( type->id,
+                          special_name );
+    get_event_bus().send_with_talker( this, target, e );
+}
+
 void monster::explode()
 {
     // Handled in mondeath::normal
@@ -3619,7 +3723,8 @@ void monster::die( map *here, Creature *nkiller )
             if( here.sees( critter.pos_bub(), pos_bub(), light ) ) {
                 // Anger trumps fear trumps ennui
                 if( critter.type->has_anger_trigger( mon_trigger::FRIEND_DIED ) ) {
-                    critter.anger += 15;
+                    critter.anger += critter.type->trigger_amount( mon_trigger_kind::anger,
+                                     mon_trigger::FRIEND_DIED, 15 );
                     if( nkiller != nullptr && !nkiller->is_monster() && !nkiller->is_fake() ) {
                         // A character killed our friend
                         add_msg_debug( debugmode::DF_MONSTER, "%s's character aggro triggered by killing a friendly %s",
@@ -3627,9 +3732,11 @@ void monster::die( map *here, Creature *nkiller )
                         critter.aggro_character = true;
                     }
                 } else if( critter.type->has_fear_trigger( mon_trigger::FRIEND_DIED ) ) {
-                    critter.morale -= 15;
+                    critter.morale -= critter.type->trigger_amount( mon_trigger_kind::fear,
+                                      mon_trigger::FRIEND_DIED, 15 );
                 } else if( critter.type->has_placate_trigger( mon_trigger::FRIEND_DIED ) ) {
-                    critter.anger -= 15;
+                    critter.anger -= critter.type->trigger_amount( mon_trigger_kind::placate,
+                                     mon_trigger::FRIEND_DIED, 15 );
                 }
             }
         }
@@ -3870,7 +3977,8 @@ void monster::process_one_effect( effect &it, bool is_new )
     } else if( id == effect_no_sight || id == effect_blind ||
                has_effect_with_flag( json_flag_BLIND ) ) {
         effect_cache[VISION_IMPAIRED] = true;
-    } else if( ( id == effect_bleed || id == effect_dripping_mechanical_fluid ) &&
+    } else if( ( id == effect_bleed || id == effect_dripping_mechanical_fluid ||
+                 ( !type->bleed_effect.is_null() && id == type->bleed_effect ) ) &&
                x_in_y( it.get_intensity(), it.get_max_intensity() ) ) {
         bleed( here );
         if( id == effect_bleed ) {
@@ -4358,7 +4466,8 @@ void monster::on_hit( map *here, Creature *source, bodypart_id,
             if( here->sees( critter.pos_bub( *here ), pos_bub( *here ), light ) ) {
                 // Anger trumps fear trumps ennui
                 if( critter.type->has_anger_trigger( mon_trigger::FRIEND_ATTACKED ) ) {
-                    critter.anger += 15;
+                    critter.anger += critter.type->trigger_amount( mon_trigger_kind::anger,
+                                     mon_trigger::FRIEND_ATTACKED, 15 );
                     if( source != nullptr && !source->is_monster() && !source->is_fake() ) {
                         // A character attacked our friend
                         add_msg_debug( debugmode::DF_MONSTER, "%s's character aggro triggered by attacking a friendly %s",
@@ -4366,9 +4475,11 @@ void monster::on_hit( map *here, Creature *source, bodypart_id,
                         critter.aggro_character = true;
                     }
                 } else if( critter.type->has_fear_trigger( mon_trigger::FRIEND_ATTACKED ) ) {
-                    critter.morale -= 15;
+                    critter.morale -= critter.type->trigger_amount( mon_trigger_kind::fear,
+                                      mon_trigger::FRIEND_ATTACKED, 15 );
                 } else if( critter.type->has_placate_trigger( mon_trigger::FRIEND_ATTACKED ) ) {
-                    critter.anger -= 15;
+                    critter.anger -= critter.type->trigger_amount( mon_trigger_kind::placate,
+                                     mon_trigger::FRIEND_ATTACKED, 15 );
                 }
             }
         }

@@ -22,6 +22,7 @@ class monster_oracle_t : public oracle_t
             return oracle_kind::monster;
         }
         const Creature *creature() const override;
+        const Creature *target() const override;
         /**
          * Predicates used by AI to determine goals.
          */

@@ -156,6 +156,29 @@ struct trait_replacement {
     bool error = false;
 };
 
+/**
+ * MONAI-J06: a "monster_relations" entry, how monsters see a character with the mutation. It
+ * applies to the monsters of any of `species`, any of `factions` and any of `monster_flags`
+ * (a list left empty doesn't narrow it: an entry with none applies to every monster).
+ */
+struct monster_relation {
+    enum class attitude_t : int { none, friendly, ignore };
+
+    std::vector<species_id> species;
+    std::vector<mfaction_str_id> factions;
+    std::vector<mon_flag_str_id> monster_flags;
+    // Only while the monster's anger (with the relations applied before this one) is in range
+    std::optional<int> min_anger;
+    std::optional<int> max_anger;
+    // Added to the monster's anger and morale toward the character
+    int anger = 0;
+    int morale = 0;
+    // "FRIEND" or "IGNORE": the monster then has that attitude, whatever its anger
+    attitude_t attitude = attitude_t::none;
+
+    void deserialize( const JsonObject &jo );
+};
+
 struct mutation_variant {
     std::string id;
 
@@ -293,6 +316,9 @@ struct mutation_branch {
 
         /**Map of angered species and their intensity*/
         std::map<species_id, int> anger_relations;
+
+        /** MONAI-J06: species, faction and flag relations to monsters, with morale and attitude */
+        std::vector<monster_relation> monster_relations;
 
         std::vector<species_id> empathize_with;
         std::vector<species_id> no_empathize_with;

@@ -11,7 +11,8 @@
     "id": "LEECH_PLANT",
     "description": "a leech plant",
     "fear_triggers": [ "HURT", "FIRE" ],
-    "flags": [ "TEEP_IMMUNE" ]
+    "flags": [ "TEEP_IMMUNE" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   },
   {
     "type": "SPECIES",
@@ -28,7 +29,8 @@
     "description": "a zombie",
     "footsteps": "shuffling.",
     "bleeds": "fd_blood",
-    "flags": [ "TEEP_IMMUNE" ]
+    "flags": [ "TEEP_IMMUNE" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ]
   },
   {
     "type": "SPECIES",
@@ -36,7 +38,8 @@
     "description": "a robot",
     "footsteps": "mechanical whirring.",
     "bleeds": "fd_mechanical_fluid",
-    "flags": [ "TEEP_IMMUNE" ]
+    "flags": [ "TEEP_IMMUNE" ],
+    "bleed_effect": "dripping_mechanical_fluid"
   },
   {
     "type": "SPECIES",
@@ -57,7 +60,8 @@
     "id": "MIGO",
     "description": "a creature from the mi-go homeworld",
     "fear_triggers": [ "HURT" ],
-    "flags": [ "HIVE_MIND" ]
+    "flags": [ "HIVE_MIND" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   },
   {
     "type": "SPECIES",

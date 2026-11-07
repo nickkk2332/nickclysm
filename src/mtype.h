@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_MTYPE_H
 #define CATA_SRC_MTYPE_H
 
+#include <array>
 #include <functional>
 #include <map>
 #include <optional>
@@ -15,6 +16,7 @@
 #include "calendar.h"
 #include "color.h"
 #include "damage.h"
+#include "dialogue_helpers.h"
 #include "enum_bitset.h"
 #include "lightmap.h"
 #include "magic.h"
@@ -57,6 +59,7 @@ enum class mon_trigger : int {
     PLAYER_NEAR_BABY,   // Player/npc is near a baby monster of this type
     MATING_SEASON,      // It's the monster's mating season (defined by baby_flags)
     BRIGHT_LIGHT,       // Illumination in the monster's tile is 75% of full daylight or higher
+    CONDITION,          // MONAI-J08: a dialogue condition from JSON, checked as the monster plans
 
     LAST               // This item must always remain last.
 };
@@ -64,6 +67,25 @@ enum class mon_trigger : int {
 template<>
 struct enum_traits<mon_trigger> {
     static constexpr mon_trigger last = mon_trigger::LAST;
+};
+
+// MONAI-J08: which list a trigger is in: anger_triggers, fear_triggers or placate_triggers
+enum class mon_trigger_kind : int { anger = 0, fear, placate };
+
+// MONAI-J08: the object form of a trigger, { "id": "PLAYER_CLOSE", "amount": 8, "range": 7,
+// "cap": 50 }: unset members keep the built-in numbers (doc/JSON/MONSTERS.md)
+struct mon_trigger_tuning {
+    std::optional<int> amount;
+    std::optional<int> range;
+    std::optional<int> cap;
+};
+
+// MONAI-J08: a { "id": "CONDITION", "condition": ..., "amount": ... } trigger
+struct mon_condition_trigger {
+    std::function<bool( const_dialogue const & )> condition;
+    dbl_or_var amount;
+    // anger triggers: the monster also gets angry at characters
+    bool aggro_character = false;
 };
 
 struct mon_flag {
@@ -349,6 +371,11 @@ struct mtype {
         enum_bitset<mon_trigger> anger;
         enum_bitset<mon_trigger> fear;
         enum_bitset<mon_trigger> placate;
+        // MONAI-J08: from the object form of triggers, by mon_trigger_kind
+        std::array<std::map<mon_trigger, mon_trigger_tuning>, 3> trigger_tunings;
+        std::array<std::vector<mon_condition_trigger>, 3> condition_triggers;
+        void load_trigger_tunings( const JsonObject &jo, const std::string &member,
+                                   mon_trigger_kind kind );
     public:
         units::mass weight;
         // This monster's special "defensive" move that may trigger when the monster is attacked.
@@ -446,6 +473,9 @@ struct mtype {
     public:
         // special attack frequencies and function pointers
         std::map<std::string, mtype_special_attack> special_attacks;
+        // MONAI-J09: "behavior", behavior nodes the monster's goals start with (before those
+        // named like its special attacks)
+        std::vector<string_id<behavior::node_t>> behaviors;
         /** Emission sources that cycle each turn the monster remains alive */
         std::map<emit_id, time_duration> emit_fields;
         std::optional<resistances> armor_proportional; /**load-time only*/
@@ -518,6 +548,17 @@ struct mtype {
 
         // Bleed rate in percent, 0 makes the monster immune to bleeding
         int bleed_rate = 100;
+
+        // MONAI-J07: "effect_immunities" in the monster's JSON: effect -> chance in percent of
+        // resisting it (0: never immune, also where its species or a built-in rule would be)
+        std::map<efftype_id, int> effect_immunities;
+        // ... merged with those of its species (finalize): the monster's own entries win, and
+        // of its species the highest chance. monster::is_immune_effect reads this.
+        std::map<efftype_id, int> effect_immunity_chances;
+        // MONAI-J07: "bleed_effect" in the monster's JSON (null: from its species)
+        efftype_id bleed_effect_json = efftype_id::NULL_ID();
+        // ... or else that of its species (finalize); null: it bleeds ("bleed")
+        efftype_id bleed_effect = efftype_id::NULL_ID();
 
         // The amount of volume in milliliters that this monster needs to absorb to gain 1 HP (default 250)
         int absorb_ml_per_hp = 250;
@@ -611,6 +652,12 @@ struct mtype {
         bool has_anger_trigger( mon_trigger trigger ) const;
         bool has_fear_trigger( mon_trigger trigger ) const;
         bool has_placate_trigger( mon_trigger trigger ) const;
+        // MONAI-J08: a trigger's "amount", "range" or "cap" in this list, or else `def`, the
+        // built-in number
+        int trigger_amount( mon_trigger_kind kind, mon_trigger trigger, int def ) const;
+        int trigger_range( mon_trigger_kind kind, mon_trigger trigger, int def ) const;
+        int trigger_cap( mon_trigger_kind kind, mon_trigger trigger, int def ) const;
+        const std::vector<mon_condition_trigger> &get_condition_triggers( mon_trigger_kind kind ) const;
         bool in_category( const std::string &category ) const;
         bool in_species( const species_id &spec ) const;
         std::vector<std::string> species_descriptions() const;

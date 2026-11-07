@@ -157,6 +157,9 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    monster_upgrades,
+    monster_reproduces,
+    monster_uses_special,
     num_event_types // last
 };
 
@@ -224,7 +227,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 136,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1171,6 +1174,39 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// MONAI-J05: a monster grew or evolved (its "upgrades"), once per step, with the monster (now
+// of new_type) as alpha. Sent also when a monster catches up on upgrades as its map loads.
+template<>
+struct event_spec<event_type::monster_upgrades> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "old_type", cata_variant_type::mtype_id },
+            { "new_type", cata_variant_type::mtype_id },
+        }
+    };
+};
+
+// MONAI-J05: a monster gave birth or laid eggs (its "reproduction"), with the parent as alpha.
+// count: the babies or eggs (for a baby group, the group's roll)
+template<>
+struct event_spec<event_type::monster_reproduces> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "monster_type", cata_variant_type::mtype_id },
+            { "count", cata_variant_type::int_ },
+        }
+    };
+};
+
+// MONAI-J05: a monster used one of its special attacks with success, with the monster as alpha
+// and its attack target, if any, as beta
+template<>
+struct event_spec<event_type::monster_uses_special> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "monster_type", cata_variant_type::mtype_id },
+            { "attack", cata_variant_type::string },
         }
     };
 };

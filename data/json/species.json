@@ -59,7 +59,8 @@
     "type": "SPECIES",
     "id": "NETHER",
     "description": "a nether creature",
-    "flags": [ "DRACULIN_IMMUNE" ]
+    "flags": [ "DRACULIN_IMMUNE" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   },
   {
     "type": "SPECIES",
@@ -80,7 +81,8 @@
     "id": "MIGO",
     "description": "a creature from the mi-go homeworld",
     "fear_triggers": [ "HURT" ],
-    "flags": [ "DRACULIN_IMMUNE", "VENOM_IMMUNE" ]
+    "flags": [ "DRACULIN_IMMUNE", "VENOM_IMMUNE" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   },
   {
     "type": "SPECIES",
@@ -109,7 +111,8 @@
     "id": "LEECH_PLANT",
     "description": "a leech plant",
     "fear_triggers": [ "HURT", "FIRE" ],
-    "flags": [ "DRACULIN_IMMUNE", "VENOM_IMMUNE" ]
+    "flags": [ "DRACULIN_IMMUNE", "VENOM_IMMUNE" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken", "venom_dmg", "venom_player1", "venom_player2" ]
   },
   {
     "type": "SPECIES",
@@ -153,7 +156,8 @@
     "description": "a plant",
     "fear_triggers": [ "HURT", "FIRE" ],
     "bleeds": "fd_blood_veggy",
-    "flags": [ "DRACULIN_IMMUNE" ]
+    "flags": [ "DRACULIN_IMMUNE" ],
+    "effect_immunities": [ "tpollen" ]
   },
   {
     "type": "SPECIES",
@@ -178,7 +182,8 @@
     "description": "a zombie",
     "footsteps": "shuffling.",
     "bleeds": "fd_blood",
-    "flags": [ "VENOM_IMMUNE" ]
+    "flags": [ "VENOM_IMMUNE" ],
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ]
   },
   {
     "type": "SPECIES",
@@ -203,7 +208,8 @@
     "description": "a robot",
     "footsteps": "mechanical whirring.",
     "bleeds": "fd_mechanical_fluid",
-    "flags": [ "VENOM_IMMUNE" ]
+    "flags": [ "VENOM_IMMUNE" ],
+    "bleed_effect": "dripping_mechanical_fluid"
   },
   {
     "type": "SPECIES",

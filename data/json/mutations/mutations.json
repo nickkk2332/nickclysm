@@ -4073,7 +4073,8 @@
     "prereqs": [ "SMELLY2", "LEGS_BAT" ],
     "threshreq": [ "THRESH_BEAST", "THRESH_CATTLE", "THRESH_CHIROPTERAN" ],
     "points": 2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "monster_relations": [ { "species": "MAMMAL", "min_anger": 10, "anger": -20 } ]
   },
   {
     "type": "mutation",
@@ -5649,7 +5650,8 @@
     "prereqs": [ "SMELLY2" ],
     "threshreq": [ "THRESH_BATRACHIAN" ],
     "points": 2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "monster_relations": [ { "species": "AMPHIBIAN", "min_anger": 10, "anger": -20 } ]
   },
   {
     "type": "mutation",
@@ -6134,7 +6136,8 @@
     "prereqs": [ "SMELLY2" ],
     "threshreq": [ "THRESH_INSECT" ],
     "points": 2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "monster_relations": [ { "faction": [ "acid_ant", "ant", "bee", "wasp" ], "min_anger": 10, "anger": -20 } ]
   },
   {
     "type": "mutation",
@@ -7272,7 +7275,8 @@
     "points": 1,
     "starting_trait": true,
     "vitamin_cost": 60,
-    "social_modifiers": { "intimidate": 15 }
+    "social_modifiers": { "intimidate": 15 },
+    "monster_relations": [ { "morale": -10 } ]
   },
   {
     "type": "mutation",
@@ -7353,7 +7357,8 @@
     "visibility": 10,
     "ugliness": -4,
     "social_modifiers": { "lie": 10 },
-    "enchantments": [ { "values": [ { "value": "SCENT_MASK", "add": -200 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SCENT_MASK", "add": -200 } ] } ],
+    "monster_relations": [ { "faction": "bee", "anger": -10 } ]
   },
   {
     "type": "mutation",

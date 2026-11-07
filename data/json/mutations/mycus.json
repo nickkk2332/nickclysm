@@ -87,7 +87,8 @@
       },
       "fail_message": "we no longer require this scaffolding.  we reserve it for other uses.",
       "checked": "first"
-    }
+    },
+    "monster_relations": [ { "species": "FUNGUS", "attitude": "FRIEND" } ]
   },
   {
     "type": "mutation",
