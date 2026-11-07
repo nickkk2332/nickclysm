@@ -66,9 +66,6 @@ static const itype_id fuel_type_animal( "animal" );
 static const itype_id fuel_type_battery( "battery" );
 static const itype_id fuel_type_muscle( "muscle" );
 
-static const proficiency_id proficiency_prof_boat_pilot( "prof_boat_pilot" );
-static const proficiency_id proficiency_prof_driver( "prof_driver" );
-
 static const skill_id skill_driving( "driving" );
 
 static const ter_str_id ter_t_railroad_track( "t_railroad_track" );
@@ -554,7 +551,8 @@ void vehicle::thrust( map &here, int thd, int z )
     //pos or neg if accelerator or brake
     int vel_inc = ( accel + ( thrusting ? 0 : max_brake ) ) * thd;
     // Reverse is only 60% acceleration, unless an electric motor is in use
-    if( thd == -1 && thrusting && !has_engine_type( fuel_type_battery, true ) ) {
+    // VEH-J11: an engine with "full_reverse" (battery engines by default)
+    if( thd == -1 && thrusting && !has_full_reverse_engine() ) {
         vel_inc = .6 * vel_inc;
     }
 
@@ -1107,7 +1105,10 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
             add_msg_debug( debugmode::DF_VEHICLE_MOVE, "Part collision damage: %.2f", part_dmg );
         }
         // Damage for object
-        const float obj_dmg = dmg * ( 100.0f - k ) / 100.0f;
+        // VEH-J09
+        const float obj_dmg = static_cast<float>( std::max( 0.0,
+                              enchantment_cache.modify_value( enchant_vals::mod::VEH_COLLISION_DAMAGE,
+                                      dmg * ( 100.0f - k ) / 100.0f ) ) );
 
         if( ret.type == veh_coll_bashable ) {
             // Something bashable -- use map::bash to determine outcome
@@ -1602,15 +1603,16 @@ void vehicle::pldrive( map &here, Character &driver, const int trn, const int ac
                        const int z )
 {
     bool is_non_proficient = false;
-    float effective_driver_skill = driver.get_skill_level( skill_driving );
-    float vehicle_proficiency;
-    // Check if you're piloting on land or water, and reduce effective driving skill proportional to relevant proficiencies (10% Boat Proficiency = 10% driving skill on water)
-    if( !driver.has_proficiency( proficiency_prof_driver ) && !in_deep_water ) {
+    // VEH-J08: the skill and proficiency come from the parts' control_requirements for the
+    // current mode, else driving and prof_driver (prof_boat_pilot in deep water)
+    const skill_id handling_sk = handling_skill();
+    const proficiency_id handling_prof = handling_proficiency();
+    float effective_driver_skill = driver.get_skill_level( handling_sk );
+    float vehicle_proficiency = 1.0f;
+    // Reduce effective driving skill proportional to the handling proficiency (10% Boat Proficiency = 10% driving skill on water)
+    if( !driver.has_proficiency( handling_prof ) ) {
         is_non_proficient = true;
-        vehicle_proficiency = driver.get_proficiency_practice( proficiency_prof_driver );
-    } else if( !driver.has_proficiency( proficiency_prof_boat_pilot ) && in_deep_water ) {
-        is_non_proficient = true;
-        vehicle_proficiency = driver.get_proficiency_practice( proficiency_prof_boat_pilot );
+        vehicle_proficiency = driver.get_proficiency_practice( handling_prof );
     }
 
     bool non_prof_fumble = false;
@@ -1726,7 +1728,7 @@ void vehicle::pldrive( map &here, Character &driver, const int trn, const int ac
         if( handling_diff * rng( 1, 10 ) <
             driver.get_dex() + effective_driver_skill * 2 ) {
             driver.add_msg_if_player( _( "You regain control of the %s." ), name );
-            driver.practice( skill_driving, velocity / 5 );
+            driver.practice( handling_sk, velocity / 5 );
             velocity = static_cast<int>( forward_velocity() );
             skidding = false;
             move.init( turn_dir );
@@ -2105,7 +2107,8 @@ vehicle *vehicle::act_on_map( map &here )
                 controlled = true;
                 Character *passenger = get_passenger( boarded );
                 if( passenger != nullptr ) {
-                    passenger->practice( skill_driving, 1 );
+                    // VEH-J08
+                    passenger->practice( handling_skill(), 1 );
                 }
             }
         }

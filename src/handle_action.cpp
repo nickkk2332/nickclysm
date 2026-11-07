@@ -603,7 +603,13 @@ static void pldrive( const tripoint_rel_ms &p )
         }
     }
     if( !veh->is_flying_in_air() ) {
-        if( !veh->can_control_on_land( player_character ) ) {
+        // VEH-J08: in deep water the "water" control requirements apply instead of the "land" ones
+        if( veh->is_in_water( true ) ) {
+            if( !veh->can_control_in_water( player_character ) ) {
+                player_character.add_msg_if_player( m_info, _( "You have no idea how to steer the vessel." ) );
+                return;
+            }
+        } else if( !veh->can_control_on_land( player_character ) ) {
             player_character.add_msg_if_player( m_info, _( "You have no idea how to make the vehicle move." ) );
             return;
         }

@@ -335,7 +335,6 @@ static const scenttype_id scent_sc_human( "sc_human" );
 
 static const skill_id skill_archery( "archery" );
 static const skill_id skill_dodge( "dodge" );
-static const skill_id skill_driving( "driving" );
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_pistol( "pistol" );
 static const skill_id skill_swimming( "swimming" );
@@ -8876,7 +8875,8 @@ void Character::pause()
                 if( exp_temp - experience > 0 && x_in_y( exp_temp - experience, 1.0 ) ) {
                     experience++;
                 }
-                practice( skill_driving, experience );
+                // VEH-J08: the skill the vehicle's control_requirements name, else driving
+                practice( veh->handling_skill(), experience );
                 break;
             }
         }

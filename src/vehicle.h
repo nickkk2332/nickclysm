@@ -74,7 +74,8 @@ template <typename E> struct enum_traits;
 void handbrake( map &here );
 
 void practice_athletic_proficiency( Character &p );
-void practice_pilot_proficiencies( Character &p, bool &boating );
+// VEH-J08: trains what the vehicle's control_requirements say for the current mode
+void practice_pilot_proficiencies( Character &p, const vehicle &veh );
 
 namespace catacurses
 {
@@ -1892,6 +1893,19 @@ class vehicle
         // Can control this vehicle?
         bool can_control_in_air( const Character &pc ) const;
         bool can_control_on_land( const Character &pc ) const;
+        // VEH-J08: the "water" control requirements, which apply in deep water
+        bool can_control_in_water( const Character &pc ) const;
+        // VEH-J08: what steering uses and driving trains in the current mode (air while flying,
+        // water in deep water, else land), from the first part whose control_requirements set
+        // it, else driving and prof_driver (prof_boat_pilot in deep water)
+        skill_id handling_skill() const;
+        proficiency_id handling_proficiency() const;
+        std::vector<proficiency_id> trained_pilot_proficiencies() const;
+        // VEH-J08: the proficiencies that keep a flyable aircraft airworthy while its parts are
+        // installed, repaired or removed: the parts' "maintenance_proficiency", else
+        // prof_aircraft_mechanic
+        std::vector<proficiency_id> aircraft_maintenance_proficiencies() const;
+        bool has_aircraft_maintenance_proficiency( const Character &pc ) const;
         /**
          * Traction coefficient of the vehicle.
          * 1.0 on road. Outside roads, depends on mass divided by wheel area
@@ -2309,6 +2323,8 @@ class vehicle
         //true if an engine exists without the specified type
         //If enabled true, this engine must be enabled to return true
         bool has_engine_type_not( const itype_id &ft, bool enabled ) const;
+        // VEH-J11: an enabled engine has "full_reverse" (battery engines by default)
+        bool has_full_reverse_engine() const;
         // @returns engine conflict string if another engine has same exclusion list or std::nullopt
         std::optional<std::string> has_engine_conflict( const vpart_info &possible_conflict ) const;
         //returns true if the engine doesn't consume fuel

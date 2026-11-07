@@ -14,6 +14,7 @@
     - [Items list](#items-list)
     - [Zones list](#zones-list)
     - [Chat topics](#chat-topics)
+    - [Variables and spawn EOCs](#variables-and-spawn-eocs)
   - [Export vehicle prototypes using debug menu](#export-vehicle-prototypes-using-debug-menu)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -57,7 +58,9 @@ Vehicle prototypes are used to spawn stock vehicles. After a vehicle has been sp
 "zones": [
     { "x": -3, "y": 0, "type": "LOOT_AMMO" }
 ],
-"chat_topics": [ "TALK_SAMPLE_VEHICLE" ]  // Optional, see Chat topics below
+"chat_topics": [ "TALK_SAMPLE_VEHICLE" ], // Optional, see Chat topics below
+"variables": { "haunted": "yes", "age": 12 }, // Optional, see Variables and spawn EOCs below
+"spawn_eocs": [ "EOC_SAMPLE_VEHICLE_SPAWNED" ] // Optional, see Variables and spawn EOCs below
 ```
 
 ### Part order
@@ -135,6 +138,11 @@ These zones are only placed if the vehicle has a faction owner.
 
 ### Chat topics
 `chat_topics` (optional, array of talk topic ids) makes the vehicle one the player can talk to: its menu (examine the vehicle) gets a "Talk to" entry, and the conversation starts with the last topic, as for a monster's `chat_topics`. During the conversation the vehicle is the beta talker, so `npc_vehicle_fuel('gasoline')` and the other vehicle [math functions](NPCs.md#math-functions) and conditions read it. Each vehicle spawned from the prototype gets its own copy of the list, which EOCs can change with `u_add_vehicle_chat_topic` and `u_remove_vehicle_chat_topic` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)); a vehicle spawned before a mod added the field keeps the list it had. An unknown topic is an error when the game data loads.
+
+### Variables and spawn EOCs
+`variables` (optional, object of names to strings or numbers) are variables each vehicle spawned from the prototype starts with, as an item type's `variables` are for items.  EOCs read them with the vehicle as a talker (`u_haunted` when the vehicle is alpha, `n_haunted` in a conversation with it) and can change them.
+
+`spawn_eocs` (optional, array of EOC ids or inline EOCs) run when a vehicle of this prototype is placed on the map: by mapgen, a scenario start, the debug menu or anything else that spawns one.  The vehicle is alpha (there is no beta), and the context variable `loc` is the vehicle's position.  They run after the vehicle's parts, items and zones are set, but during mapgen the vehicle may be outside the reality bubble, so effects that need it there (such as `u_repair_vehicle_parts`) may do nothing; setting variables, effects and chat topics works.  A vehicle that merged into a wreck when it was placed doesn't run them.  An unknown EOC id is an error when the game data loads.
 
 ## Export vehicle prototypes using debug menu
 There's an function in debug menu to generate a prototype from a vehicle. To use this, step on any vehicle in the game, then go to debug menu "Vehicle -> Export vehicle as prototype".

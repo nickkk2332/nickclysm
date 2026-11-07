@@ -84,8 +84,10 @@ Use the `Home` key to return to the top.
     - [Vehicle Groups](#vehicle-groups)
     - [Vehicle Parts](#vehicle-parts)
       - [Symbols and Variants](#symbols-and-variants)
+      - [Control requirements](#control-requirements)
       - [The following optional fields are specific to CARGO parts.](#the-following-optional-fields-are-specific-to-cargo-parts)
       - [The following optional fields are specific to ENGINEs.](#the-following-optional-fields-are-specific-to-engines)
+        - [Engine power from math](#engine-power-from-math)
       - [The following optional fields are specific to WHEELs.](#the-following-optional-fields-are-specific-to-wheels)
       - [The following optional fields are specific to ROTORs.](#the-following-optional-fields-are-specific-to-rotors)
       - [The following optional fields are specific to WORKBENCHes.](#the-following-optional-fields-are-specific-to-workbenches)
@@ -3087,10 +3089,17 @@ Vehicle components when installed on a vehicle.
 "control_requirements": {     // (Optional) Control requirements of the vehicle this part is installed.
   "air": {                    // Requirements of flying in air.
     "proficiencies": [ "prof_helicopter_pilot" ], // "proficiencies" is a list of proficiency names.
+    "maintenance_proficiency": "prof_aircraft_mechanic" // (Optional, "air" only) see below
   },
   "land": {                    // Requirements of running on ground.
     "skills": [ [ "driving", 1 ] ], // "skills" is a list of lists, with each list being a skill
                               // name and skill level.
+  },
+  "water": {                  // Requirements of steering in deep water.
+    "proficiencies": [ "prof_boat_pilot" ],
+    "handling_skill": "driving",                 // (Optional) see below
+    "handling_proficiency": "prof_boat_pilot",   // (Optional) see below
+    "trains": [ "prof_boat_pilot" ]              // (Optional) see below
   }
 },
 "pseudo_tools" : [            // Crafting tools provided by this part
@@ -3149,6 +3158,17 @@ Variant bases are for generating extra variants from the specified ones, in the 
 
 For more details on how tilesets interact with variants and ids look into [VEHICLES_JSON.md](VEHICLES_JSON.md#part-variants) "Part Variants" section.
 
+#### Control requirements
+
+Each mode of `control_requirements` (`air` while flying, `water` in deep water, `land` otherwise) lists the `skills` and `proficiencies` needed to take the controls in that mode; every part's requirements must be met.  The `land` requirements don't apply in deep water, where the `water` ones do.  A mode can also say how the vehicle handles:
+
+- `handling_skill` (skill id, default `driving`): the skill that steering, the fumble chance and skid recovery use, and that driving trains.
+- `handling_proficiency` (proficiency id, default `prof_driver`, or `prof_boat_pilot` in deep water): without it, steering is harder and fumbles are likely, scaled by how much of it the driver has learned.
+- `trains` (list of proficiency ids, default the handling proficiency): what driving under load in this mode trains.  An empty list trains none.
+- `maintenance_proficiency` (proficiency id, `air` only, default `prof_aircraft_mechanic`): installing, repairing or removing a non-`SIMPLE_PART` part of a flyable aircraft without it makes the aircraft unflyable.  If parts name several, all are needed.
+
+If several parts set the same field for a mode, the first part of the vehicle that sets it wins.  Example: `"control_requirements": { "air": { "proficiencies": [ "prof_helicopter_pilot" ], "handling_proficiency": "prof_helicopter_pilot", "trains": [ "prof_helicopter_pilot" ] } }`.
+
 Unless specified as optional, the following fields are mandatory for parts with appropriate flag and are ignored otherwise.
 #### The following optional fields are specific to CARGO parts.
 ```jsonc
@@ -3184,7 +3204,20 @@ Unless specified as optional, the following fields are mandatory for parts with 
                               // To be a fuel an item needs to be made of only one material,
                               // this material has to produce energy, *ie* have a `data_fuel` entry,
                               // and it needs to have consumable charges.
+"power_math": { "math": [ "u_spirit_power * 100" ] }, // (Optional) see "Engine power from math"
+"full_reverse": false,        // (Optional, default true for engines whose fuel_type is battery,
+                              // false otherwise) The engine drives as well in reverse as forward:
+                              // while one such engine is on, reversing has full acceleration and
+                              // full top speed, instead of 60% acceleration and 1/4 top speed.
+"stall_message": true,        // (Optional, default false for engines whose fuel_type is animal,
+                              // muscle, wind or mana, true otherwise) Whether "The <vehicle>'s
+                              // engine dies!" is shown when the running engines stop giving power.
+                              // The message shows if any engine that is on has it.
 ```
+
+##### Engine power from math
+
+`power_math` (a number or a [math object](NPCs.md#math), in watts) replaces the engine's `power`, and the built-in formulas for engines whose `fuel_type` is `animal` (the harnessed animal's size, speed and carrying ratio), `muscle` (the rider's strength) or `wind` (the wind against the vehicle's heading). It is evaluated every time the engine's power is needed, with the vehicle as alpha (`u_`, so `u_vehicle_fuel('gasoline')` and the vehicle's own variables work), and as beta (`n_`) the character on the engine's tile, else the monster there (such as a harnessed animal). The context variable `_has_rider` is 1 when there is a beta and 0 when not: an expression that reads `n_` must check it first, for example `_has_rider ? n_val('strength') * 50 : 0`, since reading a missing beta is an error. Damage still lowers the result as for any engine (`damaged_power_factor`), and the `VEH_ENGINE_POWER` enchantment value applies on top. An engine with `power_math` may leave `power` at 0. For a new pseudo-fuel (rowing, steam, spirit power), give the fuel item the `PERPETUAL` flag so the engine always has fuel, and compute the power here.
 
 #### The following optional fields are specific to WHEELs.
 ```jsonc

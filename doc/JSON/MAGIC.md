@@ -1220,8 +1220,21 @@ A small subset of enchantments can be applied to vehicles via effects or parts. 
 Character status value  | Description
 ---                     |---
 `TOTAL_WEIGHT`          | Affects the vehicles total weight.
-`FUEL_USAGE`            | Affects the vehicles fuel usage.
+`FUEL_USAGE`            | Affects the vehicles fuel usage (per engine; `add` is in milliwatts).
 `TURNING_DIFFICULTY`    | Affects turning ability
+`VEH_ENGINE_POWER`      | The engines' combined motive power (before alternators take theirs), so acceleration, top speed and rotorcraft lift.  `add` is in milliwatts.
+`VEH_MAX_VELOCITY`      | The top speed and the safe speed (`add` is in hundredths of a mph).  It caps speed and sets the cruise limit; to make a vehicle actually faster against drag, raise `VEH_ENGINE_POWER` or lower the drag values.
+`VEH_ACCELERATION`      | Acceleration on land, in water and in the air (`add` is in hundredths of a mph per second).
+`VEH_AIR_DRAG`          | The air drag coefficient (never below 0).
+`VEH_ROLLING_RESISTANCE`| The wheels' rolling resistance coefficient (never below 0).
+`VEH_WATER_DRAG`        | The water drag coefficient of a boat (never below 0).
+`VEH_TRACTION`          | Wheel traction (1 on a road), which scales acceleration and top speed; not used while floating or flying.  Never below 0; it may go above 1.
+`VEH_PART_DAMAGE_TAKEN` | Damage each of the vehicle's parts takes (collisions, attacks, explosions, EOCs), rounded to whole points, before the part's damage reduction.
+`VEH_COLLISION_DAMAGE`  | Damage the vehicle deals to what it runs into: creatures and bashable terrain or furniture.
+`VEH_RENEWABLE_OUTPUT`  | Power from solar panels, wind turbines and water wheels (never below 0).  `add` is in milliwatts, per part.
+`VEH_EPOWER_DRAIN`      | Power the enabled accessories (lights, fridges, other `ENABLED_DRAINS_EPOWER` parts) draw, as a positive amount: `multiply: -0.5` halves it.  `add` is in milliwatts.
+
+Example, a spell that hastes the vehicle it targets: an effect with `"enchantments": [ { "values": [ { "value": "VEH_ENGINE_POWER", "multiply": 0.3 }, { "value": "VEH_MAX_VELOCITY", "multiply": 0.3 } ] } ]`, given to the vehicle with `u_add_effect` from an EOC whose alpha is the vehicle.
 
 
 ### Enchantment value examples

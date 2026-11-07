@@ -7427,6 +7427,15 @@ vehicle *map::add_vehicle( const vproto_id &type, const tripoint_bub_ms &p,
         rebuild_vehicle_level_caches();
         set_pathfinding_cache_dirty( p.z() );
         placed_vehicle->place_zones( *this );
+        // VEH-J10: the prototype's spawn_eocs, with the vehicle as alpha (not for a wreck it
+        // merged into, which is another vehicle)
+        if( placed_vehicle->type == type ) {
+            for( const effect_on_condition_id &eoc : type->spawn_eocs ) {
+                dialogue d( get_talker_for( *placed_vehicle ), nullptr );
+                d.set_value( "loc", placed_vehicle->pos_abs() );
+                eoc->activate( d );
+            }
+        }
     }
     return placed_vehicle;
 }

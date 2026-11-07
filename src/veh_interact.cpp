@@ -82,8 +82,6 @@ static const itype_id fuel_type_battery( "battery" );
 static const itype_id itype_battery( "battery" );
 static const itype_id itype_plut_cell( "plut_cell" );
 
-static const proficiency_id proficiency_prof_aircraft_mechanic( "prof_aircraft_mechanic" );
-
 static const quality_id qual_HOSE( "HOSE" );
 static const quality_id qual_JACK( "JACK" );
 static const quality_id qual_LIFT( "LIFT" );
@@ -1194,11 +1192,14 @@ void veh_interact::do_repair( map &here )
         }
 
         bool would_prevent_flying = veh->would_repair_prevent_flyable( pt, player_character );
-        if( would_prevent_flying &&
-            !player_character.has_proficiency( proficiency_prof_aircraft_mechanic ) ) {
+        if( would_prevent_flying ) {
+            // VEH-J08: the parts' control_requirements can name other proficiencies
+            const std::vector<proficiency_id> profs = veh->aircraft_maintenance_proficiencies();
             nmsg += string_format(
                         _( "\n<color_yellow>You require the \"%s\" proficiency to repair this part safely!</color>\n\n" ),
-                        proficiency_prof_aircraft_mechanic->name() );
+            enumerate_as_string( profs, []( const proficiency_id & prof ) {
+                return prof->name();
+            } ) );
         }
 
         const nc_color desc_color = pt.is_broken() ? c_dark_gray : c_light_gray;

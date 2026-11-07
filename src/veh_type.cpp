@@ -17,6 +17,7 @@
 #include "character.h"
 #include "clzones.h"
 #include "color.h"
+#include "condition.h"
 #include "damage.h"
 #include "debug.h"
 #include "effect_on_condition.h"
@@ -63,6 +64,10 @@ generic_factory<vpart_info> vpart_info_factory( "vehicle_part", "id" );
 static const ammotype ammo_battery( "battery" );
 
 static const itype_id fuel_type_animal( "animal" );
+static const itype_id fuel_type_battery( "battery" );
+static const itype_id fuel_type_mana( "mana" );
+static const itype_id fuel_type_muscle( "muscle" );
+static const itype_id fuel_type_wind( "wind" );
 
 static const quality_id qual_JACK( "JACK" );
 static const quality_id qual_LIFT( "LIFT" );
@@ -216,6 +221,29 @@ void vp_control_req::deserialize( const JsonObject &jo )
 {
     optional( jo, false, "skills", skills, weighted_string_id_reader<skill_id, int> { std::nullopt} );
     optional( jo, false, "proficiencies", proficiencies, string_id_reader<proficiency> {} );
+    // VEH-J08
+    if( jo.has_member( "handling_skill" ) ) {
+        handling_skill = skill_id( jo.get_string( "handling_skill" ) );
+    }
+    if( jo.has_member( "handling_proficiency" ) ) {
+        handling_proficiency = proficiency_id( jo.get_string( "handling_proficiency" ) );
+    }
+    if( jo.has_member( "trains" ) ) {
+        std::vector<proficiency_id> trained;
+        for( const std::string &prof : jo.get_string_array( "trains" ) ) {
+            trained.emplace_back( prof );
+        }
+        trains = trained;
+    }
+    if( jo.has_member( "maintenance_proficiency" ) ) {
+        maintenance_proficiency = proficiency_id( jo.get_string( "maintenance_proficiency" ) );
+    }
+}
+
+bool vp_control_req::empty() const
+{
+    return skills.empty() && proficiencies.empty() && !handling_skill && !handling_proficiency &&
+           !trains && !maintenance_proficiency;
 }
 
 void vehicles::parts::load( const JsonObject &jo, const std::string &src )
@@ -355,6 +383,7 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
 
         optional( reqs, false, "air", control_air );
         optional( reqs, false, "land", control_land );
+        optional( reqs, false, "water", control_water );
     }
 
     optional( jo, was_loaded, "looks_like", looks_like, looks_like );
@@ -440,6 +469,16 @@ void vpslot_engine::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "muscle_power_factor", muscle_power_factor, 0 );
     optional( jo, was_loaded, "exclusions", exclusions, string_reader{} );
     optional( jo, was_loaded, "fuel_options", fuel_opts, string_id_reader<itype> {} );
+    // VEH-J11
+    if( jo.has_member( "power_math" ) ) {
+        power_math = get_dbl_or_var( jo, "power_math" );
+    }
+    if( jo.has_member( "full_reverse" ) ) {
+        full_reverse = jo.get_bool( "full_reverse" );
+    }
+    if( jo.has_member( "stall_message" ) ) {
+        stall_message = jo.get_bool( "stall_message" );
+    }
 
     was_loaded = true;
 }
@@ -708,6 +747,14 @@ void vpart_info::finalize()
     if( engine_info && engine_info->fuel_opts.empty() && !fuel_type.is_null() ) {
         engine_info->fuel_opts.push_back( fuel_type );
     }
+    // VEH-J11: what used to be keyed on these fuel ids is the default
+    if( engine_info && !engine_info->full_reverse ) {
+        engine_info->full_reverse = fuel_type == fuel_type_battery;
+    }
+    if( engine_info && !engine_info->stall_message ) {
+        engine_info->stall_message = fuel_type != fuel_type_animal && fuel_type != fuel_type_muscle &&
+                                     fuel_type != fuel_type_wind && fuel_type != fuel_type_mana;
+    }
 
     for( const std::string &flag : get_flags() ) {
         auto b = vpart_bitflag_map.find( flag );
@@ -951,11 +998,41 @@ void vpart_info::check() const
         if( power != 0_W && fuel_type == fuel_type_animal ) {
             debugmsg( "engine part '%s' powered by '%s' can't define non-zero 'power'",
                       id.str(), fuel_type.str() );
-        } else if( power == 0_W && fuel_type != fuel_type_animal ) {
+        } else if( power == 0_W && fuel_type != fuel_type_animal && !engine_info->power_math ) {
             debugmsg( "engine part '%s' powered by '%s' must define non zero 'power'",
                       id.str(), fuel_type.str() );
         }
     }
+    // VEH-J08
+    const auto check_control_req = [this]( const vp_control_req & req, const std::string_view mode ) {
+        if( req.handling_skill && !req.handling_skill->is_valid() ) {
+            debugmsg( "vehicle part %s has unknown %s handling_skill %s", id.str(), mode,
+                      req.handling_skill->str() );
+        }
+        std::vector<proficiency_id> profs;
+        if( req.handling_proficiency ) {
+            profs.push_back( *req.handling_proficiency );
+        }
+        if( req.trains ) {
+            profs.insert( profs.end(), req.trains->begin(), req.trains->end() );
+        }
+        if( req.maintenance_proficiency ) {
+            profs.push_back( *req.maintenance_proficiency );
+            if( mode != "air" ) {
+                debugmsg( "vehicle part %s sets maintenance_proficiency for %s; only \"air\" has one",
+                          id.str(), mode );
+            }
+        }
+        for( const proficiency_id &prof : profs ) {
+            if( !prof.is_valid() ) {
+                debugmsg( "vehicle part %s has unknown %s control proficiency %s", id.str(), mode,
+                          prof.str() );
+            }
+        }
+    };
+    check_control_req( control_air, "air" );
+    check_control_req( control_land, "land" );
+    check_control_req( control_water, "water" );
     // Parts with non-zero epower must have a flag that affects epower usage
     static const std::vector<std::string> handled = {{
             "ENABLED_DRAINS_EPOWER", "SECURITY", "ENGINE",
@@ -1232,8 +1309,8 @@ time_duration vpart_info::get_unfolding_time() const
 
 bool vpart_info::has_control_req() const
 {
-    return !control_air.proficiencies.empty() || !control_air.skills.empty() ||
-           !control_land.proficiencies.empty() || !control_land.skills.empty();
+    // VEH-J08: a part that only names what handling uses still counts
+    return !control_air.empty() || !control_land.empty() || !control_water.empty();
 }
 
 std::string vpart_variant::get_label() const
@@ -1410,7 +1487,7 @@ void vehicle_prototype::zone_def::deserialize( const JsonObject &jo )
     optional( jo, false, "filter", filter );
 }
 
-void vehicle_prototype::load( const JsonObject &jo, std::string_view )
+void vehicle_prototype::load( const JsonObject &jo, std::string_view src )
 {
     VehicleGroup::add_to_group( vgroup_id( id.str() ), id, 100 );
     optional( jo, was_loaded, "name", name );
@@ -1433,6 +1510,14 @@ void vehicle_prototype::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "items", item_spawns );
     optional( jo, was_loaded, "zones", zone_defs, json_read_reader<zone_def> {} );
     optional( jo, was_loaded, "chat_topics", chat_topics );
+    // VEH-J10
+    optional( jo, was_loaded, "variables", variables );
+    if( jo.has_member( "spawn_eocs" ) ) {
+        spawn_eocs.clear();
+        for( const JsonValue jv : jo.get_array( "spawn_eocs" ) ) {
+            spawn_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
 }
 
 void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
@@ -1611,6 +1696,15 @@ void vehicles::finalize_prototypes()
             }
         }
         blueprint.chat_topics = proto.chat_topics;
+        // VEH-J10: and starts with these variables
+        for( const auto &[key, value] : proto.variables ) {
+            blueprint.set_value( key, value );
+        }
+        for( const effect_on_condition_id &eoc : proto.spawn_eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "vehicle prototype %s has unknown spawn_eoc %s", proto.id.str(), eoc.str() );
+            }
+        }
 
         blueprint.suspend_refresh();
         for( vehicle_prototype::part_def &pt : proto.parts ) {
