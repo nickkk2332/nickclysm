@@ -10,14 +10,18 @@
 #include <string_view>
 #include <utility>
 
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_utility.h"
+#include "condition.h"
 #include "coordinates.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "drawing_primitives.h"
 #include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "item.h"
 #include "item_category.h"
 #include "item_stack.h"
@@ -26,6 +30,7 @@
 #include "map.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "overmapbuffer.h"
 #include "point.h"
 #include "rng.h"
@@ -147,6 +152,27 @@ void pp_generator::load( const JsonObject &jo, std::string_view )
             sub_generators_.push_back( sg );
         }
     }
+    // MGEN-J05: a copy can drop the inherited sub-generators of some types ("delete", a list of
+    // types), then add its own after them ("extend")
+    if( jo.has_object( "delete" ) ) {
+        const JsonObject del = jo.get_object( "delete" );
+        for( const JsonValue jv : del.get_array( "sub_generators" ) ) {
+            sub_generator_type type = sub_generator_type::last;
+            jv.read( type, true );
+            sub_generators_.erase( std::remove_if( sub_generators_.begin(), sub_generators_.end(),
+            [type]( const pp_sub_generator & sg ) {
+                return sg.type == type;
+            } ), sub_generators_.end() );
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        const JsonObject ext = jo.get_object( "extend" );
+        for( const JsonValue &sg_jo : ext.get_array( "sub_generators" ) ) {
+            pp_sub_generator sg;
+            sg.load( sg_jo );
+            sub_generators_.push_back( sg );
+        }
+    }
 }
 
 void pp_sub_generator::load( const JsonObject &jo )
@@ -162,6 +188,31 @@ void pp_sub_generator::load( const JsonObject &jo )
     optional( jo, false, "filter", filter );
     optional( jo, false, "mod", mod );
     optional( jo, false, "scope", scope, pp_sub_generator_scope::omt );
+    optional( jo, false, "burnt_wall_ter", burnt_wall_ter );
+    optional( jo, false, "burnt_floor_ter", burnt_floor_ter );
+    optional( jo, false, "burnt_ground_ter", burnt_ground_ter );
+    optional( jo, false, "field", field );
+    optional( jo, false, "ruin_oter", ruin_oter );
+    optional( jo, false, "ruin_wall_ter", ruin_wall_ter );
+    optional( jo, false, "ruin_floor_ter", ruin_floor_ter );
+    optional( jo, false, "ruin_ground_floor_ter", ruin_ground_floor_ter );
+    optional( jo, false, "ruin_cover_ter", ruin_cover_ter );
+    optional( jo, false, "wreckage_furn", wreckage_furn );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    }
+}
+
+bool pp_sub_generator::condition_holds( const tripoint_abs_omt &p ) const
+{
+    if( !condition ) {
+        return true;
+    }
+    global_variables::impl_t ctx;
+    ctx["loc"] = diag_value( project_to<coords::ms>( p ) );
+    ctx["oter_id"] = diag_value( overmap_buffer.ter( p ).id().str() );
+    const const_dialogue d( get_const_talker_for( get_avatar() ), nullptr, {}, ctx );
+    return condition( d );
 }
 
 void pp_generator::check() const
@@ -301,6 +352,45 @@ void pp_sub_generator::check( const std::string &ctx ) const
                   ctx );
     }
 
+    // MGEN-J05: the content fields, each for one type or two
+    const auto check_ter = [&]( const ter_str_id & ter, const char *name, bool used ) {
+        if( ter.is_empty() ) {
+            return;
+        }
+        if( !used ) {
+            debugmsg( "pp_generator '%s' %s: '%s' is not used by this type", ctx, tname, name );
+        } else if( !ter.is_valid() ) {
+            debugmsg( "pp_generator '%s' %s: '%s' is the unknown terrain %s", ctx, tname, name,
+                      ter.str() );
+        }
+    };
+    const bool burns = type == sub_generator_type::pre_burn;
+    const bool ruins = type == sub_generator_type::aftershock_ruin;
+    check_ter( burnt_wall_ter, "burnt_wall_ter", burns );
+    check_ter( burnt_floor_ter, "burnt_floor_ter", burns );
+    check_ter( burnt_ground_ter, "burnt_ground_ter", burns );
+    check_ter( ruin_wall_ter, "ruin_wall_ter", ruins );
+    check_ter( ruin_floor_ter, "ruin_floor_ter", ruins );
+    check_ter( ruin_ground_floor_ter, "ruin_ground_floor_ter", ruins );
+    check_ter( ruin_cover_ter, "ruin_cover_ter", ruins );
+    if( !field.is_empty() ) {
+        if( type != sub_generator_type::add_fire && type != sub_generator_type::place_blood ) {
+            debugmsg( "pp_generator '%s' %s: 'field' is used only by add_fire and place_blood", ctx,
+                      tname );
+        } else if( !field.is_valid() ) {
+            debugmsg( "pp_generator '%s' %s: 'field' is the unknown field %s", ctx, tname,
+                      field.str() );
+        }
+    }
+    if( !ruin_oter.is_empty() && ( !ruins || !ruin_oter.is_valid() ) ) {
+        debugmsg( "pp_generator '%s' %s: 'ruin_oter' %s is unknown or not used by this type", ctx,
+                  tname, ruin_oter.str() );
+    }
+    if( !wreckage_furn.is_empty() && ( !ruins || !wreckage_furn.is_valid() ) ) {
+        debugmsg( "pp_generator '%s' %s: 'wreckage_furn' %s is unknown or not used by this type",
+                  ctx, tname, wreckage_furn.str() );
+    }
+
     if( min_intensity > max_intensity && max_intensity != 0 ) {
         debugmsg( "pp_generator '%s' %s: min_intensity > max_intensity",
                   ctx, tname );
@@ -371,7 +461,7 @@ static bool tile_can_have_blood( map &md, const tripoint_bub_ms &current_tile,
 }
 
 static void place_blood_on_adjacent( map &md, const tripoint_bub_ms &current_tile, int chance,
-                                     int days_since_catacylsm )
+                                     int days_since_catacylsm, const field_type_str_id &blood )
 {
     for( int i = static_cast<int>( blood_trail_direction::first );
          i <= static_cast<int>( blood_trail_direction::last ); i++ ) {
@@ -381,13 +471,13 @@ static void place_blood_on_adjacent( map &md, const tripoint_bub_ms &current_til
             continue;
         }
         if( rng( 1, 100 ) < chance ) {
-            md.add_field( adjacent_tile, field_fd_blood );
+            md.add_field( adjacent_tile, blood );
         }
     }
 }
 
 static void place_blood_streaks( map &md, const tripoint_bub_ms &current_tile,
-                                 int days_since_cataclysm )
+                                 int days_since_cataclysm, const field_type_str_id &blood )
 {
     int streak_length = rng( 3, 12 );
     int streak_direction = rng( static_cast<int>( blood_trail_direction::first ),
@@ -399,7 +489,7 @@ static void place_blood_streaks( map &md, const tripoint_bub_ms &current_tile,
         return;
     }
 
-    md.add_field( current_tile, field_fd_blood );
+    md.add_field( current_tile, blood );
     tripoint_bub_ms last_tile = current_tile;
 
     for( int i = 0; i < streak_length; i++ ) {
@@ -438,7 +528,7 @@ static void place_blood_streaks( map &md, const tripoint_bub_ms &current_tile,
             break;
         }
 
-        md.add_field( destination_tile, field_fd_blood );
+        md.add_field( destination_tile, blood );
         last_tile = destination_tile;
 
 
@@ -455,7 +545,7 @@ static void place_blood_streaks( map &md, const tripoint_bub_ms &current_tile,
 
             tripoint_bub_ms adjacent_tile = get_point_from_direction( new_direction, last_tile );
             if( tile_can_have_blood( md, adjacent_tile, wall_streak, days_since_cataclysm ) ) {
-                md.add_field( adjacent_tile, field_fd_blood );
+                md.add_field( adjacent_tile, blood );
                 last_tile = adjacent_tile;
             }
         }
@@ -463,14 +553,14 @@ static void place_blood_streaks( map &md, const tripoint_bub_ms &current_tile,
 }
 
 static void place_bool_pools( map &md, const tripoint_bub_ms &current_tile,
-                              int days_since_cataclysm )
+                              int days_since_cataclysm, const field_type_str_id &blood )
 {
     if( !tile_can_have_blood( md, current_tile, false, days_since_cataclysm ) ) {
         return;
     }
 
-    md.add_field( current_tile, field_fd_blood );
-    place_blood_on_adjacent( md, current_tile, 60, days_since_cataclysm );
+    md.add_field( current_tile, blood );
+    place_blood_on_adjacent( md, current_tile, 60, days_since_cataclysm, blood );
 
     for( int i = static_cast<int>( blood_trail_direction::first );
          i <= static_cast<int>( blood_trail_direction::last ); i++ ) {
@@ -478,7 +568,7 @@ static void place_bool_pools( map &md, const tripoint_bub_ms &current_tile,
         if( !tile_can_have_blood( md, adjacent_tile, false, days_since_cataclysm ) ) {
             continue;
         }
-        place_blood_on_adjacent( md, adjacent_tile, 30, days_since_cataclysm );
+        place_blood_on_adjacent( md, adjacent_tile, 30, days_since_cataclysm, blood );
     }
 }
 
@@ -564,7 +654,7 @@ static void execute_add_fire( map &md,
             md.has_flag_ter_or_furn( ter_furn_flag::TFLAG_FLAMMABLE_ASH, current_tile ) ||
             md.has_flag_ter_or_furn( ter_furn_flag::TFLAG_FLAMMABLE_HARD, current_tile ) ||
             days_since_cataclysm < 3 ) {
-            md.add_field( current_tile, field_fd_fire,
+            md.add_field( current_tile, sg.field.is_empty() ? field_fd_fire : sg.field,
                           rng( sg.min_intensity, sg.max_intensity ) );
         }
 
@@ -574,8 +664,15 @@ static void execute_add_fire( map &md,
 
 // Apply pre_burn effects to every tile, skipping the probability gate.
 static void apply_pre_burn_tiles( map &md,
-                                  std::list<tripoint_bub_ms> &all_points_in_map )
+                                  std::list<tripoint_bub_ms> &all_points_in_map,
+                                  const pp_sub_generator &sg )
 {
+    const ter_str_id &burnt_wall = sg.burnt_wall_ter.is_empty() ? ter_t_wall_burnt :
+                                   sg.burnt_wall_ter;
+    const ter_str_id &burnt_floor = sg.burnt_floor_ter.is_empty() ? ter_t_floor_burnt :
+                                    sg.burnt_floor_ter;
+    const ter_str_id &burnt_ground = sg.burnt_ground_ter.is_empty() ? ter_t_dirt :
+                                     sg.burnt_ground_ter;
     for( tripoint_bub_ms current_tile : all_points_in_map ) {
         if( md.has_flag_ter( ter_furn_flag::TFLAG_NATURAL_UNDERGROUND, current_tile ) ||
             md.has_flag_ter( ter_furn_flag::TFLAG_GOES_DOWN, current_tile ) ||
@@ -590,18 +687,18 @@ static void apply_pre_burn_tiles( map &md,
 
         if( md.has_flag_ter( ter_furn_flag::TFLAG_WALL, current_tile ) ) {
             if( is_flammable_ter ) {
-                md.ter_set( current_tile.xy(), ter_t_wall_burnt );
+                md.ter_set( current_tile.xy(), burnt_wall );
             }
         } else if( md.has_flag_ter( ter_furn_flag::TFLAG_INDOORS, current_tile ) ||
                    md.has_flag_ter( ter_furn_flag::TFLAG_DOOR, current_tile ) ) {
             if( is_flammable_ter ) {
-                md.ter_set( current_tile.xy(), ter_t_floor_burnt );
+                md.ter_set( current_tile.xy(), burnt_floor );
             }
         } else if( !md.has_flag_ter( ter_furn_flag::TFLAG_INDOORS, current_tile ) ) {
             if( current_tile.z() == 0 ) {
                 if( md.has_flag_ter( ter_furn_flag::TFLAG_DIGGABLE, current_tile ) ||
                     is_flammable_ter ) {
-                    md.ter_set( current_tile.xy(), ter_t_dirt );
+                    md.ter_set( current_tile.xy(), burnt_ground );
                 }
             }
         }
@@ -661,7 +758,7 @@ static void execute_pre_burn( map &md,
         if( !x_in_y( percent_chance, 100 ) ) {
             continue;
         }
-        apply_pre_burn_tiles( md, all_points_in_map );
+        apply_pre_burn_tiles( md, all_points_in_map, sg );
     }
 }
 
@@ -680,25 +777,37 @@ static void execute_place_blood( map &md,
             continue;
         }
         if( x_in_y( sg.chance, 1000 ) ) {
+            const field_type_str_id &blood = sg.field.is_empty() ? field_fd_blood : sg.field;
             int behavior_roll = rng( 1, 100 );
 
             if( behavior_roll <= 20 ) {
                 if( tile_can_have_blood( md, current_tile, md.has_flag_ter( ter_furn_flag::TFLAG_WALL,
                                          current_tile ), days_since_cataclysm ) ) {
-                    md.add_field( current_tile, field_fd_blood );
+                    md.add_field( current_tile, blood );
                 }
             } else if( behavior_roll <= 60 ) {
-                place_blood_streaks( md, current_tile, days_since_cataclysm );
+                place_blood_streaks( md, current_tile, days_since_cataclysm, blood );
             } else {
-                place_bool_pools( md, current_tile, days_since_cataclysm );
+                place_bool_pools( md, current_tile, days_since_cataclysm, blood );
             }
         }
     }
 }
 
 static void execute_aftershock_ruin( map &md, const tripoint_abs_omt &p,
-                                     pp_sub_decision *dec )
+                                     pp_sub_decision *dec, const pp_sub_generator &sg )
 {
+    // MGEN-J05: the ids, by default Aftershock's
+    const oter_str_id &ruin_oter = sg.ruin_oter.is_empty() ? oter_afs_ruins_dynamic : sg.ruin_oter;
+    const ter_str_id &ruin_wall = sg.ruin_wall_ter.is_empty() ? ter_t_wall_prefab_metal :
+                                  sg.ruin_wall_ter;
+    const ter_str_id &ruin_floor = sg.ruin_floor_ter.is_empty() ? ter_t_metal_floor :
+                                   sg.ruin_floor_ter;
+    const ter_str_id &ruin_ground_floor = sg.ruin_ground_floor_ter.is_empty() ?
+                                          ter_t_snow_metal_floor : sg.ruin_ground_floor_ter;
+    const ter_str_id &ruin_cover = sg.ruin_cover_ter.is_empty() ? ter_t_snow : sg.ruin_cover_ter;
+    const furn_str_id &wreckage = sg.wreckage_furn.is_empty() ? furn_f_wreckage : sg.wreckage_furn;
+
     std::list<tripoint_bub_ms> all_points_in_map;
 
     for( int i = 0; i < SEEX * 2; i++ ) {
@@ -710,7 +819,7 @@ static void execute_aftershock_ruin( map &md, const tripoint_abs_omt &p,
     bool above_open_air = overmap_buffer.ter( tripoint_abs_omt( p.x(), p.y(),
                           p.z() + 1 ) ) == oter_open_air;
     bool above_ruined = overmap_buffer.ter( tripoint_abs_omt( p.x(), p.y(),
-                                            p.z() + 1 ) ) == oter_afs_ruins_dynamic;
+                                            p.z() + 1 ) ) == ruin_oter;
 
     // applied -> fully ruined, skipped -> smashed-up, otherwise 50% roll.
     bool full_ruin_roll;
@@ -724,7 +833,7 @@ static void execute_aftershock_ruin( map &md, const tripoint_abs_omt &p,
 
     //fully ruined
     if( ( full_ruin_roll && above_open_air ) || above_ruined ) {
-        overmap_buffer.ter_set( p, oter_afs_ruins_dynamic );
+        overmap_buffer.ter_set( p, ruin_oter );
 
         for( const tripoint_bub_ms &current_tile : all_points_in_map ) {
             if( md.has_flag_ter( ter_furn_flag::TFLAG_NATURAL_UNDERGROUND, current_tile ) ||
@@ -737,12 +846,12 @@ static void execute_aftershock_ruin( map &md, const tripoint_abs_omt &p,
             }
             if( md.has_flag_ter( ter_furn_flag::TFLAG_WALL, current_tile ) ) {
                 !one_in( 5 ) ? md.ter_set( current_tile.xy(),
-                                           ter_t_wall_prefab_metal ) : md.ter_set( current_tile.xy(), ter_t_metal_floor );
+                                           ruin_wall ) : md.ter_set( current_tile.xy(), ruin_floor );
             }
             if( md.has_flag_ter( ter_furn_flag::TFLAG_INDOORS, current_tile ) ) {
                 if( !one_in( 4 ) ) {
                     p.z() == 0 ? md.ter_set( current_tile.xy(),
-                                             ter_t_snow_metal_floor ) : md.ter_set( current_tile.xy(), ter_t_snow );
+                                             ruin_ground_floor ) : md.ter_set( current_tile.xy(), ruin_cover );
 
                 }
             }
@@ -762,7 +871,7 @@ static void execute_aftershock_ruin( map &md, const tripoint_abs_omt &p,
         if( p.z() == 0 ) {
             for( const tripoint_bub_ms &current_tile : all_points_in_map ) {
                 if( md.is_open_air( current_tile ) ) {
-                    md.ter_set( current_tile, ter_t_snow, false );
+                    md.ter_set( current_tile, ruin_cover, false );
                 }
             }
         }
@@ -792,12 +901,12 @@ static void execute_aftershock_ruin( map &md, const tripoint_abs_omt &p,
 
         if( x_in_y( 5, 1000 ) ) {
             md.bash( current_tile, 9999, true, true );
-            draw_rough_circle( [&md]( const point_bub_ms & p ) {
+            draw_rough_circle( [&md, &wreckage]( const point_bub_ms & p ) {
                 if( !md.inbounds( p ) || !md.has_flag_ter( ter_furn_flag::TFLAG_FLAT, p ) ) {
                     return;
                 }
                 md.furn_set( p, furn_str_id::NULL_ID() );
-                md.furn_set( p, furn_f_wreckage );
+                md.furn_set( p, wreckage );
             }, current_tile.xy(), 3 );
         }
     }
@@ -966,6 +1075,10 @@ void pp_generator::execute( map &md, const tripoint_abs_omt &p,
     std::map<sub_generator_type, uint8_t> type_counts;
     for( const pp_sub_generator &sg : sub_generators_ ) {
         const uint8_t ordinal = type_counts[sg.type]++;
+        // MGEN-J05: skipped here leaves an overmap_special decision for a tile where it holds
+        if( !sg.condition_holds( p ) ) {
+            continue;
+        }
 
         // applied/skipped mapping is type-specific and lives in each case below.
         pp_sub_decision *dec = nullptr;
@@ -990,7 +1103,7 @@ void pp_generator::execute( map &md, const tripoint_abs_omt &p,
                 break;
             case sub_generator_type::pre_burn:
                 if( dec && dec->st == pp_sub_decision::status::applied ) {
-                    apply_pre_burn_tiles( md, all_points_in_map );
+                    apply_pre_burn_tiles( md, all_points_in_map, sg );
                 } else if( dec && dec->st == pp_sub_decision::status::skipped ) {
                     // Building rolled not-burned for this special.
                 } else {
@@ -1001,7 +1114,7 @@ void pp_generator::execute( map &md, const tripoint_abs_omt &p,
                 execute_place_blood( md, all_points_in_map, days_since_cataclysm, sg );
                 break;
             case sub_generator_type::aftershock_ruin:
-                execute_aftershock_ruin( md, p, dec );
+                execute_aftershock_ruin( md, p, dec, sg );
                 break;
             case sub_generator_type::ter_furn_transform:
                 execute_ter_furn_transform( md, all_points_in_map, sg );

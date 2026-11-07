@@ -27,6 +27,8 @@ static const oter_str_id oter_lake_shore( "lake_shore" );
 static const oter_str_id oter_lake_surface( "lake_surface" );
 static const oter_str_id oter_lake_water_cube( "lake_water_cube" );
 
+static const pp_generator_id pp_generator_riot_damage_road( "riot_damage_road" );
+
 static const weighted_string_id_reader<overmap_special_id, int> building_bin_reader( 1 );
 static const weighted_string_id_reader<furn_id, int> furn_reader( 1 );
 static const weighted_string_id_reader<ter_id, int> ter_reader( 1 );
@@ -583,6 +585,8 @@ void region_settings_city::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "houses", houses.buildings, building_bin_reader );
     optional( jo, was_loaded, "shops", shops.buildings, building_bin_reader );
     optional( jo, was_loaded, "parks", parks.buildings, building_bin_reader );
+    optional( jo, was_loaded, "road_post_process", road_post_process,
+              std::vector<pp_generator_id> { pp_generator_riot_damage_road } );
 }
 
 void region_settings_map_extras::load( const JsonObject &jo, std::string_view )
@@ -854,6 +858,12 @@ void region_settings_city::finalize()
     houses.finalize();
     shops.finalize();
     parks.finalize();
+    for( const pp_generator_id &gen : road_post_process ) {
+        if( !gen.is_valid() ) {
+            debugmsg( "region_settings_city(%s) road_post_process names the unknown "
+                      "pp_generator %s", id.c_str(), gen.c_str() );
+        }
+    }
 }
 
 //these could be defined in the future

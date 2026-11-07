@@ -664,7 +664,8 @@ This optional object can have these fields. The same object works on a monster g
 | variables   | An object of variable names and values, text or numbers. The monster spawns with them, as `mon_variables` gives `u_spawn_monster`'s monsters.
 | faction     | A monster faction id. The monster spawns in that faction instead of its type's.
 | ammo        | A list of objects, each of which has an `"ammo_id"` field and a `"qty"` list of two integers. The monster will spawn with items of "ammo_id", with at least the first number in the "qty" and no more than the second.
-| patrol      | A list of objects, each of which has an `"x"` field and a `"y"` field. Either value can be a range or a single number. The x,y co-ordinates define a patrol point as a relative mapsquare point offset from the (0, 0) local mapsquare of the overmap terrain tile that the monster spawns in. Patrol points are converted to absolute mapsquare tripoints inside the monster generator.
+| patrol      | A list of objects, each of which has an `"x"` field and a `"y"` field. Either value can be a range or a single number; a range is rolled for each monster as it is placed. The x,y co-ordinates define a patrol point as a relative mapsquare point offset from the (0, 0) local mapsquare of the overmap terrain tile that the monster spawns in. Patrol points are converted to absolute mapsquare tripoints inside the monster generator.
+| eocs        | A list of effect_on_condition ids. They run once the monster is placed (when its map is first loaded around the avatar), after everything else here, with the monster as `u`, no `npc`, and its location as the context value `loc`. They add to a group entry's.
 
 Monsters with a patrol point list will move to each patrol point, in order, whenever they have no more pressing action to take on their turn. Upon reaching the last point in the patrol point list, the monster will continue on to the first point in the list.
 
@@ -707,6 +708,8 @@ Using `place_npcs` to spawn a group of npcs.
 | class       | The class of the npc that you wish to spawn |
 | add_trait   | A string of array of strings for traits the npc starts with.
 | unique_id   | A string for the unique_id the npc has.
+| variables   | (optional) An object of variable names and values, text or numbers, that the npc starts with.
+| eocs        | (optional) A list of effect_on_condition ids, run on the npc (`u`, no `npc`, context value `loc` its location) right after it is placed, while its map is still being generated: use them to set up the npc itself. An npc not placed (its `unique_id` already exists) runs nothing.
 
 ## Set variables with "place_variables"
 Using `place_variables` to set a group of variables.
@@ -836,6 +839,39 @@ Defining specials through their specific location:
 
 `<x>` and `<y>` define where the special is placed (x is horizontal, y vertical). Valid value are in the range 0..23,
 min-max values are also supported: `"x": [ 0, 23 ], "y": [ 0, 23 ]` places the special anyway on the map.
+
+#### Conditions and placement filters
+
+Every `place_<type-of-special>` entry (including `place_nested`, `place_monster`, `place_npcs`, `place_loot`...)
+can also have these two fields. They don't apply to the mappings, nor to the `set` array.
+
+| Field     | Description
+| ---       | ---
+| condition | (optional) A [dialogue condition](NPCs.md#dialogue-conditions), checked for each `repeat`; when it fails, that repeat places nothing. `u` is the avatar and there is no `npc`. Its context values are `loc`, where the entry goes (the tile `place_on` picked, or else the lowest corner of the x/y range: no random number is used), and `oter_id`, the id of the overmap terrain being generated. Global variables are the usual way to make a map depend on the state of the game.
+| place_on  | (optional) An object: which tiles the entry may go on. For each `repeat`, x and y are rolled until a tile passes, up to `attempts` times; when none does, that repeat places nothing. The entry then goes on that one tile, even if it is a piece that otherwise covers its whole x/y range (such as `faction_owner`). It sees the map as it is when the entry is placed: terrain, furniture and region terrain (`t_region_*`, resolved first) are there for monsters, items, npcs and nested chunks.
+
+`place_on` fields, all optional:
+
+| Field         | Description
+| ---           | ---
+| ter           | A list of terrain ids: the tile's terrain is one of them.
+| ter_flags     | A list of flags the tile's terrain has, all of them.
+| not_ter_flags | A list of flags the tile's terrain has none of.
+| no_furniture  | `true`: the tile has no furniture.
+| passable      | `true`: a creature can stand on the tile (no wall, no vehicle in the way...).
+| near          | An object with `ter`, `ter_flags` (as above) and `radius` (default 1): another tile at most `radius` away matches them.
+| attempts      | How many tiles to try, default 20. A single fixed tile is checked once.
+
+Example: a 50% chance of a corpse on a free, diggable tile next to water, only after the avatar met the cult:
+```jsonc
+"place_items": [
+  {
+    "item": "everyday_corpse", "x": [ 0, 23 ], "y": [ 0, 23 ], "chance": 50,
+    "place_on": { "ter_flags": [ "DIGGABLE" ], "no_furniture": true, "near": { "ter_flags": [ "LIQUID" ] } },
+    "condition": { "compare_string": [ "yes", { "global_val": "met_the_cult" } ] }
+  }
+]
+```
 
 Example with mapping (the characters `"O"` and `";"` should appear in the rows array where the specials should appear):
 
@@ -1242,6 +1278,8 @@ Place_nested allows for conditional spawning of chunks based on the `"id"`s and/
 | check_z            | (optional, array of ints ) Any number of z-levels that should be checked before placing the chunk.
 
 
+The weight of a chunk in `chunks` or `else_chunks` (`[ "nest1", 50 ]`) can be a [variable object](NPCs.md#variable-object), such as `{ "global_val": "my_weight" }` or `{ "math": [ "..." ] }`, evaluated each time the chunk is picked, with the avatar as `u`. A chunk whose weight comes to 0 is never picked, and when all of them do, nothing is placed: that makes a chunk depend on the state of the game. These weights don't know where they are placed; for that, give the entry a `condition` (see [Conditions and placement filters](#conditions-and-placement-filters)).
+
 The adjacent overmaps which can be checked in this manner are:
 * the direct cardinal neighbors ( `"north"`, `"east"`, `"south"`, `"west"` ),
 * the inter cardinal neighbors ( `"north_east"`, `"north_west"`, `"south_east"`, `"south_west"` ),
@@ -1382,6 +1420,14 @@ If using `"overmap_special"`, or `"omt_stack"` scope, a `"fallback"` must also b
   "x": { "param": "my_parameter_key", "fallback": "t_dirt" }
 }
 ```
+
+A mapgen value can also read an [EOC variable](NPCs.md#variable-object), each time the value is needed: `"var"` is the variable and `"fallback"` (required) the value used when it is unset or isn't a valid id. For example, walls of the style a global variable names:
+```json
+"terrain": {
+  "#": { "var": { "global_val": "town_wall_style" }, "fallback": "t_wall" }
+}
+```
+The variable is read with the avatar as `u` and the context values `oter_id` (the overmap terrain being generated) and `loc` (the north-west corner of the map being generated). As the default of a parameter, it is read once, when the parameter is chosen. Load-time checks only know the fallback: a `switch` on a variable must still have a case for each value it can hold, and a variable can't choose a palette (the fallback's palette is used).
 
 If your parameter's type doesn't match the field or you want to determine another value based on one parameter's result you can instead use a switch statement:
 ```json

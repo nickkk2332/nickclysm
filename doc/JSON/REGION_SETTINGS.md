@@ -457,6 +457,7 @@ relative placements of various classes of buildings.
 | `city_size`            | Required Setting. Size of cities. Larger number = bigger cities. 0 = no cities. Range: 0 - 16   |
 | `city_spacing`         | Space between cities. Larger number = more space between cities. Range: 0 - 8 |
 | `is_megacity`          | Special flag to trigger special map generation. Generates a megacity.         |
+| `road_post_process`    | List of `pp_generator` ids run on every road tile in a city of this region, in order (see [OVERMAP.md](OVERMAP.md#post-process-generators)). Default `[ "riot_damage_road" ]`; `[]` for none. |
 
 ### Placing shops, parks, and houses
 

@@ -36,6 +36,8 @@
 #include "cuboid_rectangle.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "field_type.h"
@@ -64,6 +66,7 @@
 #include "mapgen_functions.h"
 #include "mapgen_post_process.h"
 #include "mapgendata.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "messages.h"
 #include "mission.h"
@@ -353,8 +356,16 @@ void map::generate( const tripoint_abs_omt &p, const time_point &when, bool save
                 std::vector<pp_resolved_generator> *stored_decisions =
                     overmap_buffer.pp_decisions( omt_point );
                 if( omt->has_flag( oter_flags::road ) && overmap_buffer.is_in_city( omt_point ) ) {
-                    // Roads use a dedicated generator; not yet migrated to oter_type_t field
-                    pp_generator_riot_damage_road.obj().execute( *this, omt_point, nullptr );
+                    // MGEN-J05: city roads get their region's road_post_process
+                    const region_settings &region = overmap_buffer.get_settings( omt_point );
+                    if( region.city_spec.has_value() ) {
+                        const region_settings_city &city = region.get_settings_city();
+                        for( const pp_generator_id &gen_id : city.road_post_process ) {
+                            gen_id.obj().execute( *this, omt_point, nullptr );
+                        }
+                    } else {
+                        pp_generator_riot_damage_road.obj().execute( *this, omt_point, nullptr );
+                    }
                 } else if( !omt->get_post_process_generators().empty() ) {
                     for( const pp_generator_id &gen_id : omt->get_post_process_generators() ) {
                         std::vector<pp_sub_decision> *gen_decisions = nullptr;
@@ -429,14 +440,17 @@ class spawn_data_ammo_reader : public generic_typed_reader<spawn_data_ammo_reade
 class spawn_data_patrol_reader : public generic_typed_reader<spawn_data_patrol_reader>
 {
     public:
-        point_rel_ms get_next( const JsonValue &jv ) const {
+        // MGEN-J06: the ranges are kept and rolled for each monster as it is placed; they used to
+        // be rolled here, once at load, so every monster of every map got the same route
+        spawn_patrol_point get_next( const JsonValue &jv ) const {
             if( !jv.test_object() ) {
                 jv.throw_error( "Invalid format" );
             }
             JsonObject jo = jv.get_object();
-            jmapgen_int ptx( jo, "x" );
-            jmapgen_int pty( jo, "y" );
-            return point_rel_ms( ptx.get(), pty.get() );
+            spawn_patrol_point pt;
+            pt.x = jmapgen_int( jo, "x" );
+            pt.y = jmapgen_int( jo, "y" );
+            return pt;
         }
 };
 } // namespace
@@ -444,7 +458,7 @@ class spawn_data_patrol_reader : public generic_typed_reader<spawn_data_patrol_r
 void spawn_data::deserialize( const JsonObject &jo )
 {
     optional( jo, false, "ammo", ammo, spawn_data_ammo_reader{} );
-    optional( jo, false, "patrol", patrol_points_rel_ms, spawn_data_patrol_reader{} );
+    optional( jo, false, "patrol", patrol, spawn_data_patrol_reader{} );
     for( const JsonObject eff : jo.get_array( "effects" ) ) {
         spawn_effect added;
         mandatory( eff, false, "id", added.id );
@@ -463,6 +477,18 @@ void spawn_data::deserialize( const JsonObject &jo )
         }
     }
     optional( jo, false, "faction", faction );
+    optional( jo, false, "eocs", eocs );
+}
+
+std::vector<point_rel_ms> spawn_data::rolled_patrol() const
+{
+    std::vector<point_rel_ms> route;
+    route.reserve( patrol.size() );
+    for( const spawn_patrol_point &pt : patrol ) {
+        const int px = pt.x.get();
+        route.emplace_back( px, pt.y.get() );
+    }
+    return route;
 }
 
 spawn_data merged_spawn_data( spawn_data entry, const spawn_data &piece )
@@ -470,8 +496,8 @@ spawn_data merged_spawn_data( spawn_data entry, const spawn_data &piece )
     for( const std::pair<const itype_id, jmapgen_int> &a : piece.ammo ) {
         entry.ammo.insert_or_assign( a.first, a.second );
     }
-    if( !piece.patrol_points_rel_ms.empty() ) {
-        entry.patrol_points_rel_ms = piece.patrol_points_rel_ms;
+    if( !piece.patrol.empty() ) {
+        entry.patrol = piece.patrol;
     }
     entry.effects.insert( entry.effects.end(), piece.effects.begin(), piece.effects.end() );
     for( const std::pair<const std::string, std::string> &var : piece.str_variables ) {
@@ -483,13 +509,14 @@ spawn_data merged_spawn_data( spawn_data entry, const spawn_data &piece )
     if( !piece.faction.is_empty() ) {
         entry.faction = piece.faction;
     }
+    entry.eocs.insert( entry.eocs.end(), piece.eocs.begin(), piece.eocs.end() );
     return entry;
 }
 
 bool spawn_data::empty() const
 {
-    return ammo.empty() && patrol_points_rel_ms.empty() && effects.empty() && str_variables.empty() &&
-           num_variables.empty() && faction.is_empty();
+    return ammo.empty() && patrol.empty() && effects.empty() && str_variables.empty() &&
+           num_variables.empty() && faction.is_empty() && eocs.empty();
 }
 
 void map::delete_unmerged_submaps()
@@ -1293,6 +1320,96 @@ jmapgen_place::jmapgen_place( const JsonObject &jsi )
     , z( jsi, "z", 0, 0 )
     , repeat( jsi, "repeat", 1, 1 )
 {
+    if( jsi.has_member( "condition" ) ) {
+        std::function<bool( const_dialogue const & )> cond;
+        read_condition( jsi, "condition", cond, true );
+        condition = std::make_shared<const std::function<bool( const_dialogue const & )>>(
+                        std::move( cond ) );
+    }
+    if( jsi.has_member( "place_on" ) ) {
+        jmapgen_place_filter filter;
+        filter.load( jsi.get_object( "place_on" ) );
+        place_on = std::make_shared<const jmapgen_place_filter>( std::move( filter ) );
+    }
+}
+
+void jmapgen_place_filter::load( const JsonObject &jo )
+{
+    optional( jo, false, "ter", ter );
+    optional( jo, false, "ter_flags", ter_flags );
+    optional( jo, false, "not_ter_flags", not_ter_flags );
+    optional( jo, false, "no_furniture", no_furniture, false );
+    optional( jo, false, "passable", passable, false );
+    if( jo.has_member( "near" ) ) {
+        has_near = true;
+        const JsonObject near_jo = jo.get_object( "near" );
+        optional( near_jo, false, "ter", near_ter );
+        optional( near_jo, false, "ter_flags", near_ter_flags );
+        optional( near_jo, false, "radius", near_radius, 1 );
+        if( near_radius < 1 ) {
+            near_jo.throw_error_at( "radius", "must be at least 1" );
+        }
+    }
+    optional( jo, false, "attempts", attempts, 20 );
+    if( attempts < 1 ) {
+        jo.throw_error_at( "attempts", "must be at least 1" );
+    }
+}
+
+void jmapgen_place_filter::check( const std::string &context ) const
+{
+    const auto check_ids = [&context]( const std::vector<ter_str_id> &ids ) {
+        for( const ter_str_id &id : ids ) {
+            if( !id.is_valid() ) {
+                debugmsg( "\"place_on\" in %s names the unknown terrain %s", context, id.str() );
+            }
+        }
+    };
+    check_ids( ter );
+    check_ids( near_ter );
+}
+
+// whether the terrain at p is one of ids (any, when empty) with every flag of flags
+static bool place_filter_ter_matches( const map &m, const tripoint_bub_ms &p,
+                                      const std::vector<ter_str_id> &ids,
+                                      const std::vector<std::string> &flags )
+{
+    if( !ids.empty() &&
+        std::find( ids.begin(), ids.end(), m.ter( p ).id() ) == ids.end() ) {
+        return false;
+    }
+    return std::all_of( flags.begin(), flags.end(), [&m, &p]( const std::string & flag ) {
+        return m.has_flag_ter( flag, p );
+    } );
+}
+
+bool jmapgen_place_filter::test( const map &m, const tripoint_bub_ms &p ) const
+{
+    if( !m.inbounds( p ) || !place_filter_ter_matches( m, p, ter, ter_flags ) ) {
+        return false;
+    }
+    for( const std::string &flag : not_ter_flags ) {
+        if( m.has_flag_ter( flag, p ) ) {
+            return false;
+        }
+    }
+    if( no_furniture && m.has_furn( p ) ) {
+        return false;
+    }
+    if( passable && !m.passable_through( p ) ) {
+        return false;
+    }
+    if( has_near ) {
+        const size_t radius = static_cast<size_t>( near_radius );
+        for( const tripoint_bub_ms &other : m.points_in_radius( p, radius ) ) {
+            if( other != p && m.inbounds( other ) &&
+                place_filter_ter_matches( m, other, near_ter, near_ter_flags ) ) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
 }
 
 void jmapgen_place::offset( const tripoint_rel_ms &offset )
@@ -1681,6 +1798,62 @@ class mapgen_value
             }
         };
 
+        // MGEN-J07: an EOC variable's value, read each time the value is needed:
+        // { "var": { "global_val": "wall_style" }, "fallback": "t_wall" }. The fallback when the
+        // variable is unset, or isn't a valid id. Load-time checks only know the fallback.
+        struct var_source : value_source {
+            var_info var;
+            StringId fallback;
+
+            explicit var_source( const JsonObject &jo )
+                : var( read_var_info( jo.get_object( "var" ) ) ) {
+                jo.read( "fallback", fallback, true );
+            }
+
+            Id get( const mapgendata &dat ) const override {
+                global_variables::impl_t ctx;
+                ctx["loc"] = diag_value( dat.m.get_abs( tripoint_bub_ms( 0, 0, dat.zlevel() ) ) );
+                ctx["oter_id"] = diag_value( dat.terrain_type().id().str() );
+                const const_dialogue d( get_const_talker_for( get_avatar() ), nullptr, {}, ctx );
+                const diag_value *value = maybe_read_var_value( var, d );
+                if( value == nullptr || value->is_empty() ) {
+                    return Id( fallback );
+                }
+                const std::string text = value->is_str() ? value->str() : value->to_string();
+                const StringId read( text );
+                if( !is_valid_helper( read ) ) {
+                    debugmsg( "mapgen variable %s holds \"%s\", which is not a valid id here",
+                              var.name, text );
+                    return Id( fallback );
+                }
+                return Id( read );
+            }
+
+            void check( const std::string &context, const mapgen_parameters & ) const override {
+                if( !is_valid_helper( fallback ) ) {
+                    debugmsg( "mapgen '%s' uses invalid fallback '%s' for variable %s",
+                              context, cata_variant( fallback ).get_string(), var.name );
+                }
+            }
+
+            void check_consistent_with(
+                const value_source &o, const std::string &context ) const override {
+                if( const var_source *other = dynamic_cast<const var_source *>( &o ) ) {
+                    if( var.name != other->var.name || var.type != other->var.type ||
+                        fallback != other->fallback ) {
+                        debugmsg( "inconsistent default variables for %s (%s vs %s)",
+                                  context, var.name, other->var.name );
+                    }
+                } else {
+                    debugmsg( "inconsistent default types for %s", context );
+                }
+            }
+
+            std::vector<StringId> all_possible_results( const mapgen_parameters & ) const override {
+                return { fallback };
+            }
+        };
+
         mapgen_value()
             : is_null_( true )
             , source_( make_shared_fast<null_source>() )
@@ -1719,9 +1892,12 @@ class mapgen_value
                 source_ = make_shared_fast<distribution_source>( jo );
             } else if( jo.has_member( "switch" ) ) {
                 source_ = make_shared_fast<switch_source>( jo );
+            } else if( jo.has_member( "var" ) ) {
+                source_ = make_shared_fast<var_source>( jo );
             } else {
                 jo.throw_error(
-                    R"(Expected member "param", "distribution", or "switch" in mapgen object)" );
+                    R"(Expected member "param", "distribution", "switch" or "var" in mapgen )"
+                    "object" );
             }
         }
 
@@ -2105,6 +2281,10 @@ class jmapgen_npc : public jmapgen_piece
         bool target;
         std::vector<trait_id> traits;
         std::string unique_id;
+        // MGEN-J06: the NPC's variables, and EOCs run on it (as u) once it is placed
+        std::map<std::string, std::string> str_variables;
+        std::map<std::string, double> num_variables;
+        std::vector<effect_on_condition_id> eocs;
         jmapgen_npc( const JsonObject &jsi, std::string_view/*context*/ ) :
             npc_class( jsi.get_member( "class" ) )
             , target( jsi.get_bool( "target", false ) ) {
@@ -2117,6 +2297,16 @@ class jmapgen_npc : public jmapgen_piece
             if( jsi.has_string( "unique_id" ) ) {
                 jsi.read( "unique_id", unique_id );
             }
+            if( jsi.has_object( "variables" ) ) {
+                for( const JsonMember var : jsi.get_object( "variables" ) ) {
+                    if( var.test_float() ) {
+                        num_variables[var.name()] = var.get_float();
+                    } else {
+                        str_variables[var.name()] = var.get_string();
+                    }
+                }
+            }
+            optional( jsi, false, "eocs", eocs );
         }
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
                     const std::string &/*context*/ ) const override {
@@ -2144,6 +2334,17 @@ class jmapgen_npc : public jmapgen_piece
                 if( !unique_id.empty() ) {
                     p->set_unique_id( unique_id );
                 }
+                for( const std::pair<const std::string, std::string> &var : str_variables ) {
+                    p->set_value( var.first, diag_value( var.second ) );
+                }
+                for( const std::pair<const std::string, double> &var : num_variables ) {
+                    p->set_value( var.first, diag_value( var.second ) );
+                }
+                for( const effect_on_condition_id &eoc : eocs ) {
+                    dialogue d( get_talker_for( *p ), nullptr );
+                    d.set_value( "loc", p->pos_abs() );
+                    eoc->activate( d );
+                }
             }
         }
 
@@ -2151,6 +2352,12 @@ class jmapgen_npc : public jmapgen_piece
                     const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
                   ) const override {
             npc_class.check( oter_name, parameters );
+            for( const effect_on_condition_id &eoc : eocs ) {
+                if( !eoc.is_valid() ) {
+                    debugmsg( "Invalid effect_on_condition \"%s\" for an NPC in %s", eoc.str(),
+                              oter_name );
+                }
+            }
         }
 };
 /**
@@ -2715,6 +2922,12 @@ class jmapgen_monster : public jmapgen_piece
                 id.first.check( oter_name, parameters );
             }
             m_id.check( oter_name, parameters );
+            for( const effect_on_condition_id &eoc : data.eocs ) {
+                if( !eoc.is_valid() ) {
+                    debugmsg( "Invalid effect_on_condition \"%s\" in the spawn_data of a monster "
+                              "in %s", eoc.str(), oter_name );
+                }
+            }
         }
 
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
@@ -5162,6 +5375,9 @@ void jmapgen_objects::check( const std::string &context, const mapgen_parameters
         const jmapgen_place &where = obj.first;
         const jmapgen_piece &what = *obj.second;
         what.check( context, parameters, where.x, where.y, where.z );
+        if( where.place_on ) {
+            where.place_on->check( context );
+        }
     }
 }
 
@@ -6580,6 +6796,51 @@ void mapgen_function_json_nested::nest( const mapgendata &md, const tripoint_rel
 }
 
 /*
+ * MGEN-J07/J08: one repeat of a piece that has a "condition" or a "place_on". A place_on picks
+ * the tile first, then the condition is checked there: its "loc" is that tile (without a
+ * place_on, the lowest corner of the x/y range, so no random number is used up), its "oter_id"
+ * the overmap terrain being generated.
+ */
+static void apply_with_place_rules( const mapgendata &dat, const jmapgen_place &where,
+                                    const jmapgen_piece &what, const std::string &context )
+{
+    jmapgen_int x = where.x;
+    jmapgen_int y = where.y;
+    jmapgen_int z = where.z;
+    if( where.place_on ) {
+        const int pz = where.z.get();
+        const bool one_tile = where.x.val == where.x.valmax && where.y.val == where.y.valmax;
+        const int attempts = one_tile ? 1 : where.place_on->attempts;
+        bool found = false;
+        for( int attempt = 0; attempt < attempts && !found; attempt++ ) {
+            const int px = where.x.get();
+            const int py = where.y.get();
+            if( where.place_on->test( dat.m, tripoint_bub_ms( px, py, dat.zlevel() + pz ) ) ) {
+                x = jmapgen_int( px );
+                y = jmapgen_int( py );
+                z = jmapgen_int( pz );
+                found = true;
+            }
+        }
+        if( !found ) {
+            return;
+        }
+    }
+    if( where.condition ) {
+        global_variables::impl_t ctx;
+        const tripoint_bub_ms tile( static_cast<int>( x.val ), static_cast<int>( y.val ),
+                                    dat.zlevel() + z.val );
+        ctx["loc"] = diag_value( dat.m.get_abs( tile ) );
+        ctx["oter_id"] = diag_value( dat.terrain_type().id().str() );
+        const const_dialogue d( get_const_talker_for( get_avatar() ), nullptr, {}, ctx );
+        if( !( *where.condition )( d ) ) {
+            return;
+        }
+    }
+    what.apply( dat, x, y, z, context );
+}
+
+/*
  * Apply mapgen as per a derived-from-json recipe; in theory fast, but not very versatile
  */
 void jmapgen_objects::apply( const mapgendata &dat, mapgen_phase phase,
@@ -6604,7 +6865,9 @@ void jmapgen_objects::apply( const mapgendata &dat, mapgen_phase phase,
 
         cata_assert( what.phase() == phase );
 
-        if( !terrain_resolved && typeid( what ) == typeid( jmapgen_vehicle ) ) {
+        // a "place_on" (MGEN-J08) tests the terrain too
+        if( !terrain_resolved &&
+            ( typeid( what ) == typeid( jmapgen_vehicle ) || where.place_on ) ) {
             // In order to determine collisions between vehicles and local "terrain" the terrain has to be resolved
             // This code is based on two assumptions:
             // 1. The terrain part of a definition is always placed first.
@@ -6617,7 +6880,11 @@ void jmapgen_objects::apply( const mapgendata &dat, mapgen_phase phase,
         // into the what and where in some cases--we just need the greater value of the two.
         const int repeat = std::max( where.repeat.get(), what.repeat.get() );
         for( int i = 0; i < repeat; i++ ) {
-            what.apply( dat, where.x, where.y, where.z, context );
+            if( where.condition || where.place_on ) {
+                apply_with_place_rules( dat, where, what, context );
+            } else {
+                what.apply( dat, where.x, where.y, where.z, context );
+            }
         }
     }
 }

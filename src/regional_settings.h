@@ -71,6 +71,10 @@ struct region_settings_city {
     building_bin shops;
     building_bin parks;
 
+    // MGEN-J05: the post-process generators a road in a city gets (a road's own
+    // "post_process_generators" don't apply); riot_damage_road unless the region says
+    std::vector<pp_generator_id> road_post_process;
+
     overmap_special_id pick_house() const {
         return houses.pick();
     }

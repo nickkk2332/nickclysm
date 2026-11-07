@@ -4682,8 +4682,8 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
 
 void spawn_data::apply( monster &placed ) const
 {
-    if( !patrol_points_rel_ms.empty() ) {
-        placed.set_patrol_route( patrol_points_rel_ms );
+    if( !patrol.empty() ) {
+        placed.set_patrol_route( rolled_patrol() );
     }
     for( const spawn_effect &eff : effects ) {
         if( !eff.id.is_valid() ) {
@@ -4701,6 +4701,15 @@ void spawn_data::apply( monster &placed ) const
     if( !faction.is_empty() && faction.is_valid() ) {
         placed.faction = faction.id();
         get_creature_tracker().invalidate_reachability_cache();
+    }
+    // MGEN-J06: the spawn's EOCs, with the monster as u, once it has all of the above
+    for( const effect_on_condition_id &eoc : eocs ) {
+        if( !eoc.is_valid() ) {
+            continue;
+        }
+        dialogue d( get_talker_for( placed ), nullptr );
+        d.set_value( "loc", placed.pos_abs() );
+        eoc->activate( d );
     }
 }
 

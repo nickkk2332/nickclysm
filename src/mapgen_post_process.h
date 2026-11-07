@@ -3,6 +3,7 @@
 #define CATA_SRC_MAPGEN_POST_PROCESS_H
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -15,6 +16,7 @@ class JsonObject;
 class JsonOut;
 class JsonValue;
 class map;
+struct const_dialogue;
 template<typename E> struct enum_traits;
 template<typename T> class generic_factory;
 
@@ -93,8 +95,29 @@ struct pp_sub_generator {
     // only used in sub_generator_type::ter_furn_transform
     std::optional<ter_furn_transform_id> ter_furn_transform_used;
 
+    // MGEN-J05: the content the sub-generators write, empty for the built-in default.
+    // pre_burn: what burnt walls, floors and outdoor ground become
+    ter_str_id burnt_wall_ter;
+    ter_str_id burnt_floor_ter;
+    ter_str_id burnt_ground_ter;
+    // add_fire and place_blood: the field they place
+    field_type_str_id field;
+    // aftershock_ruin: the overmap terrain of a full ruin (and the one above that ruins this
+    // one), its walls and their gaps, indoor floors (ground level) and the cover elsewhere,
+    // and the wreckage of a smashed-up one
+    oter_str_id ruin_oter;
+    ter_str_id ruin_wall_ter;
+    ter_str_id ruin_floor_ter;
+    ter_str_id ruin_ground_floor_ter;
+    ter_str_id ruin_cover_ter;
+    furn_str_id wreckage_furn;
+    // when set, the sub-generator runs only where this holds; "loc" is the overmap tile's
+    // north-west corner and "oter_id" its overmap terrain
+    std::function<bool( const_dialogue const & )> condition;
+
     void load( const JsonObject &jo );
     void check( const std::string &ctx ) const;
+    bool condition_holds( const tripoint_abs_omt &p ) const;
 };
 
 // Persisted decision for a single overmap_special-scoped sub-generator.

@@ -3,6 +3,7 @@
 #define CATA_SRC_MAPGEN_H
 
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -33,6 +34,7 @@ class map;
 class mapgendata;
 class mission;
 class tinymap;
+struct const_dialogue;
 struct mapgen_arguments;
 struct oter_t;
 template <typename E> struct enum_traits;
@@ -234,6 +236,31 @@ class jmapgen_piece_with_has_vehicle_collision : public jmapgen_piece
 
 
 /**
+ * MGEN-J08: which tiles a "place_*" entry may go on, its "place_on". Its x and y are rolled
+ * until a tile passes, up to @ref attempts times; with none, that repeat places nothing.
+ */
+struct jmapgen_place_filter {
+    // the terrain is one of these (any terrain when empty)
+    std::vector<ter_str_id> ter;
+    // the terrain has all of these flags, and none of not_ter_flags
+    std::vector<std::string> ter_flags;
+    std::vector<std::string> not_ter_flags;
+    bool no_furniture = false;
+    bool passable = false;
+    // "near": another tile at most near_radius away has a terrain that is one of near_ter (any,
+    // when empty) with all of near_ter_flags
+    bool has_near = false;
+    std::vector<ter_str_id> near_ter;
+    std::vector<std::string> near_ter_flags;
+    int near_radius = 1;
+    int attempts = 20;
+
+    void load( const JsonObject &jo );
+    void check( const std::string &context ) const;
+    bool test( const map &m, const tripoint_bub_ms &p ) const;
+};
+
+/**
  * Where to place something on a map.
  */
 class jmapgen_place
@@ -248,6 +275,10 @@ class jmapgen_place
         jmapgen_int y;
         jmapgen_int z;
         jmapgen_int repeat;
+        // MGEN-J07: "condition", checked for each repeat; nothing is placed when it fails
+        std::shared_ptr<const std::function<bool( const_dialogue const & )>> condition;
+        // MGEN-J08: "place_on"
+        std::shared_ptr<const jmapgen_place_filter> place_on;
 };
 
 // Strong typedef for strings used as map/palette keys

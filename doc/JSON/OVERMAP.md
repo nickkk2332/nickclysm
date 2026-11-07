@@ -445,8 +445,10 @@ The field supports `copy-from` inheritance.  To remove a generator inherited fro
 }
 ```
 
-Road overmap terrains currently use hardcoded dispatch for city roads and should not have
-`post_process_generators` set.
+Road overmap terrains should not have `post_process_generators` set: a road in a city gets the
+generators of its region's `road_post_process` (a `region_settings_city` field, default
+`[ "riot_damage_road" ]`, see [REGION_SETTINGS.md](REGION_SETTINGS.md#region-city-settings)), and
+a road outside a city gets none.
 
 ### `pp_generator` definition
 
@@ -455,6 +457,22 @@ Road overmap terrains currently use hardcoded dispatch for city roads and should
 | `type`           | Must be `"pp_generator"`.                                                             |
 | `id`             | Unique id.                                                                            |
 | `sub_generators` | Array of sub-generator objects, executed in order.  See below.                         |
+
+A `pp_generator` with `copy-from` inherits its parent's `sub_generators`; a new
+`sub_generators` array replaces them all.  To change only some, `"delete": { "sub_generators":
+[ "place_blood" ] }` drops every inherited sub-generator of the listed types, then
+`"extend": { "sub_generators": [ ... ] }` adds new ones after the rest (delete runs first, so a
+type can be deleted and re-added in one definition):
+
+```jsonc
+{
+  "type": "pp_generator",
+  "id": "riot_damage_slime",
+  "copy-from": "riot_damage",
+  "delete": { "sub_generators": [ "place_blood" ] },
+  "extend": { "sub_generators": [ { "type": "place_blood", "attempts": 576, "chance": 15, "field": "fd_acid" } ] }
+}
+```
 
 ### Sub-generator fields
 
@@ -473,6 +491,10 @@ Each sub-generator object has the following fields:
 | `scaling_days_start`  | For time-scaled effects, day offset when scaling begins.  Default 0.                  |
 | `scaling_days_end`    | For time-scaled effects, day offset when scaling reaches full strength.  Default 0.   |
 | `scope`               | `"omt"` (default) or `"overmap_special"`.  See [Scope](#scope) below.                 |
+| `condition`           | Optional [dialogue condition](NPCs.md#dialogue-conditions).  The sub-generator runs only on the overmap tiles where it holds.  Its context values are `loc` (the tile's north-west corner) and `oter_id` (its overmap terrain id); `u` is the avatar.  An `overmap_special`-scoped decision is made on the first tile where it holds. |
+| `burnt_wall_ter`, `burnt_floor_ter`, `burnt_ground_ter` | `pre_burn` only.  What a flammable wall, floor (indoors or door) and outdoor ground (z 0) become.  Default `t_wall_burnt`, `t_floor_burnt`, `t_dirt`. |
+| `field`               | `add_fire` and `place_blood` only.  The field placed.  Default `fd_fire` and `fd_blood`. |
+| `ruin_oter`, `ruin_wall_ter`, `ruin_floor_ter`, `ruin_ground_floor_ter`, `ruin_cover_ter`, `wreckage_furn` | `aftershock_ruin` only; see that type below.  |
 
 ### Scope
 
@@ -518,18 +540,18 @@ falls through to the original per-OMT fresh-roll behavior.  No migration needed.
 | `bash_damage`     | Randomly bashes furniture and terrain.  `chance` is percent [0-100] per attempt.  `min_intensity`/`max_intensity` control bash strength (damage range). |
 | `move_items`      | Displaces items on the ground by a random distance.  `chance` is percent [0-100] per attempt.  `max_intensity` is the maximum displacement in tiles.  Respects SEALED/PLANT containers. |
 | `add_fire`        | Places fire fields.  Chance is computed from `scaling_days_end` (fires stop spawning after that many days since the cataclysm).  `min_intensity`/`max_intensity` control fire strength.  `chance` must be 0 (it is derived internally). |
-| `pre_burn`        | Replaces an entire OMT with burnt terrain variants -- walls become `t_wall_burnt`, floors become `t_floor_burnt`, furniture and items are destroyed.  Chance is computed from `scaling_days_start`/`scaling_days_end` and intensity.  Stairs (GOES_UP/GOES_DOWN) are preserved.  `chance` must be 0 (it is derived internally). |
-| `place_blood`     | Places blood streaks, pools, and splatter.  `chance` is permille [0-1000] per attempt.  Outdoor blood fades over 30 days. |
+| `pre_burn`        | Replaces an entire OMT with burnt terrain variants -- walls become `t_wall_burnt`, floors become `t_floor_burnt`, outdoor ground at z 0 becomes `t_dirt` (or the `burnt_*_ter` given), furniture and items are destroyed.  Chance is computed from `scaling_days_start`/`scaling_days_end` and intensity.  Stairs (GOES_UP/GOES_DOWN) are preserved.  `chance` must be 0 (it is derived internally). |
+| `place_blood`     | Places blood streaks, pools, and splatter (`fd_blood`, or the `field` given).  `chance` is permille [0-1000] per attempt.  Outdoor blood fades over 30 days. |
 | `ter_furn_transform`  | Applies `ter_furn_transform_used` on every tile in map. `chance` is percent chance to apply (remember the default chance value, if undefined, is 0) |
 | `modify_items`  | Applies `modify_items` on every tile in map. `filter` allows to define the items affected |
-| `aftershock_ruin`  | Runs the Aftershock ruin generator.  All numeric fields are ignored. |
+| `aftershock_ruin`  | Runs the ruin generator.  All numeric fields are ignored.  The tile is fully ruined when the tile above is already `ruin_oter`, or half the time when the tile above is open air: its overmap terrain becomes `ruin_oter`, most furniture goes, walls become `ruin_wall_ter` (one in five `ruin_floor_ter`), most indoor floors become `ruin_ground_floor_ter` at z 0 and `ruin_cover_ter` elsewhere, and open air at z 0 becomes `ruin_cover_ter`.  Otherwise it is smashed up, with patches of `wreckage_furn`.  The defaults are Aftershock's: `afs_ruins_dynamic`, `t_wall_prefab_metal`, `t_metal_floor`, `t_snow_metal_floor`, `t_snow` and `f_wreckage`. |
 
 ### Built-in generators
 
 | Id                   | Description | Used by |
 | -------------------- | ----------- | ------- |
 | `riot_damage`        | Full riot damage: bash, item displacement, fire, pre-burn, and blood.  `pre_burn` uses `overmap_special` scope.  | Most city buildings (via `generic_city_building`). |
-| `riot_damage_road`   | Same as `riot_damage` but without `pre_burn`.  | City roads (hardcoded dispatch). |
+| `riot_damage_road`   | Same as `riot_damage` but without `pre_burn`.  | City roads (the default `road_post_process` of a region's city settings). |
 | `aftershock_ruin`    | Aftershock ruin effect.  | Aftershock mod buildings with `PP_GENERATE_RUINED` flag. |
 
 
