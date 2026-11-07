@@ -20,8 +20,10 @@
 #include "cata_variant.h"
 #include "character.h"
 #include "color.h"
+#include "condition.h"
 #include "crafting_gui.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enum_traits.h"
 #include "flag.h"
@@ -49,6 +51,7 @@
 #include "skill.h"
 #include "string_formatter.h"
 #include "string_id_utils.h"
+#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translations.h"
 #include "type_id.h"
@@ -64,6 +67,7 @@ static const morale_type morale_fun_craft( "morale_fun_craft" );
 static const morale_type morale_shitty_craft( "morale_shitty_craft" );
 
 static const std::string flag_FULL_MAGAZINE( "FULL_MAGAZINE" );
+static const std::string flag_NO_NPC_CRAFT( "NO_NPC_CRAFT" );
 
 namespace
 {
@@ -517,6 +521,19 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
             // single requirement
             required_skills[skill_id( sk.get_string( 0 ) )] = sk.get_int( 1 );
         }
+    }
+
+    // UIINV-J03: a dialogue condition on the crafter, and the share of the difficulty theoretical
+    // knowledge must reach
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition_, true );
+        has_condition_ = true;
+    }
+    optional( jo, was_loaded, "condition_failure_message", condition_failure_message_ );
+    optional( jo, was_loaded, "hide_if_condition_fails", hide_if_condition_fails_, false );
+    optional( jo, was_loaded, "knowledge_ratio", knowledge_ratio_, 0.8f );
+    if( knowledge_ratio_ < 0.0f || knowledge_ratio_ > 1.0f ) {
+        jo.throw_error_at( "knowledge_ratio", "must be from 0 to 1" );
     }
 
     if( jo.has_member( "character_requirements" ) ) {
@@ -1855,6 +1872,26 @@ bool recipe::character_meets_requirements( const Character &character ) const
     return true;
 }
 
+bool recipe::crafter_meets_condition( const Character &crafter ) const
+{
+    if( !has_condition_ ) {
+        return true;
+    }
+    const const_dialogue d( get_const_talker_for( crafter ), nullptr );
+    return condition_( d );
+}
+
+std::string recipe::condition_failure_message() const
+{
+    return condition_failure_message_.empty() ? _( "You can't craft this now." ) :
+           condition_failure_message_.translated();
+}
+
+int recipe::required_knowledge_level( const Character &crafter ) const
+{
+    return static_cast<int>( get_difficulty( crafter ) * knowledge_ratio_ );
+}
+
 bool recipe::has_character_requirements() const
 {
     return !character_requirements_.empty();
@@ -2057,8 +2094,13 @@ void recipe::apply_positive_morale_mods( Character &guy ) const
     }
 }
 
-bool recipe::npc_can_craft( std::string & ) const
+bool recipe::npc_can_craft( std::string &reason ) const
 {
+    // UIINV-J03: NPCs can't craft it, followers or not ("condition" can say more)
+    if( has_flag( flag_NO_NPC_CRAFT ) ) {
+        reason = _( "NPCs can't craft this." );
+        return false;
+    }
     return true;
 }
 

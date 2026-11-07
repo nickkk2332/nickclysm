@@ -183,6 +183,8 @@ struct vpslot_workbench {
     // Mass/volume allowed before a crafting speed penalty is applied
     units::mass allowed_mass = 0_gram;
     units::volume allowed_volume = 0_ml;
+    // The crafting menu opened here starts with this search (UIINV-J02)
+    std::string recipe_filter;
 
     void deserialize( const JsonObject &jo );
 };

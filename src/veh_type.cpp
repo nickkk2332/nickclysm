@@ -504,6 +504,7 @@ void vpslot_workbench::deserialize( const JsonObject &jo )
     optional( jo, false, "multiplier", multiplier, 1.f );
     optional( jo, false, "mass", allowed_mass, 0_gram );
     optional( jo, false, "volume", allowed_volume, 0_ml );
+    optional( jo, false, "recipe_filter", recipe_filter );
 }
 
 void vpslot_toolkit::deserialize( const JsonObject &jo )

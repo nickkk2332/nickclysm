@@ -19,6 +19,7 @@
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
 #include "avatar.h"
+#include "avatar_action.h"
 #include "bionics.h"
 #include "body_part_set.h"
 #include "bodypart.h"
@@ -2546,6 +2547,10 @@ bool Character::unload( item_location &loc, bool bypass_activity,
             add_msg( m_info, _( "The item can't be unloaded in its current state!" ) );
             return false;
         }
+        // UIINV-B06: every way of unloading asks before taking what isn't the avatar's
+        if( !bypass_activity && !avatar_action::check_stealing( *this, it ) ) {
+            return false;
+        }
 
         int moves = 0;
         item *prev_contained = nullptr;
@@ -2636,6 +2641,10 @@ bool Character::unload( item_location &loc, bool bypass_activity,
             }
             return false;
         }
+    }
+
+    if( !bypass_activity && !avatar_action::check_stealing( *this, it ) ) {
+        return false;
     }
 
     target->casings_handle( [&]( item & e ) {

@@ -160,6 +160,21 @@ A value of `0` is valid but has no effect. The recipe cannot be started while an
 
 When a recipe with `copy-from` defines `character_requirements`, the entire inherited object is replaced. Members omitted from the child object are not inherited individually.
 
+#### `condition`, `condition_failure_message`, `hide_if_condition_fails`, `knowledge_ratio`
+
+`condition` optionally restricts a recipe with a [dialogue condition](EFFECT_ON_CONDITION.md#possible-conditions) on the crafter (`u_`; there is no `npc_`): a trait, a flag, a variable, anything a condition can check. It holds for every way of crafting the recipe, however it was learned (known, read in a book, shown by a helper), and for NPCs too. While it fails, the recipe can't be started (from the crafting menu, `u_assign_activity`'s `ACT_CRAFT` or a crafting NPC) and the crafting menu shows `condition_failure_message` (default "You can't craft this now."). With `"hide_if_condition_fails": true` the menu doesn't list the recipe at all while the condition fails. A craft already started goes on.
+
+`knowledge_ratio` (default 0.8, from 0 to 1) is the share of the recipe's difficulty that the crafter's theoretical knowledge of `skill_used` must reach, rounded down: below it the menu says the crafter lacks the theoretical knowledge, and a helper who knows the recipe can't explain it.
+
+```jsonc
+"condition": { "u_has_trait": "MY_MOD_RUNESMITH" },
+"condition_failure_message": "Only a runesmith can carve these.",
+"hide_if_condition_fails": true,
+"knowledge_ratio": 1.0
+```
+
+A recipe with the `NO_NPC_CRAFT` flag can't be crafted by NPCs (followers included); use `condition` for more particular rules.
+
 #### Changing proficiencies and requirements with `copy-from`
 
 A recipe with `copy-from` inherits its parent's `proficiencies`. Giving `proficiencies` replaces the whole list; `extend` and `delete` change it by proficiency id:

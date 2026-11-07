@@ -46,16 +46,11 @@
 
 static const bionic_id bio_memory( "bio_memory" );
 
-static const efftype_id effect_contacts( "contacts" );
-static const efftype_id effect_transition_contacts( "transition_contacts" );
-
 static const flag_id json_flag_ENJOYED_BY_CANNIBALS( "ENJOYED_BY_CANNIBALS" );
-static const flag_id json_flag_FIX_FARSIGHT( "FIX_FARSIGHT" );
 
 static const json_character_flag json_flag_CANNIBAL( "CANNIBAL" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_HATES_BOOKS( "HATES_BOOKS" );
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_LOVES_BOOKS( "LOVES_BOOKS" );
 static const json_character_flag
@@ -466,11 +461,7 @@ read_condition_result Character::check_read_condition( const item &book ) const
         if( book_requires_intelligence && has_flag( json_flag_ILLITERATE ) ) {
             result |= read_condition_result::ILLITERATE;
         }
-        if( has_flag( json_flag_HYPEROPIC ) &&
-            !worn_with_flag( json_flag_FIX_FARSIGHT ) &&
-            !has_effect( effect_contacts ) &&
-            !has_effect( effect_transition_contacts ) &&
-            !has_flag( json_flag_ENHANCED_VISION ) ) {
+        if( has_uncorrected_farsight() && !has_flag( json_flag_ENHANCED_VISION ) ) {
             result |= read_condition_result::NEED_GLASSES;
         }
         if( fine_detail_vision_mod() > 4 && !book.has_flag( flag_CAN_USE_IN_DARK ) ) {

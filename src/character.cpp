@@ -257,12 +257,14 @@ static const json_character_flag json_flag_DEAF( "DEAF" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_EYE_MEMBRANE( "EYE_MEMBRANE" );
 static const json_character_flag json_flag_FEATHER_FALL( "FEATHER_FALL" );
+static const json_character_flag json_flag_FIX_FARSIGHT( "FIX_FARSIGHT" );
 static const json_character_flag json_flag_FREEZE_EFFECTS( "FREEZE_EFFECTS" );
 static const json_character_flag json_flag_GLIDE( "GLIDE" );
 static const json_character_flag json_flag_GLIDING( "GLIDING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HEATSINK( "HEATSINK" );
+static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_IMMUNE_HEARING_DAMAGE( "IMMUNE_HEARING_DAMAGE" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
 static const json_character_flag json_flag_INSECTBLOOD( "INSECTBLOOD" );
@@ -1348,6 +1350,14 @@ int Character::clairvoyance() const
     }
 
     return 0;
+}
+
+// UIINV-J04: glasses, contacts, and any trait, bionic or effect with the FIX_FARSIGHT flag
+bool Character::has_uncorrected_farsight() const
+{
+    return has_flag( json_flag_HYPEROPIC ) && !worn_with_flag( flag_FIX_FARSIGHT ) &&
+           !has_flag( json_flag_FIX_FARSIGHT ) && !has_effect( effect_contacts ) &&
+           !has_effect( effect_transition_contacts );
 }
 
 bool Character::sight_impaired() const

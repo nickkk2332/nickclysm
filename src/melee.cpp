@@ -116,7 +116,6 @@ static const damage_type_id damage_stab( "stab" );
 
 static const efftype_id effect_amigara( "amigara" );
 static const efftype_id effect_beartrap( "beartrap" );
-static const efftype_id effect_contacts( "contacts" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_fearparalyze( "fearparalyze" );
 static const efftype_id effect_heavysnare( "heavysnare" );
@@ -127,7 +126,6 @@ static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_natural_stance( "natural_stance" );
 static const efftype_id effect_pet( "pet" );
 static const efftype_id effect_stunned( "stunned" );
-static const efftype_id effect_transition_contacts( "transition_contacts" );
 static const efftype_id effect_winded( "winded" );
 
 static const itype_id itype_fur( "fur" );
@@ -142,7 +140,6 @@ static const json_character_flag json_flag_CBQ_LEARN_BONUS( "CBQ_LEARN_BONUS" );
 static const json_character_flag json_flag_CQB_LEARNING( "CQB_LEARNING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_HARDTOHIT( "HARDTOHIT" );
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_NO_MELEE_PRACTICE( "NO_MELEE_PRACTICE" );
 static const json_character_flag json_flag_PSEUDOPOD_GRASP( "PSEUDOPOD_GRASP" );
 
@@ -403,9 +400,7 @@ float Character::hit_roll() const
     float hit = get_melee_hit_base();
 
     // Farsightedness makes us hit worse
-    if( has_flag( json_flag_HYPEROPIC ) && !worn_with_flag( flag_FIX_FARSIGHT ) &&
-        !has_effect( effect_contacts ) &&
-        !has_effect( effect_transition_contacts ) ) {
+    if( has_uncorrected_farsight() ) {
         hit -= 2.0f;
     }
 
@@ -468,10 +463,7 @@ std::string Character::get_miss_reason()
     add_miss_reason(
         _( "Your torso encumbrance throws you off-balance." ),
         roll_remainder( avg_encumb_of_limb_type( bp_type::torso ) / 10.0 ) );
-    const int farsightedness = 2 * ( has_flag( json_flag_HYPEROPIC ) &&
-                                     !worn_with_flag( flag_FIX_FARSIGHT ) &&
-                                     !has_effect( effect_contacts ) &&
-                                     !has_effect( effect_transition_contacts ) );
+    const int farsightedness = 2 * has_uncorrected_farsight();
     add_miss_reason(
         _( "You can't hit reliably due to your farsightedness." ),
         farsightedness );

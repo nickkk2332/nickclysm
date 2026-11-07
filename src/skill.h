@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "bonuses.h"
 #include "calendar.h"
 #include "dialogue_helpers.h"
 #include "game_constants.h"
@@ -72,6 +73,11 @@ class Skill
         time_duration _rust_grace_period = 24_hours;
         float _rust_multiplier = 1.0f;
         float _rust_max_levels = 3.0f;
+        // Crafting with this as the primary skill (UIINV-J04): uncorrected farsightedness takes
+        // this much off the effective skill, and the crafting stat adds stat / divisor.
+        float _vision_penalty = 0.0f;
+        scaling_stat _crafting_stat = STAT_INT;
+        float _crafting_stat_divisor = 4.0f;
         // When the definition this skill holds was loaded: `skills` keeps that order, so a
         // redefinition moves the skill to the end as it always did.
         uint64_t _load_order = 0;
@@ -181,6 +187,18 @@ class Skill
         /** Rust stops once this many levels' worth of experience has rusted away */
         float rust_max_levels() const {
             return _rust_max_levels;
+        }
+        /** Taken off the effective skill of a farsighted crafter without glasses */
+        float vision_penalty() const {
+            return _vision_penalty;
+        }
+        /** The stat that adds to the effective skill when crafting */
+        scaling_stat crafting_stat() const {
+            return _crafting_stat;
+        }
+        /** The crafting stat adds stat / this */
+        float crafting_stat_divisor() const {
+            return _crafting_stat_divisor;
         }
 
         bool operator==( const Skill &b ) const {

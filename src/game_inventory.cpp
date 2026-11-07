@@ -355,6 +355,20 @@ drop_locations game_menus::inv::titled_multi_filter_menu( const item_location_fi
     return inv_internal_multi( you, inventory_filter_preset( filter ), title, radius, none_message );
 }
 
+item_location game_menus::inv::titled_preset_menu( const inventory_selector_preset &preset,
+        Character &you, const std::string &title, int radius, const std::string &none_message,
+        const std::string &hint )
+{
+    return inv_internal( you, preset, title, radius, none_message, hint );
+}
+
+drop_locations game_menus::inv::titled_multi_preset_menu( const inventory_selector_preset &preset,
+        Character &you, const std::string &title, int radius, const std::string &none_message,
+        const std::string &hint )
+{
+    return inv_internal_multi( you, preset, title, radius, none_message, hint );
+}
+
 item_location game_menus::inv::titled_menu( Character &you, const std::string &title,
         const std::string &none_message )
 {

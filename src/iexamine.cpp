@@ -98,6 +98,7 @@
 #include "units.h"
 #include "units_utility.h"
 #include "value_ptr.h"
+#include "veh_type.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
 #include "visitable.h"
@@ -7341,12 +7342,17 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
 {
     std::vector<item_location> crafts;
     std::string name;
+    // UIINV-J02: the workbench's "recipe_filter" starts the crafting menu's search
+    std::string recipe_filter;
     bool is_undeployable = false;
     bool items_at_loc = false;
     map &here = get_map();
 
     if( part ) {
         name = part->part().name();
+        if( const std::optional<vpslot_workbench> &wb_info = part->part().info().workbench_info ) {
+            recipe_filter = wb_info->recipe_filter;
+        }
         for( item &it : part->items() ) {
             if( it.is_craft() ) {
                 crafts.emplace_back( vehicle_cursor( part->vehicle(), part->part_index() ), &it );
@@ -7355,6 +7361,9 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
     } else {
         const furn_t &fo = here.furn( examp ).obj();
         name = fo.name();
+        if( fo.workbench ) {
+            recipe_filter = fo.workbench->recipe_filter;
+        }
         if( item::type_is_defined( fo.deployed_item ) ) {
             is_undeployable = true;
         }
@@ -7407,7 +7416,7 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
             } else if( shapeshift_handless ) {
                 add_msg( m_info, _( "You don't have proper hands to do that." ) );
             } else {
-                you.craft( examp );
+                you.craft( examp, recipe_id(), recipe_filter );
             }
             break;
         }
@@ -7431,7 +7440,7 @@ void iexamine::workbench_internal( Character &you, const tripoint_bub_ms &examp,
             } else if( shapeshift_handless ) {
                 add_msg( m_info, _( "You don't have proper hands to do that." ) );
             } else {
-                you.long_craft( examp );
+                you.long_craft( examp, recipe_id(), recipe_filter );
             }
             break;
         }

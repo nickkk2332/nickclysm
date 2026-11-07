@@ -275,6 +275,8 @@ struct recipe_panel {
     bool too_complex = false;
     bool npc_cannot_craft = false;
     std::string npc_reason;
+    // the recipe's JSON condition fails: what it says (UIINV-J03)
+    std::string condition_failure;
     // batches of more than one only
     std::string batch_savings;
 
@@ -288,6 +290,9 @@ struct recipe_panel {
     float limb_mult = 1.0f;
     float mut_mult = 1.0f;
     float mut_skill_bonus = 0.0f;
+    // the primary skill's crafting stat (intelligence by default): its name, value, and what it
+    // adds to the effective skill compared to a stat of 8
+    std::string crafting_stat_name;
     int intelligence = 0;
     float int_delta = 0.0f;
     bool has_farsight = false;

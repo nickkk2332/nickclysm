@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <iterator>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "character.h"
@@ -299,6 +301,33 @@ void Skill::load( const JsonObject &jsobj, std::string_view )
         if( _rust_max_levels < 0 ) {
             jo_rust.throw_error_at( "max_levels", "must not be negative" );
         }
+    }
+
+    // How crafting uses it (UIINV-J04); the defaults are the built-in rules
+    optional( jsobj, was_loaded, "vision_penalty", _vision_penalty, 0.0f );
+    if( _vision_penalty < 0 ) {
+        jsobj.throw_error_at( "vision_penalty", "must not be negative" );
+    }
+    if( jsobj.has_member( "crafting_stat" ) ) {
+        static const std::array<std::pair<std::string_view, scaling_stat>, 4> crafting_stats = { {
+                { "str", STAT_STR }, { "dex", STAT_DEX }, { "int", STAT_INT }, { "per", STAT_PER }
+            }
+        };
+        const std::string stat = jsobj.get_string( "crafting_stat" );
+        const auto found = std::find_if( crafting_stats.begin(), crafting_stats.end(),
+        [&stat]( const std::pair<std::string_view, scaling_stat> &entry ) {
+            return entry.first == stat;
+        } );
+        if( found == crafting_stats.end() ) {
+            jsobj.throw_error_at( "crafting_stat", R"(must be "str", "dex", "int" or "per")" );
+        }
+        _crafting_stat = found->second;
+    } else if( !was_loaded ) {
+        _crafting_stat = STAT_INT;
+    }
+    optional( jsobj, was_loaded, "crafting_stat_divisor", _crafting_stat_divisor, 4.0f );
+    if( _crafting_stat_divisor <= 0 ) {
+        jsobj.throw_error_at( "crafting_stat_divisor", "must be more than 0" );
     }
 }
 

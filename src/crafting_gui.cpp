@@ -1105,6 +1105,9 @@ void crafting_ui_impl::draw_recipe_info_panel()
             if( !avail.can_craft_recipe && npc_cant ) {
                 cataimgui::TextColoredParagraphNewline( c_red, panel.npc_reason );
             }
+            if( !avail.can_craft_recipe && !panel.condition_failure.empty() ) {
+                cataimgui::TextColoredParagraphNewline( c_red, panel.condition_failure );
+            }
         }
 
         // Batch time savings
@@ -1538,7 +1541,7 @@ void crafting_ui_impl::draw_modifier_table( const recipe &recp, const recipe_pan
 
                 if( std::abs( int_delta ) > 0.01f ) {
                     cond_source();
-                    ImGui::Text( "%s %d", _( "intelligence" ), panel.intelligence );
+                    ImGui::Text( "%s %d", panel.crafting_stat_name.c_str(), panel.intelligence );
                     cond_source_end();
                     dash_cell();
                     skill_mod_cell( int_delta );
@@ -2609,6 +2612,9 @@ int choose_crafter( const std::vector<Character *> &crafting_group, int crafter_
             std::string dummy;
             if( chara->is_npc() && !rec->npc_can_craft( dummy ) ) {
                 reasons.emplace_back( _( "is NPC" ) );
+            }
+            if( !rec->crafter_meets_condition( *chara ) ) {
+                reasons.emplace_back( _( "condition" ) );
             }
 
             entry.emplace_back(

@@ -27,6 +27,7 @@ class Character;
 class JsonObject;
 class JsonValue;
 class cata_variant;
+class const_dialogue;
 class item;
 class item_components;
 class recipe;
@@ -336,6 +337,19 @@ class recipe
         // Returns the character stat requirements configured for this recipe.
         const std::map<scaling_stat, int> &get_character_requirements() const;
 
+        // UIINV-J03: the JSON "condition" (u is the crafter) holds; true without one.
+        bool crafter_meets_condition( const Character &crafter ) const;
+        // What the crafting menu says when the condition fails.
+        std::string condition_failure_message() const;
+        // Not listed in the crafting menu while the condition fails.
+        bool hide_if_condition_fails() const {
+            return hide_if_condition_fails_;
+        }
+        // The theoretical knowledge of the primary skill a crafter needs to understand the
+        // recipe when a helper knows it, and to see what it lacks: "knowledge_ratio" (0.8 by
+        // default) of the difficulty, rounded down.
+        int required_knowledge_level( const Character &crafter ) const;
+
         // Create a string list to describe the skill requirements for this recipe
         // Format: skill_name(level/amount), skill_name(level/amount)
         // Character object (if provided) used to color levels
@@ -514,6 +528,14 @@ class recipe
 
         /** Character stat requirements. */
         std::map<scaling_stat, int> character_requirements_;
+
+        /** UIINV-J03: JSON "condition", "condition_failure_message", "hide_if_condition_fails" */
+        std::function<bool( const_dialogue const & )> condition_;
+        bool has_condition_ = false;
+        translation condition_failure_message_;
+        bool hide_if_condition_fails_ = false;
+        /** Share of the difficulty the primary skill's knowledge must reach (UIINV-J03) */
+        float knowledge_ratio_ = 0.8f;
 
         /** Combined requirements cached when recipe finalized */
         requirement_data requirements_;

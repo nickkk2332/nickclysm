@@ -199,7 +199,7 @@ Some armor flags, such as `WATCH` and `ALARMCLOCK` are compatible with other ite
 - ```ENERGY_SHIELD``` Marks a piece of armor as an energy shield. Energy shields do not suffer degradation from attacks and instead have an hp pool defined by the dialogue variable `ENERGY_SHIELD_HP` that is depleted by blocked attacks and a second variable `ENERGY_SHIELD_MAX_HP` which just stores the max hp of the shield in case it's needed for EOC manipulation.  When the hp pool is depleted, the shield is destroyed. The fields `ENERGY SHIELD_HP` and `ENERGY_SHIELD_MAX_HP` are dialogue variables stored in the item, and can be modified through effects on condition.
 - ```EXTRA_PLATING``` Item can be worn over some armors, as additional layer of protection (like armor above brigandine); specifically can be put in pocket for armor with this flag restriction.
 - ```FIN``` This item is swim fins aka diving fins aka flippets, and provide speed boost when you swim.
-- ```FIX_FARSIGHT``` This gear corrects farsightedness.
+- ```FIX_FARSIGHT``` This gear corrects farsightedness.  As a character flag (from a trait, a bionic or an effect's `flags`) it corrects it too, as glasses and contact lenses do.
 - ```FIX_NEARSIGHT``` This gear corrects nearsightedness.
 - ```FLASH_PROTECTION``` This item grants a protection against different light-related dangers, including flashbangs and dazzling light.
 - ```FLOTATION``` Prevents the player from drowning in deep water.  Also prevents diving underwater.
@@ -426,7 +426,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```HIGH_GLARE``` Glare lasts twice as long
 - ```HUGE``` Changes your size to `creature_size::huge`.  Checked last of the size category flags, if no size flags are found your size defaults to `creature_size::medium`.
 - ```HUNGER_DISRUPTION``` You cannot tell how hungry you are 
-- ```HYPEROPIC``` You are far-sighted: close combat is hampered and reading is impossible without glasses.
+- ```HYPEROPIC``` You are far-sighted: close combat is hampered, reading is impossible and crafting with a skill that has a `vision_penalty` is harder without glasses (a worn `FIX_FARSIGHT` item, a `FIX_FARSIGHT` character flag or contact lenses).
 - ```ILLITERATE``` You can't read: books that need intelligence, signs, notes, computer screens and the like.  The `ILLITERATE` trait has it.
 - ```INHALED_TOXIN_IMMUNE``` You are immune to any inhaled toxin that mouth environmental resistance would also protect against.
 - ```IMMUNE_HEARING_DAMAGE``` Immune to hearing damage from loud sounds.
@@ -1472,6 +1472,7 @@ like an engine flag. Since any name is accepted, check the spelling of engine fl
 - ```BLIND_HARD``` Possible to craft with little to no light, but difficult.
 - ```FULL_MAGAZINE``` Crafted or deconstructed items from this recipe will have fully-charged magazines.
 - ```NEED_FULL_MAGAZINE``` If this recipe requires magazines, it needs one that is full.
+- ```NO_NPC_CRAFT``` NPCs (followers included) can't craft this recipe.
 - ```NO_RESIZE``` This clothes you crafted spawn unfitted
 - ```SECRET``` Not automatically learned at character creation time based on high skill levels.
 - ```AFFECTED_BY_PAIN``` 1 unit of pain decreases the speed of craft for 1%. Recommended to not use in vanilla recipes

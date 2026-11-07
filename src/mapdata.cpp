@@ -585,6 +585,7 @@ bool furn_workbench_info::load( const JsonObject &jsobj, std::string_view member
     optional( j, false, "multiplier", multiplier, 1.0f );
     optional( j, false, "mass", allowed_mass, units::mass::max() );
     optional( j, false, "volume", allowed_volume, units::volume::max() );
+    optional( j, false, "recipe_filter", recipe_filter );
 
     return true;
 }

@@ -953,6 +953,11 @@ class Character : public Creature, public visitable
         int  clairvoyance() const;
         /** Returns true if the player has some form of impaired sight */
         bool sight_impaired() const;
+        /**
+         * Farsighted (HYPEROPIC) and not corrected: no worn FIX_FARSIGHT item, no FIX_FARSIGHT
+         * flag from a trait, bionic or effect, no contact lenses.
+         */
+        bool has_uncorrected_farsight() const;
         /** Returns true if the player or their vehicle has an alarm clock */
         bool has_alarm_clock() const;
         /** Returns true if the player or their vehicle has a watch */
@@ -3973,7 +3978,14 @@ class Character : public Creature, public visitable
                     const recipe_id &goto_recipe = recipe_id(), const std::string &filterstring = "" );
         void recraft( const std::optional<tripoint_bub_ms> &loc = std::nullopt );
         void long_craft( const std::optional<tripoint_bub_ms> &loc = std::nullopt,
-                         const recipe_id &goto_recipe = recipe_id() );
+                         const recipe_id &goto_recipe = recipe_id(), const std::string &filterstring = "" );
+        /**
+         * UIINV-J02: whether this character could start crafting @p making now, as the crafting
+         * menu and ACT_CRAFT see it: it has the recipe (learned, from a book or a helper), meets
+         * its proficiencies, stats and condition, an NPC isn't refused it, it is in the mood,
+         * there is light, and the components and tools for @p batch_size are at hand.
+         */
+        bool can_craft_now( const recipe &making, int batch_size = 1 ) const;
         void make_craft( const recipe_id &id, int batch_size,
                          const std::optional<tripoint_bub_ms> &loc = std::nullopt );
         void make_all_craft( const recipe_id &id, int batch_size,
@@ -3996,6 +4008,12 @@ class Character : public Creature, public visitable
         float crafting_success_roll( const recipe &making ) const;
         float crafting_failure_roll( const recipe &making ) const;
         float get_recipe_weighted_skill_average( const recipe &making ) const;
+        /** Taken off the effective skill: the primary skill's vision_penalty, when farsighted
+         *  without correction (has_uncorrected_farsight); 0 otherwise */
+        float crafting_vision_penalty( const recipe &making ) const;
+        /** Added to the effective skill: the primary skill's crafting stat / its divisor
+         *  (intelligence / 4 by default) */
+        float crafting_stat_bonus( const recipe &making ) const;
         float recipe_success_chance( const recipe &making ) const;
         float item_destruction_chance( const recipe &making ) const;
         craft_roll_data recipe_success_roll_data( const recipe &making ) const;

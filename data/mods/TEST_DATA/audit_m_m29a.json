@@ -1,0 +1,122 @@
+[
+  {
+    "//": "UIINV-J04: lenses a mod could add, correcting farsightedness through the flag.",
+    "type": "effect_type",
+    "id": "test_m29a_lenses",
+    "name": [ { "str": "Test Lenses", "//~": "NO_I18N" } ],
+    "desc": [ { "str": "Corrects farsightedness.", "//~": "NO_I18N" } ],
+    "flags": [ "FIX_FARSIGHT" ]
+  },
+  {
+    "type": "skill",
+    "id": "test_m29a_skill",
+    "//": "UIINV-J04. Contextual, so it isn't in Skill::skills and other tests don't see it.",
+    "name": { "str": "audit crafting stat skill" },
+    "description": "Crafting with it uses perception / 2, and farsightedness costs 3.",
+    "display_category": "display_crafting",
+    "sort_rank": 900291,
+    "tags": [ "contextual_skill" ],
+    "vision_penalty": 3,
+    "crafting_stat": "per",
+    "crafting_stat_divisor": 2
+  },
+  {
+    "type": "recipe",
+    "//": "UIINV-J04: crafted with the perception skill above.",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_m29a_stat",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "test_m29a_skill",
+    "difficulty": 1,
+    "time": "1 m",
+    "never_learn": true,
+    "components": [ [ [ "2x4", 1 ] ] ]
+  },
+  {
+    "type": "recipe",
+    "//": "UIINV-J03: only while the crafter's test_m29a_may_craft variable is 1; half the difficulty in knowledge.",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_m29a_condition",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "fabrication",
+    "difficulty": 5,
+    "time": "1 m",
+    "never_learn": true,
+    "condition": { "math": [ "u_test_m29a_may_craft == 1" ] },
+    "condition_failure_message": "Only the chosen may craft this.",
+    "hide_if_condition_fails": true,
+    "knowledge_ratio": 0.5,
+    "components": [ [ [ "2x4", 1 ] ] ]
+  },
+  {
+    "type": "recipe",
+    "//": "UIINV-J02 and UIINV-J03: anyone can craft it but NPCs.",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_m29a_no_npc",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "fabrication",
+    "difficulty": 0,
+    "time": "1 m",
+    "never_learn": true,
+    "flags": [ "NO_NPC_CRAFT" ],
+    "components": [ [ [ "2x4", 1 ] ] ]
+  },
+  {
+    "type": "furniture",
+    "id": "test_f_m29a_bench",
+    "name": "audit fabrication bench",
+    "description": "UIINV-J02: the crafting menu opened here starts on fabrication recipes.",
+    "symbol": "#",
+    "color": "brown",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "examine_action": "workbench",
+    "workbench": { "multiplier": 1.1, "mass": 10000, "volume": "50L", "recipe_filter": "p:fabrication" }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M29A_OFFER",
+    "//": "UIINV-J01: an item menu with a hint, a none message, denials and a column. Never run by the tests (it opens a menu).",
+    "effect": [
+      {
+        "u_run_inv_eocs": "manual_mult",
+        "title": "Offer reagents",
+        "hint": "Each reagent adds 10 mana",
+        "none_message": "You have nothing to offer.",
+        "denial": [ { "condition": { "not": { "npc_has_flag": "FIX_FARSIGHT" } }, "message": "inert" } ],
+        "columns": [ { "title": "COST", "value": { "math": [ "n_test_m29a_cost" ] } } ],
+        "true_eocs": [ { "id": "EOC_TEST_M29A_OFFERED", "effect": [ { "math": [ "u_test_m29a_offered += _count" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M29A_MAP_OFFER",
+    "//": "UIINV-J01: the same fields on u_map_run_item_eocs. Never run by the tests.",
+    "effect": [
+      {
+        "u_map_run_item_eocs": "manual",
+        "max_radius": 1,
+        "hint": { "global_val": "test_m29a_hint" },
+        "none_message": "Nothing here.",
+        "denial": [ { "condition": { "math": [ "n_test_m29a_cost > 5" ] }, "message": "too costly" } ],
+        "columns": [ { "title": "COST", "value": 2 } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M29A_OPEN_CRAFTING",
+    "//": "UIINV-J02: loads; never run by the tests (it opens a menu).",
+    "effect": [
+      { "u_open_crafting_menu": { "filter": "p:fabrication", "recipe": "cudgel_test_m29a_no_npc" } },
+      { "u_open_crafting_menu": {  } }
+    ]
+  }
+]
