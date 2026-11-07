@@ -3,6 +3,7 @@
 #define CATA_SRC_MAP_EXTRAS_H
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,6 +19,7 @@
 #include "type_id.h"
 
 class JsonObject;
+class const_dialogue;
 class map;
 class mapgendata;
 class tinymap;
@@ -88,6 +90,9 @@ class map_extra
 
         bool potentially_visible_at( om_vision_level vis ) const;
 
+        // Queued to run once the extra is placed, with "loc" and "map_extra" (MGEN-J01)
+        std::vector<effect_on_condition_id> eocs;
+
         // Used by generic_factory
         bool was_loaded = false;
         void load( const JsonObject &jo, std::string_view src );
@@ -99,6 +104,9 @@ class map_extra
         translation description_;
         std::optional<std::pair<int, int>> min_max_zlevel_;
         cata::flat_set<std::string> flags_;
+        // Must hold for the extra to be picked, with "loc" and "oter_id" (MGEN-J03)
+        std::function<bool( const_dialogue const & )> condition_;
+        bool has_condition_ = false;
 };
 
 namespace MapExtras

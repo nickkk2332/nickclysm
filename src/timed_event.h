@@ -3,6 +3,8 @@
 #define CATA_SRC_TIMED_EVENT_H
 
 #include <list>
+#include <map>
+#include <optional>
 #include <string>
 
 #include "calendar.h"
@@ -39,6 +41,23 @@ enum class timed_event_type : int {
     NUM_TIMED_EVENT_TYPES
 };
 
+/** How a delayed EOC mapgen_update runs (MGEN-J02); the defaults are a plain update */
+struct timed_mapgen_update {
+    /** The update's parameters, as text: typed by the update when it runs */
+    std::map<std::string, std::string> parameters;
+    int rotation = 0;
+    bool mirror_horizontal = false;
+    bool mirror_vertical = false;
+    /** The tile of the OMT the update's ( 0, 0 ) goes on, if any */
+    std::optional<point_omt_ms> anchor;
+    bool cancel_on_collision = true;
+
+    bool is_default() const {
+        return parameters.empty() && rotation == 0 && !mirror_horizontal && !mirror_vertical &&
+               !anchor && cancel_on_collision;
+    }
+};
+
 struct timed_event {
     timed_event_type type = timed_event_type::NONE;
     /** On which turn event should be happening. */
@@ -59,6 +78,8 @@ struct timed_event {
     explosion_data expl_data;
     /** The dimension the event was queued in; events at a location happen only there */
     dimension_id dimension;
+    /** specifically for UPDATE_MAPGEN */
+    timed_mapgen_update mapgen_update;
 
     submap revert;
     timed_event( timed_event_type e_t, const time_point &w, int f_id, tripoint_abs_ms p, int s,
@@ -105,6 +126,10 @@ class timed_event_manager
                   const std::string &key = "" );
         void add( timed_event_type type, const time_point &when, const tripoint_abs_ms &where,
                   explosion_data expl_data );
+        /** An UPDATE_MAPGEN event that runs its update as @p settings say */
+        void add_mapgen_update( const time_point &when, const tripoint_abs_ms &where,
+                                const std::string &update_id, const std::string &key,
+                                const timed_mapgen_update &settings );
         /// @returns Whether at least one element of the given type is queued.
         bool queued( timed_event_type type ) const;
         /// @returns One of the queued events of the given type, or `nullptr`

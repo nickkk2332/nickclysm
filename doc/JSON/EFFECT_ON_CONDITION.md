@@ -1683,6 +1683,10 @@ No talker is needed.
 - type: string or [variable object](#variable-object)
 - return true if the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) is part of the given overmap special, e.g. `{ "map_in_overmap_special": "Necropolis", "loc": { "context_val": "loc" } }`
 
+### `map_has_extra`
+- type: string or [variable object](#variable-object)
+- return true if the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) has this map extra, placed by map generation or `place_map_extra`, e.g. `{ "map_has_extra": "mx_crater", "loc": { "context_val": "loc" } }`
+
 ### `map_omt_seen`
 - type: `unseen`, `vague`, `outlines`, `details` or `full`
 - return true if the player has seen the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) at least at this level, e.g. `{ "map_omt_seen": "outlines", "loc": { "context_val": "loc" } }`
@@ -2544,6 +2548,8 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | terminates_subspace_specimens | Triggers when Terminate Specimens option is activated via ("old lab" finale's?) computer | NONE | avatar / NONE |
 | throws_up | | { "character", `character_id` } | character / NONE |
 | tile_destroyed | Triggers when a bash destroys the terrain or furniture of a tile on the main map, from any cause, after the bash's `eoc_on_destroy`. `cause` is `smash` (a creature did it), `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, or `other`. Statistics don't keep it | { "location", `tripoint` },<br/> { "old_ter", `ter_str_id` },<br/> { "old_furn", `furn_str_id` },<br/> { "new_ter", `ter_str_id` },<br/> { "new_furn", `furn_str_id` },<br/> { "cause", `string` } | the creature that bashed, or an empty talker / NONE |
+| omt_generated | Triggers once an overmap tile the world keeps has been generated (not open air or solid rock, which have no mapgen), at the start of the next turn: an EOC can then change the map. Statistics don't keep it | { "location", `tripoint` },<br/> { "oter_id", `oter_id` }, the tile's north-west tile and its overmap terrain | avatar / NONE |
+| map_extra_spawned | Triggers once a map extra has been placed (by map generation, `place_map_extra` or the debug menu), at the start of the next turn. Statistics don't keep it | { "location", `tripoint` },<br/> { "map_extra", `string` }, the overmap tile's north-west tile and the extra's id | avatar / NONE |
 | triggers_alarm | Triggers when alarm is sounded as a failure state of hacking, prying, using a computer, or (if player is sufficiently close)damaged terrain with ALARMED flag | { "character", `character_id` } | character / NONE |
 | uses_debug_menu | | { "debug_menu_option", `debug_menu_index` }, | avatar / NONE |
 | u_var_changed | | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
@@ -7626,6 +7632,14 @@ Update the map with changes, described in `mapgen_update`
 | "time_in_future" | optional | int, duration, [variable object](#variable-object)) or value between two  | If used, the map change would be delayed for this amount of time.  "infinity" could be used, to make location not update until `key` event happen |
 | "key" | optional | string or [variable object](#variable-object) | id of the event, that you can call outside of EoC to trigger map update.  Key should be [alter_timed_events](#alter_timed_events) |
 | "target_var" | optional | [variable objects](#variable-object) | if used, the target from variable would be used instead of player's current location.  It uses [assign_mission_target](MISSIONS_JSON.md) syntax |
+| "offset_from_target" | optional | boolean | With `target_var`: the update's ( 0, 0 ) goes on the target tile, not on the overmap tile's corner, and the update turns and mirrors around it. What falls outside the overmap tile is cut off. Default false |
+| "parameters" | optional | object of strings or [variable objects](#variable-object) | Values for the update's own parameters (see MAPGEN.md, Mapgen parameters), as text: `{ "banner": { "global_val": "faction_banner" } }`. A parameter not given is rolled as usual; a name the update has no parameter for is an error when it runs |
+| "rotation" | optional | int or [variable object](#variable-object) | Quarter turns clockwise, as faction camp blueprints are turned: `{ "math": [ "rng(0,3)" ] }`. Default 0 |
+| "mirror_horizontal", "mirror_vertical" | optional | boolean, or a number or [variable object](#variable-object) (not 0 mirrors) | Mirrors the update east-west or north-south. Default false |
+| "ignore_vehicle_collision" | optional | boolean | By default an update that would put something where a vehicle is does nothing at all. With true it is applied anyway |
+| "success_eocs", "failure_eocs" | optional | array of EOCs | Run after each update (not for a delayed one), with the context variable `update_id`. `failure_eocs` also get `reason`: `no_update` (no such update) or `vehicle_collision`, with the vehicle's name in `vehicle` |
+
+A delayed update (`time_in_future`) keeps its parameters, rotation, mirroring, target tile and `ignore_vehicle_collision`, in a save too; its EOCs don't run.
 
 ##### Examples
 Update the map with `map_spawn_seller` map
@@ -7651,6 +7665,31 @@ Update the `robofachq_subcc_a2` in `ancilla_bar_loc` coordinates, with `nest_anc
   "om_terrain": "robofachq_subcc_a2",
   "target_var": { "global_val": "ancilla_bar_loc" }
 }
+```
+
+Place `hut_5x5`, turned at random, on the location in the context variable `loc`, with a parameter from a global variable, and say if a vehicle was in the way
+```jsonc
+{
+  "mapgen_update": "hut_5x5",
+  "target_var": { "context_val": "loc" },
+  "offset_from_target": true,
+  "parameters": { "banner": { "global_val": "faction_banner" } },
+  "rotation": { "math": [ "rng(0,3)" ] },
+  "failure_eocs": [ { "id": "EOC_HUT_BLOCKED", "effect": [ { "u_message": "Something is in the way." } ] } ]
+}
+```
+
+#### `place_map_extra`
+Places a map extra on an overmap tile, as map generation would: it is recorded on the overmap (for `map_has_extra` and the overmap notes), sends `map_extra_spawned` and queues the extra's `eocs`
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "place_map_extra" | **mandatory** | string or [variable object](#variable-object) | The map extra's id |
+| "target_var" | optional | [variable object](#variable-object) | A location on the overmap tile; default alpha's location |
+
+##### Examples
+```jsonc
+{ "place_map_extra": "mx_portal_in", "target_var": { "context_val": "loc" } }
 ```
 
 #### `revert_location`

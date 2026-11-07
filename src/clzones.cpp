@@ -1723,6 +1723,32 @@ void _rotate_zone( map &target_map, zone_data &zone, int turns )
     }
 }
 
+// The zone's place in the mirrored tile, as _rotate_zone for map::mirror (MGEN-B10)
+void _mirror_zone( map &target_map, zone_data &zone, bool mirror_horizontal, bool mirror_vertical )
+{
+    const tripoint_bub_ms a_start( 0, 0, target_map.get_abs_sub().z() );
+    const tripoint_bub_ms a_end( SEEX * 2 - 1, SEEY * 2 - 1, a_start.z() );
+    const tripoint_bub_ms z_start = target_map.get_bub( zone.get_start_point() );
+    const tripoint_bub_ms z_end = target_map.get_bub( zone.get_end_point() );
+    const inclusive_cuboid<tripoint_bub_ms> boundary( a_start, a_end );
+    if( !boundary.contains( z_start ) || !boundary.contains( z_end ) ) {
+        return;
+    }
+    const auto mirror = [&]( const tripoint_bub_ms & p ) {
+        return point_bub_ms( mirror_horizontal ? a_end.x() - p.x() : p.x(),
+                             mirror_vertical ? a_end.y() - p.y() : p.y() );
+    };
+    const point_bub_ms z_m_start = mirror( z_start );
+    const point_bub_ms z_m_end = mirror( z_end );
+    const tripoint_abs_ms first =
+        target_map.get_abs( tripoint_bub_ms( std::min( z_m_start.x(), z_m_end.x() ),
+                            std::min( z_m_start.y(), z_m_end.y() ), z_start.z() ) );
+    const tripoint_abs_ms second =
+        target_map.get_abs( tripoint_bub_ms( std::max( z_m_start.x(), z_m_end.x() ),
+                            std::max( z_m_start.y(), z_m_end.y() ), z_end.z() ) );
+    zone.set_position( std::make_pair( first, second ), false, true, false, true );
+}
+
 } // namespace
 
 void zone_manager::rotate_zones( map &target_map, const int turns )
@@ -1742,6 +1768,28 @@ void zone_manager::rotate_zones( map &target_map, const int turns )
          z_level++ ) {
         for( zone_data *zone : target_map.get_vehicle_zones( z_level ) ) {
             _rotate_zone( target_map, *zone, turns );
+        }
+    }
+}
+
+void zone_manager::mirror_zones( map &target_map, const bool mirror_horizontal,
+                                 const bool mirror_vertical )
+{
+    if( !mirror_horizontal && !mirror_vertical ) {
+        return;
+    }
+
+    for( zone_data &zone : zones ) {
+        if( !zone.get_is_personal() && target_map.inbounds_z( zone.get_center_point().z() ) ) {
+            _mirror_zone( target_map, zone, mirror_horizontal, mirror_vertical );
+        }
+    }
+
+    for( int z_level = target_map.supports_zlevels() ? -OVERMAP_DEPTH : target_map.get_abs_sub().z();
+         z_level <= ( target_map.supports_zlevels() ? OVERMAP_HEIGHT : target_map.get_abs_sub().z() );
+         z_level++ ) {
+        for( zone_data *zone : target_map.get_vehicle_zones( z_level ) ) {
+            _mirror_zone( target_map, *zone, mirror_horizontal, mirror_vertical );
         }
     }
 }

@@ -53,6 +53,7 @@
 #include "map_scale_constants.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "mapgen_functions.h"
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
@@ -655,6 +656,8 @@ bool game::do_turn()
         return turn_handler::cleanup_at_end();
     }
     timed_events.process();
+    // What map generation sent since last turn (MGEN-J01)
+    send_queued_mapgen_events();
     get_item_wakeups().process( calendar::turn );
     if( calendar::once_every( 1_hours ) ) {
         get_craft_reservations().sweep_expired_records();

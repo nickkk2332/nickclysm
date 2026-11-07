@@ -164,6 +164,7 @@
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "mapgen_functions.h"
 #include "mapsharing.h"
 #include "maptile_fwd.h"
 #include "melee.h"
@@ -762,6 +763,7 @@ void game::setup()
     mission::clear_all();
     Messages::clear_messages();
     timed_events = timed_event_manager();
+    clear_queued_mapgen_events();
 
     SCT.vSCT.clear(); //Delete pending messages
 

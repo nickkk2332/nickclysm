@@ -330,12 +330,18 @@ void timed_event::actualize()
                                  map_square );
             break;
         }
-        case timed_event_type::UPDATE_MAPGEN:
-            run_mapgen_update_func(
-                update_mapgen_id( string_id ), project_to<coords::omt>( map_point ), {}, nullptr );
+        case timed_event_type::UPDATE_MAPGEN: {
+            const update_mapgen_id update( string_id );
+            // As the EOC mapgen_update that queued it asked (MGEN-J02)
+            const timed_mapgen_update &how = mapgen_update;
+            run_mapgen_update_func( update, project_to<coords::omt>( map_point ),
+                                    update_mapgen_arguments( update, how.parameters ), how.anchor,
+                                    nullptr, how.cancel_on_collision, how.mirror_horizontal,
+                                    how.mirror_vertical, how.rotation );
             set_queued_points();
             reality_bubble().invalidate_map_cache( map_point.z() );
             break;
+        }
 
         case timed_event_type::REVERT_SUBMAP: {
             submap *sm = MAPBUFFER.lookup_submap( map_point );
@@ -465,6 +471,13 @@ void timed_event_manager::add( timed_event_type type, const time_point &when,
                                const tripoint_abs_ms &where, const explosion_data expl_data )
 {
     events.emplace_back( type, when, where, expl_data );
+}
+
+void timed_event_manager::add_mapgen_update( const time_point &when, const tripoint_abs_ms &where,
+        const std::string &update_id, const std::string &key, const timed_mapgen_update &settings )
+{
+    events.emplace_back( timed_event_type::UPDATE_MAPGEN, when, -1, where, 0, update_id, key );
+    events.back().mapgen_update = settings;
 }
 
 void timed_event_manager::add( timed_event_type type, const time_point &when,

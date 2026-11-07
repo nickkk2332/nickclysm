@@ -364,9 +364,11 @@ void stats_tracker::unwatch_all()
 bool stats_tracker::records( const event_type type )
 {
     // one summary per NPC and pair of goals or attitudes (and cause), or per mod setting and
-    // pair of values, or per tile destroyed, kept for good, would grow every save
+    // pair of values, or per tile destroyed or overmap tile generated, kept for good, would
+    // grow every save
     return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed &&
-           type != event_type::mod_setting_changed && type != event_type::tile_destroyed;
+           type != event_type::mod_setting_changed && type != event_type::tile_destroyed &&
+           type != event_type::omt_generated && type != event_type::map_extra_spawned;
 }
 
 void stats_tracker::notify( const cata::event &e )
