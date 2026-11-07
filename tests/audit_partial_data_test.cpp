@@ -383,10 +383,11 @@ TEST_CASE( "omap-b02_special_search_generates_the_overmaps_next_to_the_origin",
     }
 }
 
-// IINF-B05: ammo_remaining() added every loaded magazine together, so a multimag gun's battery
-// charges counted as rounds. With several ammo pockets only the asked-for ammo counts; a gun
-// with one magazine counts it whatever the gun's own (possibly placeholder) ammo types say.
-TEST_CASE( "iinf-b05_ammo_remaining_counts_only_the_asked_for_ammo", "[audit][item][gun]" )
+// IINF-B05: the audit suggested filtering ammo_remaining()'s sum of loaded magazines by ammo
+// type. It stays a sum on purpose: the multimag design counts every well (multimag_test's
+// multimag_integral_pocket_skips_casings pins it), and a per-type count is
+// ammo_remaining_in_pocket(). This pins both, and that plain and modular guns are unchanged.
+TEST_CASE( "iinf-b05_ammo_counts_per_pocket_and_in_total", "[audit][item][gun]" )
 {
     item gun( itype_test_multimag_gun_integral_ammo );
     item battery( itype_heavy_battery_cell );
@@ -394,14 +395,12 @@ TEST_CASE( "iinf-b05_ammo_remaining_counts_only_the_asked_for_ammo", "[audit][it
     const int charge = battery.ammo_remaining();
     REQUIRE( charge > 1 );
     REQUIRE( gun.put_in( battery, pocket_type::MAGAZINE_WELL ).success() );
-    // No 9mm loaded: the battery's charge isn't rounds
-    CHECK( gun.ammo_remaining() == 0 );
     REQUIRE( gun.put_in( item( itype_9mm, calendar::turn, 1 ), pocket_type::MAGAZINE ).success() );
-    CHECK( gun.ammo_remaining() == 1 );
-    // The battery itself still holds its charge
+    // Each pocket counts its own ammo; the total is their sum
     CHECK( gun.ammo_remaining_in_pocket( "power" ) == charge );
+    CHECK( gun.ammo_remaining() == charge + 1 );
 
-    // A plain gun with a magazine is unchanged
+    // A plain gun with a magazine
     item glock( itype_glock_19 );
     item glock_mag( itype_glockmag );
     REQUIRE( glock_mag.put_in( item( itype_9mm, calendar::turn, 15 ),
