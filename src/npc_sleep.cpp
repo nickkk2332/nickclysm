@@ -31,8 +31,7 @@ namespace
 // for how long
 // patience stops growing after this many attempts
 constexpr int settle_patience_cap = 10;
-// noise wakes counted within this long hold sleep back
-constexpr time_duration restless_window = 30_minutes;
+// noise wakes are counted within the tuning's restless_window
 // a woken NPC that hasn't lain back down forgets the attempt after this
 constexpr time_duration stale_wake_timeout = 1_minutes;
 // a second noise wake holds sleep back this long, doubling with each further wake up to
@@ -247,7 +246,7 @@ void npc::note_noise( const bool woke )
         return;
     }
     npc_sleep_session &ses = sleep_session;
-    if( calendar::turn - ses.last_noise_wake > restless_window ) {
+    if( calendar::turn - ses.last_noise_wake > ai_tuning_of( *this ).restless_window ) {
         ses.noise_wakes = 0;
     }
     ses.noise_wakes++;

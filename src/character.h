@@ -76,6 +76,8 @@ class enchant_cache;
 class faction;
 class known_magic;
 class ma_technique;
+struct ma_event_context;
+struct tech_effect_data;
 class map;
 class player_morale;
 class profession;
@@ -98,6 +100,7 @@ struct pick_info;
 } // namespace Pickup
 
 enum action_id : int;
+enum class hit_type : int;
 enum class magic_energy_type : int;
 enum class recipe_filter_flags : int;
 enum class steed_type : int;
@@ -1248,9 +1251,16 @@ class Character : public Creature, public visitable
         /**
          * Applies the technique's effects to t. `chosen`: the technique was chosen in the manual
          * technique menu, so the avatar in manual combat mode aims a controlled_knockback.
+         * The technique's EOCs get the attack's context from @p attack, if given.
+         * With @p after_hit, the effects that need the hit to do damage ("on_damage") are put
+         * there instead, for the caller to apply once the hit got through armor and blocks.
          */
         void perform_technique( const ma_technique &technique, Creature &t, damage_instance &di,
-                                int &move_cost, item_location &cur_weapon, bool chosen = false );
+                                int &move_cost, item_location &cur_weapon, bool chosen = false,
+                                const ma_event_context *attack = nullptr,
+                                std::vector<const tech_effect_data *> *after_hit = nullptr );
+        /** Applies one of a technique's effects (to t, or with "target": "self" to this) */
+        void apply_tech_effect( const tech_effect_data &eff, Creature &t );
 
         /**
          * Sets up a melee attack and handles melee attack function calls
@@ -1339,6 +1349,9 @@ class Character : public Creature, public visitable
 
         /** Returns true if the player should be dead */
         bool is_dead_state() const override;
+        // character_dies was sent for this death. It goes with the body, so a body the player
+        // leaves by the death switch, which dies again as an NPC, isn't reported twice.
+        bool death_event_sent = false; // NOLINT(cata-serialize)
         /** Bulk body writers do not pass through the per-part Character setters. */
         void invalidate_dead_state_cache() {
             cached_dead_state.reset();
@@ -1398,8 +1411,10 @@ class Character : public Creature, public visitable
         /** Handles special defenses from melee attack that hit us (source can be null) */
         void on_hit( map *here, Creature *source, bodypart_id bp_hit,
                      float difficulty = INT_MIN, dealt_projectile_attack const *proj = nullptr ) override;
-        // any side effects that might happen when the Character hits a Creature
+        // any side effects that might happen when the Character hits a Creature: its
+        // enchantments' hit_you_effect for this kind of hit (melee by default)
         void did_hit( Creature &target );
+        void did_hit( Creature &target, hit_type hit );
 
         /** Actually hurt the player, hurts a body_part directly, no armor reduction */
         void apply_damage( Creature *source, bodypart_id hurt, int dam,
@@ -1727,6 +1742,23 @@ class Character : public Creature, public visitable
         void calc_encumbrance( const item &new_item );
         // recalculates bodyparts based on enchantments modifying them and the default anatomy.
         void recalculate_bodyparts();
+        /** The parts the body should have: the anatomy's, changed by enchantments, then by
+         * u_add_body_part and u_lose_body_part */
+        body_part_set target_bodyparts() const;
+        /**
+         * u_add_body_part: gives the body @p bp until u_lose_body_part takes it, whatever the
+         * anatomy and enchantments say. Returns why it can't, or nothing when it did.
+         */
+        std::optional<std::string> add_body_part_by_eoc( const bodypart_str_id &bp );
+        /**
+         * u_lose_body_part: takes @p bp away, with the parts connected through it (a hand with
+         * its arm). It refuses the root part, a vital part, and (unless @p force) a part a
+         * bionic is installed in. Worn items left covering nothing are pushed off.
+         */
+        std::optional<std::string> lose_body_part_by_eoc( const bodypart_str_id &bp, bool force );
+        // what u_add_body_part added and u_lose_body_part took away, kept across rebuilds
+        body_part_set eoc_added_bodyparts;
+        body_part_set eoc_removed_bodyparts;
         // recalculates enchantment cache by iterating through all held, worn, and wielded items
         void recalculate_enchantment_cache();
         // gets add and mult value from enchantment cache
@@ -1851,9 +1883,15 @@ class Character : public Creature, public visitable
 
         // --------------- Bionic Stuff ---------------
         /** Handles bionic activation effects of the entered bionic, returns if anything activated */
-        bool activate_bionic( bionic &bio, bool eff_only = false, bool *close_bionics_ui = nullptr );
+        /** @p ignore_cost (u_activate_bionic's "ignore_cost"): neither the power needed nor the
+         * power paid matters; fuel still does */
+        bool activate_bionic( bionic &bio, bool eff_only = false, bool *close_bionics_ui = nullptr,
+                              bool ignore_cost = false );
         std::vector<bionic_id> get_bionics() const;
-        std::vector<const item *> get_pseudo_items() const;
+        // The pseudo items the installed bionics expose, cached until invalidate_pseudo_items().
+        // The reference stays valid until the next call after an invalidation, so don't hold it
+        // across code that can install, remove, activate or deactivate a bionic.
+        const std::vector<const item *> &get_pseudo_items() const;
         // Innate items a craft can draw: exposed pseudo items plus the hard-coded
         // digging pair.
         std::vector<item> crafting_pseudo_items() const;
@@ -1895,10 +1933,11 @@ class Character : public Creature, public visitable
         void process_bionic( bionic &bio );
         /** Checks if bionic can be deactivated (e.g. it's not incapacitated and power level is sufficient)
          *  returns either success or failure with log message */
-        ret_val<void> can_deactivate_bionic( bionic &bio, bool eff_only = false ) const;
+        ret_val<void> can_deactivate_bionic( bionic &bio, bool eff_only = false,
+                                             bool ignore_cost = false ) const;
         /** Handles bionic deactivation effects of the entered bionic, returns if anything
          *  deactivated */
-        bool deactivate_bionic( bionic &bio, bool eff_only = false );
+        bool deactivate_bionic( bionic &bio, bool eff_only = false, bool ignore_cost = false );
         /* Forces bionic deactivation */
         void force_bionic_deactivation( bionic &bio );
         /** Returns the size of my_bionics[] */
@@ -3783,7 +3822,12 @@ class Character : public Creature, public visitable
         // providing the recipe or a nearby allied Character knows it.
         bool has_recipe( const recipe *r ) const;
         bool knows_recipe( const recipe *rec ) const;
-        void learn_recipe( const recipe *rec, bool override_never_learn = false );
+        /**
+         * Adds the recipe to the ones this character knows. If it didn't know it and @p how is
+         * given ("crafting", "disassembly" or "eoc"), sends character_learns_recipe.
+         */
+        void learn_recipe( const recipe *rec, bool override_never_learn = false,
+                           const std::string &how = std::string() );
         void forget_recipe( const recipe *rec );
         void forget_all_recipes();
         int exceeds_recipe_requirements( const recipe &rec ) const;
@@ -3846,6 +3890,9 @@ class Character : public Creature, public visitable
          * Expected time to craft a recipe, with assumption that multipliers stay constant.
          */
         int64_t expected_time_to_craft( const recipe &rec, int batch_size = 1 ) const;
+        /** The same, with a cost context the caller has already built for this recipe. */
+        int64_t expected_time_to_craft( const recipe &rec, int batch_size,
+                                        const crafting_cost_context &ctx ) const;
         std::vector<const item *> get_eligible_containers_for_crafting() const;
         bool check_eligible_containers_for_crafting( const recipe &rec, int batch_size = 1 ) const;
         bool can_make( const recipe *r, int batch_size = 1 ) const;  // have components?
@@ -4480,6 +4527,8 @@ class Character : public Creature, public visitable
             int moves;
             tripoint_bub_ms position;
             int radius;
+            // built with only what a clear path reaches
+            bool clear_path = true;
             // cache built earlier in the turn can't see a later acquire or release
             uint64_t reservation_generation = 0;
             pimpl<temp_crafting_inventory> crafting_inventory;

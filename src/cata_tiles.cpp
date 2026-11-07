@@ -47,6 +47,7 @@
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "game_constants.h"
+#include "init.h"
 #include "sdl_gamepad.h"
 #include "item.h"
 #include "item_factory.h"
@@ -110,7 +111,7 @@ static const trap_str_id tr_unfinished_construction( "tr_unfinished_construction
 static const std::string ITEM_HIGHLIGHT( "highlight_item" );
 static const std::string ZOMBIE_REVIVAL_INDICATOR( "zombie_revival_indicator" );
 
-static const std::array<std::string, 8> multitile_keys = {{
+static const std::array<std::string, multitile_key_count> multitile_keys = {{
         "center",
         "corner",
         "edge",
@@ -401,6 +402,29 @@ tile_type &tileset::create_tile_type( const std::string &id, tile_type &&new_til
     }
 
     return inserted_tile;
+}
+
+void tileset::link_multitile_subtiles()
+{
+    for( std::pair<const std::string, tile_type> &entry : tile_ids ) {
+        tile_type &tile = entry.second;
+        tile.subtile_ids.fill( nullptr );
+        if( !tile.multitile ) {
+            continue;
+        }
+        for( size_t i = 0; i < multitile_keys.size(); ++i ) {
+            const std::string &key = multitile_keys[i];
+            if( std::find( tile.available_subtiles.begin(), tile.available_subtiles.end(),
+                           key ) == tile.available_subtiles.end() ) {
+                continue;
+            }
+            // the key of the node in tile_ids, which lives as long as the tileset
+            const auto subtile = tile_ids.find( entry.first + "_" + key );
+            if( subtile != tile_ids.end() ) {
+                tile.subtile_ids[i] = &subtile->first;
+            }
+        }
+    }
 }
 
 std::unordered_set<std::string> tileset::get_all_portrait_tile_ids( bool male ) const
@@ -2418,6 +2442,39 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, const trip
             rota, ll, retract, apply_night_vision_goggles, height_3d, 0, "", point() );
 }
 
+std::optional<tile_lookup_res> cata_tiles::find_tile_looks_like_memoized( const std::string &id,
+        TILE_CATEGORY category, const std::string &variant, const tile_lookup_suffix suffix,
+        const int intensity )
+{
+    const auto look_up = [&]() {
+        switch( suffix ) {
+            case tile_lookup_suffix::transparent:
+                return find_tile_looks_like( id + "_transparent", category, variant );
+            case tile_lookup_suffix::intensity:
+                return find_tile_looks_like( id + "_int" + std::to_string( intensity ), category,
+                                             variant );
+            case tile_lookup_suffix::none:
+                break;
+        }
+        return find_tile_looks_like( id, category, variant );
+    };
+    const size_t category_index = static_cast<size_t>( category );
+    if( !tileset_ptr || category_index >= static_cast<size_t>( TILE_CATEGORY::last ) ) {
+        return look_up();
+    }
+    // The answer depends only on the tileset, the game data (looks_like, which ids exist)
+    // and the season; the memo forgets everything when either of the first two changes.
+    lookup_memo.validate( tileset_ptr, DynamicDataLoader::get_instance().data_generation() );
+    const size_t season = static_cast<size_t>( season_of_year( calendar::turn ) );
+    const int intensity_key = suffix == tile_lookup_suffix::intensity ? intensity : 0;
+    if( const std::optional<tile_lookup_res> *known = lookup_memo.find( season, category_index, id,
+            suffix, intensity_key, variant ) ) {
+        return *known;
+    }
+    return lookup_memo.remember( season, category_index, id, suffix, intensity_key, variant,
+                                 look_up() );
+}
+
 std::optional<tile_lookup_res>
 cata_tiles::find_tile_with_season( const std::string &id ) const
 {
@@ -2890,7 +2947,8 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
 
         // Adding to the id like this breaks the fragile string handling that vision level uses for looks_like.
         if( prevent_occlusion_transp && retract > 0 && category != TILE_CATEGORY::OVERMAP_VISION_LEVEL ) {
-            res = find_tile_looks_like( id + "_transparent", category, variant );
+            res = find_tile_looks_like_memoized( id, category, variant,
+                                                 tile_lookup_suffix::transparent, 0 );
             if( res ) {
                 tt = &res -> tile();
             }
@@ -2900,14 +2958,15 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
     // check if there is an available intensity tile and if there is use that instead of the basic tile
     // this is only relevant for fields
     if( intensity_level > 0 ) {
-        res = find_tile_looks_like( id + "_int" + std::to_string( intensity_level ), category, variant );
+        res = find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::intensity,
+                                             intensity_level );
         if( res ) {
             tt = &res -> tile();
         }
     }
     // if a tile with intensity hasn't already been found then fall back to a base tile
     if( !res ) {
-        res = find_tile_looks_like( id, category, variant );
+        res = find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::none, 0 );
         if( res ) {
             tt = &res -> tile();
         }
@@ -3138,6 +3197,17 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
     // check to see if the display_tile is multitile, and if so if it has the key related to
     // subtile
     if( subtile != -1 && display_tile.multitile ) {
+        // The subtile ids linked at load are display_tile's own id with the key appended.
+        // found_id is display_tile's own id only when display_tile came from the lookup, not
+        // from the "unknown" fallbacks, which keep the asked-for id.
+        const std::string *linked_id = res && subtile >= 0 &&
+                                       static_cast<size_t>( subtile ) < display_tile.subtile_ids.size() ?
+                                       display_tile.subtile_ids[subtile] : nullptr;
+        if( linked_id ) {
+            return draw_from_id_string_internal(
+                       *linked_id, category, subcategory, pos, -1, rota, ll,
+                       retract, nv_color_active, height_3d, 0, "", point() );
+        }
         const auto &display_subtiles = display_tile.available_subtiles;
         const auto end = std::end( display_subtiles );
         if( std::find( begin( display_subtiles ), end, multitile_keys[subtile] ) != end ) {

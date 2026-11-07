@@ -125,7 +125,7 @@
       {
         "has": "WIELD",
         "condition": "ALWAYS",
-        "hit_you_effect": [ { "id": "fireball" } ],
+        "hit_you_effect": [ { "id": "fireball", "hit_types": [ "melee" ] } ],
         "hit_me_effect": [ { "id": "light_healing", "hit_self": true } ]
       }
     ]

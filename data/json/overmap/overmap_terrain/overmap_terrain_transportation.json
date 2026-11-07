@@ -25,7 +25,8 @@
     "sym": "┼",
     "color": "yellow",
     "extras": "road_nesw_manhole",
-    "flags": [ "KNOWN_DOWN", "NO_ROTATE", "ROAD" ]
+    "//": "It replaces a road (overmap_city.cpp) and keeps the predecessor that road was placed over.",
+    "flags": [ "KNOWN_DOWN", "NO_ROTATE", "REQUIRES_PREDECESSOR", "ROAD" ]
   },
   {
     "type": "overmap_terrain",

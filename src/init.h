@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_INIT_H
 #define CATA_SRC_INIT_H
 
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <list>
@@ -17,6 +18,22 @@
 
 class JsonObject;
 class JsonValue;
+
+/**
+ * How a JSON type takes "copy-from" and a second definition of an id: the support table of
+ * doc/JSON/JSON_INHERITANCE.md (DynamicDataLoader::inheritance_support()).
+ */
+enum class json_inheritance : int {
+    // "copy-from" and "abstract" (generic_factory rules); a later definition of an id replaces it
+    copy_from,
+    // some "copy-from", with rules of the type's own
+    partial,
+    // no "copy-from"; a later definition of an id adds to or changes the earlier one
+    merges,
+    // no "copy-from"; a later definition replaces the earlier one or is an error, or the type
+    // has no ids
+    none,
+};
 
 /**
  * This class is used to load (and unload) the dynamic
@@ -65,6 +82,7 @@ class DynamicDataLoader
 
     private:
         bool finalized = false;
+        uint64_t data_generation_ = 0;
 
         struct cached_streams;
 
@@ -172,6 +190,12 @@ class DynamicDataLoader
         static std::vector<std::pair<mod_id, cata_path>> mod_interaction_files(
                     const cata_path &path, const std::vector<mod_id> &mods );
         /**
+         * How each type @ref initialize registers takes "copy-from" and redefinitions.  It must
+         * list every type, and JSON_INHERITANCE.md's support table must say the same (a test
+         * checks both).
+         */
+        static const std::map<std::string, json_inheritance> &inheritance_support();
+        /**
          * Calls @p f for each object a data file holds: the object @p jsin, or each object of
          * the array @p jsin.  Throws JsonError for anything else.
          */
@@ -206,6 +230,18 @@ class DynamicDataLoader
          */
         bool is_data_finalized() const {
             return finalized;
+        }
+
+        /**
+         * Changes whenever the game data is unloaded or finalized, or a runtime item type is
+         * made for an unknown id, so a cache built from definitions (the tiles renderer's
+         * sprite lookups follow looks_like) can tell it is stale.
+         */
+        uint64_t data_generation() const {
+            return data_generation_;
+        }
+        void data_changed() {
+            ++data_generation_;
         }
 
         /**

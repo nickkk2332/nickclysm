@@ -58,7 +58,7 @@ blueprint requires, blueprint provides, and blueprint excludes are abstract conc
 
 Every upgrade mission has its recipe `"result"` as a blueprint_provides and a blueprint_excludes, so upgrade missions will automatically prevent themselves from being repeatable.
 
-These are arbitrary strings and can be used to control the branching of the upgrade paths.  However, some strings have meaning within the basecamp code:
+These are arbitrary strings and can be used to control the branching of the upgrade paths.  They also gate camp missions: a [faction_mission](FACTION_MISSIONS.md) is offered at an expansion that has all of its `"required_provides"`, so a mod can add a provide (say `"fishing_dock"`) and a mission that needs it.  The vanilla missions in the table below say what they need in `data/json/faction_missions.json`.  Some strings have meaning within the basecamp code or the vanilla missions:
 
 Provides `"id"`  | Meaning
 --               | --

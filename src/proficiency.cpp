@@ -385,6 +385,9 @@ void proficiency_set::set_time_practiced( const proficiency_id &practicing,
     }
     learning_proficiency &current = fetch_learning( practicing );
     current.practiced = amount;
+    // the time is set exactly: a fraction of a second left from earlier practice would otherwise
+    // add a second later on
+    current.remainder = 0.f;
 }
 
 // prof and its prerequisites, theirs first, each once: a circle of prerequisites ends where it

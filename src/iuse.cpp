@@ -6871,9 +6871,8 @@ static void sendRadioSignal( Character &p, const flag_id &signal )
                     // The item activation may have all kinds of requirements. Like requiring item to be wielded.
                     // We do not care. Call item action directly without checking can_use.
                     // Items where this can be a problem should not be radio moddable
-                    std::map<std::string, use_function> use_methods = it.type->use_methods;
-                    if( use_methods.find( "transform" ) != use_methods.end() ) {
-                        it.type->get_use( "transform" )->call( &p, it, loc );
+                    if( const use_function *transform = it.type->get_use( "transform" ) ) {
+                        transform->call( &p, it, loc );
                         item_location itm_loc = item_location( map_cursor( loc ), &it );
                         here.update_lum( itm_loc, true );
                     } else {

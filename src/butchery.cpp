@@ -7,6 +7,8 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
+#include <set>
 #include <utility>
 
 #include "activity_handlers.h"
@@ -58,12 +60,6 @@ static const activity_id ACT_MULTIPLE_BUTCHER( "ACT_MULTIPLE_BUTCHER" );
 static const activity_id ACT_QUARTER( "ACT_QUARTER" );
 static const activity_id ACT_SKIN( "ACT_SKIN" );
 
-static const harvest_drop_type_id harvest_drop_blood( "blood" );
-static const harvest_drop_type_id harvest_drop_bone( "bone" );
-static const harvest_drop_type_id harvest_drop_flesh( "flesh" );
-static const harvest_drop_type_id harvest_drop_offal( "offal" );
-static const harvest_drop_type_id harvest_drop_skin( "skin" );
-
 static const itype_id itype_burnt_out_bionic( "burnt_out_bionic" );
 
 static const json_character_flag json_flag_INSTANT_BLEED( "INSTANT_BLEED" );
@@ -73,7 +69,6 @@ static const morale_type morale_butcher( "morale_butcher" );
 static const proficiency_id proficiency_prof_butchering_adv( "prof_butchering_adv" );
 static const proficiency_id proficiency_prof_butchering_basic( "prof_butchering_basic" );
 static const proficiency_id proficiency_prof_dissect_humans( "prof_dissect_humans" );
-static const proficiency_id proficiency_prof_skinning_adv( "prof_skinning_adv" );
 static const proficiency_id proficiency_prof_skinning_basic( "prof_skinning_basic" );
 
 static const quality_id qual_BUTCHER( "BUTCHER" );
@@ -331,7 +326,7 @@ bool set_up_butchery( player_activity &act, Character &you, butchery_data bd )
         }
         if( !( corpse_item.has_flag( flag_FIELD_DRESS ) ||
                corpse_item.has_flag( flag_FIELD_DRESS_FAILED ) ) &&
-            corpse_item.get_mtype()->harvest->has_entry_type( harvest_drop_offal ) ) {
+            butchery_needs_field_dressing( *corpse_item.get_mtype() ) ) {
             you.add_msg_if_player( m_bad, _( "You need to perform field dressing before quartering." ),
                                    corpse.nname() );
             return false;
@@ -497,65 +492,6 @@ int butcher_time_to_cut( Character &you, const item &corpse_item, const butcher_
     return time_to_cut;
 }
 
-// this function modifies the input weight by its damage level, depending on the bodypart
-static int corpse_damage_effect( int weight, const harvest_drop_type_id &entry_type,
-                                 int damage_level )
-{
-    const float slight_damage = 0.9f;
-    const float damage = 0.75f;
-    const float high_damage = 0.5f;
-    const int destroyed = 0;
-
-    switch( damage_level ) {
-        case 2:
-            // "damaged"
-            if( entry_type == harvest_drop_offal ) {
-                return std::round( weight * damage );
-            }
-            if( entry_type == harvest_drop_skin ) {
-                return std::round( weight * damage );
-            }
-            if( entry_type == harvest_drop_flesh ) {
-                return std::round( weight * slight_damage );
-            }
-            break;
-        case 3:
-            // "mangled"
-            if( entry_type == harvest_drop_offal ) {
-                return destroyed;
-            }
-            if( entry_type == harvest_drop_skin ) {
-                return std::round( weight * high_damage );
-            }
-            if( entry_type == harvest_drop_bone ) {
-                return std::round( weight * slight_damage );
-            }
-            if( entry_type == harvest_drop_flesh ) {
-                return std::round( weight * damage );
-            }
-            break;
-        case 4:
-            // "pulped"
-            if( entry_type == harvest_drop_offal ) {
-                return destroyed;
-            }
-            if( entry_type == harvest_drop_skin ) {
-                return destroyed;
-            }
-            if( entry_type == harvest_drop_bone ) {
-                return std::round( weight * damage );
-            }
-            if( entry_type == harvest_drop_flesh ) {
-                return std::round( weight * high_damage );
-            }
-            break;
-        default:
-            // "bruised" modifier is almost impossible to avoid; also includes no modifier (zero damage)
-            break;
-    }
-    return weight;
-}
-
 static int butchery_dissect_skill_level( Character &you, int tool_quality,
         const harvest_drop_type_id &htype )
 {
@@ -599,6 +535,131 @@ static double butchery_dissect_yield_mult( int skill_level, int dex, int tool_qu
     return 0.5 * clamp( skill_score, 0.0, 1.0 ) +
            0.3 * clamp( tool_score, 0.0, 1.0 ) +
            0.2 * clamp( dex_score, 0.0, 1.0 );
+}
+
+std::optional<int> butchery_entry_yield( const harvest_drop_type &type, int roll,
+        butcher_type action, const item &corpse_item, const mtype &mt, const Character &you )
+{
+    if( corpse_item.has_flag( flag_GIBBED ) && type.gib_yield() != 1.0 ) {
+        harvest_yield gibbed;
+        gibbed.mult = type.gib_yield();
+        roll = gibbed.apply( roll );
+    }
+
+    for( const harvest_proficiency_penalty &penalty : type.proficiency_penalties() ) {
+        // in double, as before the penalties moved to JSON
+        const double practice = you.get_proficiency_practice( penalty.proficiency );
+        roll /= 1 + ( penalty.penalty * ( 1 - practice ) );
+    }
+
+    const harvest_yield *action_yield = type.action_yield( action );
+    if( action_yield == nullptr ||
+        ( action_yield->min_size && mt.size < *action_yield->min_size ) ) {
+        return std::nullopt;
+    }
+    roll = action_yield->apply( roll );
+
+    // What earlier butchery did to the corpse: field dressing, skinning...
+    for( const harvest_corpse_rule &rule : type.corpse_flag_yield() ) {
+        if( !rule.applies( action, corpse_item ) ) {
+            continue;
+        }
+        if( rule.skip ) {
+            return std::nullopt;
+        }
+        roll = rule.yield.apply( roll );
+    }
+
+    if( corpse_item.has_flag( flag_QUARTERED ) ) {
+        roll /= 4;
+    }
+    return roll;
+}
+
+bool butchery_has_target( const item &corpse_item, butcher_type action )
+{
+    const bool dressed = corpse_item.has_flag( flag_FIELD_DRESS ) ||
+                         corpse_item.has_flag( flag_FIELD_DRESS_FAILED );
+    const mtype *mt = corpse_item.get_mtype();
+    switch( action ) {
+        case butcher_type::FIELD_DRESS:
+            if( mt == nullptr || dressed || corpse_item.has_flag( flag_QUARTERED ) ) {
+                return false;
+            }
+            break;
+        case butcher_type::SKIN:
+            if( mt == nullptr || corpse_item.has_flag( flag_SKINNED ) ) {
+                return false;
+            }
+            break;
+        case butcher_type::BLEED:
+            if( mt == nullptr || mt->bleed_rate <= 0 || dressed || corpse_item.has_flag( flag_QUARTERED ) ||
+                corpse_item.has_flag( flag_BLED ) ) {
+                return false;
+            }
+            break;
+        default:
+            return true;
+    }
+    for( const harvest_entry &entry : mt->harvest.obj() ) {
+        if( entry.drop_type().enables_action( action ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool butchery_needs_field_dressing( const mtype &mt )
+{
+    for( const harvest_entry &entry : mt.harvest.obj() ) {
+        if( entry.drop_type().enables_action( butcher_type::FIELD_DRESS ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void butchery_train_proficiencies( Character &you, const mtype &mt, butcher_type action,
+                                   const time_duration &moves_total )
+{
+    std::set<harvest_drop_type_id> present;
+    for( const harvest_entry &entry : mt.harvest.obj() ) {
+        present.insert( entry.type );
+    }
+    // A line of proficiencies trains once however many drop types of the corpse share it. The
+    // lines train in the order the drop types were loaded (flesh's butchering before skin's
+    // skinning), as practice drains focus.
+    std::vector<std::pair<std::vector<proficiency_id>, double>> lines;
+    for( const harvest_drop_type &type : harvest_drop_type::get_all() ) {
+        if( present.count( type.getId() ) == 0 ) {
+            continue;
+        }
+        for( const harvest_proficiency_training &training : type.trains_proficiencies() ) {
+            const auto fraction = training.time_fraction.find( action );
+            if( fraction == training.time_fraction.end() ) {
+                continue;
+            }
+            const auto same = std::find_if( lines.begin(), lines.end(),
+            [&training]( const std::pair<std::vector<proficiency_id>, double> &line ) {
+                return line.first == training.proficiencies;
+            } );
+            if( same == lines.end() ) {
+                lines.emplace_back( training.proficiencies, fraction->second );
+            } else {
+                same->second = std::max( same->second, fraction->second );
+            }
+        }
+    }
+    for( const std::pair<std::vector<proficiency_id>, double> &line : lines ) {
+        proficiency_id trained = line.first.back();
+        for( const proficiency_id &prof : line.first ) {
+            if( !you.has_proficiency( prof ) ) {
+                trained = prof;
+                break;
+            }
+        }
+        you.practice_proficiency( trained, moves_total * line.second );
+    }
 }
 
 static std::vector<item> create_charge_items( const itype *drop, int count,
@@ -699,6 +760,7 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
 
     for( const harvest_entry &entry : ( action == butcher_type::DISSECT &&
                                         !mt.dissect.is_empty() ) ? *mt.dissect : *mt.harvest ) {
+        const harvest_drop_type &drop_type = entry.drop_type();
         const int skill_level = butchery_dissect_skill_level( you, tool_quality, entry.type );
         const int butchery = roll_butchery_dissect( skill_level, you.get_dex(), tool_quality );
         practice += ( 4 + butchery ) / entry_count;
@@ -709,11 +771,11 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
         // mass_ratio will override the use of base_num, scale_num, and max
         if( entry.mass_ratio != 0.00f ) {
             roll = static_cast<int>( std::round( entry.mass_ratio * monster_weight ) );
-            roll = corpse_damage_effect( roll, entry.type, corpse_item.damage_level() );
+            roll = drop_type.corpse_damage_yield( roll, corpse_item.damage_level() );
         } else {
             roll = std::min<int>( entry.max, std::round( rng_float( min_num, max_num ) ) );
             // will not give less than min_num defined in the JSON
-            roll = std::max<int>( corpse_damage_effect( roll, entry.type, corpse_item.damage_level() ),
+            roll = std::max<int>( drop_type.corpse_damage_yield( roll, corpse_item.damage_level() ),
                                   entry.base_num.first );
         }
 
@@ -724,107 +786,12 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
             drop = item::find_type( drop_id );
         }
 
-        // Check if monster was gibbed, and handle accordingly
-        if( corpse_item.has_flag( flag_GIBBED ) && ( entry.type == harvest_drop_flesh ||
-                entry.type == harvest_drop_bone ) ) {
-            roll /= 2;
-        }
-
-        if( ( corpse_item.has_flag( flag_SKINNED ) || corpse_item.has_flag( flag_QUARTERED ) ) &&
-            entry.type == harvest_drop_skin ) {
+        const std::optional<int> yield = butchery_entry_yield( drop_type, roll, action, corpse_item,
+                                         mt, you );
+        if( !yield ) {
             continue;
         }
-
-        const double butch_basic = you.get_proficiency_practice( proficiency_prof_butchering_basic );
-        const double skin_basic = you.get_proficiency_practice( proficiency_prof_skinning_basic );
-        const double skin_adv = you.get_proficiency_practice( proficiency_prof_skinning_adv );
-        const double penalty_small = 0.15;
-        const double penalty_big = 2;
-
-        if( entry.type == harvest_drop_flesh || entry.type == harvest_drop_offal ) {
-            roll /= 1 + ( penalty_small * ( 1 - butch_basic ) );
-        }
-
-        if( entry.type == harvest_drop_skin ) {
-            roll /= 1 + ( penalty_big * ( 1 - skin_basic ) );
-            roll /= 1 + ( penalty_small * ( 1 - skin_adv ) );
-        }
-
-        // QUICK BUTCHERY
-        if( action == butcher_type::QUICK ) {
-            if( entry.type == harvest_drop_flesh ) {
-                roll /= 4;
-            } else if( entry.type == harvest_drop_bone ) { // NOLINT(bugprone-branch-clone)
-                roll /= 2;
-            } else if( mt.size >= creature_size::medium &&
-                       entry.type == harvest_drop_skin ) {
-                roll /= 2;
-            } else if( entry.type == harvest_drop_offal ) {
-                roll /= 5;
-            } else {
-                continue;
-            }
-        }
-        // RIP AND TEAR
-        if( action == butcher_type::DISMEMBER ) {
-            roll = 0;
-        }
-        // field dressing ignores skin, flesh, and blood
-        if( action == butcher_type::FIELD_DRESS ) {
-            if( entry.type == harvest_drop_bone ) {
-                roll = rng( 0, roll / 2 );
-            }
-            if( entry.type == harvest_drop_flesh ) {
-                continue;
-            }
-            if( entry.type == harvest_drop_skin ) {
-                continue;
-            }
-        }
-
-        // you only get the blood from bleeding
-        if( action == butcher_type::BLEED ) {
-            if( entry.type != harvest_drop_blood ) {
-                continue;
-            }
-        }
-
-        // you only get the skin from skinning
-        if( action == butcher_type::SKIN ) {
-            if( entry.type != harvest_drop_skin ) {
-                continue;
-            }
-            if( corpse_item.has_flag( flag_FIELD_DRESS_FAILED ) ) {
-                roll = rng( 0, roll );
-            }
-        }
-
-        // field dressing removed innards and bones from meatless limbs
-        if( ( action == butcher_type::FULL || action == butcher_type::QUICK ) &&
-            corpse_item.has_flag( flag_FIELD_DRESS ) ) {
-            if( entry.type == harvest_drop_offal ) {
-                continue;
-            }
-            if( entry.type == harvest_drop_bone ) {
-                roll = ( roll / 2 ) + rng( roll / 2, roll );
-            }
-        }
-        // unskillfull field dressing may damage the skin, meat, and other parts
-        if( ( action == butcher_type::FULL || action == butcher_type::QUICK ) &&
-            corpse_item.has_flag( flag_FIELD_DRESS_FAILED ) ) {
-            if( entry.type == harvest_drop_offal ) {
-                continue;
-            }
-            if( entry.type == harvest_drop_bone ) {
-                roll = ( roll / 2 ) + rng( roll / 2, roll );
-            }
-            if( entry.type == harvest_drop_flesh || entry.type == harvest_drop_skin ) {
-                roll = rng( 0, roll );
-            }
-        }
-        if( corpse_item.has_flag( flag_QUARTERED ) ) {
-            roll /= 4;
-        }
+        roll = *yield;
 
         if( drop != nullptr ) {
             // divide total dropped weight by drop's weight to get amount
@@ -963,62 +930,7 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
                       0 ) + 4 );
     }
 
-    // handle our prof training
-    if( action == butcher_type::FULL && ( mt.harvest->has_entry_type( harvest_drop_flesh ) ||
-                                          mt.harvest->has_entry_type( harvest_drop_offal ) ) ) {
-        // 40% of butchering and gutting, 40% of skinning, 20% another activities
-        if( you.has_proficiency( proficiency_prof_butchering_basic ) ) {
-            you.practice_proficiency( proficiency_prof_butchering_adv, moves_total * 0.4 );
-        } else {
-            you.practice_proficiency( proficiency_prof_butchering_basic, moves_total * 0.4 );
-        }
-    }
-
-    if( action == butcher_type::FULL && mt.harvest->has_entry_type( harvest_drop_skin ) ) {
-        // 40% of butchering and gutting, 40% of skinning, 20% another activities
-        if( you.has_proficiency( proficiency_prof_skinning_basic ) ) {
-            you.practice_proficiency( proficiency_prof_skinning_adv, moves_total * 0.4 );
-        } else {
-            you.practice_proficiency( proficiency_prof_skinning_basic, moves_total * 0.4 );
-        }
-    }
-
-    if( action == butcher_type::QUICK && ( mt.harvest->has_entry_type( harvest_drop_flesh ) ||
-                                           mt.harvest->has_entry_type( harvest_drop_offal ) ) ) {
-        // 70% of butchery, 15% skinning, 15% another activities
-        if( you.has_proficiency( proficiency_prof_butchering_basic ) ) {
-            you.practice_proficiency( proficiency_prof_butchering_adv, moves_total * 0.7 );
-        } else {
-            you.practice_proficiency( proficiency_prof_butchering_basic, moves_total * 0.7 );
-        }
-    }
-
-    if( action == butcher_type::QUICK && mt.harvest->has_entry_type( harvest_drop_skin ) ) {
-        // 70% of butchery, 15% skinning, 15% another activities
-        if( you.has_proficiency( proficiency_prof_skinning_basic ) ) {
-            you.practice_proficiency( proficiency_prof_skinning_adv, moves_total * 0.15 );
-        } else {
-            you.practice_proficiency( proficiency_prof_skinning_basic, moves_total * 0.15 );
-        }
-    }
-
-    if( action == butcher_type::FIELD_DRESS && ( mt.harvest->has_entry_type( harvest_drop_flesh ) ||
-            mt.harvest->has_entry_type( harvest_drop_offal ) ) ) {
-        if( you.has_proficiency( proficiency_prof_butchering_basic ) ) {
-            you.practice_proficiency( proficiency_prof_butchering_adv, moves_total );
-        } else {
-            you.practice_proficiency( proficiency_prof_butchering_basic, moves_total );
-        }
-    }
-
-    if( action == butcher_type::SKIN && mt.harvest->has_entry_type( harvest_drop_skin ) ) {
-        // 70% of butchery, 15% skinning, 15% another activities
-        if( you.has_proficiency( proficiency_prof_skinning_basic ) ) {
-            you.practice_proficiency( proficiency_prof_skinning_adv, moves_total );
-        } else {
-            you.practice_proficiency( proficiency_prof_skinning_basic, moves_total );
-        }
-    }
+    butchery_train_proficiencies( you, mt, action, moves_total );
 
     // after this point, if there was a liquid handling from the harvest,
     // and the liquid handling was interrupted, then the activity was canceled,
@@ -1252,22 +1164,9 @@ std::optional<butcher_type> butcher_submenu( const std::vector<map_stack::iterat
     if( index != -1 ) {
         const mtype *dead_mon = corpses[index]->get_mtype();
         if( dead_mon ) {
-            for( const harvest_entry &entry : dead_mon->harvest.obj() ) {
-                if( entry.type == harvest_drop_skin && !corpses[index]->has_flag( flag_SKINNED ) ) {
-                    has_skin = true;
-                }
-                if( entry.type == harvest_drop_offal && !( corpses[index]->has_flag( flag_QUARTERED ) ||
-                        corpses[index]->has_flag( flag_FIELD_DRESS ) ||
-                        corpses[index]->has_flag( flag_FIELD_DRESS_FAILED ) ) ) {
-                    has_organs = true;
-                }
-                if( entry.type == harvest_drop_blood && dead_mon->bleed_rate > 0 &&
-                    !( corpses[index]->has_flag( flag_QUARTERED ) ||
-                       corpses[index]->has_flag( flag_FIELD_DRESS ) ||
-                       corpses[index]->has_flag( flag_FIELD_DRESS_FAILED ) || corpses[index]->has_flag( flag_BLED ) ) ) {
-                    has_blood = true;
-                }
-            }
+            has_skin = butchery_has_target( *corpses[index], butcher_type::SKIN );
+            has_organs = butchery_has_target( *corpses[index], butcher_type::FIELD_DRESS );
+            has_blood = butchery_has_target( *corpses[index], butcher_type::BLEED );
             if( !dead_mon->families.families.empty() ) {
                 dissect_wp_hint += std::string( "\n\n" ) + _( "Dissecting may yield knowledge of:" );
                 for( const weakpoint_family &wf : dead_mon->families.families ) {

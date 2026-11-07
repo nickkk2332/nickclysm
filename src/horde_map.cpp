@@ -1,5 +1,7 @@
 #include "horde_map.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -211,33 +213,74 @@ static void signal_sm( const tripoint_abs_ms &origin, const tripoint_abs_sm &sm_
 
 // Volume is scaled down by SEEX so it matches the scale of tripoint_om_sm
 // dormant_monster_map and immobile_monster_map are intentionally excluded here.
-void horde_map::signal_entities( const tripoint_abs_ms &origin, int volume )
+int horde_map::signal_entities( const tripoint_abs_ms &origin, int volume )
 {
     std::unordered_map<tripoint_abs_ms, horde_entity> migrating_hordes;
-    tripoint_abs_sm sm_dest = project_to<coords::sm>( origin );
-    for( std::unordered_map
-         <tripoint_om_sm, std::unordered_map<tripoint_abs_ms, horde_entity>>::iterator active_sm_iter =
-             active_monster_map.begin(); active_sm_iter != active_monster_map.end(); ++active_sm_iter ) {
-        tripoint_abs_sm abs_sm = project_combine( location, active_sm_iter->first );
-        signal_sm( origin, sm_dest, abs_sm, volume, active_sm_iter, true, migrating_hordes );
-    }
-    for( std::unordered_map
-         <tripoint_om_sm, std::unordered_map<tripoint_abs_ms, horde_entity>>::iterator idle_sm_iter =
-             idle_monster_map.begin(); idle_sm_iter != idle_monster_map.end(); ) {
-        tripoint_abs_sm abs_sm = project_combine( location, idle_sm_iter->first );
-        signal_sm( origin, sm_dest, abs_sm, volume, idle_sm_iter, false, migrating_hordes );
-        // The iterator relies on there being no empty submap maps, cull the ones we emptied.
-        if( idle_sm_iter->second.empty() ) {
-            idle_sm_iter = idle_monster_map.erase( idle_sm_iter );
-        } else {
-            ++idle_sm_iter;
+    const tripoint_abs_sm sm_dest = project_to<coords::sm>( origin );
+    // signal_sm() only reaches a bucket when rl_dist() < volume, and rl_dist() is never less
+    // than the largest of |dx|, |dy| and |dz|, so only the buckets of this box can hear it.
+    // Bucket keys are always within this overmap.
+    const int64_t reach = static_cast<int64_t>( volume ) - 1;
+    const tripoint rel_dest = sm_dest.raw() - tripoint( project_to<coords::sm>( location ).raw(), 0 );
+    // The first and last submap coordinate of this overmap in reach on one axis; first > last
+    // when none is.
+    const auto first = [reach]( const int center, const int lowest, const int highest ) {
+        return static_cast<int>( std::clamp<int64_t>( center - reach, lowest, highest + 1 ) );
+    };
+    const auto last = [reach]( const int center, const int lowest, const int highest ) {
+        return static_cast<int>( std::clamp<int64_t>( center + reach, lowest - 1, highest ) );
+    };
+    const tripoint box_first( first( rel_dest.x, 0, 2 * OMAPX - 1 ),
+                              first( rel_dest.y, 0, 2 * OMAPY - 1 ),
+                              first( rel_dest.z, -OVERMAP_DEPTH, OVERMAP_HEIGHT ) );
+    const tripoint box_last( last( rel_dest.x, 0, 2 * OMAPX - 1 ),
+                             last( rel_dest.y, 0, 2 * OMAPY - 1 ),
+                             last( rel_dest.z, -OVERMAP_DEPTH, OVERMAP_HEIGHT ) );
+    const bool box_empty = box_first.x > box_last.x || box_first.y > box_last.y ||
+                           box_first.z > box_last.z;
+    const int64_t box_cells = box_empty ? 0 :
+                              static_cast<int64_t>( box_last.x - box_first.x + 1 ) * ( box_last.y - box_first.y + 1 ) *
+                              ( box_last.z - box_first.z + 1 );
+    int visited = 0;
+    // Signals the buckets of one map that the box holds. Idle buckets left empty are culled,
+    // because the iterator relies on there being no empty submap maps.
+    const auto signal_buckets = [&]( map_type & buckets, const bool active ) {
+        const auto signal_bucket = [&]( map_type::iterator & sm_iter ) {
+            ++visited;
+            const tripoint_abs_sm abs_sm = project_combine( location, sm_iter->first );
+            signal_sm( origin, sm_dest, abs_sm, volume, sm_iter, active, migrating_hordes );
+            return !active && sm_iter->second.empty();
+        };
+        if( box_cells < static_cast<int64_t>( buckets.size() ) ) {
+            // Looking up the box's submaps is cheaper than walking every bucket.
+            for( int z = box_first.z; z <= box_last.z; ++z ) {
+                for( int y = box_first.y; y <= box_last.y; ++y ) {
+                    for( int x = box_first.x; x <= box_last.x; ++x ) {
+                        map_type::iterator sm_iter = buckets.find( tripoint_om_sm( x, y, z ) );
+                        if( sm_iter != buckets.end() && signal_bucket( sm_iter ) ) {
+                            buckets.erase( sm_iter );
+                        }
+                    }
+                }
+            }
+            return;
         }
-    }
+        for( map_type::iterator sm_iter = buckets.begin(); sm_iter != buckets.end(); ) {
+            if( signal_bucket( sm_iter ) ) {
+                sm_iter = buckets.erase( sm_iter );
+            } else {
+                ++sm_iter;
+            }
+        }
+    };
+    signal_buckets( active_monster_map, true );
+    signal_buckets( idle_monster_map, false );
 
     while( !migrating_hordes.empty() ) {
         auto monster_node = migrating_hordes.extract( migrating_hordes.begin() );
         insert( std::move( monster_node ) );
     }
+    return visited;
 }
 
 void horde_map::insert( std::unordered_map<tripoint_abs_ms, horde_entity>::node_type &&node )

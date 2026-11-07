@@ -686,6 +686,7 @@
         "hit_you_effect": [
           {
             "id": "ICE_ELEMENTAL_COLD_DAMAGE",
+            "hit_types": [ "melee" ],
             "message": "Frost rimes over your attacker as they strike you.",
             "npc_message": "A coating of frost appears on their opponent as %1$s is struck."
           }

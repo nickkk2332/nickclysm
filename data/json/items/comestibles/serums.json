@@ -14,7 +14,6 @@
     "use_action": [
       {
         "type": "effect_on_conditions",
-        "consume": true,
         "menu_text": "Inject",
         "description": "Inject the liquid.",
         "effect_on_conditions": [
@@ -41,7 +40,6 @@
     "use_action": [
       {
         "type": "effect_on_conditions",
-        "consume": true,
         "menu_text": "Inject",
         "description": "Inject the liquid.",
         "effect_on_conditions": [
@@ -68,7 +66,6 @@
     "use_action": [
       {
         "type": "effect_on_conditions",
-        "consume": true,
         "menu_text": "Inject",
         "description": "Inject the liquid.",
         "effect_on_conditions": [
@@ -95,7 +92,6 @@
     "use_action": [
       {
         "type": "effect_on_conditions",
-        "consume": true,
         "menu_text": "Inject",
         "description": "Inject the liquid.",
         "effect_on_conditions": [
@@ -122,7 +118,6 @@
     "use_action": [
       {
         "type": "effect_on_conditions",
-        "consume": true,
         "menu_text": "Inject",
         "description": "Inject the liquid.",
         "effect_on_conditions": [
@@ -149,7 +144,6 @@
     "use_action": [
       {
         "type": "effect_on_conditions",
-        "consume": true,
         "menu_text": "Inject",
         "description": "Inject the liquid.",
         "effect_on_conditions": [

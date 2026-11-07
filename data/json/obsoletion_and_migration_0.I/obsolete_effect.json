@@ -120,7 +120,7 @@
     "name": [ "Hemorrhage" ],
     "desc": [ "The monster is sucking up your blood!" ],
     "rating": "bad",
-    "resist_traits": [ "BLEED_IMMUNE" ],
+    "immune_flags": [ "BLEED_IMMUNE" ],
     "show_in_info": true,
     "max_intensity": 2,
     "show_intensity": false,

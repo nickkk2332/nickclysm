@@ -12,6 +12,7 @@
 #include "coordinates.h"
 #include "item_location.h"
 #include "point.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
 
@@ -269,7 +270,8 @@ using use_function_pointer = std::optional<int> ( * )( Character *, item *,
 class iuse_actor
 {
     protected:
-        explicit iuse_actor( const std::string &type, int cost = -1 ) : type( type ), cost( cost ) {}
+        explicit iuse_actor( const std::string &type, int cost = -1 ) : type( type ), cost( cost ),
+            id( type ) {}
 
     public:
         /**
@@ -280,6 +282,19 @@ class iuse_actor
 
         /** Units of ammo required per invocation (or use value from base item if negative) */
         int cost;
+
+        /**
+         * The action's id among its item's use actions: its key in the item's use_action (or
+         * tick_action) map, which the use menu, u_activate, ammo_scale and EOCs' _method know it
+         * by. The JSON "id" of an object-form action, else the type.
+         */
+        std::string id;
+
+        /**
+         * The JSON "menu_text" of an object-form action: its name in the use menus, over
+         * get_name(). Empty when unset.
+         */
+        translation menu_text;
 
         virtual ~iuse_actor() = default;
         virtual void load( const JsonObject &jo, const std::string &src ) = 0;
@@ -315,6 +330,14 @@ class iuse_actor
          * Finalizes the actor. Must be called after all items are loaded.
          */
         virtual void finalize( const itype_id &/*my_item_type*/ ) { }
+        /**
+         * Whether a use of an item that has no charges to spend (no ammo, charges or tool
+         * uses) still uses something up when use() reports charges spent: the item itself.
+         * Character::invoke_item then removes it, or one of a stack counted by charges.
+         */
+        virtual bool uses_up_item_without_charges() const {
+            return false;
+        }
 };
 
 struct use_function {
@@ -348,7 +371,9 @@ struct use_function {
 
         /** @return See @ref iuse_actor::type */
         std::string get_type() const;
-        /** @return See @ref iuse_actor::get_name */
+        /** @return See @ref iuse_actor::id; empty without an actor */
+        std::string get_id() const;
+        /** @return the action's "menu_text" if it has one, else @ref iuse_actor::get_name */
         std::string get_name() const;
         /** @return See @ref iuse_actor::get_description */
         std::string get_description() const;

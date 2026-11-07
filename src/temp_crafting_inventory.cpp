@@ -1,6 +1,7 @@
 
 #include "temp_crafting_inventory.h"
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -50,6 +51,13 @@ uint64_t &current_epoch()
 {
     static uint64_t epoch = 0;
     return epoch;
+}
+
+// shared by all inventories, so no two changes get the same generation
+uint64_t next_generation()
+{
+    static std::atomic<uint64_t> last{ 0 };
+    return last.fetch_add( 1 ) + 1;
 }
 } // namespace
 
@@ -125,6 +133,12 @@ void temp_crafting_inventory::drop_caches() const
     provider_quality_answers.clear();
 }
 
+void temp_crafting_inventory::changed()
+{
+    drop_caches();
+    generation_ = next_generation();
+}
+
 std::optional<bool> temp_crafting_inventory::recall_provider_quality(
     const provider_quality_key &key ) const
 {
@@ -153,6 +167,7 @@ temp_crafting_inventory::temp_crafting_inventory( const temp_crafting_inventory 
     }
     items_loc = v.items_loc;
     max_empty_liq_cont = v.max_empty_liq_cont;
+    changed();
 }
 
 temp_crafting_inventory &temp_crafting_inventory::operator=( const temp_crafting_inventory &v )
@@ -166,6 +181,7 @@ temp_crafting_inventory &temp_crafting_inventory::operator=( const temp_crafting
     }
     items_loc = v.items_loc;
     max_empty_liq_cont = v.max_empty_liq_cont;
+    changed();
     return *this;
 }
 
@@ -176,7 +192,7 @@ size_t temp_crafting_inventory::size() const
 
 void temp_crafting_inventory::clear()
 {
-    drop_caches();
+    changed();
     items_loc.clear();
     item_copies.clear();
     temp_owned_items.clear();
@@ -186,13 +202,13 @@ void temp_crafting_inventory::clear()
 
 void temp_crafting_inventory::add_item_loc( const item_location &loc )
 {
-    drop_caches();
+    changed();
     items_loc.insert( loc );
 }
 
 item &temp_crafting_inventory::add_item_copy( const item &item )
 {
-    drop_caches();
+    changed();
     const auto iter = temp_owned_items.insert( item );
     item_copies.insert( item_location( *this, &*iter ) );
     return *iter;
@@ -466,6 +482,7 @@ void temp_crafting_inventory::dump( std::vector<item *> &dest ) const
 
 void temp_crafting_inventory::update_liq_container_count( const itype_id &id, int count )
 {
+    changed();
     max_empty_liq_cont[id] += count;
 }
 
@@ -502,6 +519,7 @@ bool temp_crafting_inventory::must_use_hallu_poison( const itype_id &id, int to_
 void temp_crafting_inventory::replace_liq_container_count( const std::map<itype_id, int> &newmap,
         bool use_max )
 {
+    changed();
     for( const auto &it : newmap ) {
         if( !use_max || max_empty_liq_cont.find( it.first ) == max_empty_liq_cont.end() ||
             max_empty_liq_cont.at( it.first ) < it.second ) {

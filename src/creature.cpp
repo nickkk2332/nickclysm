@@ -21,6 +21,7 @@
 #include "cata_utility.h"
 #include "cata_variant.h"
 #include "character.h"
+#include "character_martial_arts.h"
 #include "character_attire.h"
 #include "character_id.h"
 #include "color.h"
@@ -58,6 +59,7 @@
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
+#include "martialarts.h"
 #include "mattack_common.h"
 #include "mdarray.h"
 #include "messages.h"
@@ -1596,6 +1598,17 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
             soaked_through = permeability > 0;
             impact.mult_damage( permeability );
         }
+    }
+
+    // A character's martial-art ongethit hooks, as a melee hit runs them in block_hit: with the
+    // part hit and the damage coming in, before armor
+    if( Character *hit_char = as_character() ) {
+        ma_event_context gethit_ctx;
+        gethit_ctx.opponent = source;
+        gethit_ctx.bp = hit_selection.bp_hit.id();
+        gethit_ctx.damage = impact.total_damage();
+        gethit_ctx.hit_by = attack.shrapnel ? "shrapnel" : "projectile";
+        hit_char->martial_arts_data->ma_ongethit_effects( *hit_char, gethit_ctx );
     }
 
     // TODO: see note on projectile_attack_results::wp; this fallback hides the API gap.
