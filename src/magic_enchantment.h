@@ -159,6 +159,7 @@ enum class mod : int {
     FUEL_USAGE,
     TURNING_DIFFICULTY,
     CROWD_CRUSH_RESIST,
+    DRUG_DURATION, // the duration of a consume_drug action's effects
     NUM_MOD
 };
 

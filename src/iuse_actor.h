@@ -249,6 +249,13 @@ class consume_drug_iuse : public iuse_actor
         translation activation_message;
         /** Fields to produce when you take the drug, mostly intended for various kinds of smoke. **/
         std::map<std::string, int> fields_produced;
+        /** How many of each field, each on a random tile at most field_radius from the user. **/
+        int field_count = 3;
+        int field_radius = 2;
+        /** Effects the drug removes, before it gives its own. **/
+        std::vector<efftype_id> remove_effects;
+        /** How long taking the drug takes; unset for the default, from the tools it needs. **/
+        std::optional<time_duration> consume_time;
         /** Tool charges needed to take the drug, e.g. fire. **/
         std::map<itype_id, int> charges_needed;
         /** Tools needed, but not consumed, e.g. "smoking apparatus". **/
@@ -275,6 +282,7 @@ class consume_drug_iuse : public iuse_actor
         std::optional<int> use( Character *p, item &it, map *here, const tripoint_bub_ms & ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+        void finalize( const itype_id &my_item_type ) override;
 
         /** Item produced after using drugs. */
         itype_id used_up_item = itype_id::NULL_ID();
@@ -1235,6 +1243,25 @@ class weigh_self_actor : public iuse_actor
         std::optional<int> use( Character *p, item &, map *, const tripoint_bub_ms & ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+};
+
+/**
+ * Washes filthy items: the WASH_* use actions, with the items washed, the water and cleanser
+ * used, how much of each and the time set in JSON (USE-J06)
+ */
+class wash_actor : public iuse_actor
+{
+    public:
+        washing_rules rules;
+
+        explicit wash_actor( const std::string &type = "wash" ) : iuse_actor( type ) {}
+
+        ~wash_actor() override = default;
+        void load( const JsonObject &obj, const std::string & ) override;
+        using iuse_actor::use;
+        std::optional<int> use( Character *p, item &, map *, const tripoint_bub_ms & ) const override;
+        std::unique_ptr<iuse_actor> clone() const override;
+        void finalize( const itype_id &my_item_type ) override;
 };
 
 /**

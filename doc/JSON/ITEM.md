@@ -1236,7 +1236,7 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
   "effects": [                            // List of effects to apply when consumed
     {
       "id": "opiate_eff",                 // Id of the effect to apply. Mandatory.
-      "duration": 42,                     // Duration for the effect to last, in turns but can accept time units syntax. Optional, defaults to 0, meaning the effect will disappear immediately.
+      "duration": 42,                     // Duration for the effect to last, in turns but can accept time units syntax. Optional, defaults to 0, meaning the effect will disappear immediately.  The user's DRUG_DURATION enchantment value changes it (MAGIC.md)
       "bp": "torso",                      // Bodypart to apply the effect to. Optional, defaults to no particular body part.
       "permanent": false,                 // Whether the effect is permanent. Optional, defaults to false.
       "intensity": 2                      // Intensity to set the effect to when applied. Optional, defaults to 0.
@@ -1250,11 +1250,15 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
       "bodyparts": [ "torso", "head", "arm_l", "leg_l", "arm_r", "leg_r" ] // Body parts hit by the damage
     }
   ],
-  "stat_adjustments": { "hunger": -10 },   // Adjustment to make to player stats
+  "remove_effects": [ "asthma" ],          // (optional) Effects to remove (on every body part) before the drug's own effects are applied
+  "stat_adjustments": { "hunger": -10 },   // Adjustment to make to player stats: hunger, thirst, sleepiness, stamina, oxygen, healthy, pain or moves.  Anything else is a load error: str, dex, per, int and the combat bonuses (speed, dodge, block, hit, bash, cut) only last until the next turn, so give an effect that changes them instead
   "fields_produced": { "fd_cracksmoke": 2 }, // Field ids and intensities to produce around the user, mostly used for smoke
+  "field_count": 3,                        // (optional) How many of each field, default 3
+  "field_radius": 2,                       // (optional) Each on a random tile at most this far from the user, default 2
   "charges_needed": { "fire": 1 },         // Charges to use in the process of consuming the drug
   "tools_needed": { "apparatus": -1 },     // Tool needed to use the drug
-  "moves": 50,                             // Number of moves required in the process, default value is 100
+  "moves": 50,                             // Number of moves spent after taking it, default value is 100
+  "consume_time": "30 s",                  // (optional) How long taking it takes.  Default: 5 minutes with a syringe in tools_needed (15 seconds with the intradermal needle CBM), 30 seconds with a smoking apparatus or a dab pen, else 5 seconds
   "used_up_item": "syringe",               // (optional) Item left behind after the drug is used
   "vitamins": [                            // What and how much vitamin is given by this drug
     [ "mutagen_alpha", 225 ],
@@ -1551,6 +1555,17 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
 "use_action": {
   "type": "weigh_self",     // Show the character's weight, with everything worn and wielded and their bionics
   "max_weight": "150 kg"    // Mandatory.  Above this weight the scale shows an error instead
+},
+"use_action": {
+  "type": "wash",                          // Wash FILTHY items carried or nearby (not NO_CLEAN ones), as the WASH_* use actions do.  Every field is optional; the defaults are the WASH_* actions'
+  "soft": true,                            // Wash soft items (default true)
+  "hard": true,                            // Wash hard items (default true).  "soft" and "hard" can't both be false
+  "water_requirement": "wash_water",       // A requirement (see ITEM_CRAFT_AND_DISASSEMBLY.md): one unit of the water.  Its components and tools are multiplied by the units needed, and the use takes one alternative of each group.  "" or "null" for none.  Default "wash_water" (water or clean water)
+  "cleanser_requirement": "wash_cleanser", // The same for the cleanser.  Default "wash_cleanser" (soap, detergent powder or liquid soap)
+  "water_per": "125 ml",                   // One unit of water for each started water_per of the items' volume (default 125 ml)
+  "cleanser_per": "1 L",                   // One unit of cleanser for each started cleanser_per (default 1 L)
+  "time": "10 s",                          // The washing takes time for each whole time_per of the items' volume (default 10 s per 250 ml); helpers make it quicker
+  "time_per": "250 ml"
 },
 "use_action": {
   "type": "play_instrument" // Start or stop playing this held or worn item; while playing, the item is active.  Pair it with a "musical_instrument" tick_action for the music.  No other fields

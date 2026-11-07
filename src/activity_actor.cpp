@@ -340,12 +340,10 @@ static const itype_id itype_attachable_ear_muffs( "attachable_ear_muffs" );
 static const itype_id itype_attached_ear_plugs_off( "attached_ear_plugs_off" );
 static const itype_id itype_battery( "battery" );
 static const itype_id itype_cash_card( "cash_card" );
-static const itype_id itype_detergent( "detergent" );
 static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_efile_junk( "efile_junk" );
 static const itype_id itype_efile_photos( "efile_photos" );
 static const itype_id itype_flight_helmet( "flight_helmet" );
-static const itype_id itype_liquid_soap( "liquid_soap" );
 static const itype_id itype_log( "log" );
 static const itype_id itype_makeshift_ear_plugs_off( "makeshift_ear_plugs_off" );
 static const itype_id itype_muscle( "muscle" );
@@ -355,11 +353,8 @@ static const itype_id itype_powered_earplugs( "powered_earplugs" );
 static const itype_id itype_pseudo_bio_picklock( "pseudo_bio_picklock" );
 static const itype_id
 itype_robofac_yrax_trifacet_deactivation_manual( "robofac_yrax_trifacet_deactivation_manual" );
-static const itype_id itype_soap( "soap" );
 static const itype_id itype_splinter( "splinter" );
 static const itype_id itype_stick_long( "stick_long" );
-static const itype_id itype_water( "water" );
-static const itype_id itype_water_clean( "water_clean" );
 
 static const json_character_flag json_flag_ASOCIAL1( "ASOCIAL1" );
 static const json_character_flag json_flag_ASOCIAL2( "ASOCIAL2" );
@@ -13581,22 +13576,7 @@ void wash_activity_actor::start( player_activity &act, Character & )
 
 void wash_activity_actor::finish( player_activity &act, Character &p )
 {
-    const auto is_liquid_crafting_component = []( const item & it ) {
-        return is_crafting_component( it ) && ( !it.count_by_charges() || it.made_of( phase_id::LIQUID ) );
-    };
-    const temp_crafting_inventory &crafting_inv = p.crafting_inventory();
-    if( !crafting_inv.has_charges( itype_water, requirements.water, is_liquid_crafting_component ) &&
-        !crafting_inv.has_charges( itype_water_clean, requirements.water, is_liquid_crafting_component ) ) {
-        p.add_msg_if_player( _( "You need %1$i charges of water or clean water to wash these items." ),
-                             requirements.water );
-        act.set_to_null();
-        return;
-    } else if( !crafting_inv.has_charges( itype_soap, requirements.cleanser ) &&
-               !crafting_inv.has_amount( itype_detergent, requirements.cleanser ) &&
-               !crafting_inv.has_charges( itype_liquid_soap, requirements.cleanser,
-                                          is_liquid_crafting_component ) ) {
-        p.add_msg_if_player( _( "You need %1$i charges of cleansing agent to wash these items." ),
-                             requirements.cleanser );
+    if( !has_washing_supplies( p, requirements ) ) {
         act.set_to_null();
         return;
     }
@@ -13624,18 +13604,7 @@ void wash_activity_actor::finish( player_activity &act, Character &p )
         }
     }
 
-    std::vector<item_comp> comps;
-    comps.reserve( 2 );
-    comps.emplace_back( itype_water, requirements.water );
-    comps.emplace_back( itype_water_clean, requirements.water );
-    p.consume_items( comps, 1, is_liquid_crafting_component );
-
-    std::vector<item_comp> comps1;
-    comps1.reserve( 3 );
-    comps1.emplace_back( itype_soap, requirements.cleanser );
-    comps1.emplace_back( itype_detergent, requirements.cleanser );
-    comps1.emplace_back( itype_liquid_soap, requirements.cleanser );
-    p.consume_items( comps1 );
+    consume_washing_supplies( p, requirements );
 
     p.add_msg_if_player( m_good, _( "You washed your items." ) );
 
@@ -13652,6 +13621,8 @@ void wash_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "time", requirements.time );
     jsout.member( "water", requirements.water );
     jsout.member( "cleanser", requirements.cleanser );
+    jsout.member( "water_requirement", requirements.water_requirement );
+    jsout.member( "cleanser_requirement", requirements.cleanser_requirement );
     jsout.end_object();
 }
 
@@ -13663,6 +13634,12 @@ std::unique_ptr<activity_actor> wash_activity_actor::deserialize( JsonValue &jsi
     data.read( "time", actor.requirements.time );
     data.read( "water", actor.requirements.water );
     data.read( "cleanser", actor.requirements.cleanser );
+    // Saves from before USE-J06 washed with the WASH_* use actions' water and cleanser
+    const washing_rules wash_defaults;
+    actor.requirements.water_requirement = wash_defaults.water;
+    actor.requirements.cleanser_requirement = wash_defaults.cleanser;
+    data.read( "water_requirement", actor.requirements.water_requirement );
+    data.read( "cleanser_requirement", actor.requirements.cleanser_requirement );
     return actor.clone();
 }
 

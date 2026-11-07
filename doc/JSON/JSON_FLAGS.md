@@ -1715,7 +1715,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.  Many
 - ```VIEW_RECIPES``` List the recipes stored on this item.
 - ```VOLTMETER``` Check whether the vehicle or appliance on an adjacent tile has battery power.
 - ```VORTEX``` Summon a friendly vortex next to you; the item turns into a spiral stone.
-- ```WASH_ALL_ITEMS``` Wash items with `FILTHY` flag.
+- ```WASH_ALL_ITEMS``` Wash items with `FILTHY` flag.  The water and cleanser are the `wash_water` and `wash_cleanser` requirements (a mod adds its own with `"extend"`); the `wash` use action (ITEM.md) sets them, their amounts and the time per item.
 - ```WASH_HARD_ITEMS``` Wash hard items with `FILTHY` flag.
 - ```WASH_SOFT_ITEMS``` Wash soft items with `FILTHY` flag.
 - ```WATER_PURIFIER``` Purify water.

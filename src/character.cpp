@@ -4797,24 +4797,34 @@ bool Character::invoke_item( item *used, const std::string &method, const tripoi
         return false;
     }
 
+    // The use can transform the item or use it up: the event names what was activated (USE-J07)
+    const itype_id activated_type = actually_used->typeId();
+    const std::string activated_method = method;
     std::optional<int> charges_used = actually_used->type->invoke( this, *actually_used,
                                       pt, method );
     if( !charges_used.has_value() ) {
         set_moves( pre_obtain_moves );
         return false;
     }
+    // Sent once the use is over and the item is spent, so its EOCs can't pull the item out from
+    // under the rest of this function
+    const auto activated = [&]( const bool removed ) {
+        get_event_bus().send<event_type::character_activates_item>( getID(), activated_type,
+                activated_method, charges_used.value() );
+        return removed;
+    };
 
     if( charges_used.value() == 0 ) {
         // Not really used.
         // The item may also have been deleted
-        return false;
+        return activated( false );
     }
 
     actually_used->activation_consume( charges_used.value(), pt, this );
 
     if( actually_used->has_flag( flag_SINGLE_USE ) || actually_used->is_bionic() ) {
         i_rem( actually_used );
-        return true;
+        return activated( true );
     }
 
     // An item with no charges to spend has itself as its one use, for the use actions that say
@@ -4826,12 +4836,12 @@ bool Character::invoke_item( item *used, const std::string &method, const tripoi
         use_fn->get_actor_ptr()->uses_up_item_without_charges() ) {
         if( actually_used->count_by_charges() && actually_used->charges > 1 ) {
             actually_used->mod_charges( -1 );
-            return false;
+            return activated( false );
         }
-        return remove_used_item( *this, *actually_used, pt );
+        return activated( remove_used_item( *this, *actually_used, pt ) );
     }
 
-    return false;
+    return activated( false );
 }
 
 bool Character::consume_charges( item &used, int qty )

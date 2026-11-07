@@ -268,7 +268,6 @@ static const itype_id itype_cig_lit( "cig_lit" );
 static const itype_id itype_cigar( "cigar" );
 static const itype_id itype_cigar_lit( "cigar_lit" );
 static const itype_id itype_cow_bell( "cow_bell" );
-static const itype_id itype_detergent( "detergent" );
 static const itype_id itype_ecig( "ecig" );
 static const itype_id itype_efile_map( "efile_map" );
 static const itype_id itype_efile_photos( "efile_photos" );
@@ -281,7 +280,6 @@ static const itype_id itype_hotplate( "hotplate" );
 static const itype_id itype_hygrometer( "hygrometer" );
 static const itype_id itype_joint( "joint" );
 static const itype_id itype_joint_lit( "joint_lit" );
-static const itype_id itype_liquid_soap( "liquid_soap" );
 static const itype_id itype_log( "log" );
 static const itype_id itype_mask_h20survivor_on( "mask_h20survivor_on" );
 static const itype_id itype_mininuke_act( "mininuke_act" );
@@ -299,7 +297,6 @@ static const itype_id itype_radio_mod( "radio_mod" );
 static const itype_id itype_radio_on( "radio_on" );
 static const itype_id itype_rebreather_on( "rebreather_on" );
 static const itype_id itype_rebreather_xl_on( "rebreather_xl_on" );
-static const itype_id itype_soap( "soap" );
 static const itype_id itype_soldering_iron( "soldering_iron" );
 static const itype_id itype_spiral_stone( "spiral_stone" );
 static const itype_id itype_splinter( "splinter" );
@@ -345,6 +342,9 @@ static const quality_id qual_GLARE( "GLARE" );
 static const quality_id qual_HOTPLATE( "HOTPLATE" );
 static const quality_id qual_PRY( "PRY" );
 static const quality_id qual_SCREW_FINE( "SCREW_FINE" );
+
+static const requirement_id requirement_data_wash_cleanser( "wash_cleanser" );
+static const requirement_id requirement_data_wash_water( "wash_water" );
 
 static const skill_id skill_computer( "computer" );
 static const skill_id skill_cooking( "cooking" );
@@ -8355,12 +8355,91 @@ std::optional<int> iuse::heat_all_items( Character *p, item *it, const tripoint_
     return std::nullopt;
 }
 
+washing_rules::washing_rules() : water( requirement_data_wash_water ),
+    cleanser( requirement_data_wash_cleanser ) {}
+
+// A washing requirement that is empty or "null" needs nothing
+static bool washing_supply_needed( const requirement_id &id )
+{
+    return !id.is_empty() && !id.is_null();
+}
+
+washing_requirements washing_rules::requirements_for( const units::volume &vol ) const
+{
+    washing_requirements req;
+    req.water = washing_supply_needed( water ) ? divide_round_up( vol, water_per ) : 0;
+    req.cleanser = washing_supply_needed( cleanser ) ? divide_round_up( vol, cleanser_per ) : 0;
+    req.time = to_moves<int>( time * ( vol / time_per ) );
+    req.water_requirement = water;
+    req.cleanser_requirement = cleanser;
+    return req;
+}
+
 washing_requirements washing_requirements_for_volume( const units::volume &vol )
 {
-    int water = divide_round_up( vol, 125_ml );
-    int cleanser = divide_round_up( vol, 1_liter );
-    int time = to_moves<int>( 10_seconds * ( vol / 250_ml ) );
-    return { water, cleanser, time };
+    return washing_rules().requirements_for( vol );
+}
+
+namespace
+{
+// Water and cleanser for washing: a liquid only while it is liquid (not frozen)
+bool is_washing_supply( const item &it )
+{
+    return is_crafting_component( it ) &&
+           ( !it.made_of_from_type( phase_id::LIQUID ) || it.made_of( phase_id::LIQUID ) );
+}
+
+// What a washing requirement is called: its name, else the alternatives of each of its
+// component groups ("water or clean water")
+std::string washing_supply_name( const requirement_data &req )
+{
+    if( req.has_display_name() ) {
+        return req.display_name();
+    }
+    return enumerate_as_string( req.get_components(), []( const std::vector<item_comp> &group ) {
+        return enumerate_as_string( group, []( const item_comp & comp ) {
+            return item::nname( comp.type, comp.count );
+        }, enumeration_conjunction::or_ );
+    } );
+}
+} // namespace
+
+bool has_washing_supplies( const Character &p, const washing_requirements &req )
+{
+    const temp_crafting_inventory &crafting_inv = p.crafting_inventory();
+    const auto has = [&]( const requirement_id & id, const int count ) {
+        if( !washing_supply_needed( id ) || count <= 0 ) {
+            return true;
+        }
+        // no craft is made, so the craft volume limit doesn't apply
+        if( id->can_make_with_inventory( &p, crafting_inv, is_washing_supply, count,
+                                         craft_flags::none, false ) ) {
+            return true;
+        }
+        //~ %1$i: how many, %2$s: what is used as water or as cleanser ("water or clean water",
+        //~ "cleansing agent")
+        p.add_msg_if_player( _( "You need %1$i charges of %2$s to wash these items." ), count,
+                             washing_supply_name( *id ) );
+        return false;
+    };
+    return has( req.water_requirement, req.water ) && has( req.cleanser_requirement, req.cleanser );
+}
+
+void consume_washing_supplies( Character &p, const washing_requirements &req )
+{
+    const auto consume = [&p]( const requirement_id & id, const int count ) {
+        if( !washing_supply_needed( id ) || count <= 0 ) {
+            return;
+        }
+        for( const std::vector<item_comp> &group : id->get_components() ) {
+            p.consume_items( group, count, is_washing_supply );
+        }
+        for( const std::vector<tool_comp> &group : id->get_tools() ) {
+            p.consume_tools( group, count );
+        }
+    };
+    consume( req.water_requirement, req.water );
+    consume( req.cleanser_requirement, req.cleanser );
 }
 
 std::optional<int> iuse::wash_soft_items( Character *p, item *, const tripoint_bub_ms & )
@@ -8379,8 +8458,10 @@ std::optional<int> iuse::wash_soft_items( Character *p, item *, const tripoint_b
         return std::nullopt;
     }
 
-    wash_items( p, true, false );
-    return 0;
+    washing_rules rules;
+    rules.soft = true;
+    rules.hard = false;
+    return wash_items( p, rules );
 }
 
 std::optional<int> iuse::wash_hard_items( Character *p, item *, const tripoint_bub_ms & )
@@ -8399,8 +8480,10 @@ std::optional<int> iuse::wash_hard_items( Character *p, item *, const tripoint_b
         return std::nullopt;
     }
 
-    wash_items( p, false, true );
-    return 0;
+    washing_rules rules;
+    rules.soft = false;
+    rules.hard = true;
+    return wash_items( p, rules );
 }
 
 std::optional<int> iuse::wash_all_items( Character *p, item *, const tripoint_bub_ms & )
@@ -8417,42 +8500,57 @@ std::optional<int> iuse::wash_all_items( Character *p, item *, const tripoint_bu
         return std::nullopt;
     }
 
-    wash_items( p, true, true );
-    return 0;
+    washing_rules rules;
+    rules.soft = true;
+    rules.hard = true;
+    return wash_items( p, rules );
 }
 
-std::optional<int> iuse::wash_items( Character *p, bool soft_items, bool hard_items )
+// The most units of a washing requirement's first component group that are at hand: the
+// alternative there is most of, as the use takes one alternative (INT_MAX for none needed)
+static int available_washing_supply( const temp_crafting_inventory &crafting_inv,
+                                     const requirement_id &id )
+{
+    if( !washing_supply_needed( id ) || id->get_components().empty() ) {
+        return INT_MAX;
+    }
+    int most = 0;
+    for( const item_comp &comp : id->get_components().front() ) {
+        if( comp.count <= 0 ) {
+            continue;
+        }
+        const int have = item::count_by_charges( comp.type ) ?
+                         crafting_inv.charges_of( comp.type, INT_MAX, is_washing_supply ) :
+                         crafting_inv.amount_of( comp.type, false, INT_MAX, is_washing_supply );
+        most = std::max( most, have / comp.count );
+    }
+    return most;
+}
+
+std::optional<int> iuse::wash_items( Character *p, const washing_rules &rules )
 {
     if( p->cant_do_mounted() ) {
         return std::nullopt;
     }
     const temp_crafting_inventory &crafting_inv = p->crafting_inventory();
 
-    auto is_liquid = []( const item & it ) {
-        return it.made_of( phase_id::LIQUID );
-    };
-    int available_water = std::max(
-                              crafting_inv.charges_of( itype_water, INT_MAX, is_liquid ),
-                              crafting_inv.charges_of( itype_water_clean, INT_MAX, is_liquid )
-                          );
-    int available_cleanser = std::max( {
-        crafting_inv.charges_of( itype_soap ),
-        crafting_inv.amount_of( itype_detergent ),
-        crafting_inv.charges_of( itype_liquid_soap, INT_MAX, is_liquid )
-    } );
+    const int available_water = available_washing_supply( crafting_inv, rules.water );
+    const int available_cleanser = available_washing_supply( crafting_inv, rules.cleanser );
 
+    const bool soft_items = rules.soft;
+    const bool hard_items = rules.hard;
     const inventory_filter_preset preset( [soft_items, hard_items]( const item_location & location ) {
         return location->has_flag( flag_FILTHY ) && !location->has_flag( flag_NO_CLEAN ) &&
                ( ( soft_items && location->is_soft() ) || ( hard_items && !location->is_soft() ) );
     } );
-    auto make_raw_stats = [available_water,
-                           available_cleanser]( const std::vector<std::pair<item_location, int>> &locs
+    auto make_raw_stats = [available_water, available_cleanser,
+                                            &rules]( const std::vector<std::pair<item_location, int>> &locs
     ) {
         units::volume total_volume = 0_ml;
         for( const auto &pair : locs ) {
             total_volume += pair.first->volume( false, true, pair.second );
         }
-        washing_requirements required = washing_requirements_for_volume( total_volume );
+        washing_requirements required = rules.requirements_for( total_volume );
         const std::string time = colorize( to_string( time_duration::from_moves( required.time ), true ),
                                            c_light_gray );
         auto to_string = []( int val ) -> std::string {
@@ -8497,18 +8595,9 @@ std::optional<int> iuse::wash_items( Character *p, bool soft_items, bool hard_it
         total_volume += pair.first->volume( false, true, pair.second );
     }
 
-    washing_requirements required = washing_requirements_for_volume( total_volume );
+    washing_requirements required = rules.requirements_for( total_volume );
 
-    if( !crafting_inv.has_charges( itype_water, required.water, is_liquid ) &&
-        !crafting_inv.has_charges( itype_water_clean, required.water, is_liquid ) ) {
-        p->add_msg_if_player( _( "You need %1$i charges of water or clean water to wash these items." ),
-                              required.water );
-        return std::nullopt;
-    } else if( !crafting_inv.has_charges( itype_soap, required.cleanser ) &&
-               !crafting_inv.has_amount( itype_detergent, required.cleanser ) &&
-               !crafting_inv.has_charges( itype_liquid_soap, required.cleanser, is_liquid ) ) {
-        p->add_msg_if_player( _( "You need %1$i charges of cleansing agent to wash these items." ),
-                              required.cleanser );
+    if( !has_washing_supplies( *p, required ) ) {
         return std::nullopt;
     }
     const std::vector<Character *> helpers = p->get_crafting_helpers();

@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "calendar.h"
 #include "clone_ptr.h"
 #include "coordinates.h"
 #include "item_location.h"
@@ -24,6 +25,7 @@ class item;
 class map;
 class monster;
 struct iteminfo;
+struct washing_rules;
 template<typename T> class ret_val;
 
 // iuse methods return the number of charges expended, which is usually "1", or no value.
@@ -185,7 +187,7 @@ std::optional<int> voltmeter( Character *p, item *it, const tripoint_bub_ms & );
 std::optional<int> vortex( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> wash_all_items( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> wash_hard_items( Character *, item *, const tripoint_bub_ms & );
-std::optional<int> wash_items( Character *p, bool soft_items, bool hard_items );
+std::optional<int> wash_items( Character *p, const washing_rules &rules );
 std::optional<int> wash_soft_items( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> water_purifier( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> weak_antibiotic( Character *, item *, const tripoint_bub_ms & );
@@ -242,8 +244,36 @@ struct washing_requirements {
     int water;
     int cleanser;
     int time;
+    // What one unit of water and one of cleanser is (USE-J06): the requirement's components,
+    // tools and qualities, its components and tools scaled by the counts above. A null id needs
+    // nothing.
+    requirement_id water_requirement = requirement_id::NULL_ID();
+    requirement_id cleanser_requirement = requirement_id::NULL_ID();
+};
+
+// How a washing use action washes: what it washes, what it uses as water and as cleanser and how
+// much of each and how long a volume of items takes (USE-J06). The defaults are the WASH_* use
+// actions'.
+struct washing_rules {
+    bool soft = true;
+    bool hard = true;
+    requirement_id water;
+    requirement_id cleanser;
+    // the volume of items one unit of water, or of cleanser, washes; a started one counts whole
+    units::volume water_per = 125_ml;
+    units::volume cleanser_per = 1_liter;
+    // time for every whole time_per of items
+    time_duration time = 10_seconds;
+    units::volume time_per = 250_ml;
+
+    washing_rules();
+    washing_requirements requirements_for( const units::volume &vol ) const;
 };
 washing_requirements washing_requirements_for_volume( const units::volume & );
+// Whether p has the water and cleanser req needs; if not, tells p which is missing
+bool has_washing_supplies( const Character &p, const washing_requirements &req );
+// Uses up the water, cleanser and tool charges req needs
+void consume_washing_supplies( Character &p, const washing_requirements &req );
 
 struct heating_requirements {
     units::volume volume;

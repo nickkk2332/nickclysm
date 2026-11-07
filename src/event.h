@@ -152,6 +152,7 @@ enum class event_type : int {
     character_disassembles_item,
     character_learns_recipe,
     tile_destroyed,
+    character_activates_item,
     num_event_types // last
 };
 
@@ -219,7 +220,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 129,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1066,6 +1067,20 @@ struct event_spec<event_type::tile_destroyed> {
             { "new_ter", cata_variant_type::ter_str_id },
             { "new_furn", cata_variant_type::furn_str_id },
             { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// a character used one of an item's use actions (Character::invoke_item) and it wasn't cancelled:
+// itype is the item's type before the use (a use can transform or use up the item), method the
+// action's id (its type unless the action has an "id"), charges what the use reported spending
+template<>
+struct event_spec<event_type::character_activates_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "method", cata_variant_type::string },
+            { "charges", cata_variant_type::int_ },
         }
     };
 };
