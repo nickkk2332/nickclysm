@@ -1041,6 +1041,7 @@ Character status value  | Description
 `BLEED_STOP_BONUS`      | Affects the `bleed` level when applying medicine.
 `BLEEEDING_RATE`        | Affects the rate you lose blood when bleeding. 
 `BODYTEMP_SLEEP`        | Amount of warmth (in celcius) added to you when you sleep. Default is 0, so better to use `add`
+`BOOK_FUN`              | How much fun reading a book is (its `read_fun`, after the rules of the `LOVES_BOOKS`, `HATES_BOOKS`, `SPIRITUAL` and cannibal flags, rounded); `"add": 1` makes every book one point more fun, `"multiply": -1` makes books neither fun nor boring.
 `BONUS_BLOCK`           | Affects the number of blocks you can perform.
 `BONUS_DODGE`           | Affects the number of dodges you can perform. Do not confuse with `DODGE_CHANCE`
 `ADDICTION_RECOVERY`    | Multiplies how long an addiction takes to lose a level once its satiation runs out (its `addiction_type`'s `recovery_time`, 6 hours by default).  Use `multiply`; the result is rounded to the turn.  Vanilla: Addictive Personality (`0.666667`, 10 hours), Addiction Resistant (`-0.5`, 3 hours).

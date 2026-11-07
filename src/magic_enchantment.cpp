@@ -205,6 +205,7 @@ namespace io
             case enchant_vals::mod::SLEEP_LIGHT_TOLERANCE: return "SLEEP_LIGHT_TOLERANCE";
             case enchant_vals::mod::WAKE_RESISTANCE: return "WAKE_RESISTANCE";
             case enchant_vals::mod::WAKE_PAIN_THRESHOLD: return "WAKE_PAIN_THRESHOLD";
+            case enchant_vals::mod::BOOK_FUN: return "BOOK_FUN";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );

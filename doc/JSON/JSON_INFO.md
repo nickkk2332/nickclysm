@@ -2102,6 +2102,7 @@ The following properties (mandatory, except if noted otherwise) are supported:
     "pets": [ { "name": "mon_black_rat", "amount": 13 } ],     // (optional) Array of starting monster IDs, tamed as pets
     "vehicle": "car_sports",                                   // (optional) String of a starting vehicle ID. The vehicle will be spawned at the closest road, with the character "remembering" its location in the overmap
     "flags": [ "SCEN_ONLY", "NO_BONUS_ITEMS" ],                // (optional) Array of flags applied to the character, for character creation purposes
+    "default_backgrounds": "adult_basic_background",           // (optional) The profession group of hobbies a new character with this profession starts with (see Profession groups); "" for none
     "CBMs": [ "bio_fuel_cell_blood" ],                         // (optional) Array of starting implanted CMBs
     "traits": [ "PROF_CHURL", "ILLITERATE" ],                  // (optional) Array of starting traits/mutations. For further information, see mutations.json and MUTATIONS.md. Note: "trait" is also supported, used for a single trait/mutation ID (legacy!)
     "requirement": "achievement_survive_28_days",              // (optional) String or Array of String of achievement ID(s) required to unlock this profession
@@ -2174,9 +2175,15 @@ Note: hobby fields derive from those used in professions.  The following is a no
 
 ### Profession groups
 
-Profession groups are a list of hobbies added to the character upon creation.
-While the list is automatically added by hardcode to each character upon creation (adding a minimum set of skills to all characters, regardless of their professions), the list can be modified via JSON.
-Thus, it is listed here for reference and modding purposes only.
+Profession groups are lists of hobbies.  A new character starts with the hobbies of one group, the default background, besides those chosen (adding a minimum set of skills to all characters, regardless of their professions):
+
+1. The group the profession's `default_backgrounds` names, if it has that member.
+2. Otherwise the group the scenario's `default_backgrounds` names, if it has that member.
+3. Otherwise `adult_basic_background`.
+
+An empty `default_backgrounds` (`""`) gives no default hobbies.  So does the `SKIP_DEFAULT_BACKGROUND` flag, on the profession, or on the scenario when the profession has no `default_backgrounds`.  Choosing another profession in the character creator swaps the default hobbies of the old profession for those of the new one.  Random NPCs of a class with `"common": true` get the default background of their profession (or of the generic scenario, never the player's).
+
+The default group, as the base game defines it:
 
 ```jsonc
   {
@@ -2193,11 +2200,13 @@ Thus, it is listed here for reference and modding purposes only.
   }
 ```
 
-The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants to start with no hobbies, the list has to be set as:
+The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants every character to start with no hobbies, the list has to be set as:
 
 ```jsonc
     "professions": [  ]
 ```
+
+Loading reports a `default_backgrounds` that isn't a profession group.
 
 ### Constructions
 ```jsonc
@@ -4649,6 +4658,11 @@ The name that is shown for the starting location. This is useful if the scenario
 (optional, array of strings)
 
 A list of allowed professions that can be chosen when using this scenario. The first entry is the default profession. If this is empty, all professions are allowed.
+
+## `default_backgrounds`
+(optional, string)
+
+The profession group of hobbies new characters in this scenario start with, unless their profession has its own `default_backgrounds` (see [Profession groups](#profession-groups)).  `""` gives none, as the `SKIP_DEFAULT_BACKGROUND` flag does.  Defaults to `adult_basic_background`.
 
 ## `hobbies`
 (optional, array of strings)

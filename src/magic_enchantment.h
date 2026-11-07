@@ -171,6 +171,8 @@ enum class mod : int {
     SLEEP_LIGHT_TOLERANCE,
     WAKE_RESISTANCE,
     WAKE_PAIN_THRESHOLD,
+    // added to and multiplies how much fun reading a book is (PROG-J03)
+    BOOK_FUN,
     NUM_MOD
 };
 

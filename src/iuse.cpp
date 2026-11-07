@@ -315,6 +315,7 @@ static const json_character_flag json_flag_CANNOT_USE_COMPUTERS( "CANNOT_USE_COM
 static const json_character_flag json_flag_EATDEAD_DIET( "EATDEAD_DIET" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
 
 static const mongroup_id GROUP_FISH( "GROUP_FISH" );
@@ -376,7 +377,6 @@ static const trait_id trait_CHLOROMORPH( "CHLOROMORPH" );
 static const trait_id trait_DHAMPIR_TRAIT( "DHAMPIR_TRAIT" );
 static const trait_id trait_EATPOISON( "EATPOISON" );
 static const trait_id trait_GILLS( "GILLS" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 static const trait_id trait_LIGHTWEIGHT( "LIGHTWEIGHT" );
 static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 static const trait_id trait_THRESH_LUPINE( "THRESH_LUPINE" );
@@ -3757,7 +3757,7 @@ std::optional<int> iuse::portable_game( Character *p, item *it, const tripoint_b
     if( p->cant_do_underwater() ) {
         return std::nullopt;
     }
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_info, _( "You're illiterate!" ) );
         return std::nullopt;
     } else if( it->typeId() != itype_arcade_machine && !it->ammo_sufficient( p ) ) {
@@ -3888,7 +3888,7 @@ std::optional<int> iuse::portable_game( Character *p, item *it, const tripoint_b
 
 std::optional<int> iuse::fitness_check( Character *p, item *it, const tripoint_bub_ms & )
 {
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_info, _( "You don't know what you're looking at." ) );
         return std::nullopt;
     } else if( !it->activation_success() ) {
@@ -5135,7 +5135,7 @@ std::optional<int> iuse::robotcontrol( Character *p, item *it, const tripoint_bu
             return std::nullopt;
         }
 
-        if( p->has_trait( trait_ILLITERATE ) ) {
+        if( p->has_flag( json_flag_ILLITERATE ) ) {
             p->add_msg_if_player( _( "You can't read a computer screen." ) );
             return std::nullopt;
         }
@@ -5315,7 +5315,7 @@ std::optional<int> iuse::efiledevice( Character *p, item *it, const tripoint_bub
                               _( "You push some buttons but have no idea how to get it to work." ) );
         return std::nullopt;
     }
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_info, _( "You can't read a computer screen." ) );
         return std::nullopt;
     }
@@ -7222,7 +7222,7 @@ std::optional<int> iuse::multicooker( Character *p, item *it, const tripoint_bub
         return std::nullopt;
     }
 
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_info,
                               _( "You can't read, and don't understand the screen or the buttons!" ) );
         return std::nullopt;
@@ -7717,7 +7717,7 @@ std::optional<int> iuse::dbg_lux_meter( Character *p, item *, const tripoint_bub
 
 std::optional<int> iuse::calories_intake_tracker( Character *p, item *it, const tripoint_bub_ms & )
 {
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_info, _( "You don't know what you're looking at." ) );
         return std::nullopt;
 

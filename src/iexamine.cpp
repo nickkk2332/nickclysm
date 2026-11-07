@@ -217,6 +217,7 @@ static const itype_id itype_unfinished_charcoal( "unfinished_charcoal" );
 static const itype_id itype_withered( "withered" );
 
 static const json_character_flag json_flag_GLIDE( "GLIDE" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_LEVITATION( "LEVITATION" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
 static const json_character_flag json_flag_SAFECRACK_NO_TOOL( "SAFECRACK_NO_TOOL" );
@@ -309,7 +310,6 @@ static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
 static const trait_id trait_CANNOT_GAIN_PSIONICS( "CANNOT_GAIN_PSIONICS" );
 static const trait_id trait_ESPER_ADVANCEMENT_OKAY( "ESPER_ADVANCEMENT_OKAY" );
 static const trait_id trait_ESPER_STARTER_ADVANCEMENT_OKAY( "ESPER_STARTER_ADVANCEMENT_OKAY" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 static const trait_id trait_INSECT_ARMS_OK( "INSECT_ARMS_OK" );
 static const trait_id trait_INTERCOM_OPERATOR( "INTERCOM_OPERATOR" );
 static const trait_id trait_M_DEFENDER( "M_DEFENDER" );
@@ -1426,7 +1426,7 @@ void iexamine::controls_gate( Character &you, const tripoint_bub_ms &examp )
 
 bool iexamine::can_hack( Character &you )
 {
-    if( you.has_trait( trait_ILLITERATE ) ) {
+    if( you.has_flag( json_flag_ILLITERATE ) ) {
         add_msg( _( "You cannot read!" ) );
         return false;
     }
@@ -5063,7 +5063,7 @@ void iexamine::sign( Character &you, const tripoint_bub_ms &examp )
 
     // Display existing message, or lack thereof.
     if( here.furn( examp )->has_flag( ter_furn_flag::TFLAG_SIGN_ALWAYS ) || previous_signage_exists ) {
-        if( you.has_trait( trait_ILLITERATE ) ) {
+        if( you.has_flag( json_flag_ILLITERATE ) ) {
             popup( _( "You're illiterate, and can't read the message on the sign." ) );
         } else if( previous_signage_exists ) {
             popup( existing_signage );
@@ -5194,7 +5194,7 @@ static int findBestGasDiscount( Character &you )
 
 static std::string str_to_illiterate_str( std::string s )
 {
-    if( !get_player_character().has_trait( trait_ILLITERATE ) ) {
+    if( !get_player_character().has_flag( json_flag_ILLITERATE ) ) {
         return s;
     } else {
         for( char &i : s ) {
@@ -5338,7 +5338,7 @@ void iexamine::pay_gas( Character &you, const tripoint_bub_ms &examp )
     const int hack = 3;
     const int refund = 4;
 
-    if( you.has_trait( trait_ILLITERATE ) ) {
+    if( you.has_flag( json_flag_ILLITERATE ) ) {
         popup( _( "You're illiterate, and can't read the screen." ) );
     }
 

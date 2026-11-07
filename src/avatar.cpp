@@ -111,6 +111,8 @@ static const itype_id itype_mut_longpull( "mut_longpull" );
 
 static const json_character_flag json_flag_ALARMCLOCK( "ALARMCLOCK" );
 static const json_character_flag json_flag_CANNOT_READ_SPELLBOOKS( "CANNOT_READ_SPELLBOOKS" );
+static const json_character_flag
+json_flag_NO_BOOK_COMPLEXITY_PENALTY( "NO_BOOK_COMPLEXITY_PENALTY" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
 
 static const mfaction_str_id monfaction_player( "player" );
@@ -126,7 +128,6 @@ static const move_mode_id move_mode_run( "run" );
 static const move_mode_id move_mode_walk( "walk" );
 
 static const trait_id trait_DEBUG_CLOAK( "DEBUG_CLOAK" );
-static const trait_id trait_PROF_DICEMASTER( "PROF_DICEMASTER" );
 static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_SHELL3( "SHELL3" );
 static const trait_id trait_STIMBOOST( "STIMBOOST" );
@@ -764,7 +765,7 @@ bool avatar::read( item_location &book, item_location ereader )
 
     const int intelligence = get_int();
     const bool complex_penalty = type->intel > std::min( intelligence, reader->get_int() ) &&
-                                 !reader->has_trait( trait_PROF_DICEMASTER );
+                                 !reader->has_flag( json_flag_NO_BOOK_COMPLEXITY_PENALTY );
     const Character *complex_player = reader->get_int() < intelligence ? reader : this;
     if( complex_penalty ) {
         add_msg( m_warning,

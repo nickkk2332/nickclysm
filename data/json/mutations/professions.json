@@ -69,6 +69,7 @@
     "profession": true,
     "purifiable": false,
     "valid": false,
+    "flags": [ "NO_BOOK_COMPLEXITY_PENALTY" ],
     "enchantments": [ { "values": [ { "value": "READING_SPEED_MULTIPLIER", "multiply": -0.1 } ] } ]
   },
   {

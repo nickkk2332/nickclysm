@@ -204,6 +204,16 @@ std::string get_gender_string( bool male );
 // the traits it forbids. Returns a message for each.
 std::vector<std::string> drop_what_profession_excludes( avatar &u );
 
+// The hobbies a new character starts with besides those chosen (PROG-J01): the profession
+// group the profession's "default_backgrounds" names, else the scenario's, else
+// adult_basic_background.  None if the profession, or (when the profession names no group) the
+// scenario, has the SKIP_DEFAULT_BACKGROUND flag.  Not those the profession excludes.
+std::vector<profession_id> default_background_hobbies( const profession *prof,
+        const scenario *scen );
+// Swaps the default hobbies of old_prof for those of the profession the avatar has now, with
+// their traits, as choosing and deselecting them does (PROG-J01)
+void change_default_background( avatar &u, const profession *old_prof );
+
 const mutation_variant *variant_trait_selection_menu( const trait_id &cur_trait );
 
 void draw_character_stats( const Character &who, bool draw_effective_stats );

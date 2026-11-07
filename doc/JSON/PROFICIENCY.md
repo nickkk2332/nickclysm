@@ -138,7 +138,7 @@ Within these are the standard list of JSON objects having "type": "proficiency".
 | ---                         | ---       | ---    | ---                                                                                  |
 | `id`                        | Mandatory | String | Internal id of the proficiency, used for all JSON and code references to it.         |
 | `type`                      | Mandatory | String | Must be `proficiency` for all proficiencies.                                         |
-| `category`                  | Mandatory | String | Internal id of the associated `proficiency_category` object.                         |
+| `category`                  | Mandatory | String | Internal id of the associated `proficiency_category` object.  Loading reports an unknown one. |
 | `name`                      | Mandatory | String | Name of the proficiency, used for all in-game display.                               |
 | `description`               | Mandatory | String | Description of what abilities or special knowledge the proficiency entails.          |
 | `can_learn`                 | Mandatory | Bool   | Whether or not this proficiency can be learned through normal means during the game. |
@@ -147,8 +147,8 @@ Within these are the standard list of JSON objects having "type": "proficiency".
 | `default_skill_penalty`     | Optional  | Float  | Effective skill penalty for crafting recipes (see below).                            |
 | `default_weakpoint_bonus`   | Optional  | Float  | Flat bonus to the attacker's skill.                                                  |
 | `default_weakpoint_penalty` | Optional  | Float  | Flat penalty to the attacker's skill if they lack the skill.                         |
-| `time_to_learn`             | Optional  | time_duration, as a string | The (optimal) time required to learn this proficiency.           |
-| `required_proficiencies`    | Optional  | Array of strings | The proficiencies that must be obtained before this one can.  You cannot gain experience in a proficiency without the necessary prerequisites. |
+| `time_to_learn`             | Optional  | time_duration, as a string | The (optimal) time required to learn this proficiency.  Defaults to 9999 hours; loading reports a proficiency with `"can_learn": true` that doesn't set it. |
+| `required_proficiencies`    | Optional  | Array of strings | The proficiencies that must be obtained before this one can.  You cannot gain experience in a proficiency without the necessary prerequisites.  Loading reports an unknown id, and proficiencies that require each other in a circle (none of them could ever be practiced). |
 | `ignore_focus`              | Optional  | Bool   | Proficiency exp gain will be as if focus is `100` regardless of actual focus.        |
 | `bonuses`                   | Optional  | Object, with an array of object as values | This member is used to apply bonuses to certain activities given the player has a particular proficiency. The bonuses applied must be hardcoded to the activity in question. (see below) |
 

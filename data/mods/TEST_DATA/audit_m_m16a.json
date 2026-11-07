@@ -1,0 +1,158 @@
+[
+  {
+    "type": "mutation",
+    "id": "test_prog_j01_hobby_trait",
+    "name": { "str": "PROG-J01 hobby trait" },
+    "points": 0,
+    "description": "test_prog_j01_hobby gives it.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_j01_hobby",
+    "name": "PROG-J01 default hobby",
+    "description": "The only hobby of test_prog_j01_group.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "test_prog_j01_hobby_trait" ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_j01_chosen_hobby",
+    "name": "PROG-J01 chosen hobby",
+    "description": "A hobby the test chooses, which changing profession keeps.",
+    "points": 0,
+    "chargen_allow_npc": false
+  },
+  {
+    "type": "profession_group",
+    "id": "test_prog_j01_group",
+    "professions": [ "test_prog_j01_hobby" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j01_group_profession",
+    "name": "PROG-J01 group profession",
+    "description": "Its default background is test_prog_j01_group.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "flags": [ "SCEN_ONLY" ],
+    "default_backgrounds": "test_prog_j01_group"
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j01_skip_profession",
+    "name": "PROG-J01 skip profession",
+    "description": "Has the SKIP_DEFAULT_BACKGROUND flag.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "flags": [ "SCEN_ONLY", "SKIP_DEFAULT_BACKGROUND" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_j01_none_profession",
+    "name": "PROG-J01 no background profession",
+    "description": "Its default background is no group at all.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "flags": [ "SCEN_ONLY" ],
+    "default_backgrounds": ""
+  },
+  {
+    "type": "scenario",
+    "id": "test_prog_j01_group_scenario",
+    "name": "PROG-J01 group scenario",
+    "points": 0,
+    "description": "Its default background is test_prog_j01_group.",
+    "allowed_locs": [ "sloc_shelter_safe" ],
+    "start_name": "Evac Shelter",
+    "flags": [ "CHALLENGE" ],
+    "default_backgrounds": "test_prog_j01_group"
+  },
+  {
+    "type": "scenario",
+    "id": "test_prog_j01_skip_scenario",
+    "name": "PROG-J01 skip scenario",
+    "points": 0,
+    "description": "Has the SKIP_DEFAULT_BACKGROUND flag.",
+    "allowed_locs": [ "sloc_shelter_safe" ],
+    "start_name": "Evac Shelter",
+    "flags": [ "CHALLENGE", "SKIP_DEFAULT_BACKGROUND" ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_j02_a",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-J02 A" },
+    "description": "Requires test_prog_j02_b, which the test makes require it.",
+    "can_learn": true,
+    "time_to_learn": "1 h",
+    "required_proficiencies": [ "test_prog_j02_b" ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_j02_b",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-J02 B" },
+    "description": "Required by test_prog_j02_a.",
+    "can_learn": true,
+    "time_to_learn": "1 h"
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_j02_checked",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-J02 checked" },
+    "description": "The test redefines it with what the load check reports.",
+    "can_learn": true,
+    "time_to_learn": "1 h"
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_j03_cannibal",
+    "name": { "str": "PROG-J03 cannibal" },
+    "points": 0,
+    "description": "Has the CANNIBAL flag, as some mods' vampires do, but isn't the CANNIBAL trait.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "CANNIBAL" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_j03_illiterate",
+    "name": { "str": "PROG-J03 illiterate" },
+    "points": 0,
+    "description": "Has the ILLITERATE flag, but isn't the ILLITERATE trait.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "ILLITERATE" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_j03_no_complexity_penalty",
+    "name": { "str": "PROG-J03 no complexity penalty" },
+    "points": 0,
+    "description": "Has the NO_BOOK_COMPLEXITY_PENALTY flag, but isn't the PROF_DICEMASTER trait.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "NO_BOOK_COMPLEXITY_PENALTY" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_j03_book_fun",
+    "name": { "str": "PROG-J03 book fun" },
+    "points": 0,
+    "description": "Books are 2 points more fun.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "enchantments": [ { "values": [ { "value": "BOOK_FUN", "add": 2 } ] } ]
+  }
+]

@@ -1726,6 +1726,11 @@
     "type": "json_flag"
   },
   {
+    "id": "ENJOYED_BY_CANNIBALS",
+    "type": "json_flag",
+    "//": "Book flag: characters with the CANNIBAL, PSYCHOPATH or SAPIOVORE flag enjoy reading it, however boring it is to others."
+  },
+  {
     "id": "INSPIRATIONAL",
     "type": "json_flag"
   },
@@ -3027,6 +3032,26 @@
   {
     "id": "PSYCHOPATH",
     "type": "json_flag"
+  },
+  {
+    "id": "ILLITERATE",
+    "type": "json_flag",
+    "//": "A character with this flag can't read: books, signs, computer screens..."
+  },
+  {
+    "id": "LOVES_BOOKS",
+    "type": "json_flag",
+    "//": "Books are one point more fun for a character with this flag."
+  },
+  {
+    "id": "HATES_BOOKS",
+    "type": "json_flag",
+    "//": "A character with this flag gets no fun from books, and boring ones are one point more boring."
+  },
+  {
+    "id": "NO_BOOK_COMPLEXITY_PENALTY",
+    "type": "json_flag",
+    "//": "A character with this flag reads books above their intelligence without taking longer."
   },
   {
     "id": "BANK_NETWORKED",

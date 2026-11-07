@@ -361,14 +361,33 @@ TEST_CASE( "prog-b10_eoc_direct_100_percent_learns_the_proficiency", "[audit][pr
     }
 }
 
+// A circle of prerequisites is a load error now (PROG-J02), so in the test data circle_b doesn't
+// require circle_a.  This redefines circle_b, as a later mod would, with or without that.
+static void define_prog_b10_circle_b( bool closed )
+{
+    static int mods = 0;
+    const std::string json = string_format( R"({
+        "id": "test_prog_b10_circle_b",
+        "category": "prof_test_category",
+        "name": { "str": "PROG-B10 Circle B" },
+        "description": "Required by test_prog_b10_circle_a.  The test makes it require that one back, which the load check would report.",
+        "can_learn": true,
+        "time_to_learn": "1 h"%s
+    })", closed ? R"(, "required_proficiencies": [ "test_prog_b10_circle_a" ])" : "" );
+    proficiency::load_proficiencies( json_loader::from_string( json ),
+                                     string_format( "audit_prog_b10_mod_%d", mods++ ) );
+}
+
 // Learning a proficiency with its prerequisites recursed through them with nothing to stop a
 // circle, so two proficiencies that required each other overflowed the stack.
 TEST_CASE( "prog-b10_a_circle_of_prerequisites_is_learned_once_round", "[audit][proficiency]" )
 {
     clear_avatar();
     avatar &u = get_avatar();
+    define_prog_b10_circle_b( true );
     on_out_of_scope restore( []() {
         clear_avatar();
+        define_prog_b10_circle_b( false );
     } );
     REQUIRE( proficiency_test_prog_b10_circle_a->required_proficiencies().count(
                  proficiency_test_prog_b10_circle_b ) == 1 );

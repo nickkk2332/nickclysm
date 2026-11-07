@@ -145,6 +145,7 @@ static const itype_id itype_power_cord( "power_cord" );
 static const itype_id itype_stock_none( "stock_none" );
 static const itype_id itype_syringe( "syringe" );
 
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_MANUAL_CBM_INSTALLATION( "MANUAL_CBM_INSTALLATION" );
 static const json_character_flag json_flag_NO_LIMB_FIRST_AID( "NO_LIMB_FIRST_AID" );
 static const json_character_flag
@@ -175,7 +176,6 @@ static const skill_id skill_survival( "survival" );
 static const skill_id skill_traps( "traps" );
 
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 static const trait_id trait_SORCERER( "SORCERER" );
 
 static const trap_str_id tr_firewood_source( "tr_firewood_source" );
@@ -2782,7 +2782,7 @@ void learn_spell_actor::info( const item &, std::vector<iteminfo> &dump ) const
             spell_text = string_format( pgettext( "spell name, spell class", "%s, %s" ),
                                         spell_text, sp_id->spell_class->name() );
         }
-        if( pc.has_trait( trait_ILLITERATE ) ) {
+        if( pc.has_flag( json_flag_ILLITERATE ) ) {
             dump.emplace_back( "SPELL", spell_text );
         } else {
             if( pc.magic->knows_spell( sp_id ) ) {
@@ -2813,7 +2813,7 @@ std::optional<int> learn_spell_actor::use( Character *p, item &, map *,
         p->add_msg_if_player( m_bad, _( "It's too dark to read." ) );
         return std::nullopt;
     }
-    if( p->has_trait( trait_ILLITERATE ) ) {
+    if( p->has_flag( json_flag_ILLITERATE ) ) {
         p->add_msg_if_player( m_bad, _( "You can't read." ) );
         return std::nullopt;
     }
