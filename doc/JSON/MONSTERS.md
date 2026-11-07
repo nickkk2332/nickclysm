@@ -136,7 +136,7 @@ Property                 | Description
 `trap_avoids`            | (array of strings) trap_id of traps that are not triggered by this monster. Default behaviour is to trigger all traps.
 `luminance`              | (float) Amount of light passively emitted by the monster, must be >0 to have any effect
 `death_drops`            | (string or item group) Item group to spawn when the monster dies
-`death_function`         | (array of strings) How the monster behaves on death. See JSON_FLAGS
+`death_function`         | (object) How the monster behaves on death: its corpse, death message, spell and EOC. See [death_function](#death_function)
 `emit_fields`            | (array of objects) What field the monster emits, and how frequently
 `regenerates`            | (integer) Number of hit points the monster regenerates per turn
 `regenerates_in_dark`    | (boolean) True if monster regenerates quickly in the dark
@@ -559,6 +559,11 @@ How the monster behaves on death.
 }
 ```
 
+The `eoc` runs after the death spell and before the corpse and the monster's drops are made, so it can still stop the corpse (`npc_die` with `remove_corpse`), but it can't change the corpse itself.  It gets these context variables:
+
+- `loc`: the location where the monster died.
+- `overkill`: how far below 0 HP the monster went (0 if it died with HP left, as with `npc_die`), after the killer's `OVERKILL_DAMAGE` enchantments.  The more overkill, the more damaged the corpse is, and a lot of it splatters the monster instead.
+
 ## "emit_fields"
 (array of objects of emit_id and time_duration, optional)
 "emit_fields": [ { "emit_id": "emit_gum_web", "delay": "30 m" } ],
@@ -611,6 +616,12 @@ An object containing ammo that newly spawned monsters start with. This is useful
 
 ```jsonc
 "starting_ammo": { "9mm": 100, "40mm_frag": 100 }
+```
+
+For a `MILKABLE` monster, `starting_ammo` is what it gives when milked: exactly one entry, a liquid item (any liquid, not only milk) and the number of units it holds when full.  Its udders refill to that amount once a day.
+
+```jsonc
+"starting_ammo": { "milk_raw": 40 }
 ```
 
 ## "upgrades"

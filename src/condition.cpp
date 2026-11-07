@@ -321,6 +321,13 @@ void _write_var_value( var_type type, const std::string &name, dialogue *d,
         case var_type::var:
             ret = d->get_value( name ).str();
             vinfo = process_variable( ret );
+            if( vinfo.type == var_type::var ) {
+                // a var_val naming another var_val (`v_`): follow it, but not around a loop
+                vinfo = resolve_var_val( vinfo.name, *d );
+                if( vinfo.type == var_type::last ) {
+                    break;
+                }
+            }
             _write_var_value( vinfo.type, vinfo.name, d, value );
             break;
         case var_type::u:
@@ -644,6 +651,45 @@ conditional_t::func f_has_part_flag( const JsonObject &jo, std::string_view memb
     };
 }
 
+// VEH-J01: u_vehicle_owner: "your_followers" - the vehicle talker is owned by that faction;
+// "NULL" when it is unowned. False for a talker that isn't a vehicle.
+conditional_t::func f_vehicle_owner( const JsonObject &jo, std::string_view member,
+                                     bool is_npc )
+{
+    str_or_var owner = get_str_or_var( jo.get_member( member ), member, true );
+    return [owner, is_npc]( const_dialogue const & d ) {
+        const vehicle *veh = d.const_actor( is_npc )->get_const_vehicle();
+        if( veh == nullptr ) {
+            return false;
+        }
+        std::string name = owner.evaluate( d );
+        if( name.empty() ) {
+            name = "NULL";
+        }
+        return veh->get_owner().str() == name;
+    };
+}
+
+// NPC-J05: u_has_fac_relation: "kill on sight" - the u_ talker's faction has that relation
+// to the npc_ talker's faction (see faction_has_relation for two named factions)
+conditional_t::func f_has_fac_relation( const JsonObject &jo, std::string_view member,
+                                        bool is_npc )
+{
+    const std::string relation = jo.get_string( std::string( member ) );
+    if( npc_factions::relation_strs.count( relation ) == 0 ) {
+        jo.throw_error_at( member, string_format( "unknown faction relation \"%s\"", relation ) );
+    }
+    const npc_factions::relationship rel = npc_factions::relation_strs.at( relation );
+    return [rel, is_npc]( const_dialogue const & d ) {
+        if( !d.has_actor( !is_npc ) ) {
+            return false;
+        }
+        const faction *from = d.const_actor( is_npc )->get_faction();
+        const faction *to = d.const_actor( !is_npc )->get_faction();
+        return from != nullptr && to != nullptr && from->has_relationship( to->id, rel );
+    };
+}
+
 conditional_t::func f_has_species( const JsonObject &jo, std::string_view member,
                                    bool is_npc )
 {
@@ -694,9 +740,39 @@ conditional_t::func f_has_activity( bool is_npc )
     };
 }
 
-conditional_t::func f_has_activity( const JsonObject &, std::string_view, bool is_npc )
+// { "u_has_activity": "ACT_READ" } or [ "ACT_BUTCHER", "ACT_BUTCHER_FULL" ]: doing one of those;
+// "any", like the bare "u_has_activity", is any activity
+conditional_t::func f_has_activity( const JsonObject &jo, std::string_view member, bool is_npc )
 {
-    return f_has_activity( is_npc );
+    std::vector<str_or_var> wanted;
+    if( jo.has_array( member ) ) {
+        for( const JsonValue &jv : jo.get_array( member ) ) {
+            wanted.emplace_back( get_str_or_var( jv, member ) );
+        }
+    } else {
+        wanted.emplace_back( get_str_or_var( jo.get_member( member ), member, true ) );
+    }
+    return [wanted, is_npc]( const_dialogue const & d ) {
+        const_talker const *actor = d.const_actor( is_npc );
+        const Character *who = actor->get_const_character();
+        for( const str_or_var &activity : wanted ) {
+            const std::string id_str = activity.evaluate( d );
+            if( id_str == "any" ) {
+                if( actor->has_activity() ) {
+                    return true;
+                }
+                continue;
+            }
+            const activity_id id( id_str );
+            if( !id.is_valid() ) {
+                debugmsg( "Unknown activity id \"%s\" in has_activity.  %s", id_str,
+                          d.get_callstack() );
+            } else if( who != nullptr && who->activity && who->activity.id() == id ) {
+                return true;
+            }
+        }
+        return false;
+    };
 }
 
 // "any" or an activity id
@@ -2484,6 +2560,33 @@ conditional_t::func f_is_contained_in( const JsonObject &jo, std::string_view me
     };
 }
 
+conditional_t::func f_has_fault( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    str_or_var fault_var = get_str_or_var( jo.get_member( member ), member, true );
+    return [fault_var, is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        if( it == nullptr ) {
+            return false;
+        }
+        const fault_id fault( fault_var.evaluate( d ) );
+        if( !fault.is_valid() ) {
+            debugmsg( "Unknown fault \"%s\" in has_fault.  %s", fault.str(), d.get_callstack() );
+            return false;
+        }
+        return it->has_fault( fault );
+    };
+}
+
+conditional_t::func f_has_fault_of_type( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var fault_type = get_str_or_var( jo.get_member( member ), member, true );
+    return [fault_type, is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        return it != nullptr && it->has_fault_of_type( fault_type.evaluate( d ) );
+    };
+}
+
 conditional_t::func f_math( const JsonObject &jo, std::string_view member )
 {
     eoc_math math;
@@ -3249,7 +3352,6 @@ std::unordered_map<std::string_view, int ( const_talker::* )() const> const f_ge
     { "count", &const_talker::get_count },
     { "vehicle_facing", &const_talker::get_vehicle_facing },
     { "current_speed", &const_talker::get_current_speed },
-    { "unloaded_weight", &const_talker::get_unloaded_weight },
     { "friendly_passenger_count", &const_talker::get_friendly_passenger_count },
     { "hostile_passenger_count", &const_talker::get_hostile_passenger_count }
 };
@@ -3308,6 +3410,10 @@ double  conditional_t::get_legacy_dbl( const_dialogue const &d, std::string_view
         return static_cast<double>( d.const_actor( is_npc )->pos_abs().x() );
     } else if( checked_value == "pos_y" ) {
         return static_cast<double>( d.const_actor( is_npc )->pos_abs( ).y() );
+    } else if( checked_value == "unloaded_weight" ) {
+        // in milligrams; most vehicles weigh more than an int holds
+        return static_cast<double>( units::to_milligram(
+                                        d.const_actor( is_npc )->get_unloaded_weight() ) );
     }
     throw math::runtime_error( string_format( R"(Invalid aspect "%s" for val())", checked_value ) );
 }
@@ -3359,6 +3465,15 @@ void conditional_t::set_legacy_dbl( dialogue &d, double input, std::string_view 
         d.actor( is_npc )->add_debt( input - d.actor( is_npc )->debt() );
     } else if( checked_value == "sold" ) {
         d.actor( is_npc )->add_sold( input - d.actor( is_npc )->sold() );
+    } else if( checked_value == "strength" ) {
+        // the current value is base + bonus: the base is set, so it reads back as set
+        d.actor( is_npc )->set_str_max( input - d.actor( is_npc )->get_str_bonus() );
+    } else if( checked_value == "dexterity" ) {
+        d.actor( is_npc )->set_dex_max( input - d.actor( is_npc )->get_dex_bonus() );
+    } else if( checked_value == "intelligence" ) {
+        d.actor( is_npc )->set_int_max( input - d.actor( is_npc )->get_int_bonus() );
+    } else if( checked_value == "perception" ) {
+        d.actor( is_npc )->set_per_max( input - d.actor( is_npc )->get_per_bonus() );
     } else if( checked_value == "pos_x" ) {
         tripoint_abs_ms const tr = d.actor( is_npc )->pos_abs();
         d.actor( is_npc )->set_pos( tripoint_abs_ms( static_cast<int>( input ), tr.y(), tr.z() ) );
@@ -3454,7 +3569,7 @@ parsers = {
     {"u_bodytype", "npc_bodytype", jarg::member, &conditional_fun::f_bodytype },
     {"u_has_class", "npc_has_class", jarg::member, &conditional_fun::f_npc_has_class },
     {"u_is_in_faction", "npc_is_in_faction", jarg::member, &conditional_fun::f_is_in_faction },
-    {"u_has_activity", "npc_has_activity", jarg::string, &conditional_fun::f_has_activity },
+    {"u_has_activity", "npc_has_activity", jarg::member, &conditional_fun::f_has_activity },
     {"u_is_doing_activity", "npc_is_doing_activity", jarg::member, &conditional_fun::f_is_doing_activity },
     {"u_is_riding", "npc_is_riding", jarg::string, &conditional_fun::f_is_riding },
     {"u_is_grabbing", "npc_is_grabbing", jarg::member, &conditional_fun::f_is_grabbing },
@@ -3551,8 +3666,12 @@ parsers = {
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },
     {"test_eoc", jarg::member, &conditional_fun::f_test_eoc },
     {"u_has_part_flag", "npc_has_part_flag", jarg::string, &conditional_fun::f_has_part_flag },
+    {"u_vehicle_owner", "npc_vehicle_owner", jarg::member, &conditional_fun::f_vehicle_owner },
+    {"u_has_fac_relation", "npc_has_fac_relation", jarg::string, &conditional_fun::f_has_fac_relation },
     {"u_contains_item", "npc_contains_item", jarg::member, &conditional_fun::f_contains_item },
     {"u_is_contained_in", "npc_is_contained_in", jarg::member, &conditional_fun::f_is_contained_in },
+    {"u_has_fault", "npc_has_fault", jarg::member, &conditional_fun::f_has_fault },
+    {"u_has_fault_of_type", "npc_has_fault_of_type", jarg::member, &conditional_fun::f_has_fault_of_type },
 };
 
 // When updating this, please also update `dynamic_line_string_keys` in

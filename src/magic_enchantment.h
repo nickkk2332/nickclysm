@@ -170,6 +170,11 @@ enum class spell_mod : int {
     DURATION,
     COST,
     CAST_TIME,
+    // MAGIC-J02: the fail chance (a fraction, 0 to 1), difficulty, casting XP and sound
+    FAIL,
+    DIFFICULTY,
+    EXP,
+    SOUND,
     NUM_SPELL_MOD
 };
 } // namespace enchant_vals

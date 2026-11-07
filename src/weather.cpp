@@ -410,10 +410,8 @@ void wet_character( Character &target, int amount )
         ( !one_in( 50 ) && target.worn_with_flag( json_flag_RAINPROOF ) ) ) {
         return;
     }
-    // Coarse correction to get us back to previously intended soaking rate.
-    if( !calendar::once_every( 6_seconds ) ) {
-        return;
-    }
+    // The rain's 6 second rate is kept by handle_weather_effects, so a one-off call (u_add_wet)
+    // works on any turn.
     std::map<bodypart_id, int> warmth_bp = target.worn.warmth( target );
     const int warmth_delay = warmth_bp[body_part_torso] * 0.8 +
                              warmth_bp[body_part_head] * 0.2;

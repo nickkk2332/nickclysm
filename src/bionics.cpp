@@ -681,9 +681,14 @@ void npc::deactivate_or_discharge_bionic_weapon( bool stow_real_weapon )
 
 void npc::check_or_use_weapon_cbm( const bionic_id &cbm_id )
 {
-    // if we're already using a bio_weapon, keep using it
+    // if we're already using a bio_weapon, keep using it, unless it is a gun with no power left
+    // to fire: then put it away, so the NPC has its own weapon back for the rest of the fight
     if( is_using_bionic_weapon() ) {
-        return;
+        const item_location held = get_wielded_item();
+        if( !held || !held->is_gun() || held->ammo_sufficient( this ) ) {
+            return;
+        }
+        discharge_cbm_weapon( false );
     }
     const float allowed_ratio = static_cast<int>( rules.cbm_reserve ) / 100.0f;
     const units::energy free_power = get_power_level() - get_max_power_level() * allowed_ratio;
@@ -812,7 +817,8 @@ static bool activation_needs_avatar( const bionic &bio )
            bio.id == bio_remote;
 }
 
-bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui )
+bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui,
+                                 bool ignore_cost )
 {
     const bool mounted = is_mounted();
     if( bio.incapacitated_time > 0_turns ) {
@@ -863,7 +869,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
 
     // eff_only means only do the effect without messing with stats or displaying messages
     if( !eff_only ) {
-        if( !enough_power_for( bio.id ) ) {
+        if( !ignore_cost && !enough_power_for( bio.id ) ) {
             add_msg_if_player( m_info, _( "You don't have the power to activate your %s." ),
                                bio.info().name );
             return false;
@@ -880,7 +886,9 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
 
         // We can actually activate now, do activation-y things
-        mod_power_level( -bio.info().power_activate );
+        if( !ignore_cost ) {
+            mod_power_level( -bio.info().power_activate );
+        }
 
         bio.powered = bio.info().has_flag( json_flag_BIONIC_TOGGLED ) || bio.info().charge_time > 0_turns;
 
@@ -898,7 +906,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
     };
     auto refund_power = [&]() {
-        if( !eff_only ) {
+        if( !eff_only && !ignore_cost ) {
             mod_power_level( bio.info().power_activate );
         }
     };
@@ -1308,7 +1316,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         dialogue d( get_talker_for( *this ), nullptr );
         d.set_value( "this", activated_id.str() );
         write_var_value( var_type::context, "act_cost", &d,
-                         units::to_millijoule( activated_id->power_activate ) );
+                         ignore_cost ? 0 : units::to_millijoule( activated_id->power_activate ) );
         eoc->activate_activation_only( d, "a bionic activation", "bionic being activated", "bionic" );
     }
 
@@ -1316,7 +1324,8 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
 }
 
 
-ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only ) const
+ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only,
+        bool ignore_cost ) const
 {
 
     if( bio.incapacitated_time > 0_turns ) {
@@ -1335,7 +1344,7 @@ ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only ) con
             return ret_val<void>::make_failure( _( "You can't deactivate your %s manually!" ),
                                                 bio.info().name );
         }
-        if( get_power_level() < bio.info().power_deactivate ) {
+        if( !ignore_cost && get_power_level() < bio.info().power_deactivate ) {
             return ret_val<void>::make_failure( _( "You don't have the power to deactivate your %s." ),
                                                 bio.info().name );
         }
@@ -1344,11 +1353,11 @@ ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only ) con
     return ret_val<void>::make_success();
 }
 
-bool Character::deactivate_bionic( bionic &bio, bool eff_only )
+bool Character::deactivate_bionic( bionic &bio, bool eff_only, bool ignore_cost )
 {
     const map &here = get_map();
 
-    const auto can_deactivate = can_deactivate_bionic( bio, eff_only );
+    const auto can_deactivate = can_deactivate_bionic( bio, eff_only, ignore_cost );
     bio_flag_cache.clear();
     if( !can_deactivate.success() ) {
         if( !can_deactivate.str().empty() ) {
@@ -1360,7 +1369,9 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
     // Just do the effect, no stat changing or messages
     if( !eff_only ) {
         //We can actually deactivate now, do deactivation-y things
-        mod_power_level( -bio.info().power_deactivate );
+        if( !ignore_cost ) {
+            mod_power_level( -bio.info().power_deactivate );
+        }
         bio.powered = false;
         add_msg_if_player( m_neutral, _( "You deactivate your %s." ), bio.info().name );
     }

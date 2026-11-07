@@ -430,6 +430,8 @@ Three fields let a mutation change what its owner can eat, without C++. They app
 
 Unknown flag, vitamin and morale ids are reported at load.
 
+Vanilla uses them: `VEGETARIAN`, `MEATARIAN`, `ANTIFRUIT`, `LACTOSE`, `ANTIJUNK` and `ANTIWHEAT` are `food_allergies`, the animal thresholds are `edible_food_flags`, and `VEGAN` is an `eat_condition`. `RUMINANT` gets its herbivore diet from the `HERBIVORE_DIET` character flag. The other diet traits are still C++, because these fields can't express them: `PICKYEATER` (it refuses by taste, with separate messages for food and drink), `GOURMAND` (it changes taste and its cap), `SAPROPHAGE`, `SAPROVORE` and `EATDEAD` (they change calories, morale and food poisoning from rot), `PROBOSCIS`, `M_DEPENDENT` and the Mycus traits (checked before frozen food and drugs, for food and drink only), and `PROJUNK` (a morale bonus).
+
 ```jsonc
   {
     "type": "mutation",

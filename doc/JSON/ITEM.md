@@ -39,10 +39,7 @@
 - [Brewables](#brewables)
 - [Compostables](#compostables)
 - [Milling](#milling)
-  - [`Effects_carried`](#effects_carried)
-  - [`effects_worn`](#effects_worn)
-  - [`effects_wielded`](#effects_wielded)
-  - [`effects_activated`](#effects_activated)
+- [Artifacts](#artifacts)
 - [Use Actions](#use-actions)
 - [Drop Actions](#drop-actions)
 - [Tick Actions](#tick-actions)
@@ -1121,107 +1118,23 @@ If an item is BREWABLE, it can be placed in a vat and will ferment into a differ
 //COMESTIBLE fields
 ```
 
-#### `Effects_carried`
+### Artifacts
 
-(optional, default: empty list)
+The old artifact fields `effects_carried`, `effects_worn`, `effects_wielded` and `effects_activated`, with their `AEP_*` and `AEA_*` values, and the `"use_action": [ "ARTIFACT" ]` action no longer exist; using them is reported as a load error.  An item with the `ARTIFACT` subtype is a relic, and reads these fields:
 
-Effects of the artifact when it's in the inventory (main inventory, wielded, or worn) of the player.
+```jsonc
+"type": "ITEM",
+"subtypes": [ "ARTIFACT" ],
+"passive_effects": [ { "id": "nvg_bad" } ],                   // Enchantments, by id or inline (see MAGIC.md), that apply while their condition holds
+"active_effects": [ { "id": "conj_throwing_blade3" } ],      // Spells (fake_spell syntax) cast when the relic is activated
+"activation_requirement": "wield",                           // (optional) How the relic must be carried for active_effects: "held", "wield" or "worn"
+"charge_info": { "recharge_type": "periodic", "time": "1 h", "regenerate_ammo": true }, // (optional) How the relic recharges
+"charges_per_activation": 1,                                 // (optional) Charges used per activation
+"artifact_name": "the Eye of Ages",                          // (optional) Name that replaces the item's name
+"moves": 100                                                 // (optional) Moves to activate it.  Default 100
+```
 
-Possible values (see src/enums.h for an up-to-date list):
-
-- `AEP_STR_UP` Strength + 4
-- `AEP_DEX_UP` Dexterity + 4
-- `AEP_PER_UP` Perception + 4
-- `AEP_INT_UP` Intelligence + 4
-- `AEP_ALL_UP` All stats + 2
-- `AEP_SPEED_UP` +20 speed
-- `AEP_IODINE` Reduces radiation
-- `AEP_SNAKES` Summons friendly snakes when you're hit
-- `AEP_INVISIBLE` Makes you invisible
-- `AEP_CLAIRVOYANCE` See through walls
-- `AEP_SUPER_CLAIRVOYANCE` See through walls to a great distance
-- `AEP_STEALTH` Your steps are quieted
-- `AEP_EXTINGUISH` May extinguish nearby flames
-- `AEP_GLOW` Four-tile light source
-- `AEP_PSYSHIELD` Protection from fear paralyze attack
-- `AEP_RESIST_ELECTRICITY` Protection from electricity
-- `AEP_CARRY_MORE` Increases carrying capacity by 200
-- `AEP_SAP_LIFE` Killing non-zombie monsters may heal you
-- `AEP_HUNGER` Increases hunger
-- `AEP_THIRST` Increases thirst
-- `AEP_SMOKE` Emits smoke occasionally
-- `AEP_EVIL` Addiction to the power
-- `AEP_SCHIZO` Mimicks schizophrenia
-- `AEP_RADIOACTIVE` Increases your radiation
-- `AEP_MUTAGENIC` Mutates you slowly
-- `AEP_ATTENTION` Draws netherworld attention slowly
-- `AEP_STR_DOWN` Strength - 3
-- `AEP_DEX_DOWN` Dex - 3
-- `AEP_PER_DOWN` Per - 3
-- `AEP_INT_DOWN` Int - 3
-- `AEP_ALL_DOWN` All stats - 2
-- `AEP_SPEED_DOWN` -20 speed
-- `AEP_FORCE_TELEPORT` Occasionally force a teleport
-- `AEP_MOVEMENT_NOISE` Makes noise when you move
-- `AEP_BAD_WEATHER` More likely to experience bad weather
-- `AEP_SICK` Decreases health over time
-
-#### `effects_worn`
-(optional, default: empty list)
-
-Effects of the artifact when it's worn (it must be an armor item to be worn).
-
-Possible values are the same as for effects_carried.
-
-#### `effects_wielded`
-
-(optional, default: empty list)
-
-Effects of the artifact when it's wielded.
-
-Possible values are the same as for effects_carried.
-
-#### `effects_activated`
-
-(optional, default: empty list)
-
-Effects of the artifact when it's activated (which require it to have a `"use_action": [ "ARTIFACT" ]` and it must have a non-zero max_charges value).
-
-Possible values (see src/artifact.h for an up-to-date list):
-
-- `AEA_STORM` Emits shock fields
-- `AEA_FIREBALL` Targeted
-- `AEA_ADRENALINE` Adrenaline rush
-- `AEA_MAP` Maps the area around you
-- `AEA_BLOOD` Shoots blood all over
-- `AEA_SLEEPINESS` Creates interdimensional sleepiness
-- `AEA_ACIDBALL` Targeted acid
-- `AEA_PULSE` Destroys adjacent terrain
-- `AEA_HEAL` Heals minor damage
-- `AEA_HEAL_WOUND` Heals wounds
-- `AEA_CONFUSED` Confuses all monsters in view
-- `AEA_ENTRANCE` Chance to make nearby monsters friendly
-- `AEA_BUGS` Chance to summon friendly insects
-- `AEA_TELEPORT` Teleports you
-- `AEA_LIGHT` Temporary light source
-- `AEA_GROWTH` Grow plants, a la triffid queen
-- `AEA_HURTALL` Hurts all monsters!
-- `AEA_FUN` Temporary morale bonus
-- `AEA_SPLIT` Split between good and bad
-- `AEA_RADIATION` Spew radioactive gas
-- `AEA_PAIN` Increases player pain
-- `AEA_MUTATE` Chance of mutation
-- `AEA_PARALYZE` You lose several turns
-- `AEA_FIRESTORM` Spreads minor fire all around you
-- `AEA_ATTENTION` Attention from sub-prime denizens
-- `AEA_TELEGLOW` Teleglow disease
-- `AEA_NOISE` Loud noise
-- `AEA_SCREAM` Noise & morale penalty
-- `AEA_DIM` Darkens the sky slowly
-- `AEA_FLASH` Flashbang
-- `AEA_VOMIT` User vomits
-- `AEA_SHADOWS` Summon shadow creatures
-- `AEA_STAMINA_EMPTY` Empties most of the player's stamina gauge
+For the enchantment syntax see [Enchantments](MAGIC.md#enchantments), and for `charge_info`, [The `relic_data` field](MAGIC.md#the-relic_data-field) (the item gets these fields directly, with the `ARTIFACT` subtype, not inside a `relic_data` object).  An item that isn't a relic can still do something when activated with a `cast_spell` or `effect_on_conditions` use action (see below).
 
 ### Use Actions
 
@@ -1231,10 +1144,12 @@ The contents of `use_action` fields can either be a string indicating a built-in
 "use_action": {
   "type": "transform",                      // The type of method, in this case one that transforms the item
   "target": "gasoline_lantern_on",          // The item to transform to
-  "target_group": "twisted_geometry",       // If used, target is a random item from itemgroup
+  "target_group": "twisted_geometry",       // If used instead of target, the item becomes a random item from this item group
   "variant_type": "condom_plain",           // (optional) Defaults to `<any>`. Specific variant type to set for the transformed item. Special string `<any>` will pick a random variant from all available variants, based on the variant's defined weight
-  "ammo_scale": 0,                          // For use when an item automatically transforms into another when its ammo drops to 0, or to allow guns to transform with 0 ammo
+  "ammo_scale": 0,                          // For use when an item automatically transforms into another when its ammo drops to 0, or to allow guns to transform with 0 ammo.  Any use_action object takes this
   "msg": "You turn the lamp on.",           // Message to display when activated
+  "sound_volume": 0,                        // (optional) Loudness of the activation, heard with "msg" as its description.  Default 0, no sound
+  "damage_failure_msg": "Activation of your damaged %s fails.", // (optional) Message when activating the damaged item fails
   "target_timer": 0,                        // (Optional) Set timer on transformed item. Mutually exclusive with set_timer.
   "set_timer": false,                       // (optional) When true, asks PC to set a timer. An NPC uses the default of the transformed item.
   "need_fire": 1,                           // Whether fire is needed to activate
@@ -1245,11 +1160,9 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "need_worn": true,                        // Whether the item must be worn to be transformed, cast spells, or use EOCs; false by default
   "need_wielding": true,                    // Whether the item must be wielded to be transformed, cast spells, or use EOCs; false by default
   "qualities_needed": { "WRENCH_FINE": 1 }, // Tool qualities needed, e.g. "fine bolt turning 1"
-  "target_charges": 3,                      // Number of charges the transformed item has
-  "rand_target_charges": [ 10, 15, 25 ],    // Randomize the charges the transformed item has. This example has a 50% chance of rng(10, 15) charges and a 50% chance of rng(15, 25) (endpoints are included)
-  "ammo_qty": 3,                            // If zero or positive set remaining ammo of transformed item to this
-  "random_ammo_qty": [ 1, 5 ],              // If this has values, set remaining ammo of transformed item to one of them chosen at random
-  "ammo_type": "tape",                      // If both this and ammo_qty are specified then set transformed item to this specific ammo
+  "target_charges": 3,                      // (optional) If zero or positive, set the remaining ammo (or charges, or countdown) of the transformed item to this.  With "container", the number of target items (or charges) put in it
+  "rand_target_charges": [ 10, 15, 25 ],    // (optional) Instead of target_charges, randomize them.  This example has a 50% chance of rng(10, 15) charges and a 50% chance of rng(15, 25) (endpoints are included).  Needs two or more values
+  "target_ammo": "tape",                    // (optional) With target_charges or rand_target_charges, load the transformed item with this specific ammo.  Can't be used with "container"
   "container": "jar",                       // Container holding the target item
   "sealed": true,                           // Whether the transformed container is sealed; true by default
   "menu_text": "Lower visor",               // (optional) Text displayed in the activation screen. Defaults to "Turn on"
@@ -1293,8 +1206,8 @@ The contents of `use_action` fields can either be a string indicating a built-in
       "bp": "torso",                      // Bodypart to apply the effect to. Optional, defaults to no particular body part.
       "permanent": false,                 // Whether the effect is permanent. Optional, defaults to false.
       "intensity": 2                      // Intensity to set the effect to when applied. Optional, defaults to 0.
-    },  
-  ],       
+    }
+  ],
   "damage_over_time": [
     {
       "damage_type": "pure",              // Type of damage
@@ -1304,10 +1217,11 @@ The contents of `use_action` fields can either be a string indicating a built-in
     }
   ],
   "stat_adjustments": { "hunger": -10 },   // Adjustment to make to player stats
-  "fields_produced": { "cracksmoke": 2 },  // Fields to produce, mostly used for smoke
+  "fields_produced": { "fd_cracksmoke": 2 }, // Field ids and intensities to produce around the user, mostly used for smoke
   "charges_needed": { "fire": 1 },         // Charges to use in the process of consuming the drug
   "tools_needed": { "apparatus": -1 },     // Tool needed to use the drug
   "moves": 50,                             // Number of moves required in the process, default value is 100
+  "used_up_item": "syringe",               // (optional) Item left behind after the drug is used
   "vitamins": [                            // What and how much vitamin is given by this drug
     [ "mutagen_alpha", 225 ],
     [ "mutagen", 125 ]
@@ -1322,6 +1236,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "place_randomly": true,           // Places the monster randomly around the player or lets the player decide where to put it (default: false)
   "skills": [ "unarmed", "throw" ], // (optional) Array of skill IDs. Higher skill level means more likely to place a friendly monster
   "moves": 60,                      // How many move points the action takes
+  "need_charges": 0,                // (optional) Charges the item must have to be used.  Default 0
   "is_pet": false                   // Specifies if the spawned monster is a pet. The monster will only spawn as a pet if it is spawned as friendly, hostile monsters will never be pets
 },
 "use_action": {
@@ -1329,7 +1244,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "npc_class_id": "true_foodperson",       // NPC ID, see npcs/npc.json
   "summon_msg": "You summon a food hero!", // (optional) Message when summoning the NPC
   "place_randomly": true,                  // Places NPC randomly around the player or lets the player decide where to put it (default: false)
-  "radius": 1,                             // Maximum radius for random NPC placement
+  "radius": 1,                             // (optional) Maximum radius for random NPC placement (with place_randomly).  Default 1
   "moves": 50                              // How many move points the action takes
 },
 "use_action": {
@@ -1344,9 +1259,9 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "efficiency": 0.85,      // (optional) This out of 1.0 chance to successfully add 1 charge every charge interval. Defaults to 0.85f, AKA 85% efficiency
                            // A value less than 0.001 means the cable won't transfer any electricity at all
                            // If extended by other cables, will use the product of all cable's efficiencies multiplied together
-  "menu_text":             // (optional) Text displayed in the activation screen. Defaults to Plug in / Manage cables
+  "menu_text": "Plug in",  // (optional) Text displayed in the activation screen. Defaults to Plug in / Manage cables
   "move_cost": 50,         // (optional) Move cost of attaching the cable. Defaults to 5
-  "targets": [             // (optional) Array of link_states that are valid connection points of the cable. Defaults to only allowing disconnection
+  "targets": [             // (optional) Array of link_states that are valid connection points of the cable. Defaults to [ "no_link", "vehicle_port" ]
     "no_link",             // Must be included to allow letting the player manually disconnect the cable
     "vehicle_port",        // Can connect to a vehicle's cable ports / electrical controls or an appliance
     "vehicle_battery",     // Can connect to a vehicle's battery or an appliance
@@ -1370,18 +1285,20 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "base": "item_id"             // Base item of the appliance this item will turn into
 },
 "use_action": {
-  "type": "delayed_transform",  // Like transform, but it will only transform when the item has a certain age
-  "transform_age": 600,         // The minimal age of the item. Items that are younger won't transform. In turns (60 turns = 1 minute)
-  "not_ready_msg": "The yeast has not been done The yeast isn't done culturing yet." // A message, shown when the item is not old enough
+  "type": "delayed_transform",  // Like transform, but it will only transform when the item has a certain age.  Takes all the transform fields too ("target" and so on)
+  "target": "fermented_mixture", // As for transform
+  "transform_age": 600,         // Mandatory.  The minimal age of the item. Items that are younger won't transform. In turns (60 turns = 1 minute)
+  "not_ready_msg": "The yeast isn't done culturing yet." // Mandatory.  A message, shown when the item is not old enough
 },
 "use_action": {
-  "type": "repair_item",                            // Place NPC of specific class on the map
-  "item_action_type": "repair_fabric",              // Possible options are "repair_fabric" and "repair_metal"
+  "type": "repair_item",                            // Repair items made of the listed materials
+  "item_action_type": "repair_fabric",              // The id this repair action is registered and used under, e.g. "repair_fabric" or "repair_metal"
   "materials": [ "iron", "cotton", "candyfloss" ],  // Array of material types that the item can repair
   "skill": "swimming",                              // The skill used for repairing
   "tool_quality": 0,                                // Integer, used in the formula "( 10 + 2 * skill - 2 * difficulty + tool_quality / 5.0f ) / 100.0f" to determine success
-  "cost_scaling": 0.1,                              // Unknown
-  "move_cost": 100                                  // How many move points the action takes
+  "cost_scaling": 0.1,                              // Mandatory.  Repair materials used per attempt: the repaired item's volume * this / 250 ml
+  "trains_skill_to": 5,                             // (optional) Repairing trains the skill up to this level.  Default 5
+  "move_cost": 100                                  // How many move points the action takes.  Default 500
 },
 "use_action": {
   "type": "firestarter",  // Start a fire, like with a lighter.
@@ -1391,21 +1308,9 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "qualities_needed": { "WRENCH_FINE": 1 } // Tool qualities needed, e.g. "fine bolt turning 1"
 },
 "use_action": {
-  "type": "unpack",                 // Unpack this item
-  "group": "gobag_contents",        // Item group this unpacks into
-  "items_fit": true,                // Do the armor items in this fit? Defaults to false
-  "filthy_volume_threshold": "10 L" // If the items unpacked from this item have volume, and this item is filthy, at what amount of held volume should they become filthy
-},
-"use_action": {
-  "type": "salvage",       // Try to salvage base materials from an item, e.g. cutting up cloth to get rags or leather
-  "moves_per_part": 25,    // (optional) Number of moves it takes
-  "material_whitelist": [  // List of material IDs (not item IDs!) that can be salvage from
-    "cotton",              // The list here is the default list, used when there is no explicit martial list given
-    "leather",             // If the item (that is to be cut up) has any material not in the list, it can not be cut up
-    "fur",
-    "wood",
-    "wool"
-  ]
+  "type": "salvage",       // Try to salvage base materials from an item, e.g. cutting up cloth to get rags or leather.  What an item can be cut into comes from its materials' "salvaged_into"; items with the NO_SALVAGE flag can't be cut up
+  "moves_per_part": 25,    // (optional) Moves per salvaged part.  Default 25
+  "cost": 1                // (optional) Charges used per use.  Default: the item's charges_per_use
 },
 "use_action": {
   "type": "inscribe",          // Inscribe a message on an item or on the ground
@@ -1414,33 +1319,34 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "material_restricted": true, // Whether the item can only inscribe on certain item materials. Not used when inscribing on the ground
   "material_whitelist": [      // List of material IDs (not item IDs!) that can be inscribed on
     "wood",                    // Only used when inscribing on an item, and only when material_restricted is true
-    "plastic",                 // The list here is the default that is used when no explicit list is given.
+    "clay",                    // The list here is the default that is used when no explicit list is given.
+    "porcelain",
+    "plastic",
     "glass",
     "chitin",
+    "iron",
     "steel",
-    "silver"
-  ]
+    "silver",
+    "bone"
+  ],
+  "verb": "Carve",             // (optional) Verb for the action, used in its prompts.  Default "Carve"
+  "gerund": "Carved"           // (optional) Used when showing an item's inscription ("Carved on the knife is: ").  Default "Carved"
 },
 "use_action": {
   "type": "fireweapon_off",               // Activate a fire based weapon
   "target_id": "firemachete_on",          // The item type to transform this item into
-  "success_message": "Your No. 9 glows!", // A message that is shows if the action succeeds
-  "failure_message": "",                  // (optional) A message that is shown if the action fails, for whatever reason. If not given, no message will be printed
-  "lacks_fuel_message": "Out of fuel",    // Message that is shown if the item has no charges
-  "noise": 0,                             // (optional) The noise it makes to active the item. 0 means no sound at all
+  "success_message": "Your No. 9 glows!", // A message that is shown if the action succeeds (or the sound's description, if noise is above 0)
+  "failure_message": "",                  // (optional) A message that is shown if the action fails.  An empty string shows none.  Default "hsss"
+  "noise": 0,                             // (optional) The noise it makes when it lights.  0 means no sound at all
   "moves": 0,                             // The number of moves it takes the character to even try this action (independent of the result)
-  "success_chance": 0                     // How likely it is to succeed the action. Default is to always succeed. Try numbers in the range of 0-10
+  "success_chance": 0                     // (optional) Lighting succeeds when rng( 0, 10 ) minus the item's damage level is greater than this, so higher is harder.  Default is to always succeed
 },
 "use_action": {
   "type": "fireweapon_on",                          // Function for active (burning) fire based weapons
-  "noise_chance": 1,                                // The chance (one in X) that the item will make a noise, rolled on each turn
-  "noise": 0,                                       // The sound volume it makes, if it makes a noise at all. If 0, no sound is made, but the noise message is still printed
-  "noise_message": "Your No. 9 hisses.",            // The message / sound description (if noise is > 0), that appears when the item makes a sound
-  "voluntary_extinguish_message": "Your No. 9 goes dark.", // Message that appears when the item is turned of by player
+  "noise_chance": 1,                                // The chance (one in X) that the noise message is shown, rolled each time it runs
+  "noise_message": "Your No. 9 hisses.",            // The message that appears when the item makes a sound.  Default "hsss"
   "charges_extinguish_message": "Out of ammo!",     // Message that appears when the item runs out of charges
-  "water_extinguish_message": "Your No. 9 hisses in the water and goes out.", // Message that appears if the character walks into water and the fire of the item is extinguished
-  "auto_extinguish_chance": 0,                      // If > 0, this is the (one in X) chance that the item goes out on its own
-  "auto_extinguish_message": "Your No. 9 cuts out!" // Message that appears if the item goes out on its own (only required if auto_extinguish_chance is > 0)
+  "water_extinguish_message": "Your No. 9 hisses in the water and goes out." // Message that appears if the character is underwater and the fire of the item is extinguished
 },
 "use_action": {
   "type": "musical_instrument",   // The character plays an instrument (this item) while walking around.
@@ -1453,24 +1359,19 @@ The contents of `use_action` fields can either be a string indicating a built-in
     "You play a little tune on your flute.",
     "You play a beautiful piece on your flute.",
     "You play a piece on your flute that sounds harmonious with nature."
+  ],
+  "npc_descriptions": [           // (optional) The same, for an NPC playing it, shown after the NPC's name
+    "plays a little tune on a flute."
   ]
 },
 "use_action": {
-  "type": "holster",                          // Holster or draw a weapon
-  "holster_prompt": "Holster item",           // Prompt to use when selecting an item
-  "holster_msg": "You holster your %s",       // Message to show when holstering an item
-  "max_volume": "1500 ml",                    // Maximum volume of each item that can be holstered. Volume in ml and L can be used - "50 ml" or "2 L"
-  "min_volume": "750 ml",                     // Minimum volume of each item that can be holstered or 1/3 max_volume if unspecified. Volume can be in ml or L: "50 ml" or "2 L"
-  "max_weight": 2000,                         // Maximum weight of each item. If unspecified no weight limit is imposed
-  "multi": 1,                                 // Total number of items that holster can contain
-  "draw_cost": 10,                            // Base move cost per unit volume when wielding the contained item
-  "skills": [ "pistol", "shotgun" ],          // Guns using any of these skills can be holstered
-  "flags": [ "SHEATH_KNIFE", "SHEATH_SWORD" ] // Items with any of these flags set can be holstered
+  "type": "holster",                          // Holster or draw a weapon.  What fits, how many and the draw cost come from the item's pocket_data (a pocket with "holster": true), not from here
+  "holster_prompt": "Holster item",           // (optional) Prompt to use when selecting an item
+  "holster_msg": "You holster your %s"        // (optional) Message to show when holstering an item
 },
 "use_action": {
-  "type": "bandolier",       // Store ammo and later reload using it
-  "capacity": 10,            // Total number of rounds that can be stored
-  "ammo": [ "shot", "9mm" ]  // What types of ammo can be stored?
+  "type": "ammobelt",        // Assemble an ammo belt from this linkage and loose ammo, which starts reloading the new belt.  (Storing ammo, as a bandolier does, is set up with pocket_data, not a use_action)
+  "belt": "belt223"          // Mandatory.  The belt item (a magazine) that is created
 },
 "use_action": {
   "type": "reveal_map",             // Reveal specific terrains on the overmap
@@ -1480,14 +1381,17 @@ The contents of `use_action` fields can either be a string indicating a built-in
 },
 "use_action": {
   "type": "heal",               // Heal damage, possibly some statuses
-  "limb_power": 10,             // How much hp to restore when healing limbs? Mandatory value
+  "limb_power": 10,             // How much hp to restore when healing limbs?  At least one of limb_power, head_power, torso_power, bandages_power, bleed, disinfectant_power, bite, infect or effects is needed
+  "bandages_power": 1,          // (optional) Strength of the "bandaged" effect it applies, which heals over time.  Default 0
+  "bandages_scaling": 0.25,     // (optional) Extra bandages_power per first aid level.  Defaults to 0.25 * bandages_power
   "head_power": 7,              // How much hp to restore when healing head? If unset, defaults to 0.8 * limb_power
   "torso_power": 15,            // How much hp to restore when healing torso? If unset, defaults to 1.5 * limb_power
   "bleed": 4,                   // How many bleed effect intensity levels can be reduced by it. Base value
   "disinfectant_power": 4,      // Quality of disinfection. Antiseptic is 4, alcohol wipe is 2; float
+  "disinfectant_scaling": 1.0,  // (optional) Extra disinfectant_power per first aid level.  Defaults to 0.25 * disinfectant_power
   "bite": 0.95,                 // Chance to remove bite effect
   "infect": 0.1,                // Chance to remove infected effect
-  "move_cost": 250,             // Cost in moves to use the item
+  "move_cost": 250,             // Mandatory.  Cost in moves to use the item
   "limb_scaling": 1.2,          // How much extra limb hp should be healed per first aid level. Defaults to 0.25 * limb_power
   "head_scaling": 1.0,          // How much extra limb hp should be healed per first aid level. Defaults to (limb_scaling / limb_power) * head_power
   "torso_scaling": 2.0,         // How much extra limb hp should be healed per first aid level. Defaults to (limb_scaling / limb_power) * torso_power
@@ -1495,6 +1399,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
     { "id": "pkill1", "duration": 120 }
   ],
   "used_up_item": "rag_bloody"  // Item produced on successful healing. If the healing item is a tool, it is turned into the new type. Otherwise a new item is produced
+                                // Can also be an object: { "id": "rag_bloody", "quantity": 1, "charges": 1, "flags": [ "FILTHY" ] }
 },
 "use_action": {
   "type": "place_trap",                // Places a trap
@@ -1513,13 +1418,13 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "moves": 10                                      // (optional) The move points that are used by placing the trap. Default is 100
 },
 "use_action": {
-  "type": "sew_advanced",  // Modify clothing
-  "materials": [           // Materials to deal with
+  "type": "sew_advanced",  // Modify clothing: add or remove a clothing mod, using the mod's materials and thread
+  "materials": [           // Mandatory.  Only clothing made of at least one of these materials can be modified
     "cotton",
     "leather"
   ],
-  "skill": "tailor",       // Skill used
-  "clothing_mods": [       // Clothing mods to deal with
+  "skill": "tailor",       // (optional) Skill used and trained
+  "clothing_mods": [       // Mandatory.  Ids of the clothing mods (see clothing_mod JSON) it can add or remove
     "leather_padded",
     "kevlar_padded"
   ]
@@ -1581,6 +1486,40 @@ The contents of `use_action` fields can either be a string indicating a built-in
 "use_action": {
   "type": "detach_molle",   // Detach an item from this item's MOLLE webbing
   "moves": 300              // Move points to detach an item.  Has no effect currently
+},
+"use_action": {
+  "type": "deploy_tent",                    // Put up a tent, a square of furniture next to the character, using up the item.  The area must be flat and free of furniture, vehicles and creatures.  Examining its center square takes it down and gives the item back
+  "radius": 2,                              // (optional) The tent covers ( 2 * radius + 1 ) x ( 2 * radius + 1 ) tiles.  Default 1
+  "wall": "f_large_canvas_wall",            // Furniture of the tent's edge
+  "floor": "f_large_groundsheet",           // Furniture of the inside
+  "floor_center": "f_center_groundsheet",   // (optional) Furniture of the center tile, instead of "floor"
+  "door_opened": "f_large_canvas_door_o",   // Furniture of the open door
+  "door_closed": "f_large_canvas_door",     // Furniture of the closed door, placed in the edge facing the character
+  "broken_type": "largebroketent"           // (optional) Item given back when a tent whose furniture isn't all intact is taken down.  Without it, such a tent can't be taken down
+},
+"use_action": {
+  "type": "saw_barrel",     // Saw down the barrel of a gun (installs the "barrel_small" gunmod).  Not for guns with a modified barrel
+  "cost": 1                 // (optional) Read, but no charges are used currently
+},
+"use_action": {
+  "type": "saw_stock",      // Saw off the stock of a gun (installs the "stock_none" gunmod).  The gun needs a free stock mount, and can't be a pistol
+  "cost": 1                 // (optional) Read, but no charges are used currently
+},
+"use_action": {
+  "type": "install_bionic"  // Self-install this CBM.  The item must be a bionic (BIONIC_ITEM subtype).  No other fields
+},
+"use_action": {
+  "type": "detach_gunmods"  // Remove a removable gunmod from this gun.  Every gun gets this action automatically.  No other fields
+},
+"use_action": {
+  "type": "modify_gunmods"  // Run the "transform" action of one of this wielded gun's gunmods.  Every gun gets this action automatically.  No other fields
+},
+"use_action": {
+  "type": "weigh_self",     // Show the character's weight, with everything worn and wielded and their bionics
+  "max_weight": "150 kg"    // Mandatory.  Above this weight the scale shows an error instead
+},
+"use_action": {
+  "type": "play_instrument" // Start or stop playing this held or worn item; while playing, the item is active.  Pair it with a "musical_instrument" tick_action for the music.  No other fields
 },
 ```
 

@@ -149,8 +149,8 @@ avatar &avatar::operator=( avatar && ) = default;
 
 void avatar::control_npc( npc &np, const bool debug )
 {
-    if( death_finalizing_ || death_finalized_ || execution_fatal::pending( *this ) ||
-        execution_fatal::pending( np ) ) {
+    if( ( death_finalizing_ && !death_switch_open_ ) || death_finalized_ ||
+        execution_fatal::pending( *this ) || execution_fatal::pending( np ) ) {
         return;
     }
     if( !np.is_player_ally() ) {
@@ -170,8 +170,10 @@ void avatar::control_npc( npc &np, const bool debug )
     // move shadow npc character data into avatar
     swap_character( get_shadow_npc() );
     // the avatar character is no longer a follower NPC; a change of bodies recruits and
-    // dismisses no one
+    // dismisses no one. A death the switch interrupts is still finishing (finalize_death ends it).
+    const bool finalizing = death_finalizing_;
     reset_death_state();
+    death_finalizing_ = finalizing;
     remove_npc_follower_quietly( getID() );
     // the previous avatar character is now a follower
     add_npc_follower_quietly( np.getID() );

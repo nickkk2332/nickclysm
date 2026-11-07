@@ -1878,10 +1878,10 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 | `cost_multiplier` | (_optional_) How many monsters each monster in this definition should count as, if spawning a limited number of monsters.  (default: 1)
 | `pack_size`       | (_optional_) The minimum and maximum number of monsters in this group that should spawn together.  (default: `[1,1]`)
 | `conditions`      | (_optional_) Conditions limit when monsters spawn. Valid options: `SUMMER`, `WINTER`, `AUTUMN`, `SPRING`, `DAY`, `NIGHT`, `DUSK`, `DAWN`. Multiple Time-of-day conditions (`DAY`, `NIGHT`, `DUSK`, `DAWN`) will be combined together so that any of those conditions makes the spawn valid. Multiple Season conditions (`SUMMER`, `WINTER`, `AUTUMN`, `SPRING`) will be combined together so that any of those conditions makes the spawn valid. Any other value (including a different spelling such as `"Night"`) is a load error.
-| `condition`       | (_optional_) A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions) that must be true for this entry to spawn. It is checked together with `conditions`, `starts`, `ends` and `event`. `u` is the avatar and there is no `npc`, so the condition can check the player (`u_has_trait`), global variables, weather or the time (`math` functions such as `weather('temperature')`), but not the spawn location. While it is false the entry is skipped and its share of the roll goes to the other entries or the `default` monster, exactly like an entry outside its `conditions`.
+| `condition`       | (_optional_) A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions) that must be true for this entry to spawn. It is checked together with `conditions`, `starts`, `ends` and `event`. `u` is the avatar and there is no `npc`, so the condition can check the player (`u_has_trait`), global variables, weather or the time (`math` functions such as `weather('temperature')`). The context value `loc` is where the monsters would spawn, for mapgen's `place_monster` and `place_monsters`; for other spawns it is the avatar's position. The `map_*` tile conditions read the reality bubble, so a spawn generated outside it can only use overmap-level ones such as `map_in_city`. While it is false the entry is skipped and its share of the roll goes to the other entries or the `default` monster, exactly like an entry outside its `conditions`.
 | `starts`          | (_optional_) This entry becomes active after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
 | `ends`            | (_optional_) This entry becomes inactive after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
-| `spawn_data`      | (_optional_) Any properties that the monster only has when spawned in this group. `ammo` defines how much of which ammo types the monster spawns with. Only applies to "monster" type entries.
+| `spawn_data`      | (_optional_) Any properties that the monster only has when spawned in this group. `ammo` defines how much of which ammo types the monster spawns with; `patrol`, `effects`, `variables` and `faction` work as for mapgen (see [MAPGEN.md](MAPGEN.md#spawn_data-for-monsters)). Only applies to "monster" type entries. Hordes and overmap spawns don't use it.
 | `event`           | (_optional_) If present, this entry can only spawn during the specified event. See the `holiday` enum for possible values. Defaults to `none`. (Ex: `"event": "halloween"`)
 
 ```jsonc
@@ -3050,6 +3050,18 @@ These values apply to crafting tasks performed at the WORKBENCH.
 "bonus_fire_warmth_feet": 200,// (Optional, default=0). Bonus fire warmth as for terrain/furniture.
 ```
 
+#### The following field is specific to EOC_ACTIVATION parts.
+```jsonc
+"activatable_eoc": "EOC_PERAMBULATE_VEHICLE", // Id of the effect_on_condition run when the part
+                              // is activated.  Required with the EOC_ACTIVATION flag, and only
+                              // allowed with it.
+```
+`e`xamining the part's tile offers "Activate <part name>"; from the vehicle's controls (or while
+remote controlling it) every working EOC_ACTIVATION part of the vehicle is offered.  The EOC runs
+with the avatar as alpha talker and the vehicle as beta talker, and gets the context variables
+`vpart_id` (the part's id), `vpart_variant` (its variant, or `""`) and `vpart_pos` (a location
+variable: the part's tile).  See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md).
+
 #### The following optional field describes pseudo tools for any part.
 Crafting stations (e.g. kitchen, welding rigs etc) have tools that they provide as part
 of forming the inventory for crafting as well as providing menu items when `e`xamining
@@ -4022,7 +4034,9 @@ This terrain is the roof of the tile below it, try to destroy that too. Further 
 
 The alpha talker is the creature doing the bashing when the game knows it: the player's or an NPC's smash, a monster bashing its way through or walking over sharp terrain, a melee attack through an obstacle, a spell (its caster), a bionic (its user), crushing frozen liquid, a failed prying attempt, a monster's shriek. Other bashes (explosions, fire, vehicles, projectiles, collapses, creatures thrown into things) get an empty alpha talker with no creature in it, so check `u_is_character` or `u_is_monster` before using `u_` effects or conditions. There is no beta talker. Context variables: `loc` (location of the tile), `old_ter` and `old_furn` (ids before the bash), `new_ter` and `new_furn` (ids now; the same as before for `eoc_on_hit`).
 
-Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc` and `field` (the field type id).
+Both get the context variable `cause`, saying what bashed the tile: `smash` (a creature did it), `explosion`, `fire`, `vehicle` (a crash or a vehicle crushing what it drives into), `collapse`, `projectile`, or `other` when the game doesn't know. Whatever the cause, destroying terrain or furniture on the main map also sends the `tile_destroyed` event (see EFFECT_ON_CONDITION.md), after `eoc_on_destroy`.
+
+Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc`, `cause` and `field` (the field type id).
 
 ```jsonc
 "bash": {

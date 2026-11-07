@@ -135,6 +135,8 @@ struct ma_event_context {
     // `grab_part`: the body part held, for ongrab and ongrabbed events: your own when you are
     // grabbed, the victim's when you grab; unset when the one held is a monster
     bodypart_str_id grab_part;
+    // `hit_by`: what hit you, for ongethit: "melee", "projectile", "shrapnel" or "explosion"
+    std::string hit_by;
 
     // Runs the EOCs with the user as alpha, the opponent as beta and the values above
     void activate( Character &u, const std::vector<effect_on_condition_id> &eocs ) const;

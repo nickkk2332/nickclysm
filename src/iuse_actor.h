@@ -1258,6 +1258,7 @@ class sew_advanced_actor : public iuse_actor
         using iuse_actor::use;
         std::optional<int> use( Character *p, item &it, map *here, const tripoint_bub_ms & ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
+        void finalize( const itype_id &my_item_type ) override;
 };
 
 /**

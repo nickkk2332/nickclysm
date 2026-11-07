@@ -657,6 +657,12 @@ void oter_type_t::check() const
     if( uniform_terrain && !uniform_terrain->is_valid() ) {
         debugmsg( "Invalid uniform_terrain id '%s' for '%s'", uniform_terrain->c_str(), id.str() );
     }
+    if( !entry_EOC.is_null() && !entry_EOC.is_valid() ) {
+        debugmsg( "Invalid entry_eoc id '%s' for '%s'", entry_EOC.str(), id.str() );
+    }
+    if( !exit_EOC.is_null() && !exit_EOC.is_valid() ) {
+        debugmsg( "Invalid exit_eoc id '%s' for '%s'", exit_EOC.str(), id.str() );
+    }
     for( const pp_generator_id &gen : post_process_generators ) {
         if( !gen.is_valid() ) {
             debugmsg( "Invalid post_process_generators id '%s' for '%s'", gen.str(), id.str() );

@@ -3410,11 +3410,17 @@ void npc::die( map *here, Creature *nkiller )
             debugmsg( "Tried to use non NPC_DEATH eoc_type %s for an NPC death.", eoc.c_str() );
         }
     }
-    get_event_bus().send<event_type::character_dies>( getID() );
+    // a body the player left by the death switch sent it already, when the player died in it
+    if( !death_event_sent ) {
+        get_event_bus().send<event_type::character_dies>( getID() );
+        death_event_sent = true;
+    }
     // Check if npc doesn't die due to EoC as a result
     if( prevent_death_reminder ) {
         prevent_death_reminder = false;
         if( !is_dead() ) {
+            // revived, so its next death is reported again
+            death_event_sent = false;
             return;
         }
     }

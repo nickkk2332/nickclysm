@@ -714,9 +714,9 @@ void check_martialarts()
             }
         }
     }
+    // ma_technique::check runs from ma_technique::verify_ma_techniques
     for( const ma_technique &t : ma_techniques.get_all() ) {
         ::check( t.reqs, string_format( "technique %s", t.id.c_str() ) );
-        t.check();
     }
     for( const ma_buff &b : ma_buffs.get_all() ) {
         ::check( b.reqs, string_format( "buff %s", b.id.c_str() ) );
@@ -1653,6 +1653,9 @@ void ma_event_context::activate( Character &u,
         }
         if( !grab_part.is_empty() && !grab_part.is_null() ) {
             d.set_value( "grab_part", grab_part.str() );
+        }
+        if( !hit_by.empty() ) {
+            d.set_value( "hit_by", hit_by );
         }
         eoc->activate_activation_only( d, "a martial art activation", "martial art being activated",
                                        "martial art" );

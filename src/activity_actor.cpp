@@ -39,7 +39,6 @@
 #include "butchery_requirements.h"
 #include "cached_options.h"
 #include "calendar.h"
-#include "cata_assert.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "character_id.h"
@@ -3109,8 +3108,13 @@ void pickup_activity_actor::do_turn( player_activity &, Character &who )
         return;
     }
 
-    // Pickup::do_pickup() actively assumes the player. Calling it with anyone else is a mistake.
-    cata_assert( &who == &get_player_character() );
+    // Pickup::do_pickup() actively assumes the player. Calling it with anyone else is a mistake,
+    // and would move the avatar's items: refuse it.
+    if( &who != &get_player_character() ) {
+        debugmsg( "%s can't pick up items with ACT_PICKUP, only the avatar can", who.get_name() );
+        cancel_pickup( who );
+        return;
+    }
     // False indicates that the player canceled pickup when met with some prompt
     const bool keep_going = Pickup::do_pickup( target_items, quantities, autopickup,
                             stash_successful, info );
@@ -7056,12 +7060,33 @@ void craft_activity_actor::do_turn( player_activity &act, Character &crafter )
         }
 
         if( craft.item_counter >= craft.get_next_failure_point() ) {
+            // Copies: the failure, or a fail EOC, can end this activity and with it this actor
+            item_location failed = craft_item;
+            const size_t components_before = craft.components.size();
+            const int progress_before = craft.item_counter;
             bool destroy = craft.handle_craft_failure( crafter );
+            if( !rec.fail_eocs.empty() ) {
+                // before the craft goes, so the EOCs can see it
+                dialogue d( get_talker_for( crafter ), get_talker_for( failed ) );
+                d.set_value( "recipe_id", rec.ident().str() );
+                d.set_value( "batch_size", craft.get_making_batch_size() );
+                d.set_value( "components_lost",
+                             static_cast<int>( components_before - craft.components.size() ) );
+                // in percent of the whole craft, as the message says
+                d.set_value( "progress_lost", ( progress_before - craft.item_counter ) / 100000 );
+                d.set_value( "destroyed", destroy ? 1 : 0 );
+                for( const effect_on_condition_id &eoc : rec.fail_eocs ) {
+                    eoc->activate_activation_only( d, "a recipe", "crafting failure", "recipe" );
+                }
+            }
             // If the craft needs to be destroyed, do it and stop crafting.
             if( destroy ) {
-                crafter.add_msg_player_or_npc( _( "There is nothing left of the %s to craft from." ),
-                                               _( "There is nothing left of the %s <npcname> was crafting." ), craft.tname() );
-                craft_item.remove_item();
+                if( failed.get_item() != nullptr ) {
+                    crafter.add_msg_player_or_npc( _( "There is nothing left of the %s to craft from." ),
+                                                   _( "There is nothing left of the %s <npcname> was crafting." ),
+                                                   failed->tname() );
+                    failed.remove_item();
+                }
                 crafter.cancel_activity();
             }
         }
