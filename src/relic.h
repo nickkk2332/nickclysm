@@ -157,6 +157,8 @@ enum class relic_recharge_type : int {
     FOREST,
     UNDERGROUND,
     PORTAL_STORM,
+    // while the condition of an EOC (recharge_eoc) is true
+    CONDITION,
     NUM
 };
 
@@ -167,6 +169,7 @@ struct relic_charge_template {
     std::pair<time_duration, time_duration> time;
     relic_recharge_type type = relic_recharge_type::NUM;
     relic_has has = relic_has::NUM;
+    effect_on_condition_id recharge_eoc = effect_on_condition_id::NULL_ID();
 
     int power_level = 0;
 
@@ -183,6 +186,9 @@ struct relic_charge_info {
     int max_charges = 0;
     relic_recharge_type type = relic_recharge_type::NUM;
     relic_has has = relic_has::NUM;
+    // for recharge_type condition: the EOC whose condition must be true (the item is u, its
+    // carrier npc)
+    effect_on_condition_id recharge_eoc = effect_on_condition_id::NULL_ID();
 
     time_duration activation_accumulator = 0_seconds;
     time_duration activation_time = 0_seconds;
@@ -232,6 +238,8 @@ class relic
         int charges() const;
         int charges_per_use() const;
         int max_charges() const;
+        /** Sets the charges, no more than the maximum if the relic has one (EOC math item_relic_charges) */
+        void set_charges( int qty );
 
         bool has_activation() const;
         // has a recharge type (which needs to be actively processed)

@@ -7852,22 +7852,26 @@ talk_effect_fun_t::func f_math( const JsonObject &jo, std::string_view member,
 
 
 talk_effect_fun_t::func f_transform_item( const JsonObject &jo, std::string_view member,
-        std::string_view )
+        std::string_view, bool is_npc )
 {
     str_or_var target_id = get_str_or_var( jo.get_member( member ), member, true );
     bool activate = jo.get_bool( "active", false );
 
-    return [target_id, activate]( dialogue & d ) {
-        item_location *it = d.actor( true )->get_item();
-
-        if( it && it->get_item() ) {
+    return [target_id, activate, is_npc]( dialogue & d ) {
+        item_location *it = require_item( d, is_npc, "transform_item" );
+        if( it != nullptr ) {
             const std::string target_str = target_id.evaluate( d );
             ( *it )->convert( itype_id( target_str ), it->carrier() );
             ( *it )->active = activate || ( *it )->has_temperature();
-        } else {
-            debugmsg( "beta talker must be Item." );
         }
     };
+}
+
+// the legacy spelling of npc_transform_item
+talk_effect_fun_t::func f_transform_item_beta( const JsonObject &jo, std::string_view member,
+        std::string_view src )
+{
+    return f_transform_item( jo, member, src, true );
 }
 
 talk_effect_fun_t::func f_set_browsed( const JsonObject &jo, std::string_view member,
@@ -11775,6 +11779,7 @@ parsers = {
     { "u_set_flag", "npc_set_flag", jarg::member, &talk_effect_fun::f_set_flag },
     { "u_unset_flag", "npc_unset_flag", jarg::member, &talk_effect_fun::f_unset_flag },
     { "u_set_fault", "npc_set_fault", jarg::member, &talk_effect_fun::f_set_fault },
+    { "u_transform_item", "npc_transform_item", jarg::member, &talk_effect_fun::f_transform_item },
     { "u_set_random_fault_of_type", "npc_set_random_fault_of_type", jarg::member, &talk_effect_fun::f_set_random_fault_of_type },
     { "u_remove_fault", "npc_remove_fault", jarg::member, &talk_effect_fun::f_remove_fault },
     { "u_remove_fault_of_type", "npc_remove_fault_of_type", jarg::member, &talk_effect_fun::f_remove_fault_of_type },
@@ -11888,7 +11893,7 @@ parsers = {
     { "add_debt", jarg::array, &talk_effect_fun::f_add_debt },
     { "u_set_talker", "npc_set_talker", jarg::member, &talk_effect_fun::f_set_talker },
     { "turn_cost", jarg::member, &talk_effect_fun::f_turn_cost },
-    { "transform_item", jarg::member, &talk_effect_fun::f_transform_item },
+    { "transform_item", jarg::member, &talk_effect_fun::f_transform_item_beta },
     { "signal_hordes", jarg::member, &talk_effect_fun::f_signal_hordes },
     { "spawn_overmap_horde", jarg::member, &talk_effect_fun::f_spawn_overmap_horde },
     { "set_browsed", jarg::member, &talk_effect_fun::f_set_browsed },

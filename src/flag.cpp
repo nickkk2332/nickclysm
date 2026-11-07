@@ -398,6 +398,8 @@ const flag_id flag_NULL = json_flag_null; // intentionally invalid flag
 namespace
 {
 generic_factory<json_flag> json_flags_all( "json_flags" );
+// the flags with a rot_multiplier, filled in finalize_all
+std::vector<std::pair<flag_id, float>> rot_multiplier_flags;
 } // namespace
 
 /** @relates string_id */
@@ -435,6 +437,7 @@ void json_flag::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "craft_inherit", craft_inherit_, false );
     optional( jo, was_loaded, "requires_flag", requires_flag_ );
     optional( jo, was_loaded, "taste_mod", taste_mod_ );
+    optional( jo, was_loaded, "rot_multiplier", rot_multiplier_, 1.0f );
     optional( jo, was_loaded, "restriction", restriction_ );
     optional( jo, was_loaded, "name", name_ );
     optional( jo, was_loaded, "item_prefix", item_prefix_ );
@@ -457,6 +460,7 @@ void json_flag::check_consistency()
 void json_flag::reset()
 {
     json_flags_all.reset();
+    rot_multiplier_flags.clear();
 }
 
 void json_flag::load_all( const JsonObject &jo, const std::string &src )
@@ -472,6 +476,9 @@ void json_flag::check() const
                       conflicting );
         }
     }
+    if( rot_multiplier_ < 0.0f ) {
+        debugmsg( "flag definition %s has a negative rot_multiplier", id.str() );
+    }
     if( vehicle_toggle_ && vehicle_toggle_name_.empty() && !vehicle_toggle_hotkey_.empty() ) {
         debugmsg( "flag definition %s has a vehicle_toggle hotkey but no name to show it with",
                   id.str() );
@@ -481,6 +488,17 @@ void json_flag::check() const
 void json_flag::finalize_all()
 {
     json_flags_all.finalize();
+    rot_multiplier_flags.clear();
+    for( const json_flag &f : json_flags_all.get_all() ) {
+        if( f.rot_multiplier_ != 1.0f ) {
+            rot_multiplier_flags.emplace_back( f.id, f.rot_multiplier_ );
+        }
+    }
+}
+
+const std::vector<std::pair<flag_id, float>> &json_flag::rot_multipliers()
+{
+    return rot_multiplier_flags;
 }
 
 bool json_flag::is_ready()

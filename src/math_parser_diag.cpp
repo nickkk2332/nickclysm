@@ -64,6 +64,7 @@
 #include "point.h"
 #include "power_math.h"
 #include "proficiency.h"
+#include "relic.h"
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "talker.h"
@@ -1133,6 +1134,156 @@ void degradation_ass( double val, dialogue &d, char scope,
                       diag_kwargs const & /* kwargs */ )
 {
     d.actor( is_beta( scope ) )->set_degradation( val );
+}
+
+// The item an item_* function reads: the talker must be an item that still exists (an item used up
+// earlier in the same EOC is no item)
+const item &talker_item_for( const_dialogue const &d, char scope, const char *func )
+{
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "subject of %s() must be an item", func );
+    }
+    return **it;
+}
+
+item_location &talker_item_loc_for( dialogue &d, char scope, const char *func )
+{
+    item_location *it = d.actor( is_beta( scope ) )->get_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "subject of %s() must be an item", func );
+    }
+    return *it;
+}
+
+int rounded_count( double val )
+{
+    return static_cast<int>( std::clamp( std::round( val ), 0.0, static_cast<double>( INT_MAX ) ) );
+}
+
+// the stack size of an item counted by charges, else the ammo (or battery charge) loaded in it
+double item_charges_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    const item &it = talker_item_for( d, scope, "item_charges" );
+    return it.count_by_charges() ? it.charges : it.ammo_remaining();
+}
+
+void item_charges_ass( double val, dialogue &d, char scope,
+                       std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    item &it = *talker_item_loc_for( d, scope, "item_charges" );
+    const int qty = rounded_count( val );
+    if( it.count_by_charges() ) {
+        // a stack can't be empty: removing the item is the die effect's job
+        it.charges = std::max( qty, 1 );
+        return;
+    }
+    itype_id ammo = it.ammo_current();
+    if( ammo.is_null() ) {
+        ammo = it.ammo_default();
+    }
+    if( !ammo.is_null() && ammo->ammo ) {
+        it.ammo_set( ammo, std::min( qty, it.ammo_capacity( ammo->ammo->type ) ) );
+        return;
+    }
+    if( it.ammo_types().empty() && it.type->can_have_charges() ) {
+        it.charges = qty;
+        return;
+    }
+    throw math::runtime_error( "item_charges(): %s holds no charges or ammo", it.typeId().str() );
+}
+
+// Kelvin, as weather('temperature'); 0 for an item whose temperature isn't tracked
+double item_temperature_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    const item &it = talker_item_for( d, scope, "item_temperature" );
+    return it.has_temperature() ? units::to_kelvin( it.temperature ) : 0.0;
+}
+
+void item_temperature_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    item &it = *talker_item_loc_for( d, scope, "item_temperature" );
+    if( !it.has_temperature() ) {
+        throw math::runtime_error( "item_temperature(): %s doesn't track its temperature",
+                                   it.typeId().str() );
+    }
+    it.set_item_temperature( units::from_kelvin( static_cast<float>( std::max( val, 0.0 ) ) ) );
+}
+
+// 0 when fresh, 1 when it turns rotten; always 0 for an item that doesn't spoil
+double item_freshness_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    return talker_item_for( d, scope, "item_freshness" ).get_relative_rot();
+}
+
+void item_freshness_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    item &it = *talker_item_loc_for( d, scope, "item_freshness" );
+    if( !it.goes_bad() ) {
+        throw math::runtime_error( "item_freshness(): %s doesn't spoil", it.typeId().str() );
+    }
+    it.set_relative_rot( std::max( val, 0.0 ) );
+}
+
+// turns until the item is dry
+double item_wetness_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    return talker_item_for( d, scope, "item_wetness" ).wetness;
+}
+
+void item_wetness_ass( double val, dialogue &d, char scope,
+                       std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    talker_item_loc_for( d, scope, "item_wetness" )->wetness = rounded_count( val );
+}
+
+// 0 for an item that isn't a relic
+double item_relic_charges_eval( const_dialogue const &d, char scope,
+                                std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    const item &it = talker_item_for( d, scope, "item_relic_charges" );
+    return it.is_relic() ? it.relic_data->charges() : 0;
+}
+
+void item_relic_charges_ass( double val, dialogue &d, char scope,
+                             std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    item &it = *talker_item_loc_for( d, scope, "item_relic_charges" );
+    if( !it.is_relic() ) {
+        throw math::runtime_error( "item_relic_charges(): %s isn't a relic", it.typeId().str() );
+    }
+    it.relic_data->set_charges( rounded_count( val ) );
+}
+
+// seconds until the item's countdown fires, -1 when it has none
+double item_countdown_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    const item &it = talker_item_for( d, scope, "item_countdown" );
+    if( it.countdown_point == calendar::turn_max ) {
+        return -1;
+    }
+    return std::max( to_seconds<double>( it.countdown_point - calendar::turn ), 0.0 );
+}
+
+void item_countdown_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */, diag_kwargs const & )
+{
+    item_location &loc = talker_item_loc_for( d, scope, "item_countdown" );
+    if( val < 0 ) {
+        loc->countdown_point = calendar::turn_max;
+        return;
+    }
+    loc->countdown_point = calendar::turn + time_duration::from_seconds( rounded_count( val ) );
+    // a countdown is only checked while the item is active
+    loc->active = true;
+    loc.make_active();
 }
 
 void spellcasting_adjustment_ass( double val, dialogue &d, char scope,
@@ -3406,6 +3557,12 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "hp_max", { "un", 1, hp_max_eval } },
     { "item_count", { "un", 1, item_count_eval } },
     { "item_rad", { "un", 1, item_rad_eval, {}, { "aggregate" } } },
+    { "item_charges", { "un", 0, item_charges_eval, item_charges_ass } },
+    { "item_countdown", { "un", 0, item_countdown_eval, item_countdown_ass } },
+    { "item_freshness", { "un", 0, item_freshness_eval, item_freshness_ass } },
+    { "item_relic_charges", { "un", 0, item_relic_charges_eval, item_relic_charges_ass } },
+    { "item_temperature", { "un", 0, item_temperature_eval, item_temperature_ass } },
+    { "item_wetness", { "un", 0, item_wetness_eval, item_wetness_ass } },
     { "melee_damage", { "un", 1, melee_damage_eval } },
     { "mod_load_order", { "g", 1, mod_order_eval } },
     { "mod_setting", { "g", 1, mod_setting_eval, mod_setting_ass, {}, mod_setting_check, mod_setting_assign_check } },

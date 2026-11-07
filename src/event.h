@@ -225,9 +225,10 @@ static_assert( static_cast<int>( event_type::num_event_types ) == 128,
 
 template<>
 struct event_spec<event_type::activates_artifact> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
             { "item_name", cata_variant_type::string },
+            { "itype", cata_variant_type::itype_id },
         }
     };
 };

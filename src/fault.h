@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_FAULT_H
 #define CATA_SRC_FAULT_H
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -20,6 +21,7 @@
 
 class JsonObject;
 class item;
+struct const_dialogue;
 template <typename T> class generic_factory;
 template <typename E> struct enum_traits;
 
@@ -71,6 +73,10 @@ class fault_fix
         time_save_profs; // map of proficiency_id and the time saving for posessing it
         std::map<flag_id, float>
         time_save_flags; // map of flag_id and the time saving for the mendee item posessing it
+        // if set, the fix is only offered while this is true (the mender is u, the item npc)
+        std::function<bool( const_dialogue const & )> condition;
+        // run once the fix is applied (the mender is u, the item npc)
+        std::vector<effect_on_condition_id> effect_on_conditions;
 
         const requirement_data &get_requirements() const;
 
@@ -161,6 +167,7 @@ class fault_group
 
     private:
         void load( const JsonObject &jo, std::string_view );
+        void check() const;
         bool was_loaded = false;
         friend class generic_factory<fault_group>;
         weighted_int_list<fault_id> fault_weighted_list;

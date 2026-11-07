@@ -99,6 +99,7 @@ Each entry can have more values (shown above as `...`).  They allow further prop
 
 ```jsonc
 "damage": <number>|<array>,
+"dirt": <number>|<array>,
 "count": <number>|<array>,
 "charges": <number>|<array>,
 "components": "<array>",
@@ -114,6 +115,7 @@ Each entry can have more values (shown above as `...`).  They allow further prop
 "variant": <string>
 "artifact": <object>
 "event": <string>
+"condition": <dialogue condition>
 "snippets": <string>
 "faults": <array>
 "variables": <global_variables:impl_t> (either string and string, or string and double)
@@ -137,7 +139,11 @@ Each entry can have more values (shown above as `...`).  They allow further prop
 
 `event`: A reference to a holiday in the `holiday` enum. If specified, the entry only spawns during the specified real holiday. This works the same way as the seasonal title screens, where the holiday is checked against the current system's time. If the holiday matches, the item's spawn probability is taken from the `prob` field. Otherwise, the spawn probability becomes 0.
 
-Current possible values are:
+`condition`: A dialogue condition (see [NPCs.md](NPCs.md#dialogue-conditions)), checked each time the entry could spawn, with the avatar as `u` and no `npc`. While it is false the entry doesn't spawn, like an `event` entry outside its holiday: in a distribution, a pick that lands on it spawns nothing. It works on `item`, `group`, `collection` and `distribution` entries. For example, loot that only spawns from the second month on: `{ "item": "mre_beef_box", "condition": { "math": [ "time_since('cataclysm', 'unit':'days') > 30" ] } }`.
+
+`dirt`: For guns (not bows or guns that don't foul), how dirty they spawn (the `dirt` item variable), a number or a `[ min, max ]` range like `damage`. A gun that spawns dirty also gets the `fault_gun_dirt` fault, and a clean one has a 1 in 10 chance to spawn unlubricated (unless it `NEEDS_NO_LUBE`). An entry that sets any of these modifiers but not `dirt` uses `[ 0, 500 ]`.
+
+Current possible values for `event` are:
 - "none" (Not event-based. Same as omitting the "event" field.)
 - "new_year"
 - "easter"
@@ -285,6 +291,19 @@ Mods can add entries to item groups by specifying a group with the same id that 
         { "item": "milk", "container-group": "milk_containers" }
       ]
     }
+  },
+```
+
+A group that copies from itself can also remove entries with a `delete` block, before `extend` adds any: `items` removes the entries that spawn these items and `groups` the entries that spawn these groups. Only the group's own entries are removed, not those of nested groups or inline `collection` / `distribution` entries, and an id the group has no entry for is an error.
+
+```jsonc
+  {
+    "type": "item_group",
+    "id": "milk",
+    "copy-from": "milk",
+    "subtype": "distribution",
+    "delete": { "items": [ "milk" ], "groups": [ "milk_containers" ] },
+    "extend": { "entries": [ { "item": "milk_powder" } ] }
   },
 ```
 

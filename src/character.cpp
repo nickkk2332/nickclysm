@@ -4445,6 +4445,13 @@ void Character::mend_item( item_location &&obj, bool interactive )
     for( const fault_id &f : obj->faults ) {
         for( const fault_fix_id &fix_id : f->get_fixes() ) {
             const fault_fix &fix = *fix_id;
+            if( fix.condition ) {
+                // a fix with a condition is only offered while it holds
+                const const_dialogue d( get_const_talker_for( *this ), get_const_talker_for( obj ) );
+                if( !fix.condition( d ) ) {
+                    continue;
+                }
+            }
             mending_option opt{ f, fix, true };
             for( const auto &[skill_id, level] : fix.skills ) {
                 if( get_greater_skill_or_knowledge_level( skill_id ) < level ) {

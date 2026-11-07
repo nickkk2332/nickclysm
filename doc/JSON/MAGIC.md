@@ -955,7 +955,8 @@ The field `charge_info` supports the following:
 Identifier           | Description
 ---                  |---
 `regenerate_ammo`    | `true`.
-`recharge_type`      | Can be one of: `lunar`, `periodic`, `solar_cloudy`, `solar_sunny`, `forest`, `underground`, `portal_storm` or `none`.
+`recharge_type`      | Can be one of: `lunar`, `periodic`, `solar_cloudy`, `solar_sunny`, `forest`, `underground`, `portal_storm`, `condition` or `none`.
+`recharge_eoc`       | For `recharge_type` `condition`: the id of an EOC whose `condition` must be true for the relic to recharge (only the condition is used, its effects never run). It is tested every second with the relic item as `u` and the character carrying it, if any, as `npc`; for example a condition `{ "is_weather": "portal_storm" }`, or one on a global variable.
 `time`               | Time required per charge.
 `recharge_condition` | (optional) Similar to `has` from enchantments: can be one of `held`, `worn`, `wield`.  If omitted, the item recharges regardless, even if dropped.
 

@@ -129,7 +129,7 @@ These fields can be read by any ITEM regardless of subtypes:
 "price": "1 USD",                                // Barter value of an item. Used as barter value only when price_postapoc isn't defined. For stackable items (ammo, comestibles) this is the price for stack_size charges. Can use string "cent", "cents", "dollar", "dollars", "USD", or "kUSD".
 "price_postapoc": "1 USD",                       // Barter value of an item post-Cataclysm. Can use string "cent", "cents", "dollar", "dollars", "USD", or "kUSD".
 "stackable": true,                           // This item can be stacked together, similarly to `charges`
-"degradation_multiplier": 0.8,               // Controls how quickly an item degrades when taking damage. 0 = no degradation. Defaults to 1.0.
+"degradation_multiplier": 0.8,               // Controls how quickly an item degrades when taking damage. 0 = no degradation. Defaults to 1.0 for items of category `veh_parts` and to 0 (no degradation) for all others; set it to make any other item degrade. Inherited through copy-from (a child's value replaces its parent's). Items counted by charges never degrade.
 "solar_efficiency": 0.3,                     // Efficiency of solar energy conversion for solarpacks; require SOLARPACK_ON to generate electricity; default 0
 "source_monster": "mon_zombie",               // This item is corpse of this monster (so it has weight and volume of this monster), and revive into this monster; require COPRSE flag
 "thrown_damage": [ { "damage_type": "bash", "amount": 15 } ], // Damage, that would be dealt when you throw this item; lack of this field fall back to use melee damage, including player's str bonus applied to melee attack
@@ -679,7 +679,7 @@ CBMs can be defined like this:
 "stim" : 40,                // Stimulant effect
 "sleepiness_mod": 3,        // How much sleepiness this comestible removes. (Negative values add sleepiness)
 "comestible_type" : "MED",  // Comestible type, used for inventory sorting. One of 'FOOD', 'DRINK', 'MED', or 'INVALID' (consider using a different "type" than COMESTIBLE instead of using INVALID)
-"consumption_effect_on_conditions" : [ "EOC_1" ],  // Effect on conditions to run after consuming.  Inline or string id supported
+"consumption_effect_on_conditions" : [ "EOC_1" ],  // Effect on conditions to run after consuming.  Inline or string id supported.  With copy-from the list replaces the inherited one; "extend" adds to it and "delete" removes EOCs by id
 "quench" : 0,               // Thirst quenched
 "healthy" : -2,             // Health effects (used for sickness chances)
 "addiction_potential" : 80, // Default strength for this item to cause addictions
@@ -872,6 +872,9 @@ Guns can be defined like this:
   { "fault_group": "handles", "weight_override": 20 } // if weight_override is used, the weight of an entire fault group is assigned to this value, and original weight is deleted
   { "fault_group": "handles", "weight_add": -5, "weight_mult": 0.8 } // weight_add and weight_mult both modify the weight of each fault in fault group. Default add is 0, default mult is 1
   ],                                            // Faults are applied from the code side
+                                                // With copy-from, "faults" replaces the inherited list (`"faults": []` removes them all);
+                                                // "extend": { "faults": [ ... ] } adds entries to it and
+                                                // "delete": { "faults": [ "fault_gun_dirt", { "fault_group": "handles" } ] } removes faults and fault groups from it
 "handling": 10             // handling of the weapon; better handling means less recoil
 "energy_drain": "2 kJ",    // Additionally to the normal ammo (if any), a gun can require some electric energy. Drains from battery in gun. Use flags "USE_UPS" and "USES_BIONIC_POWER" to drain other sources. This also works on mods. Attaching a mod with energy_drain will add/increase drain on the weapon.
 "heat_per_shot": 10,       // Each shot from this weapon adds this amount of heat

@@ -11449,6 +11449,13 @@ void mend_item_activity_actor::finish( player_activity &act, Character &who )
 
     add_msg( m_good, fix.success_msg.translated(), target.tname( 1, false ),
              start_durability, target.durability_indicator( true ) );
+
+    if( !fix.effect_on_conditions.empty() ) {
+        dialogue d( get_talker_for( who ), get_talker_for( mended_item ) );
+        for( const effect_on_condition_id &eoc : fix.effect_on_conditions ) {
+            eoc->activate( d );
+        }
+    }
 }
 
 void mend_item_activity_actor::serialize( JsonOut &jsout ) const

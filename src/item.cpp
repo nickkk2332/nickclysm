@@ -34,6 +34,8 @@
 #include "effect.h" // for weed_msg
 #include "enum_bitset.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "fault.h"
 #include "field_type.h"
@@ -440,6 +442,8 @@ item &item::convert( const itype_id &new_type, Character *carrier )
 {
     // Carry over relative rot similar to crafting
     const double rel_rot = get_relative_rot();
+    // read before the type changes: afterwards it would read the new type too
+    const bool was_count_by_charges = count_by_charges();
     type = find_type( new_type );
     set_relative_rot( rel_rot );
     requires_tags_processing = true; // new type may have "active" flags
@@ -454,7 +458,9 @@ item &item::convert( const itype_id &new_type, Character *carrier )
     temp.contents.combine( contents, true );
     contents = temp.contents;
     current_phase = new_type->phase;
-    if( count_by_charges() != new_type->count_by_charges() ) {
+    // A stack counted by charges that becomes a type that isn't is one item here: whoever holds it
+    // (item_pocket::process, map item processing) adds a copy for each other charge it had.
+    if( was_count_by_charges != new_type->count_by_charges() ) {
         charges = new_type->charges_default();
     }
 
@@ -2717,14 +2723,16 @@ bool item::ready_to_revive( map &here, const tripoint_bub_ms &pos ) const
     if( damage_level() > 0 ) {
         age_in_hours /= ( damage_level() + 1 );
     }
-    int rez_factor = 48 - age_in_hours;
+    // the monster's revive_delay: not before min, and surely by guaranteed
+    int rez_factor = to_hours<int>( corpse->revive_guaranteed ) - age_in_hours;
 
     // Arbitrary limit allowing you to take breaks to eat, instruct companions, etc., but not long enough to
     // easily be abused to keep corpses from rising as a strategy.
     bool butchery_block = calendar::turn - ( calendar::start_of_cataclysm +
                           time_duration::from_turns<double>(
                               get_var( butcher_progress_time_var(), 0.0 ) ) ) < 30_minutes;
-    if( age_in_hours > 6 && !butchery_block && ( rez_factor <= 0 || one_in( rez_factor ) ) ) {
+    if( age_in_hours > to_hours<int>( corpse->revive_min_age ) && !butchery_block &&
+        ( rez_factor <= 0 || one_in( rez_factor ) ) ) {
         // If we're a special revival zombie, wait to get up until the player is nearby.
         const bool isReviveSpecial = has_flag( flag_REVIVE_SPECIAL );
         if( isReviveSpecial ) {
@@ -4516,7 +4524,14 @@ void item::overwrite_relic( const relic &nrelic )
 
 bool item::use_relic( Character &guy, const tripoint_bub_ms &pos )
 {
-    return relic_data->activate( guy, pos );
+    // relic::activate refuses when the charges can't pay for it
+    const bool activates = relic_data->charges_per_use() == 0 ||
+                           relic_data->charges() >= relic_data->charges_per_use();
+    const int charges_used = relic_data->activate( guy, pos );
+    if( activates ) {
+        get_event_bus().send<event_type::activates_artifact>( guy.getID(), tname(), typeId() );
+    }
+    return charges_used != 0;
 }
 
 void item::process_relic( Character *carrier, const tripoint_bub_ms &pos )
