@@ -941,7 +941,6 @@ class heal_actor : public iuse_actor
         /** The effects some healing item cures; NPCs check their patients for these (NPC-J08) */
         static const std::set<efftype_id> &curable_effects();
         static void clear_curable_effects();
-        void finalize( const itype_id &my_item_type ) override;
         /** How much hp to restore when healing limbs? */
         float limb_power = 0.0f;
         /** How much hp to restore when healing head? */

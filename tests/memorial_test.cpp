@@ -124,7 +124,7 @@ TEST_CASE( "memorials", "[memorial]" )
     proficiency_id prof( "prof_wound_care" );
 
     check_memorial<event_type::activates_artifact>(
-        m, "Activated the art_name.", ch, "art_name" );
+        m, "Activated the art_name.", ch, "art_name", it );
 
     check_memorial<event_type::activates_mininuke>(
         m, "Activated a mininuke.", ch );
