@@ -569,6 +569,18 @@ See above.
 | `base_wind_season_variation`   | How the wind varies with season. Increases wind speed in the summer, decreases wind speed in the winter. Larger values amplify effects, negative values reverse effects.  |
 | `weather_black_list`           | Ids of weather types not allowed in this region.                      |
 | `weather_white_list`           | Ids of the only weather types allowed in this region.                 |
+| `snow`                         | Optional, how snow piles up, melts and slows movement here; see below. |
+
+`snow` (all members optional; a `copy-from` child keeps the members it doesn't name):
+
+|     Identifier  |                              Description                              |
+| --------------- | --------------------------------------------------------------------- |
+| `water_ratio`   | mm of snow per mm of precipitation, for weather types without a `snow_rate`. Default 12. |
+| `melt_rate`     | mm of snow that melts per hour for each degree Celsius above 0. Default 2.0. |
+| `max_depth`     | Deepest the snow can get, in mm. Default 800. |
+| `move_cost`     | Rows of `depth` (mm, more than 0), `character` (added to a character's move cost) and `monster` (added to a monster's terrain cost, 25 move points each), sorted by depth, shallowest first. The deepest row the snow reaches applies; costs default to 0 and can't be negative. Given, it replaces the whole table. Default `[ { "depth": 100, "character": 20, "monster": 1 }, { "depth": 250, "character": 50, "monster": 2 }, { "depth": 500, "character": 100, "monster": 4 } ]`. |
+
+See [Snow on the ground](WEATHER_TYPE.md#snow-on-the-ground) for how snow depth works.
 
 ### Example
 
@@ -581,7 +593,8 @@ See above.
     "base_pressure": 1015.0,
     "base_wind": 3.4,
     "base_wind_distrib_peaks": 80,
-    "base_wind_season_variation": 50
+    "base_wind_season_variation": 50,
+    "snow": { "melt_rate": 3.0, "max_depth": 1500 }
 }
 ```
 

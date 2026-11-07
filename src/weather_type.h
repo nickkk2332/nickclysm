@@ -111,6 +111,8 @@ struct weather_type {
         precip_class precip = precip_class::none;
         // Whether said precipitation falls as rain.
         bool rains = false;
+        // mm of snow per hour this weather adds to the ground; unset: from precip and rains
+        std::optional<double> snow_rate;
         // string for tiles animation
         std::string tiles_animation;
         // Information for weather animations

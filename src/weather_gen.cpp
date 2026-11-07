@@ -514,6 +514,52 @@ void weather_generator::sort_weather()
     } );
 }
 
+void snow_move_cost::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "depth", depth );
+    optional( jo, false, "character", character, 0 );
+    optional( jo, false, "monster", monster, 0 );
+    if( depth <= 0.0 ) {
+        jo.throw_error_at( "depth", "snow move_cost depth must be more than 0" );
+    }
+    if( character < 0 || monster < 0 ) {
+        jo.throw_error( "snow move_cost character and monster costs can't be negative" );
+    }
+}
+
+void snow_settings::deserialize( const JsonObject &jo )
+{
+    jo.read( "water_ratio", water_ratio );
+    jo.read( "melt_rate", melt_rate );
+    jo.read( "max_depth", max_depth );
+    if( water_ratio < 0.0 || melt_rate < 0.0 || max_depth < 0.0 ) {
+        jo.throw_error( "snow water_ratio, melt_rate and max_depth can't be negative" );
+    }
+    if( jo.has_array( "move_cost" ) ) {
+        move_cost.clear();
+        for( JsonObject row : jo.get_array( "move_cost" ) ) {
+            snow_move_cost step;
+            step.deserialize( row );
+            if( !move_cost.empty() && step.depth <= move_cost.back().depth ) {
+                row.throw_error_at( "depth", "snow move_cost rows must be sorted by depth" );
+            }
+            move_cost.push_back( step );
+        }
+    }
+}
+
+const snow_move_cost *snow_settings::move_cost_at( const double depth_mm ) const
+{
+    const snow_move_cost *found = nullptr;
+    for( const snow_move_cost &step : move_cost ) {
+        if( depth_mm < step.depth ) {
+            break;
+        }
+        found = &step;
+    }
+    return found;
+}
+
 void weather_generator::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "base_temperature", base_temperature );
@@ -532,6 +578,7 @@ void weather_generator::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "winter_humidity_manual_mod", winter_humidity_manual_mod, 0 );
     optional( jo, was_loaded, "weather_black_list", weather_black_list );
     optional( jo, was_loaded, "weather_white_list", weather_white_list );
+    optional( jo, was_loaded, "snow", snow );
     if( !weather_black_list.empty() && !weather_white_list.empty() ) {
         jo.throw_error( "weather_black_list and weather_white_list are mutually exclusive" );
     }
