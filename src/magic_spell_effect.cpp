@@ -1993,7 +1993,9 @@ void spell_effect::vomit( const spell &sp, Creature &caster, const tripoint_bub_
 void spell_effect::pull_to_caster( const spell &sp, Creature &caster,
                                    const tripoint_bub_ms &target )
 {
-    caster.longpull( sp.name(), target );
+    // A spell with damage pulls with that strength, in place of the caster's
+    const int power = sp.damage( caster );
+    caster.longpull( sp.name(), target, power > 0 ? std::optional<int>( power ) : std::nullopt );
 }
 
 void spell_effect::explosion( const spell &sp, Creature &caster, const tripoint_bub_ms &target )

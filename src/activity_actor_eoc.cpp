@@ -67,6 +67,7 @@
 #include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "shearing.h"
 #include "string_formatter.h"
 #include "temp_crafting_inventory.h"
 #include "translations.h"
@@ -1976,13 +1977,16 @@ refusal start_shearing( const activity_id &, Character &who, const eoc_activity_
     if( !mon->shearable() ) {
         return string_format( _( "The %s has nothing to shear." ), mon->get_name() );
     }
-    if( season_of_year( calendar::turn ) == WINTER ) {
-        return std::string( _( "This animal would freeze if you shear it during the winter." ) );
+    const season_type season = season_of_year( calendar::turn );
+    if( !mon->type->shearing.in_season( season ) ) {
+        return std::string( season == WINTER ?
+                            _( "This animal would freeze if you shear it during the winter." ) :
+                            _( "This animal can't be sheared in this season." ) );
     }
     if( mon->has_effect( effect_sheared ) ) {
         return std::string( _( "This animal is not ready to be sheared again yet." ) );
     }
-    if( who.max_quality( qual_SHEAR ) <= 0 ) {
+    if( who.max_quality( qual_SHEAR ) < mon->type->shearing.quality_level() ) {
         return string_format( _( "%s has no shearing tool." ), who.get_name() );
     }
     // As examining the monster: it is tied for the time unless it was already.

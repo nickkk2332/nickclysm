@@ -1484,6 +1484,10 @@ When adding a new bionic, if it's not included with another one, you must also a
 | `mon_difficulty`    | _(optional)_ Determines whether this damage type should contribute to a monster's difficulty rating. (defaults to false)
 | `no_resist`         | _(optional)_ Identifies this damage type as being impossible to resist against (ie. "pure" damage). (defaults to false)
 | `immune_flags`      | _(optional)_ An object with two optional fields: `"character"` and `"monster"`. Both inner fields list an array of character flags and monster flags, respectively, that would make the character or monster immune to this damage type.
+| `mon_immune_materials` | _(optional)_ An array of material ids: monsters made of any of them are immune to this damage type (vanilla `heat`: `steel` and `stone`).
+| `pain_divisor`      | _(optional)_ Pain from damage of this type is the damage divided by this, rounded up or down at random. Must be above 0. (defaults to 4; vanilla `bash` is 5 and `acid` 3)
+| `ignites`           | _(optional)_ Damage of this type sets the creature on fire (the `onfire` effect, 1 to 3 turns, on the body part hit), with a chance in percent of the damage. (defaults to false; true for vanilla `heat`)
+| `electrocutes`      | _(optional)_ Damage of this type may zap the creature (the `zapped` effect, with a chance and a duration that grow with the damage, scaled by a monster's `status_chance_multiplier`), and pains a character more by its `EXTRA_ELEC_PAIN` enchantment. (defaults to false; true for vanilla `electric`)
 | `magic_color`       | _(optional)_ Determines which color identifies this damage type when used in spells. (defaults to "black")
 | `derived_from`      | _(optional)_ An array that determines how this damage type should be calculated in terms of armor protection and monster resistance values. The first value is the source damage type and the second value is the modifier applied to source damage type calculations.
 | `onhit_eocs`        | _(optional)_ An array of effect-on-conditions that activate when a monster or character hits another monster or character with this damage type. In this case, `u` refers to the damage source and `npc` refers to the damage target.
@@ -3578,7 +3582,7 @@ itype_id of the item dropped as leftovers after butchery or when the monster is 
 {
   "type": "harvest_drop_type",
   "id": "mutagen",
-  "dissect_only": true,
+  "dissect_only": false,
   "group": false,
   "harvest_skills": [ "firstaid", "chemistry" ],
   "msg_fielddress_fail": "harvest_drop_mutagen_field_dress",
@@ -3590,11 +3594,11 @@ itype_id of the item dropped as leftovers after butchery or when the monster is 
 }
 ```
 
-Harvest drop types are used in harvest drop entries to control how the drop is processed. `dissect_only` only allows the drop to be produced when dissecting. `group` indicates that an associated `drop` refers to an item group instead of a single item type.
+Harvest drop types are used in harvest drop entries to control how the drop is processed. `dissect_only` (boolean, default false) only allows the drop to be produced when dissecting: every other butchery action gives nothing of it, silently. It can't be combined with an `action_yield` for actions other than `DISSECT` (that is reported at load). `group` indicates that an associated `drop` refers to an item group instead of a single item type.
 
 `harvest_skills` refers to the id of skills that affect the yields of this harvest drop type. If omitted, this defaults to the survival skill. For example, dissecting a zomborg for CBMs will produce better results when the "electronics" and "firstaid" skills are high. `harvest_skills` can be either a single string (just one skill) or an array of strings.
 
-`msg_<butcher_type>_<result>` refers to a snippet to be printed when the specified butcher type either succeeds or fails. Currently, the following message types are available:
+`msg_<butcher_type>_<result>` refers to a snippet to be printed when the specified butcher type either succeeds or fails: `fielddress` for field dressing, `butcher` for quick and full butchery and dismembering, `dissect` for dissection (for each entry of the harvest list with a single item, and for each item found in the corpse from its `dissect` list). Currently, the following message types are available:
 - `"msg_fielddress_fail"`
 - `"msg_fielddress_success"`
 - `"msg_butcher_fail"`
@@ -3647,7 +3651,7 @@ For each harvest entry, the rules apply in this order to the amount rolled from 
 
 `trains_proficiencies` (array, optional): each `{ "proficiencies": [ ... ], "time_fraction": { "<action>": fraction } }` trains the first proficiency in the list the butcher doesn't have (the last one when they have all of them) for that fraction of the butchery time, when butchering a creature with a drop of this type with one of the listed actions. A list shared by several drop types of the same creature trains once.
 
-The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had, except that a field-dressed corpse now has half to all of its bones left (`"mult": 0, "random": [ 0.5, 1 ]`), so field dressing and butchering together give about the bones of butchering the whole corpse, not up to twice as many. `mutagen`, `mutagen_group`, `bionic` and `bionic_group` have `"action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 }`: the default without `FIELD_DRESS`, so an organ or implant in a creature's `harvest` list (as in Magiclysm) comes from full butchery or dissection, not also from field dressing first.
+The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had, except that a field-dressed corpse now has half to all of its bones left (`"mult": 0, "random": [ 0.5, 1 ]`), so field dressing and butchering together give about the bones of butchering the whole corpse, not up to twice as many. `mutagen`, `mutagen_group`, `bionic` and `bionic_group` have `"action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 }`: the default without `FIELD_DRESS`, so an organ or implant in a creature's `harvest` list (as in Magiclysm and Aftershock) comes from full butchery or dissection, not also from field dressing first. They are not `dissect_only`, as that would keep those drops from full butchery.
 
 ### Weapon Category
 

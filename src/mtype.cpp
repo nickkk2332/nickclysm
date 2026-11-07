@@ -34,6 +34,8 @@ static const material_id material_hflesh( "hflesh" );
 static const material_id material_iflesh( "iflesh" );
 static const material_id material_veggy( "veggy" );
 
+static const skill_id skill_survival( "survival" );
+
 static const species_id species_MOLLUSK( "MOLLUSK" );
 
 // NOLINTNEXTLINE(cata-static-int_id-constants)
@@ -329,7 +331,6 @@ mtype::mtype()
     weight = 81499_gram;
     mat = { { material_flesh, 1 } };
     phase = phase_id::SOLID;
-    def_chance = 0;
     upgrades = false;
     upgrade_multi_range = std::optional<int>();
     upgrade_null_despawn = false;
@@ -350,7 +351,6 @@ mtype::mtype()
     path_settings.max_length = -1;
 
     burn_into = mtype_id::NULL_ID();
-    sp_defense = nullptr;
     melee_training_cap = MAX_SKILL;
     harvest = harvest_list_human;
     decay = harvest_id::NULL_ID();
@@ -358,6 +358,7 @@ mtype::mtype()
     bash_skill = {};
 
     aggro_character = true;
+    mount_rules.skill = skill_survival;
 
     pre_flags_.emplace( "HUMAN" );
 }
@@ -450,6 +451,14 @@ bool mtype::in_category( const std::string &category ) const
 bool mtype::in_species( const species_id &spec ) const
 {
     return species.count( spec ) > 0;
+}
+
+bool mtype::has_special_defense( const mon_action_defend defense ) const
+{
+    return std::any_of( special_defenses.begin(), special_defenses.end(),
+    [defense]( const mon_special_defense & def ) {
+        return def.defense == defense;
+    } );
 }
 
 std::vector<std::string> mtype::species_descriptions() const

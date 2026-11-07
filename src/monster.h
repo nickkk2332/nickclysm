@@ -485,6 +485,10 @@ class monster : public Creature
         // Something hit us (possibly null source)
         void on_hit( map *here, Creature *source, bodypart_id bp_hit,
                      float difficulty = INT_MIN, dealt_projectile_attack const *proj = nullptr ) override;
+        // Tries the special defenses of special_when_hit against source: a hit on bp by proj,
+        // or, when proj is null, a melee hit or being grabbed or held.
+        void special_defense( Creature *source, const bodypart_id &bp,
+                              dealt_projectile_attack const *proj );
 
         /** Resets a given special to its monster type cooldown value */
         void reset_special( const std::string &special_name );

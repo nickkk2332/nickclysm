@@ -23,7 +23,7 @@
     "id": "ZOMBIE",
     "description": "a zombie",
     "footsteps": "shuffling.",
-    "flags": [ "ALL_SEEING", "NEMESIS" ],
+    "flags": [ "ALL_SEEING", "NEMESIS", "HORDE_ROAMER" ],
     "bleeds": "fd_blood",
     "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ]
   },
@@ -32,7 +32,7 @@
     "id": "FERAL",
     "description": "a feral",
     "footsteps": "shuffling.",
-    "flags": [ "ALL_SEEING", "NEMESIS" ],
+    "flags": [ "ALL_SEEING", "NEMESIS", "HORDE_ROAMER" ],
     "bleeds": "fd_blood"
   },
   {

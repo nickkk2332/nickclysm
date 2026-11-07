@@ -9175,7 +9175,7 @@ void shearing_activity_actor::start( player_activity &act, Character &who )
     }
 
     const int shearing_quality = who.max_quality( qual_SHEAR );
-    if( !( shearing_quality > 0 ) ) {
+    if( shearing_quality < std::max( mon->type->shearing.quality_level(), 1 ) ) {
         if( who.is_avatar() ) {
             add_msg( m_info, _( "%1$s don't have a shearing tool." ), who.disp_name( true ) );
         } else { // who.is_npc
@@ -9209,7 +9209,9 @@ void shearing_activity_actor::start( player_activity &act, Character &who )
 
 void shearing_activity_actor::do_turn( player_activity &, Character &who )
 {
-    if( !who.has_quality( qual_SHEAR ) ) {
+    const monster *mon = get_creature_tracker().creature_at<monster>( mon_coords );
+    const int quality_level = mon != nullptr ? mon->type->shearing.quality_level() : 1;
+    if( !who.has_quality( qual_SHEAR, quality_level ) ) {
         if( who.is_avatar() ) {
             add_msg(
                 m_bad,
@@ -9270,7 +9272,7 @@ void shearing_activity_actor::finish( player_activity &act, Character &who )
         }
     }
 
-    mon->add_effect( effect_sheared, calendar::season_length() );
+    mon->add_effect( effect_sheared, shear_data.regrow() );
     if( shearing_tie ) {
         mon->remove_effect( effect_tied );
     }

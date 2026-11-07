@@ -29,7 +29,7 @@
     "description": "a zombie",
     "footsteps": "shuffling.",
     "bleeds": "fd_blood",
-    "flags": [ "TEEP_IMMUNE" ],
+    "flags": [ "TEEP_IMMUNE", "HORDE_ROAMER" ],
     "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ]
   },
   {

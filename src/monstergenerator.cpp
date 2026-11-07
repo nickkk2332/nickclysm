@@ -16,6 +16,7 @@
 #include "creature.h"
 #include "damage.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "execution_fatal.h"
 #include "field_type.h"
@@ -47,6 +48,8 @@ struct itype;
 static const damage_type_id damage_bash( "bash" );
 
 static const harvest_id harvest_list_human( "human" );
+
+static const itype_id itype_id_military( "id_military" );
 
 static const material_id material_flesh( "flesh" );
 
@@ -1030,6 +1033,15 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     //In its 1920 Manual of Horse Management, The U.S. Cavalry suggested a horse should not be asked to carry more than 20% of its body weight. This assumed a combined weight of rider, saddle, bridle, and other equipment.
     optional( jo, was_loaded, "mountable_weight_ratio", mountable_weight_ratio, 0.2f );
+    if( jo.has_object( "mount_rules" ) ) {
+        // Rules not given keep what they were (from copy-from, or the defaults)
+        JsonObject jmount = jo.get_object( "mount_rules" );
+        optional( jmount, true, "skill", mount_rules.skill );
+        optional( jmount, true, "saddled_level", mount_rules.saddled_level );
+        optional( jmount, true, "unsaddled_level", mount_rules.unsaddled_level );
+        optional( jmount, true, "tack_level", mount_rules.tack_level );
+        optional( jmount, true, "size_difference", mount_rules.size_difference );
+    }
 
     optional( jo, was_loaded, "attack_cost", attack_cost, numeric_bound_reader<int> {0}, 100 );
     optional( jo, was_loaded, "melee_skill", melee_skill, numeric_bound_reader<int> {0}, 0 );
@@ -1147,6 +1159,7 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
               numeric_bound_reader<int> { -1 }, -1 );
     optional( jo, was_loaded, "broken_itype", broken_itype, itype_id() );
     optional( jo, was_loaded, "mech_weapon", mech_weapon, itype_id() );
+    optional( jo, was_loaded, "mech_activation_item", mech_activation_item, itype_id_military );
     optional( jo, was_loaded, "mech_str_bonus", mech_str_bonus, 0 );
     optional( jo, was_loaded, "mech_battery", mech_battery, itype_id() );
 
@@ -1201,15 +1214,44 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     if( jo.has_member( "special_when_hit" ) ) {
         JsonArray jsarr = jo.get_array( "special_when_hit" );
-        const auto iter = gen.defense_map.find( jsarr.get_string( 0 ) );
-        if( iter == gen.defense_map.end() ) {
-            jsarr.throw_error( "Invalid monster defense function" );
+        special_defenses.clear();
+        if( !jsarr.empty() && jsarr.has_object( 0 ) ) {
+            // [ { "id": "ZAPBACK", "chance": 100 }, { "eoc": ..., "melee": false }, ... ]
+            for( JsonObject jdef : jsarr ) {
+                mon_special_defense def;
+                if( jdef.has_member( "id" ) == jdef.has_member( "eoc" ) ) {
+                    jdef.throw_error( R"(a special_when_hit entry needs either "id" or "eoc")" );
+                }
+                if( jdef.has_member( "id" ) ) {
+                    const auto iter = gen.defense_map.find( jdef.get_string( "id" ) );
+                    if( iter == gen.defense_map.end() ) {
+                        jdef.throw_error_at( "id", "Invalid monster defense function" );
+                    }
+                    def.defense = iter->second;
+                } else {
+                    def.eoc = effect_on_conditions::load_inline_eoc( jdef.get_member( "eoc" ), src );
+                }
+                optional( jdef, false, "chance", def.chance, 100 );
+                optional( jdef, false, "melee", def.melee, true );
+                optional( jdef, false, "ranged", def.ranged, true );
+                special_defenses.push_back( def );
+            }
+        } else {
+            // [ "ZAPBACK", 100 ]
+            const auto iter = gen.defense_map.find( jsarr.get_string( 0 ) );
+            if( iter == gen.defense_map.end() ) {
+                jsarr.throw_error( "Invalid monster defense function" );
+            }
+            mon_special_defense def;
+            def.defense = iter->second;
+            def.chance = jsarr.get_int( 1 );
+            special_defenses.push_back( def );
         }
-        sp_defense = iter->second;
-        def_chance = jsarr.get_int( 1 );
     } else if( !was_loaded ) {
-        sp_defense = &mdefense::none;
-        def_chance = 0;
+        // No defense, rolled for on every hit all the same
+        mon_special_defense def;
+        def.defense = &mdefense::none;
+        special_defenses.push_back( def );
     }
 
     // this is really gross, and special_attacks + special_attacks_names should be combined into one struct
@@ -1798,6 +1840,15 @@ void MonsterGenerator::check_monster_definitions() const
         if( !mon.mech_weapon.is_empty() && !item::type_is_defined( mon.mech_weapon ) ) {
             debugmsg( "monster %s has unknown mech_weapon: %s", mon.id.c_str(),
                       mon.mech_weapon.c_str() );
+        }
+        if( mon.has_flag( mon_flag_RIDEABLE_MECH ) &&
+            !item::type_is_defined( mon.mech_activation_item ) ) {
+            debugmsg( "monster %s has unknown mech_activation_item: %s", mon.id.c_str(),
+                      mon.mech_activation_item.c_str() );
+        }
+        if( !mon.mount_rules.skill.is_valid() ) {
+            debugmsg( "monster %s has unknown mount_rules skill: %s", mon.id.c_str(),
+                      mon.mount_rules.skill.c_str() );
         }
         if( !mon.mech_battery.is_empty() && !item::type_is_defined( mon.mech_battery ) ) {
             debugmsg( "monster %s has unknown mech_battery: %s", mon.id.c_str(),

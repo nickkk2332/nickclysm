@@ -44,6 +44,28 @@ using mon_action_defend = void ( * )( monster &, Creature *, dealt_projectile_at
 using bodytype_id = std::string;
 class JsonObject;
 
+// Who can ride a PET_MOUNTABLE monster (mount_rules): a rider with `skill` at `saddled_level`
+// on the saddled monster, or at `unsaddled_level` without a saddle, who is at least
+// `size_difference` sizes smaller than it. Saddling it needs `skill` at `tack_level`.
+struct mon_mount_rules {
+    skill_id skill;
+    int saddled_level = 1;
+    int unsaddled_level = 4;
+    int tack_level = 1;
+    int size_difference = 1;
+};
+
+// One special "defensive" move (an entry of special_when_hit): a built-in one or an
+// effect_on_condition. It is tried when a roll from 0 to 100 is at most `chance`, for a hit by
+// a projectile with `ranged`, and for other hits (melee, being grabbed or held) with `melee`.
+struct mon_special_defense {
+    mon_action_defend defense = nullptr;
+    std::optional<effect_on_condition_id> eoc;
+    int chance = 0;
+    bool melee = true;
+    bool ranged = true;
+};
+
 // These are triggers which may affect the monster's anger or morale.
 // They are handled in monster::check_triggers(), in monster.cpp
 enum class mon_trigger : int {
@@ -378,9 +400,10 @@ struct mtype {
                                    mon_trigger_kind kind );
     public:
         units::mass weight;
-        // This monster's special "defensive" move that may trigger when the monster is attacked.
-        // Note that this can be anything, and is not necessarily beneficial to the monster
-        mon_action_defend sp_defense;
+        // This monster's special "defensive" moves that may trigger when the monster is attacked.
+        // Note that these can be anything, and are not necessarily beneficial to the monster
+        std::vector<mon_special_defense> special_defenses;
+        bool has_special_defense( mon_action_defend defense ) const;
     private:
         ascii_art_id picture_id;
         mon_flag_id_set flags;
@@ -435,6 +458,11 @@ struct mtype {
          * If this monster is a rideable mech with built-in weapons, this is the weapons id
          */
         itype_id mech_weapon;
+        /**
+         * If this monster is a rideable mech, the item used up to activate it
+         */
+        itype_id mech_activation_item;
+        mon_mount_rules mount_rules;
         /**
          * If this monster is a rideable mech it needs a power source battery type
          */
@@ -600,7 +628,6 @@ struct mtype {
         std::optional<int> scent_max;
         std::optional<int> footstep_volume;
 
-        unsigned int def_chance; // How likely a special "defensive" move is to trigger (0-100%, default 0)
         // Monster's ability to destroy terrain and vehicles
         std::map<damage_type_id, int> bash_skill;
 

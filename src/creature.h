@@ -539,8 +539,11 @@ class Creature : public viewer
          * Attempts to pull the target at point p towards this creature.
          * @param name Name of the implement used to pull the target.
          * @param p Position of the target creature.
+         * @param strength Pulling strength in place of the puller's (STR for characters,
+         * grab_strength for monsters), as a pull_target spell with damage gives.
         */
-        void longpull( const std::string &name, const tripoint_bub_ms &p );
+        void longpull( const std::string &name, const tripoint_bub_ms &p,
+                       std::optional<int> strength = std::nullopt );
 
         /**
          * If training_level is anything but 0, the check will only train target's skill to that level

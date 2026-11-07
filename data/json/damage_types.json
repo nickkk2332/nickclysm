@@ -14,7 +14,9 @@
     "immune_flags": { "character": [ "BASH_IMMUNE" ] },
     "melee_crit": { "damage_mult": 0.5, "armor_ignored": 0.5 },
     "weakpoint_attack": "bash",
-    "embed_weight": -1
+    "embed_weight": -1,
+    "//2": "Bashing damage is less painful",
+    "pain_divisor": 5
   },
   {
     "id": "bash",
@@ -115,6 +117,8 @@
     "magic_color": "light_green",
     "name": { "ctxt": "damage_type", "str": "acid" },
     "material_required": true,
+    "//2": "Acid damage and acid burns are more painful",
+    "pain_divisor": 3,
     "immune_flags": { "character": [ "ACID_IMMUNE" ], "monster": [ "ACIDPROOF" ] }
   },
   {
@@ -135,6 +139,7 @@
     "physical": false,
     "magic_color": "light_blue",
     "name": { "ctxt": "damage_type", "str": "electric" },
+    "electrocutes": true,
     "immune_flags": { "character": [ "ELECTRIC_IMMUNE" ], "monster": [ "ELECTRIC", "ELECTRIC_FIELD" ] }
   },
   {
@@ -157,7 +162,9 @@
     "magic_color": "red",
     "name": { "ctxt": "damage_type", "str": "fire" },
     "material_required": true,
-    "immune_flags": { "character": [ "HEAT_IMMUNE" ], "monster": [ "FIREPROOF" ] }
+    "ignites": true,
+    "immune_flags": { "character": [ "HEAT_IMMUNE" ], "monster": [ "FIREPROOF" ] },
+    "mon_immune_materials": [ "steel", "stone" ]
   },
   {
     "id": "heat",

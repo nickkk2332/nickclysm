@@ -55,6 +55,11 @@ bool set_up_butchery( player_activity &act, Character &you, butchery_data bd );
 
 int roll_butchery_dissect( int skill_level, int dex, int tool_quality );
 
+// The skill level of `you` for drops of type `htype` (the average of its harvest skills,
+// survival when there's none), with `tool_quality` added in for DISSECT only.
+int butchery_dissect_skill_level( const Character &you, int tool_quality,
+                                  const harvest_drop_type_id &htype, butcher_type action );
+
 // What `roll` of a harvest entry of drop type `type` comes to after the drop type's rules for
 // the action and the corpse's state; nullopt when the action leaves the entry alone.
 std::optional<int> butchery_entry_yield( const harvest_drop_type &type, int roll,

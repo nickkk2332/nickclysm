@@ -83,7 +83,6 @@
   {
     "type": "harvest_drop_type",
     "id": "mutagen",
-    "dissect_only": true,
     "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "chemistry", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_mutagen_field_dress",
@@ -94,7 +93,6 @@
     "type": "harvest_drop_type",
     "id": "mutagen_group",
     "group": true,
-    "dissect_only": true,
     "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "chemistry", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_mutagen_field_dress",
@@ -104,7 +102,6 @@
   {
     "type": "harvest_drop_type",
     "id": "bionic",
-    "dissect_only": true,
     "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "electronics", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_bionic_field_dress",
@@ -114,7 +111,6 @@
     "type": "harvest_drop_type",
     "id": "bionic_group",
     "group": true,
-    "dissect_only": true,
     "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "electronics", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_bionic_field_dress",

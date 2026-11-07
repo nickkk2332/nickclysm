@@ -811,9 +811,7 @@ bool grapple::attempt_grab( Character &grabber, Creature &target, std::optional<
             grabber.add_msg_if_player( m_good, _( "You wrest %s from another hold." ),
                                        z->disp_name() );
         }
-        if( rng( 0, 100 ) <= static_cast<int>( z->type->def_chance ) ) {
-            z->type->sp_defense( *z, &grabber, nullptr );
-        }
+        z->special_defense( &grabber, bodypart_str_id::NULL_ID().id(), nullptr );
         const bodypart_id no_part = bodypart_str_id::NULL_ID().id();
         if( z->is_dead_state() || grabber.is_dead_state() || !in_reach( grabber, *z ) ||
             !establish_hold( grabber, *z, strength, no_part ) ) {

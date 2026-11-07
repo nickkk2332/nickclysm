@@ -11,9 +11,9 @@
 #include "map_scale_constants.h"
 #include "monster.h"
 #include "mtype.h"
+#include "type_id.h"
 
-static const species_id species_FERAL( "FERAL" );
-static const species_id species_ZOMBIE( "ZOMBIE" );
+static const mon_flag_str_id mon_flag_HORDE_ROAMER( "HORDE_ROAMER" );
 
 // Is just entity enough or do we need to wrap it in a tuple with a coordinate?
 // Or worse an iterator?
@@ -126,10 +126,10 @@ std::vector<std::unordered_map<tripoint_abs_ms, horde_entity> *> horde_map::enti
 
 // Helper because this is too much to inline.
 // This essentially means "these should get sounds broadcast to them".
+// HORDE_ROAMER comes with the ZOMBIE and FERAL species, or a monster's own flags.
 static bool is_alert( const mtype &type )
 {
-    bool aggro = type.in_species( species_ZOMBIE ) || type.in_species( species_FERAL );
-    return aggro && type.has_flag( mon_flag_HEARS );
+    return type.has_flag( mon_flag_HORDE_ROAMER ) && type.has_flag( mon_flag_HEARS );
 }
 
 // These have no goal so they can't go in the active map.

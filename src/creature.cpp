@@ -108,11 +108,6 @@ static const ammo_effect_str_id ammo_effect_TANGLE( "TANGLE" );
 
 static const anatomy_id anatomy_human_anatomy( "human_anatomy" );
 
-static const damage_type_id damage_acid( "acid" );
-static const damage_type_id damage_bash( "bash" );
-static const damage_type_id damage_electric( "electric" );
-static const damage_type_id damage_heat( "heat" );
-
 static const efftype_id effect_all_fours( "all_fours" );
 static const efftype_id effect_blind( "blind" );
 static const efftype_id effect_bloody_feet( "bloody_feet" );
@@ -1823,13 +1818,11 @@ void Creature::deal_damage_handle_type( const effect_source &source, const damag
         return;
     }
 
-    float div = 4.0f;
+    const damage_type &dt = du.type.obj();
+    // Bashing damage is less painful, acid more (pain_divisor in JSON)
+    float div = static_cast<float>( dt.pain_divisor );
 
-    // FIXME: Hardcoded damage types
-    if( du.type == damage_bash ) {
-        // Bashing damage is less painful
-        div = 5.0f;
-    } else if( du.type == damage_heat ) {
+    if( dt.ignites ) {
         // heat damage sets us on fire sometimes
         if( rng( 0, 100 ) < adjusted_damage ) {
             add_effect( source, effect_onfire, rng( 1_turns, 3_turns ), bp );
@@ -1839,7 +1832,8 @@ void Creature::deal_damage_handle_type( const effect_source &source, const damag
                 player_character.fulfill_pyromania_sees( here, *this );
             }
         }
-    } else if( du.type == damage_electric ) {
+    }
+    if( dt.electrocutes ) {
         // Electrical damage adds a major speed/dex debuff
         double multiplier = 1.0;
         if( monster *mon = as_monster() ) {
@@ -1859,9 +1853,6 @@ void Creature::deal_damage_handle_type( const effect_source &source, const damag
                                            _( "<npcname> is shocked!" ) );
             }
         }
-    } else if( du.type == damage_acid ) {
-        // Acid damage and acid burns are more painful
-        div = 3.0f;
     }
 
     on_damage_of_type( source, adjusted_damage, du.type, bp );
@@ -1874,7 +1865,8 @@ void Creature::heal_bp( bodypart_id /* bp */, int /* dam */ )
 {
 }
 
-void Creature::longpull( const std::string &name, const tripoint_bub_ms &p )
+void Creature::longpull( const std::string &name, const tripoint_bub_ms &p,
+                         std::optional<int> strength )
 {
     const map &here = get_map();
 
@@ -1903,9 +1895,16 @@ void Creature::longpull( const std::string &name, const tripoint_bub_ms &p )
     }
 
     // Pull creature
-    const Character *ch = as_character();
-    const monster *mon = as_monster();
-    const int str = ch != nullptr ? ch->get_str() : mon != nullptr ? mon->get_grab_strength() : 10;
+    int str = 10;
+    if( strength ) {
+        str = *strength;
+    } else if( const Character *ch = as_character() ) {
+        str = ch->get_str();
+    } else if( const monster *mon = as_monster() ) {
+        str = mon->get_grab_strength();
+    }
+    // STR and grab_strength can be 0
+    str = std::max( str, 1 );
     const int odds = units::to_kilogram( c->get_weight() ) / ( str * 3 );
     if( one_in( clamp<int>( odds * odds, 1, 1000 ) ) ) {
         add_msg_if_player( m_good, _( "You pull %1$s towards you with your %2$s!" ), c->disp_name(),

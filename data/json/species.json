@@ -182,7 +182,7 @@
     "description": "a zombie",
     "footsteps": "shuffling.",
     "bleeds": "fd_blood",
-    "flags": [ "VENOM_IMMUNE" ],
+    "flags": [ "VENOM_IMMUNE", "HORDE_ROAMER" ],
     "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ]
   },
   {
@@ -199,7 +199,8 @@
     "id": "FERAL",
     "description": "a feral",
     "footsteps": "shuffling.",
-    "bleeds": "fd_blood"
+    "bleeds": "fd_blood",
+    "flags": [ "HORDE_ROAMER" ]
   },
   {
     "type": "SPECIES",

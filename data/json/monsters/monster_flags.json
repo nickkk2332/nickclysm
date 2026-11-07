@@ -10,6 +10,11 @@
     "//": "It can hear you"
   },
   {
+    "id": "HORDE_ROAMER",
+    "type": "monster_flag",
+    "//": "With HEARS: joins the moving hordes of the overmap while it is off the map"
+  },
+  {
     "id": "GOODHEARING",
     "type": "monster_flag",
     "//": "Pursues sounds more than most monsters"

@@ -192,7 +192,6 @@ static const material_id material_hflesh( "hflesh" );
 static const material_id material_iflesh( "iflesh" );
 static const material_id material_iron( "iron" );
 static const material_id material_steel( "steel" );
-static const material_id material_stone( "stone" );
 static const material_id material_veggy( "veggy" );
 
 static const species_id species_CYBORG( "CYBORG" );
@@ -2363,11 +2362,13 @@ bool monster::is_immune_damage( const damage_type_id &dt ) const
             }
         }
     }
-    // FIXME: Hardcoded damage type specific immunities
-    if( dt == damage_heat && ( made_of( material_steel ) || made_of( material_stone ) ) ) {
-        return true;
+    for( const material_id &mat : dt->mon_immune_materials ) {
+        if( made_of( mat ) ) {
+            return true;
+        }
     }
-    if( dt == damage_electric && type->sp_defense == &mdefense::zapback ) {
+    // A monster that zaps back what hits it can't be hurt by electricity
+    if( dt == damage_electric && type->has_special_defense( &mdefense::zapback ) ) {
         return true;
     }
 
@@ -3010,9 +3011,7 @@ bool monster::move_effects( bool )
                 // on_hit here, which also cast hit_me spells and trained the grabber's weakpoint
                 // proficiencies every turn of the hold).
                 if( friendly == 0 ) {
-                    if( rng( 0, 100 ) <= static_cast<int>( type->def_chance ) ) {
-                        type->sp_defense( *this, char_grabber, nullptr );
-                    }
+                    special_defense( char_grabber, bodypart_str_id::NULL_ID().id(), nullptr );
                     if( type->has_anger_trigger( mon_trigger::HURT ) ) {
                         anger += 5;
                         aggro_character = true;
@@ -4489,6 +4488,28 @@ void monster::on_dodge( Creature *, float, float )
     // Currently does nothing, later should handle faction relations
 }
 
+void monster::special_defense( Creature *source, const bodypart_id &bp,
+                               dealt_projectile_attack const *const proj )
+{
+    for( const mon_special_defense &def : type->special_defenses ) {
+        if( !( proj != nullptr ? def.ranged : def.melee ) ) {
+            continue;
+        }
+        if( rng( 0, 100 ) > def.chance ) {
+            continue;
+        }
+        if( def.defense != nullptr ) {
+            def.defense( *this, source, proj );
+        }
+        if( def.eoc ) {
+            dialogue d( get_talker_for( *this ), source ? get_talker_for( *source ) : nullptr );
+            d.set_value( "is_ranged", proj != nullptr ? 1 : 0 );
+            d.set_value( "bodypart", bp.id().str() );
+            ( *def.eoc )->activate_activation_only( d, "a monster's special_when_hit" );
+        }
+    }
+}
+
 void monster::on_hit( map *here, Creature *source, bodypart_id bp_hit,
                       float, dealt_projectile_attack const *const proj )
 {
@@ -4496,9 +4517,7 @@ void monster::on_hit( map *here, Creature *source, bodypart_id bp_hit,
         return;
     }
 
-    if( rng( 0, 100 ) <= static_cast<int>( type->def_chance ) ) {
-        type->sp_defense( *this, source, proj );
-    }
+    special_defense( source, bp_hit, proj );
 
     // Adjust anger/morale of nearby monsters, if they have the appropriate trigger and are friendly
     // Keep filtering on the hit monsters' triggers to preserve current functionality
