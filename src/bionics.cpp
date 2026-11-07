@@ -3360,7 +3360,7 @@ void Character::remove_bionic( const bionic &bio )
             if( keeper != new_my_bionics.end() ) {
                 keeper->set_flag( tag );
             } else {
-                magic->forget_spell( taught );
+                magic->forget_spell( taught, *this );
             }
         }
         // The experience it added to spells known before it goes too. Another installed bionic

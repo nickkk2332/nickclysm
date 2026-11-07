@@ -7430,7 +7430,7 @@ talk_effect_fun_t::func f_cast_spell( const JsonObject &jo, std::string_view mem
                     run_eoc_vector( false_eocs, d );
                     return;
                 }
-                sp.cast_all_effects( *caster, *target );
+                sp.cast_all_effects_at_selected_target( *caster, *target );
                 caster->add_msg_player_or_npc( fake.trigger_message, fake.npc_trigger_message );
             } else {
                 const tripoint_bub_ms target_pos = loc_var

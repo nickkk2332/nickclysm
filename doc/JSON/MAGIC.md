@@ -82,8 +82,8 @@ In `data/mods/Magiclysm` there is a template spell, copied here for your perusal
     "get_level_formula_id": "jmath_get_level_formula",        // The id of a jmath formula that calculates what level the spell is for a given exp value.  Must be the inverse of exp_for_level_formula_id.
     "exp_for_level_formula_id": "jmath_exp_for_level_formula",// The id of a jmath formula that calculates how much exp is required for a given level.  Must be the inverse of get_level_formula_id.
     "magic_type": "magiclysm_default_magic",                  // the id of the magic_type object that holds some values for this spell and others with the same type defined.
-    "min_accuracy": -20,                                      // the accuracy bonus of the spell. around -15 and it gets blocked all the time
-    "max_accuracy": 20,                                       // around 20 accuracy and it's basically impossible to block
+    "min_accuracy": -20,                                      // the accuracy of the spell's damage: the lower it is, the more the target's block, dodge and spell resistance take off it
+    "max_accuracy": 20,                                       // at 20 (the default) only defences above 20 weaken it
     "accuracy_increment": 1.5,
     "min_damage": 0,                                          // minimum damage (or "starting" damage)
     "max_damage": 100,                                        // maximum damage the spell can achieve
@@ -207,7 +207,7 @@ Effect                 | Description
 `morale`               | Gives a morale effect to NPCs or the avatar within the aoe.  Uses damage() for the value.  `decay_start` is duration() / 10.
 `mutate`               | Mutates the targets.  If `effect_str` is defined, mutates toward that category instead of picking at random.  If the `MUTATE_TRAIT` flag is used, allows `effect_str` to be a specific trait.  Damage() / 100 is the percent chance the mutation will be successful (10000 represents 100.00%).
 `noise`                | Causes damage() amount of noise at the target.  Note: the noise can be described further with `sound_type`, `sound_description`, `sound_ambient`, `sound_id` and `sound_variant`.
-`pain_split`           | Evens out all of your limbs' damage.
+`pain_split`           | Evens out the damage of the caster's main body parts (head, torso, arms, legs): each gets their average hit points, never more than its own maximum, so nothing is healed.  A broken limb stays broken and doesn't count.
 `pull_target`          | Attempts to pull the target towards the caster in a straight line.  If the path is blocked by impassable furniture or terrain, the effect fails.  The pull succeeds 1 time in N, where N is (the target's weight in kg / (3 × strength), rounded down)², kept between 1 and 1000.  Strength is damage() when the spell has damage above 0, otherwise the caster's: STR for a character, `grab_strength` for a monster (at least 1).
 `pickup`               | Opens up the pickup menu at the target(s), allowing characters to pick up items at the area.  For every 1 damage in the spell's definition, each item takes 1 extra move to pick up.
 `recharge_vehicle`     | Increases or decreases the battery charge of a vehicle or battery-connected power grid. Damage is equal to the charge (negative decreases).
@@ -219,7 +219,7 @@ Effect                 | Description
 `short_range_teleport` | Teleports the player randomly range spaces with aoe variation.  See also the `TARGET_TELEPORT` and `UNSAFE_TELEPORT` flags.
 `slime_split`          | The slime splits into two large or normal slimes, depending on mass.  Note: hardcoded for `mon_blob`-type enemies, check the monster `death_function` + spell `summon` combination.
 `spawn_item`           | Spawns an item that will disappear at the end of its duration.  Default duration is 0.
-`summon`               | Summons a `MONSTER` or `monstergroup` from `effect_str` that will disappear at the end of its duration.  Default duration is 0.  See also the `SPAWN_WITH_DEATH_DROPS` flag.
+`summon`               | Summons a `MONSTER` or `monstergroup` from `effect_str` that will disappear at the end of its duration.  Default duration is 0.  See also the `SPAWN_WITH_DEATH_DROPS` flag.  Damage() monsters are placed on random tiles of the aoe; tiles someone stands on (the caster's own, if the spell may target `self`) and tiles the monster won't go to are skipped.
 `summon_vehicle`       | Summons a `vehicle` from `effect_str` that will disappear at the end of its duration.  Default duration is 0.
 `targeted_polymorph`   | A targeted monster is permanently transformed into the `MONSTER` specified by `effect_str`, if it has less HP than the spell's damage.  If `effect_str` is left empty, the target will transform into a random monster with a similar difficulty rating.  Alternatively, the `POLYMORPH_GROUP` flag can be used to pick a weighted ID from a `monstergroup`.  The player and NPCs are immune to this spell effect.
 `ter_transform`        | Transforms the field, furniture, terrain and trap in its aoe.  The chance of any one of the points in the aoe changing is 1 / (damage).  The `effect_str` is the ID of a `ter_furn_transform` (see [TER_FURN_TRANSFORM.md](TER_FURN_TRANSFORM.md) for further details).
@@ -279,7 +279,7 @@ Field group | Description | Example
 `min_duration`, `max_duration`, `duration_increment` | Duration of the spell `effects` and `effect_str`, depending on the type of the ID.  Written in moves, so `100` means `1 second`, `1 minute` as `6000`, and so on. | "min_duration": 100, <br>"max_duration": 6000, <br>"duration_increment": 100,
 `min_range`, `max_range`, `range_increment` | Distance from the caster to the target.  Can be omitted if the target is the caster (giving an buff/debuff, spawning an item).  <br>Note: the reality bubble diameter is ~60 tiles. | "min_range": 2, <br>"max_range": 10, <br>"range_increment": 0.5,
 `min_aoe`, `max_aoe`, `aoe_increment` | Short for "area of effect", area/zone of tiles that the spell will affect. | "min_aoe": 0, <br>"max_aoe": 5, <br>"aoe_increment": 0.1, 
-`min_accuracy`, `max_accuracy`, `accuracy_increment` | Accuracy of the spell.  -20 accuracy will cause it to always miss, 20 will cause it always hit.  Currently doesn't work. | "min_accuracy" -20, <br>"max_accuracy": 20, <br>"accuracy_increment": 1.5
+`min_accuracy`, `max_accuracy`, `accuracy_increment` | Accuracy of an `attack` spell's damage, 20 by default.  The spell always hits, but each of the target's block bonus, dodge and (unless the spell is `NON_MAGICAL`) spell resistance that is above the accuracy takes some damage off: a d20 is rolled, capped at how far that defence is above the accuracy, and 5% of that, of a third of the damage, is taken off.  So each defence takes 0 to 1/3 of the damage, and a spell with 20 accuracy is only weakened by defences above 20.  The dodge is compared, not attempted: being hit by a spell spends no dodges or stamina. | "min_accuracy" -20, <br>"max_accuracy": 20, <br>"accuracy_increment": 1.5
 `min_dot`, `max_dot`, `dot_increment` | Short for "damage over time".  Similar to damage, positive values hurt while negative values heal.  <br>Note: decimal values use roll_remainder(); having 0.5 would result in dot dealing 1 damage randomly every 2 seconds on average. Affected by `affected_body_parts` field | "min_dot": 0, <br>"max_dot": 2, <br>"dot_increment": 0.1,
 `min_pierce`, `max_pierce`, `pierce_increment` | Armor "piercing", how much armor of the same `damage_type` the spell will ignore. | "min_pierce": 0, <br>"max_pierce": 1, <br>"pierce_increment": 0.1,
 `min_bash_scaling`, `max_bash_scaling`, `bash_scaling_increment` | Converts a spell with the "attack" effect's damage into the scaling amount of terrain damage.  | "min_bash_scaling": 1.0, <br>"max_bash_scaling": 2.0, <br>"bash_scaling_increment": 0.1,
@@ -306,6 +306,8 @@ Field group | Description | Example
 
 ### Channeled Spell fields
 Channeled spells trigger their effects whenever you manually wait a turn after casting. They interrupt if you do ANYTHING but manually wait.  They also break if you are involved in melee combat.
+
+Channeling follows the spell whose cast started it, at the level it was cast at, whoever cast it and from wherever (the spell menu, an item, a bionic, an NPC), even if another spell is picked from the spell menu meanwhile.  It is saved with the game.
 
 Example `"channel_data`:
 ```
@@ -368,10 +370,10 @@ Flag                       | Description
 `POLYMORPH_GROUP`          | A `targeted_polymorph` spell will transform the target into a random monster from the `monstergroup` in `effect_str`.
 `PSIONIC`                  | Spells with this flag are not blocked by the NO_SPELLCASTING character flag, instead being blocked by NO_PSIONICS.
 `RANDOM_AOE`               | Picks random number between (min + increment) * level and max instead of normal behavior.
-`RANDOM_CRITTER`           | Same as `RANDOM_TARGET` but ignores ground.
+`RANDOM_CRITTER`           | Same as `RANDOM_TARGET` but ignores ground: only tiles with a creature are picked.  It works on its own or with `RANDOM_TARGET`.
 `RANDOM_DAMAGE`            | Picks random number between (min + increment) * level and max instead of normal behavior.
 `RANDOM_DURATION`          | Picks random number between (min + increment) * level and max instead of normal behavior.
-`RANDOM_TARGET`            | Forces the spell to choose a random valid target within range instead of the caster choosing the target.  This also affects `extra_effects`. 
+`RANDOM_TARGET`            | Forces the spell to choose a random valid target within range instead of the caster choosing the target (never the tile it picks around).  This also affects `extra_effects`: one picks its target in range of its parent's target (or of the caster, with `hit_self`).  A spell cast at its caster's own tile, as enchantments (`intermittent_activation`, `hit_me_effect`), relics, monster attacks with `self` or `allow_no_target`, death spells with `self` and `u_cast_spell` without `targeted` or `loc` cast, picks its target in range of the caster; with none, it is cast at the caster only if the caster is a valid target (`self`), and otherwise not at all.  A spell cast at a chosen target (the creature a `hit_you_effect` hit, an EOC's `loc`, a monster's foe) is cast there. 
 `RECHARM`                  | charm_monster spell stacks its duration onto existing charm effect.
 `CHARM_PET`                | charm_monster spell also makes the monster a pet, as though petfood had been used.
 `SILENT`                   | Spell makes no noise at target.
@@ -379,7 +381,7 @@ Flag                       | Description
 `SPAWN_GROUP`              | Spawn or summon from an `item_group` or `monstergroup`, instead of the specific IDs.
 `SPAWN_WITH_DEATH_DROPS`   | Allows summoned monsters to retain their usual death drops, otherwise they drop nothing.
 `SPLIT_DAMAGE`             | If used, instead of dealing damage to a random body part, damage would be spread evenly across entire body, unless affected_body_parts is specificed. Works only on characters (NPC or Avatar), for monsters do not have limbs. Works with both attacks and DOTs
-`SWAP_POS`                 | A projectile spell swaps the positions of the caster and target.
+`SWAP_POS`                 | A projectile spell swaps the positions of the caster and target.  Nothing is swapped when no creature is left on the target tile (an empty tile, or a target the spell killed).
 `TARGET_TELEPORT`          | Teleport spell changes to maximum range target with aoe as variation around target.
 `UNSAFE_TELEPORT`          | Teleport spell risks killing the caster or others.
 `VERBAL`                   | Spell makes noise at caster location, mouth encumbrance affects fail %.
@@ -424,6 +426,8 @@ The effect growth is indicated with the `min_effect`, `max_effect` and `effect_i
 * `min_effect` is what the spell will do at level 0.
 * `max_effect` is where it stops growing, the level cap.
 * `effect_increment` is how much it changes per level.
+
+A value can also fall with level: give `max_effect` below `min_effect` and a negative `effect_increment`, and the value starts at `min_effect` and stops falling at `max_effect`.  Either way `max_effect` is the bound, for damage, accuracy, damage over time, field intensity, aoe, range, duration and pierce alike (`"min_damage": 100, "max_damage": 1, "damage_increment": -5` deals 100 at level 0, 50 at level 10 and 1 from level 20).  A spell that gives only `min_effect` has that value at every level, plus `effect_increment` per level if it has one, the same as for range: `"min_damage": 8` alone deals 8.
 
 Additionally, there are also included: 
 * energy cost (as `base_energy_cost`, `final_energy_cost`, `energy_increment`), and

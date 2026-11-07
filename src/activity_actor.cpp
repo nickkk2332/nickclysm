@@ -2886,7 +2886,8 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
                 }
             }
 
-            spell_being_cast.cast_all_effects( who, *target );
+            // select_target() (or the caster) chose the target, RANDOM_TARGET ones included
+            spell_being_cast.cast_all_effects_at_selected_target( who, *target );
 
             if( !is_fake_spell ) {
                 if( !spell_being_cast.is_max_level( who ) ) {
@@ -2914,6 +2915,8 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
         }
         who.last_magic_target_pos = get_map().get_abs( *target );
         if( spell_being_cast.is_channeling_spell() ) {
+            // channeling follows this spell, whoever cast it and from wherever
+            who.magic->start_channeling( spell_being_cast );
             who.add_effect( effect_magic_channeling, calendar::INDEFINITELY_LONG_DURATION );
         }
     }
