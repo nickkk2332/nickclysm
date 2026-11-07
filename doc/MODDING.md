@@ -354,9 +354,11 @@ Monster stats can be adjusted using the `monster_adjustment` JSON element.
   }
 ```
 Using this syntax allows modification of the following things:
-**stat**: `speed` and `hp` are supported.  Modifier is a multiplier of the base speed or HP stat.
+**stat**: `speed`, `hp` and `bleed_rate` are supported.  Modifier is a multiplier of the base stat.  Any other name is an error.
 **flag**: add or remove a monster flag.
-**special**: currently only supports `nightvision` which makes the specified monster species gain nightvision equal to its dayvision.
+**special**: currently only supports `nightvision` which makes the specified monster species gain nightvision equal to its dayvision.  Any other value is an error.
+
+The adjustment applies to the monsters of `species`.  Instead of a species, or as well as one, `monsters` (an array of monster ids) limits it to those monsters: `"monsters": [ "mon_zombie", "mon_zombie_fat" ]`.  One of the two is needed.
 
 Currently, adjusting multiple stats or flags requires separate `monster_adjustment` entries.
 

@@ -680,13 +680,14 @@ bool Creature::sees( const map &here, const Creature &critter ) const
         return false;
     }
 
-    // Check means to detect invisibility here
-    if( ( has_flag( json_flag_TRUE_SEEING ) || has_flag( mon_flag_TRUESIGHT ) ) &&
-        ( critter.has_flag( mon_flag_CAMOUFLAGE ) || critter.has_effect_with_flag( json_flag_INVISIBLE ) ||
-          critter.has_flag( mon_flag_NIGHT_INVISIBILITY ) ||
-          critter.has_flag( mon_flag_PERMANENT_INVISIBILITY ) ) ) {
-        return true;
-    }
+    // Means to detect invisibility: TRUE_SEEING and TRUESIGHT see camouflaged and invisible
+    // creatures as they see any other, so range, light and walls still apply (MONDT-B07)
+    const bool sees_through_hiding = ( has_flag( json_flag_TRUE_SEEING ) ||
+                                       has_flag( mon_flag_TRUESIGHT ) ) &&
+                                     ( critter.has_flag( mon_flag_CAMOUFLAGE ) ||
+                                       critter.has_effect_with_flag( json_flag_INVISIBLE ) ||
+                                       critter.has_flag( mon_flag_NIGHT_INVISIBILITY ) ||
+                                       critter.has_flag( mon_flag_PERMANENT_INVISIBILITY ) );
 
     // Creature has stumbled into an invisible player and is now aware of them
     if( has_effect( effect_stumbled_into_invisible ) &&
@@ -695,21 +696,23 @@ bool Creature::sees( const map &here, const Creature &critter ) const
     }
 
     // Invisibility checked after stumbling and after invisibility detection methods
-    if( ( critter.has_effect_with_flag( json_flag_INVISIBLE ) ||
-          critter.has_flag( mon_flag_PERMANENT_INVISIBILITY ) ) &&
+    if( !sees_through_hiding && ( critter.has_effect_with_flag( json_flag_INVISIBLE ) ||
+                                  critter.has_flag( mon_flag_PERMANENT_INVISIBILITY ) ) &&
         !critter.has_effect_with_flag( json_flag_SUPPRESS_INVISIBILITY ) ) {
         return false;
     }
 
-    // Creatures with infrared vision check here after invisibility
+    // Creatures with infrared vision check here after invisibility. Darkness doesn't hide a
+    // warm creature from them, but walls do.
     if( this->has_flag( mon_flag_INFRARED_VISION ) && critter.is_warm() ) {
         const monster *m = this->as_monster();
-        return target_range <= std::max( m->type->vision_day, m->type->vision_night );
+        const int infrared_range = std::max( m->type->vision_day, m->type->vision_night );
+        return target_range <= infrared_range && here.sees( pos, critter_pos, infrared_range );
     }
 
     // This check is ridiculously expensive so defer it to after everything else.
-    auto visible = []( const Character * ch ) {
-        return ch == nullptr || !ch->is_invisible();
+    auto visible = [sees_through_hiding]( const Character * ch ) {
+        return sees_through_hiding || ch == nullptr || !ch->is_invisible();
     };
 
     // Creatures underwater beneath a solid surface (walkway, ice) are hidden
@@ -726,8 +729,11 @@ bool Creature::sees( const map &here, const Creature &critter ) const
                visible( ch );
     }
 
-    // If we cannot see without any of the penalties below, bail now.
-    if( !sees( here, critter_pos, critter.is_avatar() ) ) {
+    // If we cannot see without any of the penalties below, bail now. An invisible avatar has no
+    // visibility of their own to scale the range by, so true sight traces the line instead.
+    const bool symmetric_with_avatar = critter.is_avatar() &&
+                                       !( sees_through_hiding && ch != nullptr && ch->is_invisible() );
+    if( !sees( here, critter_pos, symmetric_with_avatar ) ) {
         return false;
     }
 
@@ -739,14 +745,15 @@ bool Creature::sees( const map &here, const Creature &critter ) const
 
     if( ( target_range > 2 && critter.digging() &&
           here.has_flag( ter_furn_flag::TFLAG_DIGGABLE, critter_pos ) ) ||
-        ( critter.has_flag( mon_flag_CAMOUFLAGE ) && target_range > this->get_eff_per() ) ||
+        ( !sees_through_hiding && critter.has_flag( mon_flag_CAMOUFLAGE ) &&
+          target_range > this->get_eff_per() ) ||
         ( critter.has_flag( mon_flag_WATER_CAMOUFLAGE ) &&
           target_range > this->get_eff_per() &&
           ( critter.is_likely_underwater( here ) ||
             here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, critter_pos ) ||
             ( here.has_flag( ter_furn_flag::TFLAG_SHALLOW_WATER, critter_pos ) &&
               critter.get_size() < creature_size::medium ) ) ) ||
-        ( critter.has_flag( mon_flag_NIGHT_INVISIBILITY ) &&
+        ( !sees_through_hiding && critter.has_flag( mon_flag_NIGHT_INVISIBILITY ) &&
           here.light_at( critter_pos ) <= lit_level::LOW ) ||
         ( !is_likely_underwater( here ) && critter.is_likely_underwater( here ) &&
           majority_rule( critter.has_flag( mon_flag_WATER_CAMOUFLAGE ),
@@ -769,42 +776,52 @@ bool Creature::sees( const map &here, const Creature &critter ) const
             if( coverage < 30 ) {
                 return visible( ch );
             }
-            float size_modifier = 1.0f;
-            switch( ch->get_size() ) {
-                case creature_size::tiny:
-                    size_modifier = 2.0f;
-                    break;
-                case creature_size::small:
-                    size_modifier = 1.4f;
-                    break;
-                case creature_size::medium:
-                    break;
-                case creature_size::large:
-                    size_modifier = 0.6f;
-                    break;
-                case creature_size::huge:
-                    size_modifier = 0.15f;
-                    break;
-                case creature_size::num_sizes:
-                    debugmsg( "ERROR: Creature has invalid size class." );
-                    break;
-            }
-
-            int profile = 120 / size_modifier;
-            if( ch->is_crouching() || ch->has_effect( effect_all_fours ) ) {
-                profile *= 0.5;
-            } else if( ch->is_prone() ) {
-                profile *= 0.275;
-            }
-
-            if( coverage < profile ) {
-                const int vision_modifier = std::max( 30 * ( 1 - coverage / profile ), 1 );
-                return target_range <= vision_modifier && visible( ch );
-            }
-            return false;
+            const int vision_modifier = partial_cover_sight_range( coverage, ch->get_size(),
+                                        ch->is_crouching() || ch->has_effect( effect_all_fours ), ch->is_prone() );
+            return target_range <= vision_modifier && visible( ch );
         }
     }
     return visible( ch );
+}
+
+int partial_cover_sight_range( const int coverage, const creature_size size, const bool crouching,
+                               const bool prone )
+{
+    float size_modifier = 1.0f;
+    switch( size ) {
+        case creature_size::tiny:
+            size_modifier = 2.0f;
+            break;
+        case creature_size::small:
+            size_modifier = 1.4f;
+            break;
+        case creature_size::medium:
+            break;
+        case creature_size::large:
+            size_modifier = 0.6f;
+            break;
+        case creature_size::huge:
+            size_modifier = 0.15f;
+            break;
+        case creature_size::num_sizes:
+            debugmsg( "ERROR: Creature has invalid size class." );
+            break;
+    }
+
+    // Kept fractional: in whole numbers coverage / profile was always 0, so any cover the
+    // character didn't fully hide behind left them visible from 30 tiles (MONDT-B05)
+    float profile = 120.0f / size_modifier;
+    if( crouching ) {
+        profile *= 0.5f;
+    } else if( prone ) {
+        profile *= 0.275f;
+    }
+
+    if( coverage >= profile ) {
+        return 0;
+    }
+    return std::max( static_cast<int>( 30.0f * ( 1.0f - static_cast<float>( coverage ) / profile ) ),
+                     1 );
 }
 
 bool Creature::sees( const map &here, const tripoint_bub_ms &t, bool is_avatar,
@@ -1400,7 +1417,6 @@ void Creature::messaging_projectile_attack( const Creature *source,
     const map &here = get_map();
 
     const tripoint_bub_ms pos = pos_bub( here );
-    const tripoint_bub_ms source_pos = source->pos_bub( here );
     const viewer &player_view = get_player_view();
     const bool u_see_this = player_view.sees( here, *this );
 
@@ -1424,8 +1440,8 @@ void Creature::messaging_projectile_attack( const Creature *source,
         } else if( is_avatar() ) {
             //monster hits player ranged
             if( has_flag( json_flag_DISTRIBUTED_DAMAGE ) ) {
-                //~ Hit message. 2$d is damage value.
-                add_msg_if_player( m_bad, _( "You were hit for %2$d total damage." ) );
+                //~ Hit message. %d is damage value.
+                add_msg_if_player( m_bad, _( "You were hit for %d total damage." ), total_damage );
             } else {
                 //~ Hit message. 1$s is bodypart name in accusative. 2$d is damage value.
                 add_msg_if_player( m_bad, _( "You were hit in the %1$s for %2$d damage." ),
@@ -1433,6 +1449,8 @@ void Creature::messaging_projectile_attack( const Creature *source,
                                    total_damage );
             }
         } else if( source != nullptr ) {
+            // ammo with NULL_SOURCE has no shooter (MONDT-B06)
+            const tripoint_bub_ms source_pos = source->pos_bub( here );
             if( source->is_avatar() ) {
                 //player hits monster ranged
                 SCT.add( pos.xy().raw(),
@@ -2716,25 +2734,42 @@ Creature *Creature::get_summoner() const
             return owner->resolve();
         }
     }
-    if( !summoner ) {
-        return nullptr;
-    } else if( summoner.value() == get_player_character().getID() ) {
-        return &get_player_character();
-    } else {
-        return g->find_npc( summoner.value() );
+    switch( summoner.type ) {
+        case creature_ref::kind::none:
+            return nullptr;
+        case creature_ref::kind::character: {
+            const character_id id( static_cast<int>( summoner.id ) );
+            if( id == get_player_character().getID() ) {
+                return &get_player_character();
+            }
+            return g ? g->find_npc( id ) : nullptr;
+        }
+        case creature_ref::kind::monster:
+            // a monster that cast the summon, while it is loaded (MONDT-B12)
+            return summoner.resolve();
     }
+    return nullptr;
 }
 
 void Creature::set_summoner( Creature *const summoner )
 {
-    if( summoner->as_character() != nullptr ) {
-        this->summoner = summoner->as_character()->getID();
+    if( summoner == nullptr ) {
+        this->summoner = creature_ref();
+    } else if( summoner->as_character() != nullptr ) {
+        set_summoner( summoner->as_character()->getID() );
+    } else if( g ) {
+        this->summoner = creature_ref::bind( *summoner );
     }
 }
 
 void Creature::set_summoner( character_id summoner )
 {
-    this->summoner = summoner;
+    this->summoner = creature_ref();
+    this->summoner.type = creature_ref::kind::character;
+    this->summoner.id = summoner.get_value();
+    if( g ) {
+        this->summoner.dimension = g->get_dimension_prefix();
+    }
 }
 
 int Creature::get_num_blocks() const

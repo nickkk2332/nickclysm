@@ -25,12 +25,13 @@
     "corpse_damage_yield": [ 1, 1, 1, 0.9, 0.75, 1 ],
     "gib_yield": 0.5,
     "survives_splatter": true,
+    "//": "Field dressing takes 0 to half of the bones, so a dressed corpse has half to all of them left: on average both together give what butchering the whole corpse does.",
     "corpse_flag_yield": [
-      { "flags": [ "FIELD_DRESS" ], "actions": [ "FULL", "QUICK" ], "yield": { "mult": 0.5, "random": [ 0.5, 1 ] } },
+      { "flags": [ "FIELD_DRESS" ], "actions": [ "FULL", "QUICK" ], "yield": { "mult": 0, "random": [ 0.5, 1 ] } },
       {
         "flags": [ "FIELD_DRESS_FAILED" ],
         "actions": [ "FULL", "QUICK" ],
-        "yield": { "mult": 0.5, "random": [ 0.5, 1 ] }
+        "yield": { "mult": 0, "random": [ 0.5, 1 ] }
       }
     ]
   },

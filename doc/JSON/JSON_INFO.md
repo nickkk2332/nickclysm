@@ -1912,11 +1912,13 @@ Note that burn_data is defined per material, but items may be made of multiple m
 | `monsters`              | To choose a monster for spawning, the game creates entries equal to the sum of all `weight` and picks one. Each monster will have a number of entries equal to its `weight`. See the table below for how to build the single monster definitions.
 | `freq_total`            | (_optional_) (int) The number the spawn roll is made against. When it is larger than the sum of all `weight`s, the rest of the roll goes to the `default` monster. (default: the sum of all `weight`s of entries without an `event`)
 | `auto_total`            | (_optional_) (bool) Set `freq_total` to the sum of all `weight`s, including entries added by other definitions of the same group. (default: false)
-| `is_safe`               | (_optional_) (bool) Check to not trigger safe-mode warning, currently inconsequential.
-| `is_animal`             | (_optional_) (bool) Check if that group has only normal animals, currently inconsequential.
-| `replace_monster_group` | (_optional_) (bool) Check if the group should be replaced completely by another monster group as game time progresses - doesn't affect already spawned monsters, as such mostly superseded by monster evolution.
-| `new_monster_group_id`  | (_optional_) (string) The id of the monster group that should replace this one.
-| `replacement_time`      | (_optional_) (int) The amount of time before the group should be replaced by the new one, in days. Final replacement date is calculated by `replacement_time * evolution factor`.
+| `is_safe`               | (_optional_) (bool) The group doesn't make its overmap tile unsafe: a tile counts as safe (the `u_at_safe_space` condition, missions that look for a safe place) only when every monster group on it is safe. (default: false)
+| `is_animal`             | (_optional_) (bool) The group has only normal animals: map spawns of the group use the world's animal spawn density (`SPAWN_ANIMAL_DENSITY`) instead of the monster spawn density. (default: false)
+| `replace_monster_group` | (_optional_) (bool) **Not implemented**: read and kept, but nothing replaces the group. Meant to replace the group completely by another monster group as game time progresses; monster evolution (`starts`, `ends` and `upgrades`) does this job instead.
+| `new_monster_group_id`  | (_optional_) (string) **Not implemented** (see `replace_monster_group`): the id of the monster group that should replace this one.
+| `replacement_time`      | (_optional_) (time) **Not implemented** (see `replace_monster_group`): the time before the group should be replaced by the new one, at least one day.
+
+A definition that adds to an existing group keeps the group's `is_safe`, `is_animal`, `default` and replacement fields unless it sets them itself.
 
 #### Monster/Subgroup definition
 
@@ -3645,7 +3647,7 @@ For each harvest entry, the rules apply in this order to the amount rolled from 
 
 `trains_proficiencies` (array, optional): each `{ "proficiencies": [ ... ], "time_fraction": { "<action>": fraction } }` trains the first proficiency in the list the butcher doesn't have (the last one when they have all of them) for that fraction of the butchery time, when butchering a creature with a drop of this type with one of the listed actions. A list shared by several drop types of the same creature trains once.
 
-The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had. `mutagen`, `mutagen_group`, `bionic` and `bionic_group` have `"action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 }`: the default without `FIELD_DRESS`, so an organ or implant in a creature's `harvest` list (as in Magiclysm) comes from full butchery or dissection, not also from field dressing first.
+The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had, except that a field-dressed corpse now has half to all of its bones left (`"mult": 0, "random": [ 0.5, 1 ]`), so field dressing and butchering together give about the bones of butchering the whole corpse, not up to twice as many. `mutagen`, `mutagen_group`, `bionic` and `bionic_group` have `"action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 }`: the default without `FIELD_DRESS`, so an organ or implant in a creature's `harvest` list (as in Magiclysm) comes from full butchery or dissection, not also from field dressing first.
 
 ### Weapon Category
 

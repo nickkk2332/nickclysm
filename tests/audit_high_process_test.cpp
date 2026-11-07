@@ -660,7 +660,8 @@ std::optional<int> old_entry_yield( const std::string &type, int roll, butcher_t
             return std::nullopt;
         }
         if( type == "bone" ) {
-            roll = ( roll / 2 ) + rng( roll / 2, roll );
+            // MONDT-B09: half to all of the bones are left, not 1 to 1.5 times them
+            roll = rng( roll / 2, roll );
         }
     }
     if( ( action == butcher_type::FULL || action == butcher_type::QUICK ) &&
@@ -669,7 +670,8 @@ std::optional<int> old_entry_yield( const std::string &type, int roll, butcher_t
             return std::nullopt;
         }
         if( type == "bone" ) {
-            roll = ( roll / 2 ) + rng( roll / 2, roll );
+            // MONDT-B09: half to all of the bones are left, not 1 to 1.5 times them
+            roll = rng( roll / 2, roll );
         }
         if( type == "flesh" || type == "skin" ) {
             roll = rng( 0, roll );

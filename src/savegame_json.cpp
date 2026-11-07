@@ -4435,6 +4435,10 @@ void Creature::store( JsonOut &jsout ) const
 
     jsout.member( "body", body );
     jsout.member( "lifespan_end", lifespan_end );
+    // kill credit and COPY_SUMMONER_LOOK need it after a reload (MONDT-B12)
+    if( summoner.type != creature_ref::kind::none ) {
+        jsout.member( "summoner", summoner );
+    }
     // fake is not stored, it's temporary anyway, only used to fire with a gun.
 }
 
@@ -4495,6 +4499,11 @@ void Creature::load( const JsonObject &jsin )
 
     fake = false; // see Creature::load
     jsin.read( "lifespan_end", lifespan_end );
+    // saves from before MONDT-B12 have none
+    summoner = creature_ref();
+    if( jsin.has_object( "summoner" ) ) {
+        jsin.read( "summoner", summoner );
+    }
     on_stat_change( "pain", pain );
 }
 

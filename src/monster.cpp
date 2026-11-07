@@ -310,7 +310,8 @@ monster::monster( const mtype_id &id ) : monster()
             itype_id storage_item_id = itype_id( type->mount_items.storage );
             item storage_item_item = item( storage_item_id, calendar::turn_zero );
             add_effect( effect_has_bag, 1_turns, true );
-            tack_item = cata::make_value<item>( storage_item_item );
+            // the bag, not the saddle (MONDT-B11)
+            storage_item = cata::make_value<item>( storage_item_item );
         }
     }
     aggro_character = type->aggro_character;
