@@ -2380,6 +2380,16 @@ void renderer_recovery_test_support::log_draw_light( cata_tiles &tiles,
     tiles.test_draw_light_log = log;
 }
 
+size_t renderer_recovery_test_support::lookup_memo_size( const cata_tiles &tiles )
+{
+    return tiles.lookup_memo.size();
+}
+
+bool renderer_recovery_test_support::lookup_memo_enabled( const cata_tiles &tiles )
+{
+    return tiles.lookup_memo.is_enabled();
+}
+
 void renderer_recovery_test_support::set_has_animated_tiles( cata_tiles &tiles,
         const bool animated )
 {
@@ -2558,6 +2568,8 @@ std::shared_ptr<const tileset> renderer_recovery_test_support::install_tiles_bun
     for( const std::pair<std::string, tile_type> &t : tiles ) {
         ts->create_tile_type( t.first, tile_type( t.second ) );
     }
+    // as tileset_cache::loader::load does once tile_ids is final
+    ts->link_multitile_subtiles();
     atlas_replay_descriptor desc;
     desc.image_path_u8 = "tests/data/renderer_recovery_atlas.png";
     desc.sprite_width = 1;

@@ -28,11 +28,38 @@ enum class tile_lookup_suffix : uint8_t {
  * The memo does not own its tileset (a tileset holds GPU textures, which must go when the
  * renderer lets go of them), so it watches it: if the tileset it was filled from has been
  * destroyed, another one at the same address is not mistaken for it.
+ *
+ * A lookup of an id the caller also holds as an int id (terrain, furniture, traps, fields)
+ * can be remembered by that int id instead (find_by_int_id), which needs no hash.  An int id
+ * stands for one string id only as long as the game data is unchanged, which validate()
+ * already requires.
+ *
+ * The renderer uses the memo only while the "Experimental: cache sprite lookups" option is
+ * on (set_enabled).
  */
 template<typename Result, size_t Seasons, size_t Categories>
 class tile_lookup_memo
 {
     public:
+        // Int ids from this one up are answered but not remembered, so a wild one can't make
+        // a table huge.
+        static constexpr int int_id_limit = 1 << 20;
+
+        /**
+         * Turns the memo on or off and returns whether it is on.  A change either way forgets
+         * everything, so what it remembered before it was turned off is never used again.
+         */
+        bool set_enabled( bool on ) {
+            if( on != enabled ) {
+                clear();
+                enabled = on;
+            }
+            return enabled;
+        }
+        bool is_enabled() const {
+            return enabled;
+        }
+
         /**
          * Forgets everything unless `owner` is the live tileset the memo was filled from and
          * `data_generation` (see DynamicDataLoader::data_generation) is unchanged.
@@ -61,12 +88,25 @@ class tile_lookup_memo
             if( found == by_id.end() ) {
                 return nullptr;
             }
-            for( const answer &a : found->second ) {
-                if( a.suffix == suffix && a.intensity == intensity && a.variant == variant ) {
-                    return &a.result;
-                }
+            return find_in( found->second, suffix, intensity, variant );
+        }
+
+        /**
+         * As find(), for the lookup of the id whose int id in its category is `int_id` (the
+         * to_i() of a ter_id for terrain, and so on).  These answers are kept apart from the
+         * ones by string id.
+         */
+        const Result *find_by_int_id( size_t season, size_t category, int int_id,
+                                      tile_lookup_suffix suffix, int intensity,
+                                      const std::string &variant ) const {
+            if( season >= Seasons || category >= Categories || int_id < 0 ) {
+                return nullptr;
             }
-            return nullptr;
+            const by_int_id_table &by_int_id = int_answers[season][category];
+            if( static_cast<size_t>( int_id ) >= by_int_id.size() ) {
+                return nullptr;
+            }
+            return find_in( by_int_id[static_cast<size_t>( int_id )], suffix, intensity, variant );
         }
 
         /**
@@ -86,10 +126,35 @@ class tile_lookup_memo
             return for_id.back().result;
         }
 
+        /** As remember(), for the lookup find_by_int_id() finds. */
+        const Result &remember_by_int_id( size_t season, size_t category, int int_id,
+                                          tile_lookup_suffix suffix, int intensity,
+                                          const std::string &variant, Result result ) {
+            if( season >= Seasons || category >= Categories || int_id < 0 ||
+                int_id >= int_id_limit ) {
+                overflow = std::move( result );
+                return overflow;
+            }
+            by_int_id_table &by_int_id = int_answers[season][category];
+            if( static_cast<size_t>( int_id ) >= by_int_id.size() ) {
+                by_int_id.resize( static_cast<size_t>( int_id ) + 1 );
+            }
+            std::vector<answer> &for_id = by_int_id[static_cast<size_t>( int_id )];
+            for_id.push_back( { suffix, intensity, variant, std::move( result ) } );
+            ++count;
+            return for_id.back().result;
+        }
+
+        /** Forgets everything; whether the memo is on stays as it is. */
         void clear() {
             for( std::array<by_id_map, Categories> &by_category : answers ) {
                 for( by_id_map &by_id : by_category ) {
                     by_id.clear();
+                }
+            }
+            for( std::array<by_int_id_table, Categories> &by_category : int_answers ) {
+                for( by_int_id_table &by_int_id : by_category ) {
+                    by_int_id.clear();
                 }
             }
             owner_raw = nullptr;
@@ -111,8 +176,22 @@ class tile_lookup_memo
             Result result;
         };
         using by_id_map = std::unordered_map<std::string, std::vector<answer>>;
+        // indexed by int id
+        using by_int_id_table = std::vector<std::vector<answer>>;
+
+        static const Result *find_in( const std::vector<answer> &for_id, tile_lookup_suffix suffix,
+                                      int intensity, const std::string &variant ) {
+            for( const answer &a : for_id ) {
+                if( a.suffix == suffix && a.intensity == intensity && a.variant == variant ) {
+                    return &a.result;
+                }
+            }
+            return nullptr;
+        }
 
         std::array<std::array<by_id_map, Categories>, Seasons> answers;
+        std::array<std::array<by_int_id_table, Categories>, Seasons> int_answers;
+        bool enabled = false;
         const void *owner_raw = nullptr;
         std::weak_ptr<const void> owner_alive;
         uint64_t generation = 0;

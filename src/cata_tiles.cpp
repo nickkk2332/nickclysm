@@ -409,6 +409,7 @@ void tileset::link_multitile_subtiles()
     for( std::pair<const std::string, tile_type> &entry : tile_ids ) {
         tile_type &tile = entry.second;
         tile.subtile_ids.fill( nullptr );
+        tile.subtiles_by_season.clear();
         if( !tile.multitile ) {
             continue;
         }
@@ -420,8 +421,25 @@ void tileset::link_multitile_subtiles()
             }
             // the key of the node in tile_ids, which lives as long as the tileset
             const auto subtile = tile_ids.find( entry.first + "_" + key );
-            if( subtile != tile_ids.end() ) {
-                tile.subtile_ids[i] = &subtile->first;
+            if( subtile == tile_ids.end() ) {
+                continue;
+            }
+            tile.subtile_ids[i] = &subtile->first;
+            if( tile.subtiles_by_season.empty() ) {
+                tile.subtiles_by_season.resize( multitile_key_count * NUM_SEASONS,
+                { nullptr, nullptr } );
+            }
+            // What the draw of the subtile id finds in each season: with no variant,
+            // find_tile_looks_like asks find_tile_type_by_season first, and it finds a tile
+            // in tile_ids.  tile_ids_by_season is final too, and points only into tile_ids.
+            for( int season = 0; season < NUM_SEASONS; ++season ) {
+                std::optional<tile_lookup_res> found = find_tile_type_by_season( subtile->first,
+                                                       static_cast<season_type>( season ) );
+                if( found ) {
+                    tile.subtiles_by_season[i * NUM_SEASONS + static_cast<size_t>( season )] = {
+                        &found->id(), &found->tile()
+                    };
+                }
             }
         }
     }
@@ -2442,9 +2460,17 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, const trip
             rota, ll, retract, apply_night_vision_goggles, height_3d, 0, "", point() );
 }
 
+bool cata_tiles::draw_from_int_id( const std::string &id, const int lookup_int_id,
+                                   TILE_CATEGORY category, const tripoint_bub_ms &pos, int subtile, int rota, lit_level ll,
+                                   bool apply_night_vision_goggles, int &height_3d, int intensity_level )
+{
+    return cata_tiles::draw_from_id_string_internal( id, category, empty_string, pos, subtile, rota,
+            ll, -1, apply_night_vision_goggles, height_3d, intensity_level, "", point(), lookup_int_id );
+}
+
 std::optional<tile_lookup_res> cata_tiles::find_tile_looks_like_memoized( const std::string &id,
         TILE_CATEGORY category, const std::string &variant, const tile_lookup_suffix suffix,
-        const int intensity )
+        const int intensity, const int lookup_int_id )
 {
     const auto look_up = [&]() {
         switch( suffix ) {
@@ -2467,6 +2493,16 @@ std::optional<tile_lookup_res> cata_tiles::find_tile_looks_like_memoized( const 
     lookup_memo.validate( tileset_ptr, DynamicDataLoader::get_instance().data_generation() );
     const size_t season = static_cast<size_t>( season_of_year( calendar::turn ) );
     const int intensity_key = suffix == tile_lookup_suffix::intensity ? intensity : 0;
+    if( lookup_int_id >= 0 ) {
+        // the same answer as for the string id: the int id stands for it while the game data
+        // is unchanged, and the memo forgets everything when that changes
+        if( const std::optional<tile_lookup_res> *known = lookup_memo.find_by_int_id( season,
+                category_index, lookup_int_id, suffix, intensity_key, variant ) ) {
+            return *known;
+        }
+        return lookup_memo.remember_by_int_id( season, category_index, lookup_int_id, suffix,
+                                               intensity_key, variant, look_up() );
+    }
     if( const std::optional<tile_lookup_res> *known = lookup_memo.find( season, category_index, id,
             suffix, intensity_key, variant ) ) {
         return *known;
@@ -2901,7 +2937,7 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
         int subtile, int rota, lit_level ll, int retract,
         bool apply_night_vision_goggles, int &height_3d,
         int intensity_level, const std::string &variant,
-        const point &offset )
+        const point &offset, const int lookup_int_id )
 {
     restore_on_out_of_scope<bool> restore_decided( m_anchor_decided );
     restore_on_out_of_scope<std::optional<smooth_lighting::light_anchor>> restore_anchor(
@@ -2914,6 +2950,10 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
                          std::nullopt;
     }
     bool nv_color_active = apply_night_vision_goggles && get_option<bool>( "NV_GREEN_TOGGLE" );
+    // The experimental sprite lookup cache (TILE_LOOKUP_CACHE).  Off, the lookups and the
+    // multitile draw below are what they were before it existed.  A change of the option
+    // empties the memo.
+    const bool lookup_cache_on = lookup_memo.set_enabled( tile_lookup_cache );
     // If the ID string does not produce a drawable tile
     // it will revert to the "unknown" tile.
     // The "unknown" tile is one that is highly visible so you kinda can't miss it :D
@@ -2947,8 +2987,10 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
 
         // Adding to the id like this breaks the fragile string handling that vision level uses for looks_like.
         if( prevent_occlusion_transp && retract > 0 && category != TILE_CATEGORY::OVERMAP_VISION_LEVEL ) {
-            res = find_tile_looks_like_memoized( id, category, variant,
-                                                 tile_lookup_suffix::transparent, 0 );
+            res = lookup_cache_on
+                  ? find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::transparent,
+                                                   0, lookup_int_id )
+                  : find_tile_looks_like( id + "_transparent", category, variant );
             if( res ) {
                 tt = &res -> tile();
             }
@@ -2958,15 +3000,20 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
     // check if there is an available intensity tile and if there is use that instead of the basic tile
     // this is only relevant for fields
     if( intensity_level > 0 ) {
-        res = find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::intensity,
-                                             intensity_level );
+        res = lookup_cache_on
+              ? find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::intensity,
+                                               intensity_level, lookup_int_id )
+              : find_tile_looks_like( id + "_int" + std::to_string( intensity_level ), category, variant );
         if( res ) {
             tt = &res -> tile();
         }
     }
     // if a tile with intensity hasn't already been found then fall back to a base tile
     if( !res ) {
-        res = find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::none, 0 );
+        res = lookup_cache_on
+              ? find_tile_looks_like_memoized( id, category, variant, tile_lookup_suffix::none, 0,
+                                               lookup_int_id )
+              : find_tile_looks_like( id, category, variant );
         if( res ) {
             tt = &res -> tile();
         }
@@ -3193,6 +3240,37 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
         return false;
     }
 
+    // Draws `shown`, which the lookup of `shown_id` found under `shown_found_id`: how every
+    // draw ends, including the subtile draw the multitile check below can make in place.
+    const auto draw_shown = [&]( const tile_type & display_tile, const std::string & shown_id,
+    const std::string & shown_found_id, const point & shown_offset ) {
+        // make sure we aren't going to rotate the tile if it shouldn't be rotated
+        if( !display_tile.rotates && !( category == TILE_CATEGORY::NONE )
+            && !( category == TILE_CATEGORY::MONSTER ) ) {
+            rota = 0;
+        }
+
+        unsigned int loc_rand = 0;
+        // only bother mixing up a hash/random value if the tile has some sprites to randomly pick
+        // between
+        if( display_tile.fg.size() > 1 || display_tile.bg.size() > 1 ) {
+            loc_rand = get_variant_seed( display_tile, category, pos, shown_found_id );
+        }
+
+        if( ! prevent_occlusion_retract ) {
+            retract = 0;
+        }
+
+        //draw it!
+        const tile_render_params rp{ ll, nv_color_active, pos, m_draw_light, m_shown_anchor };
+        // test seam: draw_sprite_at logs under this id
+        test_draw_id = test_draw_light_log ? &shown_id : nullptr;
+        draw_tile_at( display_tile, screen_pos, loc_rand, rota, rp,
+                      retract, height_3d, shown_offset );
+
+        return true;
+    };
+
     const tile_type &display_tile = *tt;
     // check to see if the display_tile is multitile, and if so if it has the key related to
     // subtile
@@ -3200,10 +3278,26 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
         // The subtile ids linked at load are display_tile's own id with the key appended.
         // found_id is display_tile's own id only when display_tile came from the lookup, not
         // from the "unknown" fallbacks, which keep the asked-for id.
-        const std::string *linked_id = res && subtile >= 0 &&
+        const std::string *linked_id = lookup_cache_on && res && subtile >= 0 &&
                                        static_cast<size_t>( subtile ) < display_tile.subtile_ids.size() ?
                                        display_tile.subtile_ids[subtile] : nullptr;
         if( linked_id ) {
+            // The call below looks up only the subtile id (no variant, no intensity, and no
+            // "_transparent" form when its retract is decided already) and finds the tile
+            // linked for this season.  So it skips every fallback and the multitile check, and
+            // ends in draw_shown with that tile, no offset, and this call's rota, retract,
+            // light and anchor.  Draw that here, without the second call.
+            const bool retract_decided = retract >= 0 ||
+                                         !( prevent_occlusion_transp || prevent_occlusion_retract );
+            const size_t season = static_cast<size_t>( season_of_year( calendar::turn ) );
+            const size_t linked = static_cast<size_t>( subtile ) * NUM_SEASONS + season;
+            if( retract_decided && linked < display_tile.subtiles_by_season.size() ) {
+                const std::pair<const std::string *, const tile_type *> &found =
+                    display_tile.subtiles_by_season[linked];
+                if( found.first && found.second ) {
+                    return draw_shown( *found.second, *linked_id, *found.first, point() );
+                }
+            }
             return draw_from_id_string_internal(
                        *linked_id, category, subcategory, pos, -1, rota, ll,
                        retract, nv_color_active, height_3d, 0, "", point() );
@@ -3218,31 +3312,7 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
         }
     }
 
-    // make sure we aren't going to rotate the tile if it shouldn't be rotated
-    if( !display_tile.rotates && !( category == TILE_CATEGORY::NONE )
-        && !( category == TILE_CATEGORY::MONSTER ) ) {
-        rota = 0;
-    }
-
-    unsigned int loc_rand = 0;
-    // only bother mixing up a hash/random value if the tile has some sprites to randomly pick
-    // between
-    if( display_tile.fg.size() > 1 || display_tile.bg.size() > 1 ) {
-        loc_rand = get_variant_seed( display_tile, category, pos, found_id );
-    }
-
-    if( ! prevent_occlusion_retract ) {
-        retract = 0;
-    }
-
-    //draw it!
-    const tile_render_params rp{ ll, nv_color_active, pos, m_draw_light, m_shown_anchor };
-    // test seam: draw_sprite_at logs under this id
-    test_draw_id = test_draw_light_log ? &id : nullptr;
-    draw_tile_at( display_tile, screen_pos, loc_rand, rota, rp,
-                  retract, height_3d, offset );
-
-    return true;
+    return draw_shown( display_tile, id, found_id, offset );
 }
 
 bool cata_tiles::draw_sprite_at(
@@ -3297,7 +3367,8 @@ bool cata_tiles::draw_sprite_at(
     const bool shown_unlit = smooth_lighting_active && !scene_lit;
     if( test_draw_light_log && test_draw_id ) {
         test_draw_light_log->push_back( { *test_draw_id, rp.light,
-                                          smooth_lighting::chosen_light_anchor( tile.light_anchor, rp.anchor ) } );
+                                          smooth_lighting::chosen_light_anchor( tile.light_anchor, rp.anchor ),
+                                          &tile, p, offset, rota, retract, loc_rand } );
     }
     on_out_of_scope end_unlit( [shown_unlit]() {
         if( shown_unlit ) {
@@ -3722,8 +3793,8 @@ bool cata_tiles::draw_terrain( const tripoint_bub_ms &p, const lit_level ll, int
         if( !neighborhood_overridden ) {
             return memorize_only
                    ? false
-                   : draw_from_id_string( tname, TILE_CATEGORY::TERRAIN, empty_string, p, subtile,
-                                          rotation, ll, nv_goggles_activated, height_3d );
+                   : draw_from_int_id( tname, t.to_i(), TILE_CATEGORY::TERRAIN, p, subtile,
+                                       rotation, ll, nv_goggles_activated, height_3d, 0 );
         }
     }
     if( invisible[0] ? overridden : neighborhood_overridden ) {
@@ -3755,8 +3826,8 @@ bool cata_tiles::draw_terrain( const tripoint_bub_ms &p, const lit_level ll, int
             }
             return memorize_only
                    ? false
-                   : draw_from_id_string( tname, TILE_CATEGORY::TERRAIN, empty_string, p, subtile,
-                                          rotation, lit, nv, height_3d );
+                   : draw_from_int_id( tname, t2.to_i(), TILE_CATEGORY::TERRAIN, p, subtile,
+                                       rotation, lit, nv, height_3d, 0 );
         }
     } else if( invisible[0] ) {
         // try drawing memory if invisible and not overridden
@@ -3817,8 +3888,8 @@ bool cata_tiles::draw_furniture( const tripoint_bub_ms &p, const lit_level ll, i
         if( !neighborhood_overridden ) {
             return memorize_only
                    ? false
-                   : draw_from_id_string( fname, TILE_CATEGORY::FURNITURE, empty_string, p, subtile,
-                                          rotation, ll, nv_goggles_activated, height_3d );
+                   : draw_from_int_id( fname, f.to_i(), TILE_CATEGORY::FURNITURE, p, subtile,
+                                       rotation, ll, nv_goggles_activated, height_3d, 0 );
         }
     }
     if( invisible[0] ? overridden : neighborhood_overridden ) {
@@ -3860,8 +3931,8 @@ bool cata_tiles::draw_furniture( const tripoint_bub_ms &p, const lit_level ll, i
             }
             return memorize_only
                    ? false
-                   : draw_from_id_string( fname, TILE_CATEGORY::FURNITURE, empty_string, p, subtile,
-                                          rotation, lit, nv, height_3d );
+                   : draw_from_int_id( fname, f2.to_i(), TILE_CATEGORY::FURNITURE, p, subtile,
+                                       rotation, lit, nv, height_3d, 0 );
         }
     } else if( invisible[0] ) {
         // try drawing memory if invisible and not overridden
@@ -3914,8 +3985,8 @@ bool cata_tiles::draw_trap( const tripoint_bub_ms &p, const lit_level ll, int &h
         if( !neighborhood_overridden ) {
             return memorize_only
                    ? false
-                   : draw_from_id_string( trname, TILE_CATEGORY::TRAP, empty_string, p, subtile,
-                                          rotation, ll, nv_goggles_activated, height_3d );
+                   : draw_from_int_id( trname, tr.loadid.to_i(), TILE_CATEGORY::TRAP, p, subtile,
+                                       rotation, ll, nv_goggles_activated, height_3d, 0 );
         }
     }
     if( overridden || ( !invisible[0] && neighborhood_overridden &&
@@ -3950,8 +4021,8 @@ bool cata_tiles::draw_trap( const tripoint_bub_ms &p, const lit_level ll, int &h
             }
             return memorize_only
                    ? false
-                   : draw_from_id_string( trname, TILE_CATEGORY::TRAP, empty_string, p, subtile,
-                                          rotation, lit, nv, height_3d );
+                   : draw_from_int_id( trname, tr2.to_i(), TILE_CATEGORY::TRAP, p, subtile,
+                                       rotation, lit, nv, height_3d, 0 );
         }
     } else if( invisible[0] ) {
         // try drawing memory if invisible and not overridden
@@ -4161,8 +4232,8 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
                                                         neighborhood );
                 }
                 if( !has_drawn_field ) {
-                    draw_from_id_string( fld.id().str(), TILE_CATEGORY::FIELD, empty_string,
-                                         p, subtile, rotation, ll, nv_goggles_activated, height_3d, intensity );
+                    draw_from_int_id( fld.id().str(), fld.to_i(), TILE_CATEGORY::FIELD,
+                                      p, subtile, rotation, ll, nv_goggles_activated, height_3d, intensity );
                 }
             }
         }
@@ -4193,8 +4264,8 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
 
             //get field intensity
             int intensity = fld_overridden ? 0 : here.field_at( p ).displayed_intensity();
-            ret_draw_field = draw_from_id_string( fld.id().str(), TILE_CATEGORY::FIELD, empty_string,
-                                                  p, subtile, rotation, lit, false, height_3d, intensity );
+            ret_draw_field = draw_from_int_id( fld.id().str(), fld.to_i(), TILE_CATEGORY::FIELD,
+                                               p, subtile, rotation, lit, false, height_3d, intensity );
         }
     }
 
