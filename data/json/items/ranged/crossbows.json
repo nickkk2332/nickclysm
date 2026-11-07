@@ -246,6 +246,7 @@
     "symbol": "(",
     "color": "green",
     "name": { "str": "pistol crossbow" },
+    "required_mod_targets": [ "pistol" ],
     "description": "A small, concealable, pistol-like crossbow.  It's weak due to its small size and draw, so it is best suited for hunting small game.",
     "//": "27in Fiberglass pistol crossbow at 11in draw, 48J, 80 lbs draw, 0.3 Slugs with 30g bolt.",
     "price": "550 USD",

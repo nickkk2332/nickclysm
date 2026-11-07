@@ -1,0 +1,296 @@
+[
+  {
+    "id": "test_m11a_gun",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "name": { "str": "test m11a pistol" },
+    "description": "A pistol for the gunmod, strength and gun EOC tests.",
+    "weight": "800 g",
+    "volume": "500 ml",
+    "material": [ "steel" ],
+    "symbol": "(",
+    "color": "dark_gray",
+    "ammo": [ "test_9mm" ],
+    "skill": "pistol",
+    "min_strength": 6,
+    "dispersion": 480,
+    "durability": 6,
+    "overheat_threshold": 100,
+    "heat_per_shot": 10,
+    "cooling_value": 5,
+    "flags": [ "WATERPROOF_GUN" ],
+    "valid_mod_locations": [ [ "accessories", 4 ], [ "mechanism", 2 ] ],
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "test_9mm": 10 } } ],
+    "melee_damage": { "bash": 4 }
+  },
+  {
+    "id": "test_m11a_small_gun",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "copy-from": "test_m11a_gun",
+    "name": { "str": "test m11a small crossbow" },
+    "description": "Takes only gunmods made for pistols.",
+    "required_mod_targets": [ "pistol" ]
+  },
+  {
+    "id": "test_m11a_cold_gun",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "copy-from": "test_m11a_gun",
+    "name": { "str": "test m11a cold pistol" },
+    "description": "Doesn't overheat.",
+    "overheat_threshold": -1
+  },
+  {
+    "id": "test_m11a_prone_mod",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "name": { "str": "test m11a monopod" },
+    "description": "Needs more strength to use when prone.",
+    "weight": "100 g",
+    "volume": "100 ml",
+    "material": [ "steel" ],
+    "symbol": ":",
+    "color": "dark_gray",
+    "location": "accessories",
+    "mod_targets": [ "pistol" ],
+    "install_time": "1 s",
+    "min_str_required_mod_if_prone": 3
+  },
+  {
+    "id": "test_m11a_sealant",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_prone_mod",
+    "name": { "str": "test m11a sealant" },
+    "description": "Refused on a gun that is already waterproof.",
+    "min_str_required_mod_if_prone": 0,
+    "blacklist_gun_flags": [ "WATERPROOF_GUN" ],
+    "blacklist_message": "is already sealed"
+  },
+  {
+    "id": "test_m11a_template",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_prone_mod",
+    "name": { "str": "test m11a blank" },
+    "description": "Has to be worked into another mod first.",
+    "min_str_required_mod_if_prone": 0,
+    "installable": false
+  },
+  {
+    "id": "test_m11a_template_child",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_template",
+    "name": { "str": "test m11a finished blank" },
+    "description": "The blank, worked.",
+    "installable": true
+  },
+  {
+    "id": "test_m11a_unload_mod",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_prone_mod",
+    "name": { "str": "test m11a feed ramp" },
+    "description": "An accessory that needs the gun unloaded.",
+    "min_str_required_mod_if_prone": 0,
+    "requires_unloaded": true
+  },
+  {
+    "id": "test_m11a_locked_mechanism",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_prone_mod",
+    "name": { "str": "test m11a trigger group" },
+    "description": "A mechanism mod: the gun has to be unloaded.",
+    "min_str_required_mod_if_prone": 0,
+    "location": "mechanism"
+  },
+  {
+    "id": "test_m11a_free_mechanism",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_locked_mechanism",
+    "name": { "str": "test m11a trigger spring" },
+    "description": "A mechanism mod that goes in a loaded gun.",
+    "requires_unloaded": false
+  },
+  {
+    "id": "test_m11a_odd_mod",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_prone_mod",
+    "name": { "str": "test m11a crossbow sight" },
+    "description": "Fits the small crossbow by name, but isn't a pistol mod.",
+    "min_str_required_mod_if_prone": 0,
+    "mod_targets": [ "test_m11a_small_gun" ]
+  },
+  {
+    "id": "test_m11a_info_mod",
+    "type": "ITEM",
+    "subtypes": [ "GUNMOD" ],
+    "copy-from": "test_m11a_prone_mod",
+    "name": { "str": "test m11a heat sink" },
+    "description": "A gunmod with many fields to show.",
+    "min_str_required_mod_if_prone": 0,
+    "install_time": "30 s",
+    "blacklist_slot": [ "mechanism" ],
+    "blacklist_mod": [ "test_m11a_prone_mod" ],
+    "mode_modifier": [ [ "AUTO", "auto", 4 ] ],
+    "ammo_to_fire_modifier": 1,
+    "heat_per_shot_modifier": 2,
+    "cooling_value_multiplier": 1.5,
+    "overheat_threshold_modifier": -10
+  },
+  {
+    "id": "test_m11a_bionic_tool",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "test m11a bionic tool" },
+    "description": "Runs on its holder's bionic power and has no battery of its own.",
+    "weight": "100 g",
+    "volume": "100 ml",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray",
+    "charges_per_use": 1,
+    "flags": [ "USES_BIONIC_POWER" ]
+  },
+  {
+    "id": "test_m11a_suit",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": { "str": "test m11a suit" },
+    "description": "Hardens when activated.",
+    "weight": "2 kg",
+    "volume": "5 L",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "dark_gray",
+    "material_thickness": 2,
+    "active_form": "test_m11a_suit_engaged",
+    "armor": [ { "encumbrance": 5, "coverage": 90, "covers": [ "torso" ] } ]
+  },
+  {
+    "id": "test_m11a_suit_engaged",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "test_m11a_suit",
+    "name": { "str": "test m11a suit (hard)" },
+    "description": "Hardened.",
+    "material": [ "steel" ]
+  },
+  {
+    "id": "test_m11a_bare_power_armor",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": { "str": "test m11a power armor" },
+    "description": "Power armor with no active form.",
+    "weight": "20 kg",
+    "volume": "20 L",
+    "material": [ "steel" ],
+    "symbol": "[",
+    "color": "dark_gray",
+    "material_thickness": 4,
+    "power_armor": true,
+    "armor": [ { "encumbrance": 20, "coverage": 100, "covers": [ "torso" ] } ]
+  },
+  {
+    "id": "test_m11a_vest",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": { "str": "test m11a vest" },
+    "description": "A plain vest for clothing mods.",
+    "weight": "400 g",
+    "volume": "1 L",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "dark_gray",
+    "material_thickness": 2,
+    "armor": [ { "encumbrance": 2, "coverage": 90, "covers": [ "torso" ] } ]
+  },
+  {
+    "id": "test_m11a_lamp",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "test m11a lamp" },
+    "description": "A tool that is named active when it is.",
+    "weight": "100 g",
+    "volume": "100 ml",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray"
+  },
+  {
+    "id": "test_m11a_quiet_lamp",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "copy-from": "test_m11a_lamp",
+    "name": { "str": "test m11a lit lamp" },
+    "description": "A tool whose name already says it's lit.",
+    "flags": [ "NO_ACTIVE_SUFFIX" ]
+  },
+  {
+    "id": "TEST_M11A_PADDED",
+    "type": "json_flag"
+  },
+  {
+    "type": "clothing_mod",
+    "id": "test_m11a_padding",
+    "flag": "TEST_M11A_PADDED",
+    "item": "rag",
+    "implement_prompt": "Pad for the test",
+    "destroy_prompt": "Remove the test padding",
+    "mod_value": [ { "type": "stab", "value": 2 }, { "type": "cut", "value": 1 }, { "type": "fire", "value": 3 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_m11a_installs_gunmod",
+    "eoc_type": "EVENT",
+    "required_event": "character_installs_gunmod",
+    "effect": [
+      { "copy_var": { "context_val": "gun" }, "target_var": { "global_val": "test_m11a_install_gun" } },
+      { "copy_var": { "context_val": "gunmod" }, "target_var": { "global_val": "test_m11a_install_gunmod" } },
+      { "math": [ "test_m11a_install_success = _success" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_m11a_removes_gunmod",
+    "eoc_type": "EVENT",
+    "required_event": "character_removes_gunmod",
+    "effect": [
+      { "copy_var": { "context_val": "gun" }, "target_var": { "global_val": "test_m11a_remove_gun" } },
+      { "copy_var": { "context_val": "gunmod" }, "target_var": { "global_val": "test_m11a_remove_gunmod" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_m11a_reloads_item",
+    "eoc_type": "EVENT",
+    "required_event": "character_reloads_item",
+    "effect": [
+      { "copy_var": { "context_val": "itype" }, "target_var": { "global_val": "test_m11a_reload_itype" } },
+      { "copy_var": { "context_val": "ammo_itype" }, "target_var": { "global_val": "test_m11a_reload_ammo" } },
+      { "math": [ "test_m11a_reload_remaining = _ammo_remaining" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_m11a_unloads_item",
+    "eoc_type": "EVENT",
+    "required_event": "character_unloads_item",
+    "effect": [ { "copy_var": { "context_val": "itype" }, "target_var": { "global_val": "test_m11a_unload_itype" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_m11a_armor_damaged",
+    "eoc_type": "EVENT",
+    "required_event": "character_armor_damaged",
+    "effect": [
+      { "copy_var": { "context_val": "itype" }, "target_var": { "global_val": "test_m11a_damaged_itype" } },
+      { "copy_var": { "context_val": "damage_type" }, "target_var": { "global_val": "test_m11a_damaged_type" } }
+    ]
+  }
+]

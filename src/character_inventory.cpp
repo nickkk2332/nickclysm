@@ -2799,6 +2799,16 @@ bool Character::unload( item_location &loc, bool bypass_activity,
     add_msg_player_or_npc( _( "You unload your %s." ), _( "<npcname> unloads their %s." ),
                            target->tname() );
 
+    {
+        cata::event e = cata::event::make<event_type::character_unloads_item>( getID(),
+                        target->typeId() );
+        get_event_bus().send_with_talker( this, &targloc, e );
+        // An EOC may have used the item up
+        if( !loc ) {
+            return true;
+        }
+    }
+
     if( it.has_flag( flag_MAG_DESTROY ) && it.ammo_remaining( ) == 0 ) {
         loc.remove_item();
     }

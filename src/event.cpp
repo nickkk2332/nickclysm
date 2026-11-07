@@ -144,6 +144,12 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::character_disassembles_item: return "character_disassembles_item";
         case event_type::character_learns_recipe: return "character_learns_recipe";
         case event_type::tile_destroyed: return "tile_destroyed";
+        case event_type::character_reloads_item: return "character_reloads_item";
+        case event_type::character_unloads_item: return "character_unloads_item";
+        case event_type::character_installs_gunmod: return "character_installs_gunmod";
+        case event_type::character_removes_gunmod: return "character_removes_gunmod";
+        case event_type::character_armor_damaged: return "character_armor_damaged";
+        case event_type::character_armor_transformed: return "character_armor_transformed";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -166,7 +172,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 134,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -248,6 +254,11 @@ DEFINE_EVENT_FIELDS( character_crafts_item )
 DEFINE_EVENT_FIELDS( character_disassembles_item )
 DEFINE_EVENT_FIELDS( character_learns_recipe )
 DEFINE_EVENT_FIELDS( tile_destroyed )
+DEFINE_EVENT_FIELDS( character_reloads_item )
+DEFINE_EVENT_FIELDS( character_installs_gunmod )
+DEFINE_EVENT_FIELDS( character_removes_gunmod )
+DEFINE_EVENT_FIELDS( character_armor_damaged )
+DEFINE_EVENT_FIELDS( character_armor_transformed )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

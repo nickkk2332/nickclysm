@@ -7,6 +7,7 @@
 #include "character.h"
 #include "coordinates.h"
 #include "debug.h"
+#include "flag.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -132,7 +133,8 @@ units::energy talker_item_const::power_cur() const
 units::energy talker_item_const::power_max() const
 {
     const item *it = alive( me_it_const );
-    return it != nullptr ? 1_mJ * it->ammo_capacity( ammo_battery ) : 0_mJ;
+    return it != nullptr ? 1_mJ * it->ammo_capacity( ammo_battery, false, me_it_const->carrier() ) :
+           0_mJ;
 }
 
 int talker_item_const::get_artifact_resonance() const
@@ -199,10 +201,19 @@ void talker_item::remove_value( const std::string &var_name )
 
 void talker_item::set_power_cur( units::energy value )
 {
-    if( item *it = alive( me_it ) ) {
-        it->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0,
-                                            it->ammo_capacity( ammo_battery ) ) );
+    item *it = alive( me_it );
+    if( it == nullptr ) {
+        return;
     }
+    // Only an item that holds battery charges has power to set.  On a gun loaded with bullets
+    // the capacity is 0, and setting 0 battery charges unloaded it; a bionic powered tool
+    // without a battery draws on its user's bionics.
+    const int capacity = it->ammo_capacity( ammo_battery );
+    if( capacity <= 0 || ( it->has_flag( flag_USES_BIONIC_POWER ) &&
+                           it->magazines_current().empty() ) ) {
+        return;
+    }
+    it->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0, capacity ) );
 }
 
 void talker_item::set_all_parts_hp_cur( int set )

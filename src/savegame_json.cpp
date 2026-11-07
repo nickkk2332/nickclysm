@@ -3601,7 +3601,10 @@ void item::io( Archive &archive )
         // Searchlight monster setting vars
         "SL_PREFER_UP", "SL_PREFER_DOWN", "SL_PREFER_RIGHT", "SL_PREFER_LEFT", "SL_SPOT_X", "SL_SPOT_Y", "SL_POWER", "SL_DIR",
         // Remove stored translated gerund in favor of storing the inscription tool type
-        "item_label_type", "item_note_type"
+        "item_label_type", "item_note_type",
+        // Clothing mod values, now worked out from the item's flags
+        "clothing_mod_acid", "clothing_mod_fire", "clothing_mod_bash", "clothing_mod_cut",
+        "clothing_mod_bullet", "clothing_mod_encumbrance", "clothing_mod_warmth", "clothing_mod_invalid"
     };
 
     for( const std::string &var : removed_item_vars ) {

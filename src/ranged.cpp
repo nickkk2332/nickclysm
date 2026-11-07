@@ -1233,9 +1233,10 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         // Special handling for weapons where we supply the ammo separately (i.e. ammo is populated)
         // instead of it being loaded into the weapon, reload right before firing.
         if( !!ammo && !gun.ammo_remaining( ) ) {
-            Character &you = get_avatar();
+            // The shooter reloads and tires their arms, whoever they are
+            Character &you = *this;
             gun.reload( you, ammo, 1 );
-            you.burn_energy_arms( - gun.get_min_str() * static_cast<int>( 0.006f *
+            you.burn_energy_arms( - gun.get_min_str( you ) * static_cast<int>( 0.006f *
                                   get_option<int>( "PLAYER_MAX_STAMINA_BASE" ) ) );
         }
 
@@ -1906,7 +1907,7 @@ static void mod_stamina_archery( Character &you, const item &relevant )
 {
     // Set activity level to 10 * str_ratio, with 10 being max (EXTRA_EXERCISE)
     // This ratio should never be below 0 and above 1
-    const float str_ratio = static_cast<float>( relevant.get_min_str() ) / you.get_str();
+    const float str_ratio = static_cast<float>( relevant.get_min_str( you ) ) / you.get_str();
     you.set_activity_level( 10 * str_ratio );
 
     // Calculate stamina drain based on archery, athletics skill, and effective bow strength ratio
@@ -3121,7 +3122,7 @@ target_handler::trajectory target_ui::run()
                 if( !relevant->ammo_remaining( ) && activity->reload_loc ) {
                     you->mod_moves( -RAS_time( *you, activity->reload_loc ) );
                     relevant->reload( get_avatar(), activity->reload_loc, 1 );
-                    you->burn_energy_arms( - relevant->get_min_str() * static_cast<int>( 0.006f *
+                    you->burn_energy_arms( - relevant->get_min_str( *you ) * static_cast<int>( 0.006f *
                                            get_option<int>( "PLAYER_MAX_STAMINA_BASE" ) ) );
                     activity->reload_loc = item_location();
                 }

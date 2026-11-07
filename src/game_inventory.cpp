@@ -1339,10 +1339,7 @@ class gunmod_remove_inventory_preset : public inventory_selector_preset
         // represent the mod that has the other mod attached to its added sight mod location.
         std::string get_denial( const item_location &loc ) const override {
             item mod = *loc.get_item();
-            if( ( mod.type->gunmod->location.str() == "magazine" ||
-                  mod.type->gunmod->location.str() == "mechanism" ||
-                  mod.type->gunmod->location.str() == "loading port" ||
-                  mod.type->gunmod->location.str() == "bore" ) &&
+            if( mod.type->gunmod->needs_unloaded() &&
                 ( gun.ammo_remaining( ) > 0 || gun.magazine_current() ) ) {
                 return _( "must be unloaded before removing this mod" );
             }

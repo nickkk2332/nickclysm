@@ -2780,6 +2780,9 @@ void Item_factory::check_definitions() const
         }
 
         if( type->armor ) {
+            if( !type->armor->active_form.is_empty() && !has_template( type->armor->active_form ) ) {
+                msg += string_format( "invalid active_form %s\n", type->armor->active_form.str() );
+            }
             cata::flat_set<bodypart_str_id> observed_bps;
             for( const armor_portion_data &portion : type->armor->data ) {
                 if( portion.covers.has_value() ) {
@@ -3739,6 +3742,7 @@ void islot_gun::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "barrel_length", barrel_length, units_bound_reader<units::length> {0_mm} );
     optional( jo, was_loaded, "built_in_mods", built_in_mods, auto_flags_reader<itype_id> {} );
     optional( jo, was_loaded, "default_mods", default_mods, auto_flags_reader<itype_id> {} );
+    optional( jo, was_loaded, "required_mod_targets", required_mod_targets, auto_flags_reader<> {} );
     optional( jo, was_loaded, "energy_drain", energy_drain, units_bound_reader<units::energy> {0_kJ} );
     optional( jo, was_loaded, "blackpowder_tolerance", blackpowder_tolerance, not_negative, 8 );
     optional( jo, was_loaded, "min_cycle_recoil", min_cycle_recoil, not_negative );
@@ -3948,6 +3952,7 @@ void islot_armor::deserialize( const JsonObject &jo )
 
     optional( jo, was_loaded, "warmth", warmth, 0 );
     optional( jo, was_loaded, "non_functional", non_functional, itype_id() );
+    optional( jo, was_loaded, "active_form", active_form, itype_id() );
     optional( jo, was_loaded, "damage_verb", damage_verb );
     optional( jo, was_loaded, "power_armor", power_armor, false );
     optional( jo, was_loaded, "max_energy_shield_hp", max_energy_shield_hp, 0 );
@@ -4210,6 +4215,12 @@ void islot_gunmod::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "is_visible_when_installed", is_visible_when_installed );
     optional( jo, was_loaded, "blacklist_mod", blacklist_mod, auto_flags_reader<itype_id> {} );
     optional( jo, was_loaded, "blacklist_slot", blacklist_slot, auto_flags_reader<gunmod_location> {} );
+    optional( jo, was_loaded, "blacklist_gun_flags", blacklist_gun_flags, auto_flags_reader<flag_id> {} );
+    optional( jo, was_loaded, "blacklist_message", blacklist_message );
+    optional( jo, was_loaded, "installable", installable, true );
+    if( jo.has_member( "requires_unloaded" ) ) {
+        requires_unloaded = jo.get_bool( "requires_unloaded" );
+    }
     optional( jo, was_loaded, "barrel_length", barrel_length );
     optional( jo, was_loaded, "add_mod", add_mod, weighted_string_id_reader<gunmod_location, int> {1} );
 }

@@ -7,6 +7,8 @@
 #include <iterator>
 #include <numeric>
 #include <ostream>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "avatar_action.h"
@@ -1873,6 +1875,8 @@ void outfit::absorb_damage( Character &guy, damage_unit &elem, bodypart_id bp,
 
     // Only the outermost armor can be set on fire
     bool outermost = true;
+    // Worn armor the hit damaged without destroying it
+    std::vector<item_location> damaged_armor;
     // The worn vector has the innermost item first, so
     // iterate reverse to damage the outermost (last in worn vector) first.
     for( auto iter = worn.rbegin(); iter != worn.rend(); ) {
@@ -1884,6 +1888,7 @@ void outfit::absorb_damage( Character &guy, damage_unit &elem, bodypart_id bp,
         }
 
         const std::string pre_damage_name = armor.tname();
+        const int pre_damage = armor.damage();
         bool destroy = false;
 
         // Heat damage can set armor on fire
@@ -1903,7 +1908,18 @@ void outfit::absorb_damage( Character &guy, damage_unit &elem, bodypart_id bp,
         if( !destroy ) {
             // if the armor location has ablative armor apply that first
             if( armor.is_ablative() ) {
+                // Plates the hit damages without breaking them are told as damaged armor
+                std::vector<std::pair<item_location, int>> plates;
+                const item_location armor_loc( guy, &armor );
+                for( item *plate : armor.all_ablative_armor() ) {
+                    plates.emplace_back( item_location( armor_loc, plate ), plate->damage() );
+                }
                 guy.ablative_armor_absorb( elem, armor, sbp, roll );
+                for( std::pair<item_location, int> &plate : plates ) {
+                    if( plate.first && plate.first->damage() > plate.second ) {
+                        damaged_armor.push_back( plate.first );
+                    }
+                }
             }
 
             // if not already destroyed to an armor absorb
@@ -1935,9 +1951,22 @@ void outfit::absorb_damage( Character &guy, damage_unit &elem, bodypart_id bp,
             // http://stackoverflow.com/questions/1830158/how-to-call-erase-with-a-reverse-iterator
             iter = decltype( iter )( worn.erase( --iter.base() ) );
         } else {
+            if( armor.damage() > pre_damage ) {
+                damaged_armor.emplace_back( guy, &armor );
+            }
             ++iter;
             outermost = false;
         }
+    }
+
+    // Told once the hit is resolved, as the EOCs could change what is worn
+    for( item_location &loc : damaged_armor ) {
+        if( !loc ) {
+            continue;
+        }
+        cata::event e = cata::event::make<event_type::character_armor_damaged>( guy.getID(),
+                        loc->typeId(), elem.type.str(), bp.id() );
+        get_event_bus().send_with_talker( &guy, &loc, e );
     }
 }
 

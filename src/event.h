@@ -152,6 +152,12 @@ enum class event_type : int {
     character_disassembles_item,
     character_learns_recipe,
     tile_destroyed,
+    character_reloads_item,
+    character_unloads_item,
+    character_installs_gunmod,
+    character_removes_gunmod,
+    character_armor_damaged,
+    character_armor_transformed,
     num_event_types // last
 };
 
@@ -219,7 +225,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 134,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1066,6 +1072,67 @@ struct event_spec<event_type::tile_destroyed> {
             { "new_ter", cata_variant_type::ter_str_id },
             { "new_furn", cata_variant_type::furn_str_id },
             { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// a character reloaded an item: what it now holds (ammo_itype null if no ammo, e.g. a liquid)
+template<>
+struct event_spec<event_type::character_reloads_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "ammo_itype", cata_variant_type::itype_id },
+            { "ammo_remaining", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character took the ammo or magazine out of an item (an item_location unload, not a container)
+template<>
+struct event_spec<event_type::character_unloads_item> : event_spec_character_item {};
+
+// a gunmod installation finished, successfully or not
+template<>
+struct event_spec<event_type::character_installs_gunmod> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "gun", cata_variant_type::itype_id },
+            { "gunmod", cata_variant_type::itype_id },
+            { "success", cata_variant_type::bool_ },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::character_removes_gunmod> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "gun", cata_variant_type::itype_id },
+            { "gunmod", cata_variant_type::itype_id },
+        }
+    };
+};
+
+// a worn armor (or an ablative plate in it) took damage and wasn't destroyed
+template<>
+struct event_spec<event_type::character_armor_damaged> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "damage_type", cata_variant_type::string },
+            { "bodypart", cata_variant_type::body_part },
+        }
+    };
+};
+
+// a worn armor piece broke into its "non_functional" form (ablative plates)
+template<>
+struct event_spec<event_type::character_armor_transformed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "new_itype", cata_variant_type::itype_id },
         }
     };
 };

@@ -4283,7 +4283,7 @@ A flat multiplier on the harvest count of the plant. For numbers greater than on
 "restricted": true,        // (optional) If true, clothing must list this mod's flag in "valid_mods" list to use it. Defaults to false.
 "mod_value": [             // List of mod effect.
     {
-        "type": "bash",    // "bash", "cut", "bullet", "fire", "acid", "warmth", and "encumbrance" is available.
+        "type": "bash",    // "warmth", "encumbrance" or the id of any damage type ("bash", "stab", "heat", a modded one...).  "fire" is an old name for "heat".
         "value": 1,        // value of effect.
         "round_up": false, // (optional) round up value of effect. defaults to false.
         "proportion": [    // (optional) value of effect proportions to clothing's parameter.
@@ -4293,6 +4293,8 @@ A flat multiplier on the harvest count of the plant. For numbers greater than on
     }
 ]
 ```
+
+The values come from the flags an item has now: a garment that gets the mod's flag any way (sewn on, from an itemgroup's `custom-flags`, an EOC's `npc_set_flag`) gets the bonus, loses it with the flag, and follows changes to the mod's values.  A damage type the mod has no value for gets the value of the type it is `derived_from`, times its factor (vanilla stab is derived from cut at 0.8, so padding that adds cut protection adds 0.8 of it against stab), as the resistance of materials does.
 
 ### Flags
 

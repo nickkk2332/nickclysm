@@ -1112,9 +1112,8 @@ refusal start_gunmod_remove( const activity_id &, Character &who,
         return string_format( _( "The %s can't be removed." ), mod->tname() );
     }
     // What the gunmod removal menu turns down.
-    const std::string location = mod->type->gunmod->location.str();
-    if( ( location == "magazine" || location == "mechanism" || location == "loading port" ||
-          location == "bore" ) && ( gun->ammo_remaining() > 0 || gun->magazine_current() ) ) {
+    if( mod->type->gunmod->needs_unloaded() &&
+        ( gun->ammo_remaining() > 0 || gun->magazine_current() ) ) {
         return string_format( _( "The %s must be unloaded before removing this mod." ), gun->tname() );
     }
     for( const std::pair<const gunmod_location, int> &slot : mod->type->gunmod->add_mod ) {

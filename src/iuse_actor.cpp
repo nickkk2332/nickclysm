@@ -5837,7 +5837,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
     for( const clothing_mod_id &cm : clothing_mods ) {
         const clothing_mod &obj = cm.obj();
         item temp_item = modded_copy( mod, obj.flag );
-        temp_item.update_clothing_mod_val();
 
         bool enab = false;
         std::string prompt;
@@ -5915,7 +5914,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
         if( query_yn( _( "Are you sure?  You will not gain any materials back." ) ) ) {
             mod.unset_flag( the_mod );
         }
-        mod.update_clothing_mod_val();
 
         return 0;
     }
@@ -5958,7 +5956,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
                               mod.tname() );
         p->consume_items( comps, 1, is_crafting_component );
         mod.set_flag( the_mod );
-        mod.update_clothing_mod_val();
         p->calc_encumbrance();
         p->calc_discomfort();
         return thread_needed;
@@ -5966,7 +5963,6 @@ std::optional<int> sew_advanced_actor::use( Character *p, item &it, map *here,
 
     p->add_msg_if_player( m_good, _( "You modify your %s!" ), mod.tname() );
     mod.set_flag( the_mod );
-    mod.update_clothing_mod_val();
     p->consume_items( comps, 1, is_crafting_component );
     p->calc_encumbrance();
     p->calc_discomfort();
