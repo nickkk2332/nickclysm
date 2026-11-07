@@ -110,8 +110,6 @@ static const efftype_id effect_weed_high( "weed_high" );
 
 static const fault_id fault_emp_reboot( "fault_emp_reboot" );
 
-static const furn_str_id furn_f_metal_smoking_rack_active( "f_metal_smoking_rack_active" );
-static const furn_str_id furn_f_smoking_rack_active( "f_smoking_rack_active" );
 static const furn_str_id furn_f_water_mill_active( "f_water_mill_active" );
 static const furn_str_id furn_f_wind_mill_active( "f_wind_mill_active" );
 
@@ -4600,9 +4598,9 @@ bool item::process_fake_mill( map &here, Character * /*carrier*/, const tripoint
 
 bool item::process_fake_smoke( map &here, Character * /*carrier*/, const tripoint_bub_ms &pos )
 {
+    // ACT-J11: a lit smoking rack, by its "smoker" object
     const furn_id &f = here.furn( pos );
-    if( f != furn_f_smoking_rack_active &&
-        f != furn_f_metal_smoking_rack_active ) {
+    if( !f->smoker || f->smoker->unlit.is_empty() ) {
         item_counter = 0;
         return true; //destroy fake smoke
     }

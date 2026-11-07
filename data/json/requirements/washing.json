@@ -1,0 +1,14 @@
+[
+  {
+    "id": "washing_water",
+    "type": "requirement",
+    "//": "What washing items takes per unit of water (one unit per 125 ml of items).  A liquid has to be liquid, not frozen.",
+    "components": [ [ [ "water", 1 ], [ "water_clean", 1 ] ] ]
+  },
+  {
+    "id": "washing_cleanser",
+    "type": "requirement",
+    "//": "What washing items takes per unit of cleanser (one unit per liter of items).",
+    "components": [ [ [ "soap", 1 ], [ "detergent", 1 ], [ "liquid_soap", 1 ] ] ]
+  }
+]

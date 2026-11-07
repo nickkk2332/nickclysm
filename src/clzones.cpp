@@ -189,6 +189,17 @@ void zone_type::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "description", desc_, translation() );
     optional( jo, was_loaded, "can_be_personal", can_be_personal );
     optional( jo, was_loaded, "hidden", hidden );
+    optional( jo, was_loaded, "loot_source", loot_source, string_starts_with( id.str(), "LOOT" ) );
+}
+
+// ACT-J12: the zone type's loot_source; a type that isn't loaded (its mod was removed) counts
+// by its id, as before
+static bool is_loot_source( const zone_type_id &type )
+{
+    if( type.is_valid() ) {
+        return type->loot_source;
+    }
+    return string_starts_with( type.str(), "LOOT" );
 }
 
 shared_ptr_fast<zone_options> zone_options::create( const zone_type_id &type )
@@ -1120,7 +1131,7 @@ std::unordered_set<tripoint_bub_ms> zone_manager::get_point_set_loot( const trip
     for( const auto &cache : area_cache ) {
         zone_type_id type = zone_data::unhash_type( cache.first );
         faction_id z_fac = zone_data::unhash_fac( cache.first );
-        if( fac == z_fac && type.str().substr( 0, 4 ) == "LOOT" ) {
+        if( fac == z_fac && is_loot_source( type ) ) {
             for( const tripoint_abs_ms &point : cache.second ) {
                 if( square_dist( where, point ) <= radius ) {
                     res.emplace( here.get_bub( point ) );
@@ -1131,7 +1142,7 @@ std::unordered_set<tripoint_bub_ms> zone_manager::get_point_set_loot( const trip
     for( const auto &cache : vzone_cache ) {
         zone_type_id type = zone_data::unhash_type( cache.first );
         faction_id z_fac = zone_data::unhash_fac( cache.first );
-        if( fac == z_fac && type.str().substr( 0, 4 ) == "LOOT" ) {
+        if( fac == z_fac && is_loot_source( type ) ) {
             for( const tripoint_abs_ms &point : cache.second ) {
                 if( square_dist( where, point ) <= radius ) {
                     res.emplace( here.get_bub( point ) );
@@ -1530,7 +1541,7 @@ const zone_data *zone_manager::get_zone_at( const tripoint_abs_ms &where, bool l
 
     auto const check = [&fac, loot_only, &where]( zone_data const & z ) {
         return z.get_faction() == fac &&
-               ( !loot_only || z.get_type().str().substr( 0, 4 ) == "LOOT" ) &&
+               ( !loot_only || is_loot_source( z.get_type() ) ) &&
                z.has_inside( where );
     };
     for( auto it = zones.rbegin(); it != zones.rend(); ++it ) {

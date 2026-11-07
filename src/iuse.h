@@ -244,6 +244,11 @@ struct washing_requirements {
     int time;
 };
 washing_requirements washing_requirements_for_volume( const units::volume & );
+// ACT-J08: washing takes the JSON requirement `washing_water` once per water unit and
+// `washing_cleanser` once per cleanser unit.  Whether `who` has them (telling them what's
+// missing when not), and taking them.
+bool has_washing_requirements( const Character &who, const washing_requirements &required );
+void consume_washing_requirements( Character &who, const washing_requirements &required );
 
 struct heating_requirements {
     units::volume volume;

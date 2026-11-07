@@ -54,6 +54,9 @@ static const item_group_id Item_spawn_data_EMPTY_GROUP( "EMPTY_GROUP" );
 
 static const skill_id skill_survival( "survival" );
 
+static const ter_str_id ter_t_dirt( "t_dirt" );
+static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
+
 namespace mapdata
 {
 
@@ -1216,8 +1219,8 @@ void init_mapdata()
 }
 
 // The tool activity blocks of terrain and furniture, see load_tool_activity
-static constexpr std::array<std::string_view, 4> tool_activities = {
-    "oxytorch", "boltcut", "hacksaw", "prying"
+static constexpr std::array<std::string_view, 5> tool_activities = {
+    "oxytorch", "boltcut", "hacksaw", "prying", "chop"
 };
 
 std::optional<creature_size> map_data_common_t::max_fitting_size() const
@@ -1455,6 +1458,26 @@ bool ter_t::is_terrain() const
     return true;
 }
 
+bool ter_t::can_chop() const
+{
+    return chop && chop->valid();
+}
+
+ter_str_id ter_t::till_result() const
+{
+    return till ? till->result : ter_t_dirtmound;
+}
+
+int ter_t::till_moves() const
+{
+    return till ? to_moves<int>( till->time ) : 18000;
+}
+
+ter_str_id ter_t::planted_terrain() const
+{
+    return plant_result.is_empty() ? ter_t_dirt : plant_result;
+}
+
 bool ter_t::is_null() const
 {
     return id == ter_str_id::NULL_ID();
@@ -1515,6 +1538,17 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
         optional( jf, false, "stump", felled_stump );
     }
     optional( jo, was_loaded, "churned_into", churned_into );
+    // ACT-J10
+    load_tool_activity( jo, "chop", was_loaded, chop );
+    if( jo.has_object( "till" ) ) {
+        const JsonObject jt = jo.get_object( "till" );
+        ter_till_info info;
+        mandatory( jt, false, "result", info.result );
+        optional( jt, false, "time", info.time, time_duration::from_moves( 18000 ) );
+        optional( jt, false, "message", info.message );
+        till = info;
+    }
+    optional( jo, was_loaded, "plant_result", plant_result );
 
     optional( jo, was_loaded, "lockpick_result", lockpick_result, ter_str_id::NULL_ID() );
 
@@ -1698,6 +1732,23 @@ void ter_t::check() const
         !has_flag( ter_furn_flag::TFLAG_TREE ) ) {
         debugmsg( "ter %s has felled terrain but isn't a TREE", id.c_str() );
     }
+    // ACT-J10
+    if( can_chop() && !chop->result().is_valid() ) {
+        debugmsg( "ter %s: chop result %s doesn't exist", id.c_str(), chop->result().c_str() );
+    }
+    if( can_chop() ) {
+        for( const activity_byproduct &byproduct : chop->byproducts() ) {
+            if( !byproduct.item.is_valid() ) {
+                debugmsg( "ter %s: chop byproduct %s doesn't exist", id.c_str(), byproduct.item.c_str() );
+            }
+        }
+    }
+    if( till && !till->result.is_valid() ) {
+        debugmsg( "ter %s: till result %s doesn't exist", id.c_str(), till->result.c_str() );
+    }
+    if( !plant_result.is_empty() && !plant_result.is_valid() ) {
+        debugmsg( "ter %s: plant_result %s doesn't exist", id.c_str(), plant_result.c_str() );
+    }
 
     // Validate open/close transforms
     if( !open.is_valid() ) {
@@ -1807,6 +1858,21 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
     if( jo.has_float( "surgery_skill_multiplier" ) ) {
         surgery_skill_multiplier = cata::make_value<float>( jo.get_float( "surgery_skill_multiplier" ) );
     }
+    // ACT-J11
+    if( jo.has_object( "smoker" ) ) {
+        const JsonObject js = jo.get_object( "smoker" );
+        furn_smoker_info info;
+        optional( js, false, "lit", info.lit );
+        optional( js, false, "unlit", info.unlit );
+        optional( js, false, "capacity", info.capacity, volume_reader(), units::from_liter( 20 ) );
+        if( info.lit.is_empty() == info.unlit.is_empty() ) {
+            js.throw_error( "a smoker has either lit (an unlit rack) or unlit (a lit rack)" );
+        }
+        if( info.capacity <= 0_ml ) {
+            js.throw_error_at( "capacity", "capacity must be more than 0" );
+        }
+        smoker = cata::make_value<furn_smoker_info>( info );
+    }
 }
 
 bool furn_t::is_smashable() const
@@ -1856,6 +1922,18 @@ void furn_t::check() const
     }
     if( plant && !plant->base.is_valid() ) {
         debugmsg( "Invalid furniture %s for plant base in furn %s", plant->base.c_str(), id.c_str() );
+    }
+    // ACT-J11
+    if( smoker ) {
+        const furn_str_id &other = smoker->lit.is_empty() ? smoker->unlit : smoker->lit;
+        if( !other.is_valid() ) {
+            debugmsg( "furn %s: smoker furniture %s doesn't exist", id.c_str(), other.c_str() );
+        } else if( !other->smoker ) {
+            debugmsg( "furn %s: smoker furniture %s has no \"smoker\" object", id.c_str(), other.c_str() );
+        }
+    }
+    if( has_examine( iexamine::smoker_options ) && !smoker ) {
+        debugmsg( "furn %s has examine action smoker_options but no \"smoker\" object", id.c_str() );
     }
 }
 

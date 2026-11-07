@@ -1926,6 +1926,82 @@ conditional_t::func f_is_zone( bool is_npc )
     };
 }
 
+// ACT-J09: whether a zone talker's zone is enabled; false for another talker
+conditional_t::func f_zone_enabled( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        const zone_data *zone = d.const_actor( is_npc )->get_const_zone();
+        return zone != nullptr && zone->get_enabled();
+    };
+}
+
+// ACT-J09: whether `where` is in an enabled zone of `type` ("" for any type) that `fac` owns;
+// personal and vehicle zones count too
+bool in_enabled_zone( const tripoint_abs_ms &where, const std::string &type,
+                      const faction_id &fac )
+{
+    const zone_manager &mgr = zone_manager::get_manager();
+    for( const zone_data &zone : mgr.get_zones( fac ) ) {
+        if( zone.get_enabled() && ( type.empty() || zone.get_type().str() == type ) &&
+            zone.has_inside( where ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ACT-J09: the faction a zone condition looks at, "your_followers" by default
+str_or_var read_zone_faction( const JsonObject &jo )
+{
+    if( jo.has_member( "faction" ) ) {
+        return get_str_or_var( jo.get_member( "faction" ), "faction", true );
+    }
+    str_or_var fac;
+    fac = your_fac.str();
+    return fac;
+}
+
+// ACT-J09: a zone type that a zone condition names must exist; "" is any type
+void check_zone_type_at_load( const str_or_var &type, const JsonObject &jo,
+                              std::string_view member )
+{
+    if( !type.is_constant() || type.constant().empty() ) {
+        return;
+    }
+    const std::string name = type.constant();
+    const std::string where = jo.get_member( member ).get_root_source_path();
+    effect_on_conditions::add_load_check( [name, where]() {
+        if( !zone_type_id( name ).is_valid() ) {
+            debugmsg( "Unknown zone type \"%s\" (%s)", name, where );
+        }
+    } );
+}
+
+// ACT-J09: { "u_in_zone": "LOOT_FOOD" }, at the talker's position
+conditional_t::func f_in_zone( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    check_zone_type_at_load( type, jo, member );
+    const str_or_var fac = read_zone_faction( jo );
+    return [type, fac, is_npc]( const_dialogue const & d ) {
+        return in_enabled_zone( d.const_actor( is_npc )->pos_abs(), type.evaluate( d ),
+                                faction_id( fac.evaluate( d ) ) );
+    };
+}
+
+// ACT-J09: { "map_in_zone": "LOOT_FOOD", "loc": { "context_val": "loc" } }
+conditional_t::func f_map_in_zone( const JsonObject &jo, std::string_view member )
+{
+    const str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    check_zone_type_at_load( type, jo, member );
+    const str_or_var fac = read_zone_faction( jo );
+    const var_info loc_var = read_var_info( jo.get_object( "loc" ) );
+    return [type, fac, loc_var]( const_dialogue const & d ) {
+        return in_enabled_zone( read_var_value( loc_var, d ).tripoint(), type.evaluate( d ),
+                                faction_id( fac.evaluate( d ) ) );
+    };
+}
+
 conditional_t::func f_is_vehicle( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
@@ -3405,6 +3481,13 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
             const zone_data *zone = d.const_actor( is_npc )->get_const_zone();
             return ret_func( zone != nullptr ? zone->get_type().str() : std::string() );
         };
+    } else if( mutator == "u_zone_faction" || mutator == "npc_zone_faction" ) {
+        // ACT-J09: the faction that owns a zone talker's zone, "" for another talker
+        const bool is_npc = mutator == "npc_zone_faction";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const zone_data *zone = d.const_actor( is_npc )->get_const_zone();
+            return ret_func( zone != nullptr ? zone->get_faction().str() : std::string() );
+        };
     }
 
     return nullptr;
@@ -3828,6 +3911,7 @@ parsers = {
     {"u_is_on_terrain", "npc_is_on_terrain", jarg::member, &conditional_fun::f_is_on_terrain },
     {"u_is_on_terrain_with_flag", "npc_is_on_terrain_with_flag", jarg::member, &conditional_fun::f_is_on_terrain_with_flag },
     {"u_is_on_furniture", "npc_is_on_furniture", jarg::member, &conditional_fun::f_is_on_furniture },
+    {"u_in_zone", "npc_in_zone", jarg::member, &conditional_fun::f_in_zone },
     {"u_is_on_furniture_with_flag", "npc_is_on_furniture_with_flag", jarg::member, &conditional_fun::f_is_on_furniture_with_flag },
     {"u_is_in_field", "npc_is_in_field", jarg::member, &conditional_fun::f_is_in_field },
     {"u_has_move_mode", "npc_has_move_mode", jarg::member, &conditional_fun::f_has_move_mode },
@@ -3850,6 +3934,7 @@ parsers = {
     {"map_field_id", jarg::member, &conditional_fun::f_map_ter_furn_id },
     {"map_is_outside", jarg::member, &conditional_fun::f_map_is_outside },
     {"map_in_city", jarg::member, &conditional_fun::f_map_in_city },
+    {"map_in_zone", jarg::member, &conditional_fun::f_map_in_zone },
     {"mod_is_loaded", jarg::member, &conditional_fun::f_mod_is_loaded },
     {"timed_event_queued", jarg::member, &conditional_fun::f_timed_event_queued },
     {"u_has_faction_trust", jarg::member | jarg::array, &conditional_fun::f_has_faction_trust },
@@ -3946,6 +4031,7 @@ parsers_simple = {
     // the "furniture" talker is a computer's: u_is_computer says so
     {"u_is_computer", "npc_is_computer", &conditional_fun::f_is_furniture },
     {"u_is_zone", "npc_is_zone", &conditional_fun::f_is_zone },
+    {"u_zone_enabled", "npc_zone_enabled", &conditional_fun::f_zone_enabled },
     {"u_is_vehicle", "npc_is_vehicle", &conditional_fun::f_is_vehicle },
     {"u_has_ammo", "npc_has_ammo", &conditional_fun::f_has_ammo },
     // legacy spelling of npc_has_ammo

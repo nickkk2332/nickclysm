@@ -5175,6 +5175,17 @@ talk_effect_fun_t::func f_npc_cbm_recharge_rule( const JsonObject &jo,
     };
 }
 
+// ACT-J09: the faction whose zones a zone effect works on, "your_followers" by default
+str_or_var read_zone_effect_faction( const JsonObject &jo )
+{
+    if( jo.has_member( "faction" ) ) {
+        return get_str_or_var( jo.get_member( "faction" ), "faction", true );
+    }
+    str_or_var fac;
+    fac = your_fac.str();
+    return fac;
+}
+
 talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_view member,
         std::string_view src, bool is_npc )
 {
@@ -5229,6 +5240,8 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
         target_types++;
         search_type = "zone";
     }
+    // ACT-J09: whose zones a "zone" search looks for
+    const str_or_var zone_faction = read_zone_effect_faction( jo );
     if( target_types == 1 ) {
         search_target = get_str_or_var( jo.get_member( search_type.value() ), search_type.value(), true );
     } else if( target_types > 1 ) {
@@ -5244,7 +5257,8 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
 
     return [dov_min_radius, dov_max_radius, var_name, outdoor_only, passable_only, target_params,
                             is_npc, type, dov_x_adjust, dov_y_adjust, dov_z_adjust, z_override, true_eocs, false_eocs,
-                    search_target, search_type, dov_target_min_radius, dov_target_max_radius]( dialogue & d ) {
+                            search_target, search_type, dov_target_min_radius, dov_target_max_radius,
+                    zone_faction]( dialogue & d ) {
         talker *target = d.actor( is_npc );
         tripoint_abs_ms talker_pos = target->pos_abs();
         tripoint_abs_ms target_pos = talker_pos;
@@ -5345,8 +5359,12 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
                         }
                     }
                 } else if( search_type.value() == "zone" ) {
-                    zone_manager &mgr = zone_manager::get_manager();
-                    if( mgr.get_zone_at( here.get_abs( search_loc ), zone_type_id( cur_search_target ) ) ) {
+                    // ACT-J09: "" is a zone of any type
+                    const zone_manager &mgr = zone_manager::get_manager();
+                    const faction_id fac( zone_faction.evaluate( d ) );
+                    const tripoint_abs_ms search_abs = here.get_abs( search_loc );
+                    if( cur_search_target.empty() ? mgr.get_zone_at( search_abs, false, fac ) != nullptr :
+                        mgr.get_zone_at( search_abs, zone_type_id( cur_search_target ), fac ) != nullptr ) {
                         target_pos = here.get_abs( search_loc );
                         found = true;
                         break;
@@ -9710,15 +9728,18 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
     z_span.has_max = jo.has_member( "z_max" );
     optional( jo, false, "z_min", z_span.min, 0 );
     optional( jo, false, "z_max", z_span.max, 0 );
+    // ACT-J09: the zones of this faction, your own by default
+    const str_or_var zone_faction = read_zone_effect_faction( jo );
 
-    return [eocs, has_zone_range, zone_range, zone_types, z_span, is_npc]( dialogue const & d ) {
+    return [eocs, has_zone_range, zone_range, zone_types, z_span, zone_faction,
+          is_npc]( dialogue const & d ) {
         zone_manager &mgr = zone_manager::get_manager();
         tripoint_abs_ms actor_pos = d.actor( is_npc )->pos_abs();
         int z_min = z_span.min.evaluate( d );
         int z_max = z_span.max.evaluate( d );
         const std::optional<int> range = has_zone_range ?
                                          std::optional<int>( zone_range.evaluate( d ) ) : std::nullopt;
-        for( zone_data &zone : mgr.get_zones() ) {
+        for( zone_data &zone : mgr.get_zones( faction_id( zone_faction.evaluate( d ) ) ) ) {
             if( zone.get_is_personal() || zone.get_is_vehicle() ) {
                 continue;
             }
@@ -9742,6 +9763,120 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
                     eoc->activate( newDialog );
                 }
             }
+        }
+    };
+}
+
+// ACT-J09: the fixed zones (not personal, not on a vehicle) of `fac` with `type` ("" for any
+// type) that hold `where`. Pointers into the zone list: removing a zone invalidates them.
+std::vector<zone_data *> fixed_zones_at( const tripoint_abs_ms &where, const std::string &type,
+        const faction_id &fac )
+{
+    std::vector<zone_data *> ret;
+    for( zone_data &zone : zone_manager::get_manager().get_zones( fac ) ) {
+        if( !zone.get_is_personal() && !zone.get_is_vehicle() &&
+            ( type.empty() || zone.get_type().str() == type ) && zone.has_inside( where ) ) {
+            ret.push_back( &zone );
+        }
+    }
+    return ret;
+}
+
+// ACT-J09: { "create_zone": "LOOT_FOOD", "start": loc, "end": loc }
+talk_effect_fun_t::func f_create_zone( const JsonObject &jo, std::string_view member,
+                                       std::string_view )
+{
+    const str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    if( type.is_constant() ) {
+        const std::string name = type.constant();
+        const std::string where = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name, where]() {
+            if( !zone_type_id( name ).is_valid() ) {
+                debugmsg( "Unknown zone type \"%s\" in create_zone (%s)", name, where );
+            }
+        } );
+    }
+    const var_info start_var = read_var_info( jo.get_object( "start" ) );
+    std::optional<var_info> end_var;
+    if( jo.has_member( "end" ) ) {
+        end_var = read_var_info( jo.get_object( "end" ) );
+    }
+    const str_or_var fac = read_zone_effect_faction( jo );
+    std::optional<str_or_var> name;
+    if( jo.has_member( "name" ) ) {
+        name = get_str_or_var( jo.get_member( "name" ), "name", true );
+    }
+    std::optional<str_or_var> filter;
+    if( jo.has_member( "filter" ) ) {
+        filter = get_str_or_var( jo.get_member( "filter" ), "filter", true );
+    }
+    return [type, start_var, end_var, fac, name, filter]( dialogue const & d ) {
+        const zone_type_id zone_type( type.evaluate( d ) );
+        if( !zone_type.is_valid() ) {
+            debugmsg( "create_zone: unknown zone type \"%s\"", zone_type.str() );
+            return;
+        }
+        const tripoint_abs_ms start = read_var_value( start_var, d ).tripoint();
+        const tripoint_abs_ms end = end_var ? read_var_value( *end_var, d ).tripoint() : start;
+        const std::string zone_name = name ? name->evaluate( d ) :
+                                      zone_type->name();
+        // corners in any order, as mapgen places them
+        mapgen_place_zone( tripoint_abs_ms( std::min( start.x(), end.x() ), std::min( start.y(), end.y() ),
+                                            std::min( start.z(), end.z() ) ),
+                           tripoint_abs_ms( std::max( start.x(), end.x() ), std::max( start.y(), end.y() ),
+                                            std::max( start.z(), end.z() ) ),
+                           zone_type, faction_id( fac.evaluate( d ) ), zone_name,
+                           filter ? filter->evaluate( d ) : std::string() );
+    };
+}
+
+// ACT-J09: { "remove_zones": "LOOT_FOOD", "loc": loc }; "" removes zones of any type
+talk_effect_fun_t::func f_remove_zones( const JsonObject &jo, std::string_view member,
+                                        std::string_view )
+{
+    const str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    const var_info loc_var = read_var_info( jo.get_object( "loc" ) );
+    const str_or_var fac = read_zone_effect_faction( jo );
+    return [type, loc_var, fac]( dialogue const & d ) {
+        const tripoint_abs_ms where = read_var_value( loc_var, d ).tripoint();
+        const std::string zone_type = type.evaluate( d );
+        const faction_id zone_fac( fac.evaluate( d ) );
+        zone_manager &mgr = zone_manager::get_manager();
+        bool removed = false;
+        // one at a time: removing a zone moves the ones after it
+        for( std::vector<zone_data *> found = fixed_zones_at( where, zone_type, zone_fac );
+             !found.empty(); found = fixed_zones_at( where, zone_type, zone_fac ) ) {
+            if( !mgr.remove( *found.front() ) ) {
+                break;
+            }
+            removed = true;
+        }
+        if( removed ) {
+            mgr.cache_data();
+        }
+    };
+}
+
+// ACT-J09: { "set_zones_enabled": "LOOT_FOOD", "enabled": false, "loc": loc }
+talk_effect_fun_t::func f_set_zones_enabled( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    const var_info loc_var = read_var_info( jo.get_object( "loc" ) );
+    const str_or_var fac = read_zone_effect_faction( jo );
+    const bool enabled = jo.get_bool( "enabled", true );
+    return [type, loc_var, fac, enabled]( dialogue const & d ) {
+        const std::vector<zone_data *> found = fixed_zones_at( read_var_value( loc_var, d ).tripoint(),
+                                               type.evaluate( d ), faction_id( fac.evaluate( d ) ) );
+        bool changed = false;
+        for( zone_data *zone : found ) {
+            if( zone->get_enabled() != enabled ) {
+                zone->set_enabled( enabled );
+                changed = true;
+            }
+        }
+        if( changed ) {
+            zone_manager::get_manager().cache_data();
         }
     };
 }
@@ -12498,6 +12633,9 @@ parsers = {
     { "alter_timed_events", jarg::member, &talk_effect_fun::f_alter_timed_events },
     { "cancel_timed_events", jarg::member, &talk_effect_fun::f_cancel_timed_events },
     { "revert_location", jarg::member, &talk_effect_fun::f_revert_location },
+    { "create_zone", jarg::member, &talk_effect_fun::f_create_zone },
+    { "remove_zones", jarg::member, &talk_effect_fun::f_remove_zones },
+    { "set_zones_enabled", jarg::member, &talk_effect_fun::f_set_zones_enabled },
     { "copy_location", jarg::member, &talk_effect_fun::f_copy_location },
     { "place_override", jarg::member, &talk_effect_fun::f_place_override },
     { "transform_line", jarg::member, &talk_effect_fun::f_transform_line },

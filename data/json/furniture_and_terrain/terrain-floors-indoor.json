@@ -1678,6 +1678,7 @@
     "connects_to": "GREENHOUSE",
     "move_cost": 3,
     "flags": [ "INDOORS", "TRANSPARENT", "PLOWABLE" ],
+    "till": { "result": "t_greenhouse_tilled", "message": "You finish preparing the greenhouse here." },
     "roof": "t_glass_roof",
     "bash": {
       "str_min": 3,
@@ -1699,6 +1700,7 @@
     "connects_to": "GREENHOUSE",
     "move_cost": 3,
     "flags": [ "INDOORS", "TRANSPARENT", "PLANTABLE" ],
+    "plant_result": "t_greenhouse",
     "examine_action": "dirtmound",
     "roof": "t_glass_roof",
     "bash": {

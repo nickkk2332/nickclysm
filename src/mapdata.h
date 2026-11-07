@@ -508,6 +508,13 @@ class activity_data_ter : public activity_data_common
         ter_str_id result_;
 };
 
+// ACT-J10: what tilling (churning) a PLOWABLE terrain gives, from its "till" object
+struct ter_till_info {
+    ter_str_id result;
+    time_duration time = time_duration::from_moves( 18000 );
+    translation message;
+};
+
 class activity_data_furn : public activity_data_common
 {
     public:
@@ -777,6 +784,14 @@ struct ter_t : map_data_common_t {
     // MAP-J05: what a vehicle without enough wheels churns it into; empty for the built-in rule
     // (dirt and grass into a mound of dirt)
     ter_str_id churned_into;
+    // ACT-J10: chopping it up with an axe (a trunk or a stump): what it becomes, what it leaves
+    // and the message; terrain without a "chop" object can't be chopped
+    cata::value_ptr<activity_data_ter> chop;
+    // ACT-J10: tilling it (a PLOWABLE terrain); without "till" it becomes a mound of dirt in 3
+    // minutes
+    std::optional<ter_till_info> till;
+    // ACT-J10: what a PLANTABLE terrain becomes when a seed is planted on it; empty for dirt
+    ter_str_id plant_result;
 
     trap_id trap; // The id of the trap located at this terrain. Limit one trap per tile currently.
 
@@ -795,6 +810,13 @@ struct ter_t : map_data_common_t {
 
     bool is_null() const;
     bool is_terrain() const override;
+    // ACT-J10: it has a "chop" object
+    bool can_chop() const;
+    // ACT-J10: what tilling it gives: its "till" object, or a mound of dirt in 3 minutes
+    ter_str_id till_result() const;
+    int till_moves() const;
+    // ACT-J10: what it becomes when a seed is planted on it: its plant_result, or dirt
+    ter_str_id planted_terrain() const;
 
     std::vector<std::string> extended_description() const override;
     bool is_smashable() const override;
@@ -810,6 +832,16 @@ void reset_furn_ter();
 /*
  * The terrain list contains the master list of information and metadata for a given type of terrain.
  */
+
+// ACT-J11: a smoking rack (examine action smoker_options), from the furniture's "smoker" object
+struct furn_smoker_info {
+    // on an unlit rack: what it becomes while it smokes
+    furn_str_id lit;
+    // on a lit rack: what it goes back to when the smoking ends or is stopped
+    furn_str_id unlit;
+    // how much food it holds
+    units::volume capacity = units::from_liter( 20 );
+};
 
 struct furn_t : map_data_common_t {
 
@@ -840,6 +872,9 @@ struct furn_t : map_data_common_t {
     cata::value_ptr<plant_data> plant;
 
     cata::value_ptr<float> surgery_skill_multiplier;
+
+    // ACT-J11: a smoking rack's lit and unlit furniture and capacity
+    cata::value_ptr<furn_smoker_info> smoker;
 
     // May return NULL
     const itype *crafting_pseudo_item_type() const;

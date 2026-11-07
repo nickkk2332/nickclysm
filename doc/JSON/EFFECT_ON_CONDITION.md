@@ -1704,6 +1704,18 @@ No talker is needed.
 - type: `unseen`, `vague`, `outlines`, `details` or `full`
 - return true if the player has seen the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) at least at this level, e.g. `{ "map_omt_seen": "outlines", "loc": { "context_val": "loc" } }`
 
+### `u_in_zone`, `npc_in_zone`, `map_in_zone`
+- type: string or [variable object](#variable-object), a zone type id; `""` is a zone of any type
+- return true if the alpha or beta talker stands in (`u_in_zone`, `npc_in_zone`), or the location `loc` (a location [variable object](#variable-object), mandatory for `map_in_zone`) is in, an enabled zone of that type
+- `"faction"` (string or [variable object](#variable-object), default `your_followers`): only that faction's zones count. Personal and vehicle zones count too; a disabled zone doesn't.
+- an unknown zone type is a load error
+
+#### Examples
+```jsonc
+{ "u_in_zone": "LOOT_FOOD" }
+{ "map_in_zone": "", "loc": { "context_val": "loc" }, "faction": "free_merchants" }
+```
+
 ### `map_is_outside`
 - type: location string or [variable object](#variable-object)
 - return true if the location is outside. Currently always returns false if the location is outside the reality bubble.
@@ -3966,6 +3978,7 @@ Fix zones run EoCs, provided by this effect; can work outside of reality bubble.
 
 Each zone is the alpha talker of its EoC (there is no beta talker):
 - `u_is_zone` is true, and the string mutator `u_zone_type` gives its zone type id (`{ "compare_string": [ "LOOT_UNSORTED", { "mutator": "u_zone_type" } ] }`).
+- the string mutator `u_zone_faction` gives the faction that owns it, and the condition `u_zone_enabled` is true while it's enabled.
 - The talker's name is the zone's name, and its position (`u_location_variable`) is the zone's start corner.
 - The context variables `_zone_start` and `_zone_end` hold its two corners, so `u_map_run_eocs` and the like can work on its tiles.
 - `u_` variables are kept with the zone and saved with it.
@@ -3978,6 +3991,7 @@ The context variables of the calling EoC are passed on.
 | "u_run_fixed_zone_eocs"/ "npc_run_fixed_zone_eocs" | **mandatory** | array of eocs | EoCs that would be run by fixed zones |
 | "zone_types" | optional | array of strings | if used, only zones of these zone types (`LOOT_UNSORTED`, `NO_NPC_PICKUP`, ...) are affected; an unknown type is a load error |
 | "zone_range" | optional | int or [variable object](#variable-object) | if used, only fixed zone in this range are affected |
+| "faction" | optional | string or [variable object](#variable-object) | default `your_followers`; the zones of this faction |
 | "z_min" | optional | int or [variable object](#variable-object) | if used, only fixed zone'z position >= z_min are affected |
 | "z_max" | optional | int or [variable object](#variable-object) | if used, only fixed zone'z position <= z_max are affected |
 
@@ -3989,7 +4003,7 @@ The context variables of the calling EoC are passed on.
 
 ##### Examples
 
-All fixed zones in range 24, z position >= 1, that you can see, run `u_location_variable` and `u_teleport`, we move fix zones in this example
+All fixed zones in range 24, z position >= 1, run `u_location_variable` and `u_teleport`, we move fix zones in this example
 ```jsonc
 {
     "type": "effect_on_condition",
@@ -5489,6 +5503,7 @@ Search a specific coordinates of map around `u_`, `npc_` or `target_params` and 
 | "x_adjust", "y_adjust", "z_adjust" | optional | int, float or [variable object](#variable-object) | add this amount to `x`, `y` or `z` coordinate in the end; `"x_adjust": 2` would save the coordinate with 2 tile shift to the right from targeted |
 | "z_override" | optional | boolean | default is false; if true, instead of adding up to `z` level, override it with absolute value; `"z_adjust": 3` with `"z_override": true` turn the value of `z` to `3` |
 | "terrain" / "furniture" / "field" / "trap" / "monster" / "zone" / "npc" | optional | string or [variable object](#variable-object) | if used, search the entity with corresponding id between `target_min_radius` and `target_max_radius`; if empty string is used (e.g. `"monster": ""`), return any entity from the same radius  |
+| "faction" | optional | string or [variable object](#variable-object) | with `"zone"`: whose zones to look for, default `your_followers` |
 | "target_min_radius", "target_max_radius" | optional | int, float or [variable object](#variable-object) | default 0, min and max radius for search, if previous field was used |
 | "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if the location was found, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
 
@@ -7915,6 +7930,48 @@ Store `vitrified_farm_ground`. When `vitrified_farm_escape_key` is called, the l
   "time_in_future": "infinite",
   "key": "vitrified_farm_escape_key"
 },
+```
+
+#### `create_zone`
+Creates a zone, as a mapgen `place_zones` entry does (no question to bind it to a vehicle's cargo space). Zones of the player's faction show in the zone manager and work as player-made ones do.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "create_zone" | **mandatory** | string or [variable object](#variable-object) | the zone type id (`LOOT_FOOD`, `FARM_PLOT`, ...); an unknown type is a load error |
+| "start" | **mandatory** | [variable object](#variable-object) | one corner |
+| "end" | optional | [variable object](#variable-object) | the opposite corner; default `start`, a one-tile zone. Corners can be given in any order |
+| "faction" | optional | string or [variable object](#variable-object) | default `your_followers`; the faction that owns it |
+| "name" | optional | string or [variable object](#variable-object) | default the zone type's name |
+| "filter" | optional | string or [variable object](#variable-object) | the item filter of a `LOOT_CUSTOM` zone, or the item group of a `LOOT_ITEM_GROUP` zone |
+
+Other zone options (a farm plot's seed, a blueprint's construction) keep their defaults.
+
+#### `remove_zones`
+Removes the fixed zones that hold a location: not personal zones, not vehicle zones.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "remove_zones" | **mandatory** | string or [variable object](#variable-object) | the zone type id; `""` removes zones of every type |
+| "loc" | **mandatory** | [variable object](#variable-object) | the location |
+| "faction" | optional | string or [variable object](#variable-object) | default `your_followers`; only this faction's zones |
+
+#### `set_zones_enabled`
+Enables or disables the fixed zones that hold a location (not personal zones, not vehicle zones), as the zone manager's toggle does.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_zones_enabled" | **mandatory** | string or [variable object](#variable-object) | the zone type id; `""` is every type |
+| "enabled" | optional | bool | default true |
+| "loc" | **mandatory** | [variable object](#variable-object) | the location |
+| "faction" | optional | string or [variable object](#variable-object) | default `your_followers`; only this faction's zones |
+
+##### Examples
+Mark the tile in front of you as a food zone, turn it off, and remove it again
+```jsonc
+{ "u_location_variable": { "context_val": "spot" }, "x_adjust": 1 },
+{ "create_zone": "LOOT_FOOD", "start": { "context_val": "spot" }, "name": "Pantry" },
+{ "set_zones_enabled": "LOOT_FOOD", "enabled": false, "loc": { "context_val": "spot" } },
+{ "remove_zones": "LOOT_FOOD", "loc": { "context_val": "spot" } }
 ```
 
 #### `alter_timed_events`

@@ -128,9 +128,6 @@ static const efftype_id effect_stunned( "stunned" );
 
 static const fault_id fault_bionic_salvaged( "fault_bionic_salvaged" );
 
-static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
-static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
-
 static const gun_mode_id gun_mode_DEFAULT( "DEFAULT" );
 
 static const itype_id itype_barrel_small( "barrel_small" );
@@ -1560,7 +1557,8 @@ void firestarter_actor::resolve_firestarter_use( Character *p, map *here,
 
 firestarter_actor::start_type firestarter_actor::furniture_start_type( const furn_id &furn )
 {
-    if( furn == furn_f_metal_smoking_rack || furn == furn_f_smoking_rack ) {
+    // ACT-J11: an unlit smoking rack, by its "smoker" object
+    if( furn->smoker && !furn->smoker->lit.is_empty() ) {
         return start_type::SMOKER;
     }
     if( process_start_examine_actor::firestarter_process( furn.obj() ) != nullptr ) {

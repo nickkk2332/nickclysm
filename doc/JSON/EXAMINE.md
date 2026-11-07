@@ -84,6 +84,12 @@ Examine actions and examine actors can be mixed within single key, like `"examin
 - ```shrub_marloss``` Pick a Marloss bush.
 - ```shrub_wildveggies``` Pick a wild veggies shrub.
 - ```slot_machine``` Gamble.
+- ```smoker_options``` A charcoal smoking rack: load food, add charcoal, light it, and it smokes or dries the food over 6 hours. The furniture needs a `"smoker"` object (a load error without one), and the lit and unlit racks name each other: the unlit rack has `"lit"`, the furniture it becomes while it smokes, and the lit one `"unlit"`, the furniture it goes back to. `"capacity"` (default `"20 L"`) is how much food it holds. A rack with a `deployed_item` can be packed up from the menu. Firestarters light an unlit rack.
+
+  ```jsonc
+  "smoker": { "lit": "f_smoking_rack_active", "capacity": "20 L" }   // on f_smoking_rack
+  "smoker": { "unlit": "f_smoking_rack", "capacity": "20 L" }        // on f_smoking_rack_active
+  ```
 - ```water_source``` Drink or get liquid from a furniture/terrain. Should be used in pair with `liquid_source`
 - ```mortar``` Shoot a projectile.
 
@@ -395,7 +401,7 @@ Examines furniture whose process is running: says how long it still needs, and o
 
 Messages, as for `process_start`: `empty_message` (the tile is empty), `reject_message`, `examine_message` (shown before the time check), `done_message` (the process is done; with `convert_to_smoking_result` only if something was dried) and `time_left_message`. `time_left_message` is either a string with `%s` for the time left, or an object with `hours` (plural forms, `%d` hours), `less_than_an_hour` and `minutes` (plural forms, `%d` minutes): the first with more than an hour left, the second with more than half an hour, the third otherwise.
 
-The kilns, the arc furnace, the stook and the autoclave are made of these two actors; see `data/json/furniture_and_terrain/furniture-tools.json`, `furniture-domestic_plants.json` and `furniture-medical.json`. The smoking racks and mills keep their hardcoded `smoker_options` and `quern_examine` actions: they load food from a menu, burn charcoal in proportion to the food, run on a timer item that finishes the process by itself, stop the food rotting while they run, and the mills work in recipe batches.
+The kilns, the arc furnace, the stook and the autoclave are made of these two actors; see `data/json/furniture_and_terrain/furniture-tools.json`, `furniture-domestic_plants.json` and `furniture-medical.json`. The smoking racks and mills keep their hardcoded `smoker_options` (its furniture names its lit and unlit forms and capacity in a `smoker` object) and `quern_examine` actions: they load food from a menu, burn charcoal in proportion to the food, run on a timer item that finishes the process by itself, stop the food rotting while they run, and the mills work in recipe batches.
 
 #### Example
 ```jsonc

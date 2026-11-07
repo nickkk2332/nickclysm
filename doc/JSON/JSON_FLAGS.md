@@ -1722,6 +1722,14 @@ These flags apply to the `use_action` field, instead of the `flags` field.  Many
 - ```WASH_ALL_ITEMS``` Wash items with `FILTHY` flag.
 - ```WASH_HARD_ITEMS``` Wash hard items with `FILTHY` flag.
 - ```WASH_SOFT_ITEMS``` Wash soft items with `FILTHY` flag.
+
+  The three washing actions take the `requirement` `washing_water` once per 125 ml of items washed and `washing_cleanser` once per liter (both rounded up), and 10 seconds per 250 ml. Vanilla's `washing_water` is one `water` or `water_clean` (it has to be liquid), and `washing_cleanser` one `soap`, `detergent` or `liquid_soap`. A mod adds its own cleanser with `"extend"`, or makes washing cost more by raising the counts:
+
+  ```json
+  { "type": "requirement", "id": "washing_cleanser", "extend": { "components": [ [ [ "lye_soap", 1 ] ] ] } }
+  ```
+
+  A liquid cleanser has to be liquid; a solid one is taken as it is. Tools in these requirements are needed too (charges used once per unit), and qualities.
 - ```WATER_PURIFIER``` Purify water.
 - ```WEATHER_TOOL``` Shows weather readings: temperature, humidity, pressure, wind, radiation and irradiance, depending on the device.
 
