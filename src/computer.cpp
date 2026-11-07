@@ -461,9 +461,10 @@ effect_on_condition_id load_computer_eoc( const JsonValue &jv )
         // each tile of a multi-tile mapgen sets up the same JSON: a second definition of the
         // inline EOC would be an error
         JsonObject jeoc = jv.get_object();
+        // only the id is read here; load_inline_eoc() reads (and checks) the rest
+        jeoc.allow_omitted_members();
         const effect_on_condition_id id( jeoc.get_string( "id" ) );
         if( id.is_valid() ) {
-            jeoc.allow_omitted_members();
             return id;
         }
     }
