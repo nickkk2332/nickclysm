@@ -1131,8 +1131,9 @@ constexpr bool key_is_nameable()
 }
 
 template<typename Key>
-bool key_matches( const Key &key, std::string_view name )
+bool key_matches( [[maybe_unused]] const Key &key, [[maybe_unused]] std::string_view name )
 {
+    // GCC 9 counts a parameter used only in some if-constexpr branches as unused
     if constexpr( std::is_same_v<Key, std::string> ) {
         return key == name;
     } else if constexpr( stringify<Key>::value ) {
