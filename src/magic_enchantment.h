@@ -160,6 +160,8 @@ enum class mod : int {
     FUEL_USAGE,
     TURNING_DIFFICULTY,
     CROWD_CRUSH_RESIST,
+    BIONIC_SURGERY_SKILL,
+    MUT_OUT_OF_TREE_INSTABILITY_MULT,
     NUM_MOD
 };
 
@@ -227,6 +229,14 @@ class enchantment
         // If the input is a string return it as an enchantment_id otherwise create an enchantment with id inline_id and return inline_id as an enchantment id
         static enchantment_id load_inline_enchantment( const JsonValue &jv, std::string_view src,
                 std::string &inline_id );
+        // Reads the list member `member` of a trait's or bionic's JSON (`owner` is its id):
+        // enchantment ids or inline enchantments, named INLINE_ENCH_<owner>_<n>, n counted on
+        // from `inline_count` so a copy's inline enchantments never replace its parent's.
+        // Given, the list replaces `list`; in a copy (`was_loaded`), "extend" adds to it and
+        // "delete" takes enchantment ids out (MUT-J08).
+        static void load_enchantment_list( const JsonObject &jo, bool was_loaded,
+                                           std::string_view member, const std::string &owner, int &inline_count,
+                                           std::string_view src, std::vector<enchantment_id> &list );
 
         // this enchantment has a valid condition and is in the right location
         bool is_active( const Character &guy, const item &parent ) const;

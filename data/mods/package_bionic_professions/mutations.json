@@ -7,6 +7,8 @@
     "description": "You're trained in proper operation of the Autodoc, an advanced machine used for surgical procedures.  Operations involving it will be moderately more likely to succeed.",
     "valid": false,
     "purifiable": false,
-    "profession": true
+    "profession": true,
+    "flags": [ "SURGICAL_TRAINING" ],
+    "enchantments": [ { "values": [ { "value": "BIONIC_SURGERY_SKILL", "add": 7 } ] } ]
   }
 ]

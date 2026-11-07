@@ -491,6 +491,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```SUPER_CLAIRVOYANCE``` Gives a super clairvoyance effect (works with multiple z-levels), used for debug purposes.
 - ```SAFECRACK_NO_TOOL``` Allows to open safes without stethoscope.
 - ```SUPPRESS_INVISIBILITY``` Any invisibility effects on the creature, including the `PERMANENT_INVISIBILITY` flag, are ignored for the duration of the effect with this flag
+- ```SURGICAL_TRAINING``` Medical training: when a CBM this character installs fails, the complications are kept down (never worse than a faulty installation).  The MD and Autodoc Specialist traits have it.  The bonus to the chance of success is the `BIONIC_SURGERY_SKILL` enchantment value.
 - ```TELEPORT_LOCK``` You cannot teleport.  This has none of the protective effects of `DIMENSIONAL_ANCHOR`: something else can still teleport onto you.  Works from a trait, bionic, effect, body part or martial arts buff, and as an effect flag on monsters too.
 - ```TEMPORARY_SHAPESHIFT``` You are in another shape due to some supernatural effect.
 - ```TEMPORARY_SHAPESHIFT_NO_HANDS``` You do not have hands in your new shapeshifted form, and so cannot pick up or manipulate objects. 

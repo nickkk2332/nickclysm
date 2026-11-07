@@ -83,7 +83,7 @@ The mutation system works in several steps. All time references are in game time
 
 The odds of a mutation being good or bad is directly determined by Instability, which is a hidden value derived on a per-tree basis (it is possible for the chances of a bad mutation to be different across multiple mutation trees simultaneously).  This value is determined by counting all mutations you have that aren't negative, and counting double any mutations that don't belong as double.  For example, for the Feline mutation tree, "Feline Ears" is worth a single point of instability, while "Hooves" would count as two points. "Sleepy" counts as no points of instability, since it is a negative mutation.  Only traits you have gained as mutations count; ones you started with don't matter. Traits which cannot be gained as mutations, such as the Exodii's "Standard Neurobionic Matrix" mutation, also do not count.  Currently, the Robust Genetics trait negates the double penalty for out-of-tree mutations.  All mutations are counted as "in tree" that way.  Lastly, mutations count their prior forms.  "Very Strong" is worth two instability raw, since it counts "Strong" too which you had to mutate in order to obtain it even though it only shows one mutation in your character's list.  So if neither "Very Strong" nor "Strong" are in the tree, having "Very Strong" gives four instability; if Strong is in the tree but Very Strong isn't, 3 instability.
 
-This value is added up and then compared to the number of mutations that are non negative in the given tree. For example, Alpha has 21 non negative mutations, while Troglobite has 28, and Chimera has even more.  Half of your instability for that tree divided by the prior tally is your chance of rolling a bad mutation. For example if your Alpha instability was 7 you'd have a 1/3 chance of getting a bad mutation instead of a good one, and if for Trog your instability was also 7 you would have a 1/4 chance of getting a bad mutation.
+This value is added up and then compared to the number of mutations that are non negative in the given tree. For example, Alpha has 21 non negative mutations, while Troglobite has 28, and Chimera has even more.  Half of your instability for that tree divided by the prior tally is your chance of rolling a bad mutation (a category's `bad_mutation_chance_scale` changes the half, and its `bad_mutation_chance_cap`, 0.67 by default, is the most it gets; the `MUT_OUT_OF_TREE_INSTABILITY_MULT` enchantment value changes the 2 an out-of-tree mutation counts for, and `MUT_INSTABILITY_MOD` the total). For example if your Alpha instability was 7 you'd have a 1/3 chance of getting a bad mutation instead of a good one, and if for Trog your instability was also 7 you would have a 1/4 chance of getting a bad mutation.
 
 Instability cannot decrease over time.  It is a static value that can only be lowered by lowering your number of mutations by using Purifier.  If you purify back to baseline after becoming heavily mutated, it like getting a reset on your instability value, but it cannot otherwise be lowered without giving up your mutations.
 
@@ -350,11 +350,53 @@ These fields are optional, but are very frequently used in mutations and their c
 | `thirst`          | false   | If true, this active mutation will consume `cost` thirst during activation or upkeep.                                                                       |
 | `sleepiness`      | false   | If true, this active mutation will consume `cost` sleepiness during activation or upkeep.                                                                   |
 | `mana`            | false   | If true, this active mutation will consume `cost` mana during activation or upkeep. Can used by magic mods.                                                 |
+| `costs`           | Nothing | An object giving each resource its own amount, instead of `cost` and the flags above (it can't be used with them): `"costs": { "kcal": 50, "mana": 10, "stamina": 200, "thirst": 5, "sleepiness": 5, "power": "5 kJ" }`.  The trait uses only the resources it names, and none can be negative; `power` is bionic power.  See "Activation costs" below. |
 | `enchantments`    | Nothing | A list of enchantments granted by this mutation. Can either be string IDs of a defined enchantment, or an inline definition.                                |
 
 ### Optional Fields
 
 There are many, many optional fields present for mutations to let them do all sorts of things. You can see them documented above.
+
+### Activation costs
+
+An active trait pays its costs when it is switched on, and again every `time` while it runs.  `cost` with `kcal`, `thirst`, `sleepiness`, `mana` or `stamina` set to true takes the same amount of each resource it flags; `costs` names each resource with its own amount, and is the only way to make a trait run on bionic power (`power`, an energy such as `"5 kJ"`).  In a `copy-from`, `costs` replaces the parent's costs as a whole, and `cost` or a resource flag recomputes the amounts from `cost`.
+
+One check decides whether a trait can be switched on, wherever that comes from (the mutations menu, reflex `triggers`, `u_activate_trait`): stored kcal at least half of healthy, thirst below 260, sleepiness below Exhausted, more mana or stamina than the cost, and at least the power cost.  Keeping it running is a little looser: it switches off when the character becomes underweight, reaches 260 thirst or Exhausted, or has less mana, stamina or bionic power than the cost.
+
+```jsonc
+{
+  "type": "mutation",
+  "id": "EXAMPLE_POWERED_GLAND",
+  "name": { "str": "Powered Gland" },
+  "description": "Runs on food and a trickle of bionic power.",
+  "points": 1,
+  "active": true,
+  "time": "1 m",
+  "costs": { "kcal": 5, "power": "2 kJ" }
+}
+```
+
+### copy-from, extend and delete
+
+A trait that copies another (`copy-from`, also a mod copying a trait under its own id) keeps every member it doesn't name.  A list or map it names replaces the parent's, so restating a parent's `enchantments` no longer applies them twice.  To add to or take from the parent's instead, use `extend` and `delete`:
+
+- `activated_eocs`, `processed_eocs`, `deactivated_eocs` and `integrated_armor`: `extend` adds entries; `delete` takes ids out.
+- `enchantments`: `extend` adds enchantment ids or inline enchantments; `delete` takes enchantment ids.  An inline enchantment is named `INLINE_ENCH_<trait id>_<n>`, where `n` counts that trait id's inline enchantments in load order across all its definitions, so a trait's own are `_0`, `_1`, ... and those of a later override of the same id go on from there.
+- `vitamin_rates`, `spells_learned`, `craft_skill_bonus`, `lumination`, `anger_relations` and `moncams` (lists of `[ key, value ]` pairs): `extend` adds pairs, replacing the value of a key already there; `delete` takes keys (`"delete": { "lumination": [ "head" ] }`).
+- `armor` and `attacks`: `extend` adds to the parent's (the armor values are added together); there is no `delete`, restate the member instead (`"attacks": []` removes them all).
+
+```jsonc
+{
+  "type": "mutation",
+  "id": "EXAMPLE_TRAIT_VARIANT",
+  "copy-from": "EXAMPLE_TRAIT",
+  "name": { "str": "Example Trait Variant" },
+  "extend": { "enchantments": [ { "values": [ { "value": "SPEED", "add": 5 } ] } ] },
+  "delete": { "processed_eocs": [ "EOC_EXAMPLE_TRAIT_TICK" ], "lumination": [ "head" ] }
+}
+```
+
+The other lists (`restricts_gear`, `encumbrance_always`, `wet_protection`, `no_cbm_on_bp`, ...) still add to the parent's when restated.
 
 ### Comfort Conditions
 
@@ -489,6 +531,10 @@ A Mutation Category identifies a set of interrelated mutations that as a whole e
 | `vitamin`               | The vitamin id of the primer of this category. The character's vitamin level will act as the weight of this category when selecting which category to try and mutate towards, and gets decreased on successful mutation by the trait's mutagen cost.
 | `base_removal_chance`   | Int, percent chance for a mutation of this category removing a conflicting base (starting) trait, rolled per `Character::mutate_towards` attempts.  Default 100%.  Removed base traits will **NOT** be considered base traits from here on, even if you regain them later.
 | `base_removal_cost_mul` | Float, multiplier on the primer cost of the trait that removed a canceled starting trait, down to 0.0 for free mutations as long as a starting trait was given up.  Default 3.0, used for human-like categories and lower as categories become more inhuman.
+| `bad_mutation_chance_scale` | Float, the chance that a mutation in this category is a bad one is this times the character's instability for the category divided by the number of good traits in it (see [Instability](#instability-and-the-odds-of-a-good-mutation)).  Default 0.5.
+| `bad_mutation_chance_cap` | Float from 0 to 1, the highest that chance gets, however unstable the character is.  Default 0.67.
+| `threshold_breach_min_level` | Int, how far the character must have mutated into this category (their category level, the one that also picks their dreams) before they can try to cross its threshold.  Default 30.
+| `threshold_message`     | Message shown when the character crosses this category's threshold.  Default "Something strains mightily for a moment… and then… you're… FREE!".
 | `wip`                   | A flag indicating that a mutation category is unfinished and shouldn't have consistency tests run on it. See tests/mutation_test.cpp.
 | `skip_test`             | If true, this mutation category will be skipped in consistency tests; this should only be used if you know what you're doing. See tests/mutation_test.cpp.
 

@@ -266,7 +266,7 @@ void suffer::mutation_power( Character &you, const trait_id &mut_id )
                 you.deactivate_mutation( mut_id );
             } else {
                 // does not directly modify hunger, but burns kcal
-                you.mod_stored_kcal( -mut_id->cost );
+                you.mod_stored_kcal( -mut_id->kcal_cost );
             }
         }
         if( mut_id->thirst ) {
@@ -277,7 +277,7 @@ void suffer::mutation_power( Character &you, const trait_id &mut_id )
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.mod_thirst( mut_id->cost );
+                you.mod_thirst( mut_id->thirst_cost );
             }
         }
         if( mut_id->sleepiness ) {
@@ -288,30 +288,42 @@ void suffer::mutation_power( Character &you, const trait_id &mut_id )
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.mod_sleepiness( mut_id->cost );
+                you.mod_sleepiness( mut_id->sleepiness_cost );
             }
         }
         if( mut_id->mana ) {
             // no enough mana
-            if( you.magic->available_mana() < mut_id->cost ) {
+            if( you.magic->available_mana() < mut_id->mana_cost ) {
                 you.add_msg_if_player( m_warning,
                                        _( "You don't have enough mana to keep your %s going." ),
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.magic->mod_mana( you, -mut_id->cost );
+                you.magic->mod_mana( you, -mut_id->mana_cost );
             }
         }
 
         if( mut_id->stamina ) {
             // no enough stamina
-            if( you.get_stamina() < mut_id->cost ) {
+            if( you.get_stamina() < mut_id->stamina_cost ) {
                 you.add_msg_if_player( m_warning,
                                        _( "You don't have enough stamina to keep your %s going." ),
                                        you.mutation_name( mut_id ) );
                 you.deactivate_mutation( mut_id );
             } else {
-                you.mod_stamina( -mut_id->cost );
+                you.mod_stamina( -mut_id->stamina_cost );
+            }
+        }
+
+        // MUT-J11: a trait can run on bionic power
+        if( mut_id->power_cost > 0_kJ ) {
+            if( you.get_power_level() < mut_id->power_cost ) {
+                you.add_msg_if_player( m_warning,
+                                       _( "You don't have enough bionic power to keep your %s going." ),
+                                       you.mutation_name( mut_id ) );
+                you.deactivate_mutation( mut_id );
+            } else {
+                you.mod_power_level( -mut_id->power_cost );
             }
         }
 

@@ -128,6 +128,16 @@ struct bionic_data {
      * deactivated automatically when this bionic is activated.
      */
     std::vector<bionic_id> autodeactivated_bionics;
+    /**
+     * Faulty bionics a failed installation of this one can leave (MUT-J09); empty means
+     * any BIONIC_FAULTY bionic.
+     */
+    std::vector<bionic_id> faulty_pool;
+    /**
+     * The bionic whose effects coded in C++ (bio_teleport, bio_nanobots, ...) this one has:
+     * its own id, or that of the bionic it was copied from, so a copy-from keeps them (MUT-J12).
+     */
+    bionic_id hardcoded_behavior;
     cata::flat_set<json_character_flag> flags;
     cata::flat_set<json_character_flag> active_flags;
     cata::flat_set<json_character_flag> inactive_flags;

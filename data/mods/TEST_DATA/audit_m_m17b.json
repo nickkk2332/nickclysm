@@ -1,0 +1,251 @@
+[
+  {
+    "//": "MUT-J08 fixture: an EOC the copies below add or keep.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTJ08_B",
+    "effect": [  ]
+  },
+  {
+    "//": "MUT-J08 fixture: a named enchantment the copies below add.",
+    "type": "enchantment",
+    "id": "TEST_MUTJ08_NAMED_ENCH",
+    "condition": "ALWAYS",
+    "values": [ { "value": "SPEED", "add": 2 } ]
+  },
+  {
+    "//": "MUT-J08 fixture: a trait with one of each list that copy-from used to append to.",
+    "type": "mutation",
+    "id": "TEST_MUTJ08_PARENT",
+    "name": { "str": "Test Copied Trait" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait whose lists its copies replace, extend or trim.",
+    "processed_eocs": [ { "id": "EOC_TEST_MUTJ08_A", "effect": [  ] } ],
+    "enchantments": [ { "values": [ { "value": "SPEED", "add": 1 } ] } ],
+    "integrated_armor": [ "integrated_claws" ],
+    "lumination": [ [ "head", 8 ], [ "torso", 4 ] ],
+    "anger_relations": [ [ "HUMAN", 10 ] ],
+    "armor": [ { "parts": [ "torso" ], "bash": 2 } ],
+    "attacks": {
+      "attack_text_u": "You poke %s.",
+      "attack_text_npc": "%1$s pokes %2$s.",
+      "chance": 10,
+      "base_damage": { "damage_type": "bash", "amount": 1 }
+    }
+  },
+  {
+    "//": "MUT-J08 fixture: a copy that restates every list, which now replaces the parent's.",
+    "type": "mutation",
+    "id": "TEST_MUTJ08_RESTATE",
+    "copy-from": "TEST_MUTJ08_PARENT",
+    "name": { "str": "Test Restating Copy" },
+    "description": "Test trait that restates its parent's lists.",
+    "processed_eocs": [ "EOC_TEST_MUTJ08_B" ],
+    "enchantments": [ { "values": [ { "value": "SPEED", "add": 3 } ] } ],
+    "integrated_armor": [ "integrated_claws" ],
+    "lumination": [ [ "head", 2 ] ],
+    "anger_relations": [ [ "HUMAN", 20 ] ],
+    "armor": [ { "parts": [ "torso" ], "bash": 5 } ],
+    "attacks": {
+      "attack_text_u": "You jab %s.",
+      "attack_text_npc": "%1$s jabs %2$s.",
+      "chance": 20,
+      "base_damage": { "damage_type": "bash", "amount": 2 }
+    }
+  },
+  {
+    "//": "MUT-J08 fixture: a copy that adds to its parent's lists.",
+    "type": "mutation",
+    "id": "TEST_MUTJ08_EXTEND",
+    "copy-from": "TEST_MUTJ08_PARENT",
+    "name": { "str": "Test Extending Copy" },
+    "description": "Test trait that adds to its parent's lists.",
+    "extend": {
+      "processed_eocs": [ "EOC_TEST_MUTJ08_B" ],
+      "enchantments": [ "TEST_MUTJ08_NAMED_ENCH", { "values": [ { "value": "SPEED", "add": 4 } ] } ],
+      "lumination": [ [ "torso", 6 ] ],
+      "armor": [ { "parts": [ "torso" ], "bash": 3 } ],
+      "attacks": {
+        "attack_text_u": "You jab %s.",
+        "attack_text_npc": "%1$s jabs %2$s.",
+        "chance": 20,
+        "base_damage": { "damage_type": "bash", "amount": 2 }
+      }
+    },
+    "delete": { "lumination": [ "head" ], "anger_relations": [ "HUMAN" ] }
+  },
+  {
+    "//": "MUT-J08 fixture: a copy that takes its parent's entries out.",
+    "type": "mutation",
+    "id": "TEST_MUTJ08_DELETE",
+    "copy-from": "TEST_MUTJ08_PARENT",
+    "name": { "str": "Test Trimming Copy" },
+    "description": "Test trait that takes its parent's entries out.",
+    "delete": {
+      "processed_eocs": [ "EOC_TEST_MUTJ08_A" ],
+      "enchantments": [ "INLINE_ENCH_TEST_MUTJ08_PARENT_0" ],
+      "integrated_armor": [ "integrated_claws" ]
+    },
+    "attacks": [  ]
+  },
+  {
+    "//": "MUT-J08 fixture: a bionic with an activation EOC and an inline enchantment.",
+    "type": "bionic",
+    "id": "test_bio_mutj08_parent",
+    "name": { "str": "Test Copied CBM" },
+    "description": "Test CBM whose lists its copies replace or extend.",
+    "activated_eocs": [ { "id": "EOC_TEST_MUTJ08_BIO_A", "effect": [  ] } ],
+    "enchantments": [ { "values": [ { "value": "SPEED", "add": 1 } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J08 fixture: a copy of the CBM above that restates its lists.",
+    "type": "bionic",
+    "id": "test_bio_mutj08_restate",
+    "copy-from": "test_bio_mutj08_parent",
+    "name": { "str": "Test Copied CBM" },
+    "description": "Test CBM with the same name as the one it copies.",
+    "activated_eocs": [ "EOC_TEST_MUTJ08_B" ],
+    "enchantments": [ { "values": [ { "value": "SPEED", "add": 3 } ] } ]
+  },
+  {
+    "//": "MUT-J08 fixture: a copy of the CBM above that adds to its lists.",
+    "type": "bionic",
+    "id": "test_bio_mutj08_extend",
+    "copy-from": "test_bio_mutj08_parent",
+    "name": { "str": "Test Extending CBM" },
+    "description": "Test CBM that adds to its parent's lists.",
+    "extend": { "activated_eocs": [ "EOC_TEST_MUTJ08_B" ], "enchantments": [ "TEST_MUTJ08_NAMED_ENCH" ] }
+  },
+  {
+    "//": "MUT-J09 fixture: a surgeon's trait, written in JSON.",
+    "type": "mutation",
+    "id": "TEST_MUTJ09_SURGEON",
+    "name": { "str": "Test Surgeon" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait that makes its owner a better surgeon.",
+    "flags": [ "SURGICAL_TRAINING" ],
+    "enchantments": [ { "values": [ { "value": "BIONIC_SURGERY_SKILL", "add": 10 } ] } ]
+  },
+  {
+    "//": "MUT-J09 fixture: the faulty CBM that test_bio_mutj09_pooled's failed installation leaves.",
+    "type": "bionic",
+    "id": "test_bio_mutj09_faulty",
+    "name": { "str": "Test Botched CBM" },
+    "description": "Test CBM a failed installation leaves.",
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J09 fixture: a CBM with its own faulty pool.",
+    "type": "bionic",
+    "id": "test_bio_mutj09_pooled",
+    "name": { "str": "Test Pooled CBM" },
+    "description": "Test CBM whose failed installation leaves a CBM of its own.",
+    "faulty_pool": [ "test_bio_mutj09_faulty" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J10 fixture: a category whose mutations are never bad and whose threshold is open at once.",
+    "type": "mutation_category",
+    "id": "TEST_MUTJ10_TUNED",
+    "name": "Tuned test category",
+    "threshold_mut": "THRESH_TEST_MUTJ10",
+    "mutagen_message": "Tuned test category message",
+    "bad_mutation_chance_cap": 0,
+    "threshold_breach_min_level": 0,
+    "threshold_message": "You cross the test threshold.",
+    "wip": true
+  },
+  {
+    "//": "MUT-J10 fixture: the threshold of TEST_MUTJ10_TUNED, free to cross.",
+    "type": "mutation",
+    "id": "THRESH_TEST_MUTJ10",
+    "name": { "str": "Test threshold (MUT-J10)" },
+    "points": 0,
+    "valid": false,
+    "threshold": true,
+    "vitamin_cost": 0,
+    "description": "Test threshold of TEST_MUTJ10_TUNED."
+  },
+  {
+    "//": "MUT-J10 fixture: a good trait of TEST_MUTJ10_TUNED.",
+    "type": "mutation",
+    "id": "TEST_MUTJ10_GOOD",
+    "name": { "str": "Test Tuned Trait" },
+    "points": 2,
+    "valid": false,
+    "category": [ "TEST_MUTJ10_TUNED" ],
+    "description": "Test trait of TEST_MUTJ10_TUNED."
+  },
+  {
+    "//": "MUT-J11 fixture: an active trait with a cost of its own for each resource.",
+    "type": "mutation",
+    "id": "TEST_MUTJ11_COSTS",
+    "name": { "str": "Test Costly Gland" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait that costs kcal, stamina and bionic power.",
+    "active": true,
+    "costs": { "kcal": 50, "stamina": 300, "power": "5 kJ" }
+  },
+  {
+    "//": "MUT-J11 fixture: an active trait that runs on bionic power alone.",
+    "type": "mutation",
+    "id": "TEST_MUTJ11_POWERED",
+    "name": { "str": "Test Powered Gland" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait that runs on bionic power.",
+    "active": true,
+    "costs": { "power": "5 kJ" }
+  },
+  {
+    "//": "MUT-J11 fixture: an active trait with the legacy cost.",
+    "type": "mutation",
+    "id": "TEST_MUTJ11_LEGACY",
+    "name": { "str": "Test Old Gland" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait that costs the same amount of kcal and mana.",
+    "active": true,
+    "cost": 7,
+    "kcal": true,
+    "mana": true
+  },
+  {
+    "//": "MUT-J12 fixture: a copy of the radiation scrubber, which keeps its coded effect, and switches the lamp off.",
+    "type": "bionic",
+    "id": "test_bio_mutj12_scrubber",
+    "copy-from": "bio_radscrubber",
+    "name": { "str": "Test Scrubber" },
+    "description": "Test CBM copied from the radiation scrubber.",
+    "auto_deactivates": [ "test_bio_mutj12_lamp" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J12 fixture: a toggled CBM the scrubber switches off.",
+    "type": "bionic",
+    "id": "test_bio_mutj12_lamp",
+    "name": { "str": "Test Lamp" },
+    "description": "Test CBM that the scrubber switches off.",
+    "flags": [ "BIONIC_TOGGLED" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J12 fixture: a passive CBM whose EOC records its trigger_cost.",
+    "type": "bionic",
+    "id": "test_bio_mutj12_trigger",
+    "name": { "str": "Test Trigger" },
+    "description": "Test CBM that hands its trigger_cost to its EOC.",
+    "trigger_cost": "3 kJ",
+    "processed_eocs": [ { "id": "EOC_TEST_MUTJ12_TRIGGER", "effect": [ { "math": [ "u_mutj12_trigger = _trigger_cost" ] } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  }
+]
