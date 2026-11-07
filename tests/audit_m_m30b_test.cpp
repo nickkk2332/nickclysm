@@ -1,4 +1,5 @@
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "avatar.h"
@@ -70,9 +71,9 @@ widget_audit_m30b_wielded_charge_hidden( "audit_m30b_wielded_charge_hidden" );
 static const widget_id widget_audit_m30b_wielded_layout( "audit_m30b_wielded_layout" );
 static const widget_id widget_audit_m30b_wielded_none_layout( "audit_m30b_wielded_none_layout" );
 
-static bool contains( const std::string &text, const std::string &part )
+static bool contains( const std::string_view text, const std::string_view part )
 {
-    return text.find( part ) != std::string::npos;
+    return text.find( part ) != std::string_view::npos;
 }
 
 static std::string shown( const widget_id &id, const Character &who )

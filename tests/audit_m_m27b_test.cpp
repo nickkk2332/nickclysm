@@ -57,7 +57,7 @@ static const field_type_str_id field_fd_smoke( "fd_smoke" );
 static const itype_id itype_audit_m27b_kill_counter( "audit_m27b_kill_counter" );
 static const itype_id itype_test_boxing_gloves( "test_boxing_gloves" );
 
-static const magic_type_id magic_type_audit_m27b_heavy_magic_copy( "audit_m27b_heavy_magic_copy" );
+static const magic_type_id magic_audit_m27b_heavy_magic_copy( "audit_m27b_heavy_magic_copy" );
 
 static const mtype_id mon_test_non_shearable( "mon_test_non_shearable" );
 
@@ -210,6 +210,7 @@ TEST_CASE( "magic-b16_enchantment_copy_from_keeps_and_overrides", "[audit][magic
     REQUIRE( ench.ench_effects.count( effect_audit_m27b_source_effect ) == 1 );
     CHECK( ench.ench_effects.at( effect_audit_m27b_source_effect ) == 3 );
     std::vector<spell_id> hit_you;
+    hit_you.reserve( ench.hit_you_effect.size() );
     for( const fake_spell &sp : ench.hit_you_effect ) {
         hit_you.push_back( sp.id );
     }
@@ -229,7 +230,7 @@ TEST_CASE( "magic-b16_copy_from_spells_and_magic_types_extend_and_delete_flags",
     CHECK_FALSE( child.has_flag( spell_flag::VERBAL ) );
     CHECK_FALSE( child.has_flag( "VERBAL" ) );
 
-    const magic_type &copy = magic_type_audit_m27b_heavy_magic_copy.obj();
+    const magic_type &copy = magic_audit_m27b_heavy_magic_copy.obj();
     CHECK( copy.cannot_cast_flags ==
            std::set<std::string> { "NO_PSIONICS", "NO_SPELLCASTING" } );
     // what it doesn't give it inherits

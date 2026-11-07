@@ -51,9 +51,9 @@ static const fault_id fault_engine_filter_fuel( "fault_engine_filter_fuel" );
 static const fault_id fault_engine_starter( "fault_engine_starter" );
 static const fault_id fault_flat_tire_riding_on_rims( "fault_flat_tire_riding_on_rims" );
 static const fault_id fault_punctured_tires( "fault_punctured_tires" );
-static const fault_id fault_test_veh_j04_bent_tie_rod( "test_veh_j04_bent_tie_rod" );
-static const fault_id fault_test_veh_j04_low_oil( "test_veh_j04_low_oil" );
 static const fault_id fault_tire_treads( "fault_tire_treads" );
+static const fault_id test_veh_j04_bent_tie_rod( "test_veh_j04_bent_tie_rod" );
+static const fault_id test_veh_j04_low_oil( "test_veh_j04_low_oil" );
 
 static const ter_str_id ter_t_railroad_track( "t_railroad_track" );
 static const ter_str_id ter_t_railroad_track_d( "t_railroad_track_d" );
@@ -312,9 +312,9 @@ TEST_CASE( "veh-j04_engine_and_steering_faults_are_numeric", "[audit][vehicle]" 
     CHECK( fault_punctured_tires->steering_mult() == 0.5f );
     CHECK( fault_flat_tire_riding_on_rims->steering_mult() == 0.1f );
     CHECK( fault_tire_treads->steering_mult() == 0.9f );
-    CHECK( fault_test_veh_j04_low_oil->engine_power_mult() == Approx( 0.5 ) );
-    CHECK( fault_test_veh_j04_low_oil->fuel_consumption_mult() == Approx( 1.5 ) );
-    CHECK( fault_test_veh_j04_low_oil->exhaust_mult() == Approx( 2.0 ) );
+    CHECK( test_veh_j04_low_oil->engine_power_mult() == Approx( 0.5 ) );
+    CHECK( test_veh_j04_low_oil->fuel_consumption_mult() == Approx( 1.5 ) );
+    CHECK( test_veh_j04_low_oil->exhaust_mult() == Approx( 2.0 ) );
 
     const restore_on_out_of_scope<time_point> restore_turn( calendar::turn );
     reset_world();
@@ -339,7 +339,7 @@ TEST_CASE( "veh-j04_engine_and_steering_faults_are_numeric", "[audit][vehicle]" 
         const units::power usage_before = car.engine_fuel_usage( vp );
         REQUIRE( power_before > 0_W );
         REQUIRE( usage_before > 0_W );
-        set_faults( vp, { fault_test_veh_j04_low_oil } );
+        set_faults( vp, { test_veh_j04_low_oil } );
         CHECK( car.total_power( here, false ) < power_before );
         units::power expected_usage = usage_before;
         expected_usage *= 1.5;
@@ -364,7 +364,7 @@ TEST_CASE( "veh-j04_engine_and_steering_faults_are_numeric", "[audit][vehicle]" 
         const float share = 1.0f / static_cast<float>( steering.size() );
         REQUIRE( car.steering_effectiveness( here ) == Approx( 1.0f ) );
         // a modded fault on the steering part itself
-        set_faults( car.part( steering[0] ), { fault_test_veh_j04_bent_tie_rod } );
+        set_faults( car.part( steering[0] ), { test_veh_j04_bent_tie_rod } );
         CHECK( car.steering_effectiveness( here ) == Approx( 1.0f - 0.5f * share ) );
         set_faults( car.part( steering[0] ), {} );
 

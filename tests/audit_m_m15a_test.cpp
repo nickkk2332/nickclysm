@@ -56,7 +56,10 @@ static const morale_type audit_m15a_temp( "audit_m15a_temp" );
 static const morale_type morale_perm_optimist( "morale_perm_optimist" );
 static const morale_type morale_wet( "morale_wet" );
 
+static const vitamin_id vitamin_audit_m15a_self( "audit_m15a_self" );
+
 static const wound_type_id wound_audit_m15a_bleeds( "audit_m15a_bleeds" );
+static const wound_type_id wound_audit_m15a_broken( "audit_m15a_broken" );
 static const wound_type_id wound_audit_m15a_dry( "audit_m15a_dry" );
 static const wound_type_id wound_audit_m15a_heals( "audit_m15a_heals" );
 static const wound_type_id wound_audit_m15a_slow( "audit_m15a_slow" );
@@ -274,7 +277,7 @@ TEST_CASE( "hlth-j04_wound_flags_bleeding_and_load_checks", "[audit][wound]" )
         "progress_timer": { "id": "audit_m15a_no_such_timer_wound", "time": [ "1 seconds", "2 seconds" ] }
     })" );
     wound_type broken;
-    broken.id = wound_type_id( "audit_m15a_broken" );
+    broken.id = wound_audit_m15a_broken;
     broken.load( jo, "audit_m_m15a_test" );
     const std::string messages = capture_debugmsg_during( [&broken]() {
         broken.check();
@@ -310,7 +313,7 @@ TEST_CASE( "hlth-j05_vitamin_load_checks", "[audit][vitamin]" )
         "disease_excess": [ [ 100, 200 ] ]
     })" );
     vitamin broken;
-    broken.id = vitamin_id( "audit_m15a_self" );
+    broken.id = vitamin_audit_m15a_self;
     broken.load( jo, "audit_m_m15a_test" );
     const std::string messages = capture_debugmsg_during( [&broken]() {
         broken.check();

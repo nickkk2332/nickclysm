@@ -165,7 +165,7 @@ struct camp_mission_encounter {
     // built-in encounter
     effect_on_condition_id eoc = effect_on_condition_id::NULL_ID();
 
-    void deserialize( const JsonObject &jo );
+    void load( const JsonObject &jo, std::string_view src );
 };
 
 /// A bonus to a recruiting mission's score while its condition holds (the avatar is alpha)

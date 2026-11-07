@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -1004,7 +1005,7 @@ double spell_defence_mitigation( const int defence, const int spell_accuracy, co
         return 0.0;
     }
     // 5% of the d20 roll, capped at the margin, of a third of the damage: 0 to 1/3
-    const int points = std::max( 0, std::min( std::min( roll, 20 ), margin ) );
+    const int points = std::max( 0, std::min( { roll, 20, margin } ) );
     return 0.05 * points / 3.0;
 }
 
@@ -1904,7 +1905,7 @@ void spell_effect::spawn_summoned_monster( const spell &sp, Creature &caster,
         } else {
             // a tile the monster won't go to (fire, deep water...): try another one
             add_msg_debug( debugmode::DF_GAME, "%s could not place a monster at %s", sp.id().str(),
-                           iter->to_string() );
+                           iter->to_string_writable() );
         }
         // whether or not we succeed in spawning a monster, we don't want to try this tripoint again
         area.erase( iter );

@@ -99,10 +99,10 @@ struct aim_fixture {
         advinv->init();
     }
 
-    advanced_inventory_pane &src() {
+    advanced_inventory_pane &src() const {
         return advinv->get_pane( advinv->get_src() );
     }
-    advanced_inventory_pane &dest() {
+    advanced_inventory_pane &dest() const {
         return advinv->get_pane( advinv->get_dest() );
     }
     void show( const aim_location src_area, const aim_location dest_area ) {
@@ -112,7 +112,7 @@ struct aim_fixture {
         REQUIRE( src().get_area() == src_area );
         REQUIRE( dest().get_area() == dest_area );
     }
-    void recalc() {
+    void recalc() const {
         advinv->recalc_pane( advanced_inventory::side::left );
         advinv->recalc_pane( advanced_inventory::side::right );
     }

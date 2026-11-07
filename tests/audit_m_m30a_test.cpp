@@ -2,6 +2,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "avatar.h"
@@ -89,9 +90,9 @@ std::string check_messages( const widget &w, bool drawn )
     } );
 }
 
-bool has_text( const std::string &haystack, const std::string &needle )
+bool has_text( const std::string_view haystack, const std::string_view needle )
 {
-    return haystack.find( needle ) != std::string::npos;
+    return haystack.find( needle ) != std::string_view::npos;
 }
 
 } // namespace

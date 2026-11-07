@@ -2,6 +2,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -365,7 +366,7 @@ TEST_CASE( "craft-b07_difficulty_search_takes_long_numbers", "[audit][crafting]"
     REQUIRE( rec.difficulty == 1 );
     recipe_subset subset;
     subset.include( &rec );
-    const auto found = [&subset]( const std::string & txt ) {
+    const auto found = [&subset]( const std::string_view txt ) {
         std::vector<const recipe *> res;
         CHECK_NOTHROW( res = subset.search( txt, recipe_subset::search_type::difficulty ) );
         return res.size();

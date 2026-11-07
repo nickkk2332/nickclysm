@@ -1,9 +1,9 @@
 #include "mattack_common.h" // IWYU pragma: associated
 #include "monstergenerator.h" // IWYU pragma: associated
 
-#include <stddef.h>
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <initializer_list>
 #include <optional>
 #include <set>

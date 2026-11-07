@@ -40,8 +40,8 @@ static const construction_str_id construction_constr_mine_upstair( "constr_mine_
 static const furn_str_id furn_f_bathtub( "f_bathtub" );
 
 static const itype_id itype_2x4( "2x4" );
-static const itype_id itype_cash_card( "cash_card" );
 static const itype_id itype_canteen( "canteen" );
+static const itype_id itype_cash_card( "cash_card" );
 static const itype_id itype_hammer( "hammer" );
 static const itype_id itype_nail( "nail" );
 static const itype_id itype_rock( "rock" );

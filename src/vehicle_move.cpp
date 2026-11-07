@@ -1166,7 +1166,9 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
                 // Every main body part takes 60-100% of it, as Character::hitall does
                 for( const bodypart_id &bp : ph->get_all_body_parts( get_body_part_flags::only_main ) ) {
                     damage_instance part_damage = coll_damage;
-                    part_damage.mult_damage( dam * rng( 60, 100 ) / 100, true );
+                    // whole points, as hitall rounds down
+                    const int part_dam = dam * rng( 60, 100 ) / 100;
+                    part_damage.mult_damage( part_dam, true );
                     ph->deal_damage( driver, bp, part_damage );
                 }
             } else {

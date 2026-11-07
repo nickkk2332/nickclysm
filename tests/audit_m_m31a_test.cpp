@@ -16,6 +16,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -207,7 +208,7 @@ class draw_logger
         }
         // the sprites drawn at map tile `p` whose id starts with `prefix`
         std::vector<drawn_sprite_record> at( const tripoint_bub_ms &p,
-                                             const std::string &prefix ) const {
+                                             const std::string_view prefix ) const {
             const point screen = tiles.player_to_screen( p.xy() );
             std::vector<drawn_sprite_record> found;
             for( const drawn_sprite_record &r : log ) {

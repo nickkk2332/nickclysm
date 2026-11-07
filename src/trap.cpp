@@ -4,6 +4,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -185,9 +186,9 @@ void trap::load( const JsonObject &jo, std::string_view src )
         }
     }
     // A list given here replaces the copy-from parent's instead of adding to it.
-    const auto load_eocs = [&jo, src]( const std::string & member,
+    const auto load_eocs = [&jo, src]( const std::string_view member,
     std::vector<effect_on_condition_id> &list ) {
-        if( !jo.has_member( member ) ) {
+        if( !jo.has_member( std::string( member ) ) ) {
             return;
         }
         list.clear();

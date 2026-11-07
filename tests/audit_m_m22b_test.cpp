@@ -60,9 +60,9 @@ static const faction_mission_id faction_mission_camp_setup_hide_site( "camp_setu
 static const faction_mission_id faction_mission_camp_survey_field( "camp_survey_field" );
 static const faction_mission_id
 faction_mission_test_m22b_deadly_fishing( "test_m22b_deadly_fishing" );
+static const faction_mission_id faction_mission_test_m22b_recruiting( "test_m22b_recruiting" );
 static const faction_mission_id
 faction_mission_test_m22b_regional_fishing( "test_m22b_regional_fishing" );
-static const faction_mission_id faction_mission_test_m22b_recruiting( "test_m22b_recruiting" );
 static const faction_mission_id faction_mission_test_m22b_safe_fishing( "test_m22b_safe_fishing" );
 static const faction_mission_id
 faction_mission_test_m22b_template_recruiting( "test_m22b_template_recruiting" );
@@ -83,13 +83,13 @@ static const npc_class_id NC_HUNTER( "NC_HUNTER" );
 
 static const npc_template_id npc_template_test_talker( "test_talker" );
 
+static const oter_str_id oter_field( "field" );
+
 static const oter_type_str_id oter_type_field( "field" );
 static const oter_type_str_id oter_type_forest( "forest" );
 static const oter_type_str_id oter_type_forest_water( "forest_water" );
 static const oter_type_str_id oter_type_rural_road( "rural_road" );
 static const oter_type_str_id oter_type_rural_road_forest( "rural_road_forest" );
-
-static const oter_str_id oter_field( "field" );
 
 static const region_settings_id region_settings_default( "default" );
 
@@ -196,7 +196,7 @@ std::string global_string( const std::string &name )
 }
 
 // evaluates (or assigns with) @ref expression in @ref d
-double run_math( dialogue &d, const std::string &expression )
+double run_math( dialogue &d, const std::string_view expression )
 {
     math_exp exp;
     REQUIRE( exp.parse( expression ) );

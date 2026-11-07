@@ -2224,7 +2224,7 @@ std::string zone_options_preset::check( const zone_type_id &type ) const
     const bool unload = type == zone_type_UNLOAD_ALL;
     std::vector<std::string> wrong;
     if( ( seed || fertilizer ) && !farm ) {
-        wrong.emplace_back( "\"seed\" and \"fertilizer\" are for FARM_PLOT zones" );
+        wrong.emplace_back( R"("seed" and "fertilizer" are for FARM_PLOT zones)" );
     }
     if( construction && !blueprint ) {
         wrong.emplace_back( "\"construction\" is for CONSTRUCTION_BLUEPRINT zones" );

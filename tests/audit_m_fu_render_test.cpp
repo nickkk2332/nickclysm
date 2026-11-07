@@ -15,7 +15,6 @@
 
 #if defined(TILES)
 #include <array>
-#include <string_view>
 #include <utility>
 #include <vector>
 

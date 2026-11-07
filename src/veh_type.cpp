@@ -11,6 +11,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -505,7 +506,7 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     // VINT-J05: "reaper": { "plant_yield": [ 1, 4 ], "seed_yield": [ 1, 3 ] }
     if( jo.has_object( "reaper" ) ) {
         const JsonObject jr = jo.get_object( "reaper" );
-        const auto read_bounds = [&jr]( const std::string & key, std::pair<int, int> &bounds ) {
+        const auto read_bounds = [&jr]( const std::string_view key, std::pair<int, int> &bounds ) {
             if( !jr.has_array( key ) ) {
                 return false;
             }

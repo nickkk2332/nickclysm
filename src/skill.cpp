@@ -314,7 +314,7 @@ void Skill::load( const JsonObject &jsobj, std::string_view )
             }
         };
         const std::string stat = jsobj.get_string( "crafting_stat" );
-        const auto found = std::find_if( crafting_stats.begin(), crafting_stats.end(),
+        const auto *const found = std::find_if( crafting_stats.begin(), crafting_stats.end(),
         [&stat]( const std::pair<std::string_view, scaling_stat> &entry ) {
             return entry.first == stat;
         } );

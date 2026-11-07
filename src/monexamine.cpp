@@ -1,6 +1,6 @@
 #include "monexamine.h"
 
-#include <stddef.h>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <map>

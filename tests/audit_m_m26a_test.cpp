@@ -94,6 +94,7 @@ static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
 static const zone_type_id zone_type_NO_NPC_PICKUP( "NO_NPC_PICKUP" );
 static const zone_type_id zone_type_SOURCE_FIREWOOD( "SOURCE_FIREWOOD" );
 static const zone_type_id zone_type_STUDY_ZONE( "STUDY_ZONE" );
+static const zone_type_id zone_type_TEST_M26A_NO_SUCH_ZONE( "TEST_M26A_NO_SUCH_ZONE" );
 static const zone_type_id zone_type_TEST_M26A_ZONE( "TEST_M26A_ZONE" );
 static const zone_type_id zone_type_UNLOAD_ALL( "UNLOAD_ALL" );
 
@@ -313,7 +314,7 @@ TEST_CASE( "act-b06_zone_manager_follows_reloaded_zone_types", "[audit][zones]" 
         CAPTURE( type.id.str() );
         CHECK( mgr.has_type( type.id ) );
     }
-    CHECK_FALSE( mgr.has_type( zone_type_id( "TEST_M26A_NO_SUCH_ZONE" ) ) );
+    CHECK_FALSE( mgr.has_type( zone_type_TEST_M26A_NO_SUCH_ZONE ) );
 }
 
 // The fetch counted vehicle cargo on loot tiles as there for a construction, but planned only

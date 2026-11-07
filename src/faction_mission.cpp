@@ -201,13 +201,14 @@ bool camp_mission_results::empty() const
     return item_group.is_null() && seasonal_item_groups.empty() && monster_groups.empty();
 }
 
-void camp_mission_encounter::deserialize( const JsonObject &jo )
+void camp_mission_encounter::load( const JsonObject &jo, const std::string_view src )
 {
     mandatory( jo, false, "one_in", one_in );
     optional( jo, false, "favor", favor, 0 );
     optional( jo, false, "threat", threat, 0 );
     // the built-in encounter's popups need the task; an EOC may do without it
     if( jo.has_member( "eoc" ) ) {
+        eoc = effect_on_conditions::load_inline_eoc( jo.get_member( "eoc" ), src );
         optional( jo, false, "task", task );
     } else {
         mandatory( jo, false, "task", task );
@@ -350,10 +351,7 @@ void faction_mission::load( const JsonObject &jo, const std::string_view &src )
     if( jo.has_object( "encounter" ) ) {
         const JsonObject encounter_jo = jo.get_object( "encounter" );
         camp_mission_encounter read;
-        read.deserialize( encounter_jo );
-        if( encounter_jo.has_member( "eoc" ) ) {
-            read.eoc = effect_on_conditions::load_inline_eoc( encounter_jo.get_member( "eoc" ), src );
-        }
+        read.load( encounter_jo, src );
         encounter = read;
     } else if( !was_loaded ) {
         encounter.reset();
