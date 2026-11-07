@@ -1,0 +1,453 @@
+[
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_base",
+    "name": { "str": "m19a test walker" },
+    "description": "MONAI audit fixture: a plain hostile walker without special attacks.",
+    "default_faction": "zombie",
+    "species": [ "ZOMBIE" ],
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 100,
+    "speed": 100,
+    "material": [ "flesh" ],
+    "symbol": "Z",
+    "color": "light_green",
+    "aggression": 100,
+    "morale": 100,
+    "vision_day": 40,
+    "vision_night": 40,
+    "flags": [ "SEES", "HEARS" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_poly",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a polymorph test" },
+    "description": "MONAI-B04: changes into mon_test_m19a_poly_result, only while test_m19a_poly_allowed is 1.",
+    "special_attacks": [
+      {
+        "type": "monster_attack",
+        "id": "test_m19a_poly",
+        "attack_type": "polymorph_special",
+        "cooldown": 10,
+        "mon_id": "mon_test_m19a_poly_result",
+        "condition": { "math": [ "test_m19a_poly_allowed == 1" ] }
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_poly_target",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a polymorph target test" },
+    "description": "MONAI-B04: changes into mon_test_m19a_poly_result, only while its target is the avatar.",
+    "special_attacks": [
+      {
+        "type": "monster_attack",
+        "id": "test_m19a_poly_target",
+        "attack_type": "polymorph_special",
+        "cooldown": 10,
+        "mon_id": "mon_test_m19a_poly_result",
+        "allow_no_target": false,
+        "condition": "npc_is_avatar"
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_poly_result",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a polymorph result" },
+    "description": "MONAI-B04: what the polymorph test monsters become."
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "GENERIC" ],
+    "id": "test_m19a_dropping",
+    "category": "spare_parts",
+    "name": { "str": "m19a test dropping" },
+    "description": "MONAI-B05: what mon_test_m19a_biosig leaves behind.",
+    "material": [ "flesh" ],
+    "weight": "100 g",
+    "volume": "250 ml",
+    "symbol": ",",
+    "color": "brown"
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_biosig",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a biosignature test" },
+    "description": "MONAI-B05: drops a test_m19a_dropping every day and has one special attack.",
+    "biosignature": { "biosig_item": "test_m19a_dropping", "biosig_timer": 1 },
+    "special_attacks": [ { "id": "TEST_COOLDOWN", "cooldown": 20 } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_fish",
+    "name": { "str": "m19a test fish" },
+    "description": "MONAI-B06: a swimmer that dies out of the water.",
+    "default_faction": "fish",
+    "species": [ "FISH" ],
+    "volume": "5000 ml",
+    "weight": "5000 g",
+    "hp": 20,
+    "speed": 100,
+    "material": [ "flesh" ],
+    "symbol": "<",
+    "color": "light_blue",
+    "vision_day": 40,
+    "vision_night": 40,
+    "flags": [ "SEES", "AQUATIC" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_pusher",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a vehicle pusher" },
+    "description": "MONAI-B10: a medium PUSH_VEH monster that can't bash, open doors or pathfind.",
+    "flags": [ "SEES", "HEARS", "PUSH_VEH" ]
+  },
+  {
+    "id": "test_m19a_board",
+    "type": "vehicle",
+    "name": "TEST m19a board",
+    "blueprint": [ "#" ],
+    "parts": [ { "x": 0, "y": 0, "parts": [ "frame", "board" ] } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_cub",
+    "name": { "str": "m19a test cub" },
+    "description": "MONAI-B08: the baby of the m19a test mothers.",
+    "default_faction": "herbivore",
+    "species": [ "MAMMAL" ],
+    "volume": "20000 ml",
+    "weight": "20000 g",
+    "hp": 20,
+    "speed": 100,
+    "material": [ "flesh" ],
+    "symbol": "c",
+    "color": "brown",
+    "aggression": 0,
+    "morale": 50,
+    "vision_day": 40,
+    "vision_night": 40,
+    "aggro_character": false,
+    "flags": [ "SEES", "HEARS", "ANIMAL" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_mother_calm",
+    "copy-from": "mon_test_m19a_cub",
+    "name": { "str": "m19a calm mother" },
+    "description": "MONAI-B08: has babies, but no PLAYER_NEAR_BABY anger trigger.",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 100,
+    "reproduction": { "baby_type": { "baby_monster": "mon_test_m19a_cub" }, "baby_count": 1, "baby_timer": 700 },
+    "flags": [ "SEES", "HEARS", "ANIMAL", "NO_BREED" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_mother_protective",
+    "copy-from": "mon_test_m19a_mother_calm",
+    "name": { "str": "m19a protective mother" },
+    "description": "MONAI-B08: angry when the player is near its baby.",
+    "anger_triggers": [ "PLAYER_NEAR_BABY" ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "GENERIC" ],
+    "id": "test_m19a_wood_steel",
+    "category": "spare_parts",
+    "name": { "str": "m19a wood and steel lump" },
+    "description": "MONAI-B09: a mixed-material item.",
+    "material": [ "wood", "steel" ],
+    "weight": "1000 g",
+    "volume": "2 L",
+    "symbol": "*",
+    "color": "brown"
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "GENERIC" ],
+    "id": "test_m19a_wood",
+    "category": "spare_parts",
+    "name": { "str": "m19a wood lump" },
+    "description": "MONAI-B09: a wooden item.",
+    "material": [ "wood" ],
+    "weight": "1000 g",
+    "volume": "2 L",
+    "symbol": "*",
+    "color": "brown"
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_absorb_100",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a absorber (100 ml)" },
+    "description": "MONAI-B09: gains 1 HP per 100 ml absorbed.",
+    "absorb_ml_per_hp": 100
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_absorb_1000",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a absorber (1000 ml)" },
+    "description": "MONAI-B09: gains 1 HP per 1000 ml absorbed.",
+    "absorb_ml_per_hp": 1000
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_absorb_no_steel",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a absorber (no steel)" },
+    "description": "MONAI-B09: absorbs anything without steel in it.",
+    "no_absorb_material": [ "steel" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_absorb_wood",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a absorber (wood, no steel)" },
+    "description": "MONAI-B09: absorbs wood, but nothing with steel in it.",
+    "absorb_material": [ "wood" ],
+    "no_absorb_material": [ "steel" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19A_EOC_RAN",
+    "//": "MONAI-J02: counts the uses of the m19a EOC attacks, with and without a target.",
+    "effect": [
+      {
+        "if": "has_beta",
+        "then": [ { "math": [ "test_m19a_eoc_with_target += 1" ] } ],
+        "else": [ { "math": [ "test_m19a_eoc_no_target += 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "monster_attack",
+    "id": "test_m19a_eoc_melee",
+    "//": "MONAI-J02: an EOC attack in melee range that takes moves.",
+    "attack_type": "eoc",
+    "cooldown": 5,
+    "range": 1,
+    "move_cost": 50,
+    "eoc": [ "EOC_TEST_M19A_EOC_RAN" ]
+  },
+  {
+    "type": "monster_attack",
+    "id": "test_m19a_eoc_optional",
+    "//": "MONAI-J02: an EOC attack that runs with or without a target.",
+    "attack_type": "eoc",
+    "cooldown": 5,
+    "range": 3,
+    "target_optional": true,
+    "eoc": [ "EOC_TEST_M19A_EOC_RAN" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_eoc_user",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a EOC attacker" },
+    "description": "MONAI-J02: uses the m19a EOC attacks.",
+    "special_attacks": [ { "id": "test_m19a_eoc_melee" }, { "id": "test_m19a_eoc_optional" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19A_TURN_COST",
+    "//": "MONAI-J02: takes a second from u, whatever creature it is.",
+    "effect": [ { "turn_cost": "1 s" } ]
+  },
+  {
+    "type": "monster_attack",
+    "id": "test_m19a_eoc_cd",
+    "//": "MONAI-J03: its cooldown reads the target's test_m19a_cd.",
+    "attack_type": "eoc",
+    "cooldown": { "math": [ "n_test_m19a_cd + 2" ] },
+    "eoc": [ "EOC_TEST_M19A_EOC_RAN" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_cd_user",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a cooldown test" },
+    "description": "MONAI-J03: has an attack whose cooldown reads its target.",
+    "special_attacks": [ { "id": "test_m19a_eoc_cd" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19A_LANDED",
+    "//": "MONAI-J03: records a leap landing next to the avatar.",
+    "effect": [ { "if": "npc_is_avatar", "then": [ { "math": [ "test_m19a_landed = 1" ] } ] } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_leaper",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a leaper" },
+    "description": "MONAI-J03: leaps only at the avatar, and says so on landing.",
+    "special_attacks": [
+      {
+        "type": "leap",
+        "id": "test_m19a_leap",
+        "cooldown": 5,
+        "max_range": 3,
+        "min_range": 1,
+        "condition": "npc_is_avatar",
+        "eoc": [ "EOC_TEST_M19A_LANDED" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19A_STRIKE_HIT",
+    "//": "MONAI-J03: records what a hit of the m19a strikes did.",
+    "effect": [
+      { "math": [ "test_m19a_hit_damage = _damage" ] },
+      { "math": [ "test_m19a_hit_cut = _damage_cut" ] },
+      { "set_string_var": { "context_val": "bodypart" }, "target_var": { "global_val": "test_m19a_hit_bp" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19A_STRIKE_MISS",
+    "//": "MONAI-J03: records a dodged m19a strike.",
+    "effect": [
+      { "math": [ "test_m19a_misses += 1" ] },
+      { "set_string_var": { "context_val": "bodypart" }, "target_var": { "global_val": "test_m19a_miss_bp" } }
+    ]
+  },
+  {
+    "type": "monster_attack",
+    "id": "test_m19a_strike",
+    "//": "MONAI-J03: an inaccurate strike, with EOCs on a hit and on a miss.",
+    "attack_type": "melee",
+    "cooldown": 1,
+    "move_cost": 100,
+    "accuracy": 0,
+    "damage_max_instance": [ { "damage_type": "cut", "amount": 10 } ],
+    "min_mul": 1,
+    "max_mul": 1,
+    "eoc": [ "EOC_TEST_M19A_STRIKE_HIT" ],
+    "eoc_on_miss": [ "EOC_TEST_M19A_STRIKE_MISS" ]
+  },
+  {
+    "type": "monster_attack",
+    "id": "test_m19a_sure_strike",
+    "//": "MONAI-J03: a strike that can't be dodged or blocked.",
+    "attack_type": "melee",
+    "cooldown": 1,
+    "move_cost": 100,
+    "damage_max_instance": [ { "damage_type": "cut", "amount": 10 } ],
+    "min_mul": 1,
+    "max_mul": 1,
+    "dodgeable": false,
+    "blockable": false,
+    "eoc": [ "EOC_TEST_M19A_STRIKE_HIT" ],
+    "eoc_on_miss": [ "EOC_TEST_M19A_STRIKE_MISS" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_striker",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a striker" },
+    "description": "MONAI-J03: uses the m19a strikes.",
+    "special_attacks": [ { "id": "test_m19a_strike" }, { "id": "test_m19a_sure_strike" } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_dodger",
+    "name": { "str": "m19a dodger" },
+    "description": "MONAI-J03: dodges nearly every attack that can be dodged.",
+    "default_faction": "herbivore",
+    "species": [ "MAMMAL" ],
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 500,
+    "speed": 100,
+    "dodge": 40,
+    "material": [ "flesh" ],
+    "symbol": "d",
+    "color": "brown",
+    "vision_day": 40,
+    "vision_night": 40,
+    "flags": [ "SEES", "HEARS", "ANIMAL" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m19a_keen_ears",
+    "name": [ "m19a keen ears" ],
+    "desc": [ "MONAI-J04: hears sounds twice as loud." ],
+    "enchantments": [ { "values": [ { "value": "HEARING_MULT", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m19a_silent_steps",
+    "name": [ "m19a silent steps" ],
+    "desc": [ "MONAI-J04: makes no footsteps." ],
+    "enchantments": [ { "values": [ { "value": "FOOTSTEP_NOISE", "multiply": -1 } ] } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_ears_x3",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a big ears" },
+    "description": "MONAI-J04: hears sounds three times as loud.",
+    "hearing_mult": 3
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_ears_good",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a good ears" },
+    "description": "MONAI-J04: GOODHEARING, without a hearing_mult.",
+    "flags": [ "SEES", "HEARS", "GOODHEARING" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_nose_keen",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a keen nose" },
+    "description": "MONAI-J04: KEENNOSE, without scent_sensitivity.",
+    "flags": [ "SEES", "HEARS", "SMELLS", "KEENNOSE" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_nose_set",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a set nose" },
+    "description": "MONAI-J04: follows scent from 5 to 300.",
+    "scent_sensitivity": { "min": 5, "max": 300 },
+    "flags": [ "SEES", "HEARS", "SMELLS", "KEENNOSE" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_nose_child",
+    "copy-from": "mon_test_m19a_nose_set",
+    "name": { "str": "m19a inherited nose" },
+    "description": "MONAI-J04: changes only the max of its parent's scent_sensitivity.",
+    "scent_sensitivity": { "max": 250 }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_steps_set",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a loud steps" },
+    "description": "MONAI-J04: its footsteps are 9 loud.",
+    "footstep_volume": 9
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19a_steps_small_quiet",
+    "copy-from": "mon_test_m19a_base",
+    "name": { "str": "m19a small quiet walker" },
+    "description": "MONAI-J04: small and QUIETMOVES: 6 / 3 - 3 came to -1.",
+    "volume": "20000 ml",
+    "weight": "20000 g",
+    "flags": [ "SEES", "HEARS", "QUIETMOVES" ]
+  }
+]

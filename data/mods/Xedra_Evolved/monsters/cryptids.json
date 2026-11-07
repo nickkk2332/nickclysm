@@ -213,6 +213,7 @@
         "poly_keep_speed": true,
         "poly_keep_hp": true,
         "poly_keep_anger": true,
+        "allow_no_target": false,
         "condition": { "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" } ] }
       },
       [ "PARROT", 5 ]

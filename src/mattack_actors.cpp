@@ -132,6 +132,7 @@ void leap_actor::load_internal( const JsonObject &obj, const std::string & )
     max_consider_range = obj.get_float( "max_consider_range", 200.0f );
     optional( obj, was_loaded, "message", message,
               to_translation( "The %s leaps!" ) );
+    optional( obj, was_loaded, "eoc", eoc );
 
     if( obj.has_member( "condition" ) ) {
         read_condition( obj, "condition", condition, false );
@@ -162,8 +163,11 @@ bool leap_actor::call( monster &z ) const
         return false;
     }
 
+    // MONAI-J03: the condition (and the eoc) see the target, if any, as npc
+    Creature *const leap_target = z.attack_target();
     if( has_condition ) {
-        dialogue d( get_talker_for( &z ), nullptr );
+        dialogue d( get_talker_for( &z ),
+                    leap_target == nullptr ? nullptr : get_talker_for( leap_target ) );
         if( !condition( d ) ) {
             add_msg_debug( debugmode::DF_MATTACK, "Attack conditionals failed" );
             return false;
@@ -183,7 +187,7 @@ bool leap_actor::call( monster &z ) const
     // We wanted the float for range check
     // int here will make the jumps more random
     int best = std::numeric_limits<int>::max();
-    if( !allow_no_target && z.attack_target() == nullptr ) {
+    if( !allow_no_target && leap_target == nullptr ) {
         add_msg_debug( debugmode::DF_MATTACK, "Leaping without a target disabled" );
         return false;
     }
@@ -287,6 +291,14 @@ bool leap_actor::call( monster &z ) const
         }
     }
 
+    // Landed: the target may have died or gone meanwhile, so look again
+    for( const effect_on_condition_id &eoc_id : eoc ) {
+        Creature *const landed_target = z.attack_target();
+        dialogue d( get_talker_for( z ), landed_target == nullptr ? nullptr :
+                    get_talker_for( landed_target ) );
+        eoc_id->activate( d );
+    }
+
     return true;
 }
 
@@ -298,9 +310,13 @@ std::unique_ptr<mattack_actor> mon_eoc_actor::clone() const
 void mon_eoc_actor::load_internal( const JsonObject &obj, const std::string & )
 {
 
-    optional( obj, was_loaded, "range", range, 1 );
+    optional( obj, was_loaded, "range", range, -1 );
     optional( obj, was_loaded, "eoc", eoc );
-    allow_no_target = obj.get_bool( "allow_no_target", false );
+    // Not reset when a monster uses the attack by id, as get_bool() did
+    optional( obj, was_loaded, "allow_no_target", allow_no_target, false );
+    optional( obj, was_loaded, "target_optional", target_optional, false );
+    optional( obj, was_loaded, "no_adjacent", no_adjacent, false );
+    optional( obj, was_loaded, "move_cost", move_cost, 0 );
 
     if( obj.has_member( "condition" ) ) {
         read_condition( obj, "condition", condition, false );
@@ -309,48 +325,47 @@ void mon_eoc_actor::load_internal( const JsonObject &obj, const std::string & )
 
 }
 
+// MONAI-J02: the distance check used to run only for a range above 1, so the default
+// "melee" range 1 reached any target in sight; the attack cost no moves; and the target could
+// only be kept (required) or dropped (allow_no_target), never used when there is one.
 bool mon_eoc_actor::call( monster &mon ) const
 {
     if( incapacitation::unconscious( mon ) || execution_fatal::pending( mon ) ) {
         return false;
     }
-    map &here = get_map();
-    Creature *target = ( allow_no_target ) ? nullptr : mon.attack_target();
-
     if( !mon.can_act() ) {
         return false;
     }
 
-
-    if( !mon.attack_target() && !allow_no_target ) {
+    // attack_target() is a hostile creature the monster sees, at its destination
+    Creature *target = ( allow_no_target && !target_optional ) ? nullptr : mon.attack_target();
+    if( target != nullptr && range >= 0 &&
+        rl_dist( mon.pos_bub(), target->pos_bub() ) > range ) {
+        target = nullptr;
+    }
+    if( target != nullptr && no_adjacent && mon.is_adjacent( target, false ) ) {
+        // Not used against an adjacent target, whether or not one is needed
+        return false;
+    }
+    if( target == nullptr && !allow_no_target && !target_optional ) {
         // this is an attack. there is no reason to attack if there isn't a real target.
         // Unless we don't need one
         return false;
     }
     if( has_condition ) {
-        dialogue d( get_talker_for( &mon ),
-                    allow_no_target ? nullptr : get_talker_for( target ) );
+        dialogue d( get_talker_for( &mon ), target == nullptr ? nullptr : get_talker_for( target ) );
         if( !condition( d ) ) {
             add_msg_debug( debugmode::DF_MATTACK, "Attack conditionals failed" );
             return false;
         }
     }
 
-    if( range > 1 && !allow_no_target ) {
-        if( !mon.sees( here, *target ) ||
-            rl_dist( mon.pos_bub(), target->pos_bub() ) > range ) {
-            return false;
-        }
+    for( const effect_on_condition_id &eoc : eoc ) {
+        dialogue d( get_talker_for( mon ), target == nullptr ? nullptr : get_talker_for( target ) );
+        eoc->activate( d );
     }
-
-    {
-        for( const effect_on_condition_id &eoc : eoc ) {
-            dialogue d( get_talker_for( mon ),
-                        allow_no_target ? nullptr : get_talker_for( target ) );
-            eoc->activate( d );
-        }
-        return true;
-    }
+    mon.mod_moves( -move_cost );
+    return true;
 }
 
 std::unique_ptr<mattack_actor> mon_spellcasting_actor::clone() const
@@ -367,6 +382,7 @@ void mon_spellcasting_actor::load_internal( const JsonObject &obj, const std::st
               to_translation( "%1$s casts %2$s at %3$s!" ) );
     spell_data.trigger_message = monster_message;
     optional( obj, was_loaded, "allow_no_target", allow_no_target, false );
+    optional( obj, was_loaded, "target_optional", target_optional, false );
 
     if( obj.has_member( "condition" ) ) {
         read_condition( obj, "condition", condition, false );
@@ -384,27 +400,33 @@ bool mon_spellcasting_actor::call( monster &mon ) const
         return false;
     }
 
-    if( !mon.attack_target() && !allow_no_target ) {
+    // With allow_no_target the spell is always aimed at the caster's tile.  With
+    // target_optional it is aimed at the target if there is one in range (MONAI-J02).
+    Creature *aimed_at = allow_no_target && !target_optional ? nullptr : mon.attack_target();
+    if( !aimed_at && !allow_no_target && !target_optional ) {
         // this is an attack. there is no reason to attack if there isn't a real target.
         // Unless we don't need one
         return false;
     }
+    if( target_optional && aimed_at != nullptr && !spell_data.self &&
+        rl_dist( mon.pos_bub(), aimed_at->pos_bub() ) > spell_data.get_spell( mon ).range( mon ) ) {
+        aimed_at = nullptr;
+    }
 
     if( has_condition ) {
-        dialogue d( get_talker_for( &mon ),
-                    allow_no_target ? nullptr : get_talker_for( mon.attack_target() ) );
+        dialogue d( get_talker_for( &mon ), aimed_at == nullptr ? nullptr : get_talker_for( aimed_at ) );
         if( !condition( d ) ) {
             add_msg_debug( debugmode::DF_MATTACK, "Attack conditionals failed" );
             return false;
         }
     }
 
-    const tripoint_bub_ms target = ( spell_data.self ||
-                                     allow_no_target ) ? mon.pos_bub() : mon.attack_target()->pos_bub();
+    const tripoint_bub_ms target = spell_data.self ||
+                                   aimed_at == nullptr ? mon.pos_bub() : aimed_at->pos_bub();
     spell spell_instance = spell_data.get_spell( mon );
     spell_instance.set_message( spell_data.trigger_message );
 
-    if( !spell_data.self && !allow_no_target ) {
+    if( !spell_data.self && aimed_at != nullptr ) {
         Creature *tgt_creature = get_creature_tracker().creature_at( target );
         if( tgt_creature && mon.is_underwater() && !tgt_creature->is_underwater() &&
             get_map().has_flag_ter_or_furn( ter_furn_flag::TFLAG_SWIM_UNDER, mon.pos_bub() ) ) {
@@ -479,6 +501,7 @@ void melee_actor::load_internal( const JsonObject &obj, const std::string & )
     optional( obj, was_loaded, "throw_strength", throw_strength, 0 );
 
     optional( obj, was_loaded, "eoc", eoc );
+    optional( obj, was_loaded, "eoc_on_miss", eoc_on_miss );
     optional( obj, was_loaded, "hitsize_min", hitsize_min, -1 );
     optional( obj, was_loaded, "hitsize_max", hitsize_max, -1 );
     optional( obj, was_loaded, "attack_upper", attack_upper, true );
@@ -983,6 +1006,15 @@ bool melee_actor::call( monster &z ) const
         z.add_effect( effect_run, 4_turns );
     }
 
+    // MONAI-J03: an EOC can react to a dodged attack too
+    const auto run_miss_eocs = [this, &z, target]( const bodypart_id & aimed_at ) {
+        for( const effect_on_condition_id &eoc_id : eoc_on_miss ) {
+            dialogue d( get_talker_for( z ), get_talker_for( target ) );
+            write_var_value( var_type::context, "bodypart", &d, aimed_at.id().str() );
+            eoc_id->activate( d );
+        }
+    };
+
     if( uncanny_dodgeable && target->uncanny_dodge() ) {
         game_message_type msg_type = target->is_avatar() ? m_warning : m_info;
         sfx::play_variant_sound( "mon_bite", "bite_miss", sfx::get_heard_volume( z.pos_bub() ),
@@ -990,6 +1022,7 @@ bool melee_actor::call( monster &z ) const
         target->add_msg_player_or_npc( msg_type, miss_msg_u,
                                        get_option<bool>( "LOG_MONSTER_ATTACK_MONSTER" ) ? miss_msg_npc : translation(),
                                        z.name(), body_part_name_accusative( bodyparts_hit.front() ) );
+        run_miss_eocs( bodyparts_hit.front() );
         return true;
     }
 
@@ -1000,6 +1033,7 @@ bool melee_actor::call( monster &z ) const
             target->add_msg_player_or_npc( msg_type, miss_msg_u,
                                            get_option<bool>( "LOG_MONSTER_ATTACK_MONSTER" ) ? miss_msg_npc : translation(),
                                            mon_name, body_part_name_accusative( bodyparts_hit.front() ) );
+            run_miss_eocs( bodyparts_hit.front() );
             return true;
         }
     }
@@ -1231,6 +1265,11 @@ bool melee_actor::call( monster &z ) const
     for( const effect_on_condition_id &eoc : eoc ) {
         dialogue d( get_talker_for( z ), get_talker_for( target ) );
         write_var_value( var_type::context, "damage", &d, damage_total );
+        // MONAI-J03: the body part hit (the last one, for several hits) and each type's damage
+        write_var_value( var_type::context, "bodypart", &d, dealt_damage.bp_hit.id().str() );
+        for( const std::pair<const damage_type_id, int> &dt : dealt_damage.dealt_dams ) {
+            write_var_value( var_type::context, "damage_" + dt.first.str(), &d, dt.second );
+        }
         eoc->activate( d );
     }
 
@@ -1388,6 +1427,7 @@ void gun_actor::load_internal( const JsonObject &obj, const std::string & )
     obj.read( "max_ammo", max_ammo );
 
     obj.read( "move_cost", move_cost );
+    optional( obj, was_loaded, "eoc", eoc );
 
     obj.read( "description", description );
     obj.read( "failure_msg", failure_msg );
@@ -1444,13 +1484,19 @@ bool gun_actor::call( monster &z ) const
     tripoint_bub_ms aim_at;
     bool untargeted = false;
 
-    if( has_condition ) {
-        dialogue d( get_talker_for( &z ), nullptr );
+    // MONAI-J03: the condition sees the creature shot at as npc (none for a vehicle), so it is
+    // tested once that is known
+    const auto condition_allows = [this, &z]( Creature * shot_at ) {
+        if( !has_condition ) {
+            return true;
+        }
+        dialogue d( get_talker_for( &z ), shot_at == nullptr ? nullptr : get_talker_for( shot_at ) );
         if( !condition( d ) ) {
             add_msg_debug( debugmode::DF_MATTACK, "Attack conditionals failed" );
             return false;
         }
-    }
+        return true;
+    };
 
     if( z.friendly ) {
         int max_range = get_max_range();
@@ -1458,7 +1504,7 @@ bool gun_actor::call( monster &z ) const
         int hostiles; // hostiles which cannot be engaged without risking friendly fire
         target = z.auto_find_hostile_target( max_range, hostiles );
         if( !target ) {
-            if( hostiles > 0 ) {
+            if( hostiles > 0 && condition_allows( nullptr ) ) {
                 add_msg_if_player_sees( z, m_warning,
                                         n_gettext( "Pointed in your direction, the %s emits an IFF warning beep.",
                                                    "Pointed in your direction, the %s emits %d annoyed sounding beeps.",
@@ -1485,6 +1531,11 @@ bool gun_actor::call( monster &z ) const
         }
     }
 
+    Creature *const shot_at = untargeted ? nullptr : target;
+    if( !condition_allows( shot_at ) ) {
+        return false;
+    }
+
     if( target && z.is_underwater() && !target->is_underwater() &&
         here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_SWIM_UNDER, z.pos_bub() ) ) {
         return false;
@@ -1500,7 +1551,15 @@ bool gun_actor::call( monster &z ) const
     for( const auto &e : ranges ) {
         if( dist >= e.first.first && dist <= e.first.second ) {
             if( untargeted || try_target( z, *target ) ) {
-                return shoot( z, aim_at, e.second );
+                if( !shoot( z, aim_at, e.second ) ) {
+                    return false;
+                }
+                for( const effect_on_condition_id &eoc_id : eoc ) {
+                    dialogue d( get_talker_for( z ), shot_at == nullptr ? nullptr : get_talker_for( shot_at ) );
+                    d.set_value( "loc", here.get_abs( aim_at ) );
+                    eoc_id->activate( d );
+                }
+                return true;
             }
         }
     }
@@ -1638,6 +1697,7 @@ void polymorph_special::load_internal( const JsonObject &jo, const std::string &
     optional( jo, was_loaded, "poly_keep_speed", keep_speed, true );
     optional( jo, was_loaded, "poly_keep_hp", keep_hp, true );
     optional( jo, was_loaded, "poly_keep_anger", keep_anger, true );
+    optional( jo, was_loaded, "allow_no_target", allow_no_target, true );
 
     if( jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", condition, false );
@@ -1647,8 +1707,22 @@ void polymorph_special::load_internal( const JsonObject &jo, const std::string &
 
 bool polymorph_special::call( monster &z ) const
 {
-    if( incapacitation::unconscious( z ) || execution_fatal::pending( z ) ) {
+    // MONAI-B04: the condition was loaded but never tested, so a polymorph meant to happen
+    // only in some situation happened as soon as its cooldown ran out.
+    if( !z.can_act() ) {
         return false;
+    }
+    Creature *target = z.attack_target();
+    if( target == nullptr && !allow_no_target ) {
+        add_msg_debug( debugmode::DF_MATTACK, "Polymorph without a target disabled" );
+        return false;
+    }
+    if( has_condition ) {
+        dialogue d( get_talker_for( &z ), target == nullptr ? nullptr : get_talker_for( target ) );
+        if( !condition( d ) ) {
+            add_msg_debug( debugmode::DF_MATTACK, "Attack conditionals failed" );
+            return false;
+        }
     }
     const int old_speed = z.get_speed_base();
     const int old_hp = z.get_hp();

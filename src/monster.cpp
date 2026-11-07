@@ -61,6 +61,7 @@
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
+#include "material.h"
 #include "mattack_common.h"
 #include "melee.h"
 #include "messages.h"
@@ -263,8 +264,11 @@ monster::monster()
     unset_dest();
     moves = 0;
     faction = mfaction_id( 0 );
-    last_updated = calendar::turn_zero;
-    biosig_timer = calendar::before_time_starts;
+    // MONAI-B05: a new monster is up to date now.  Starting from turn_zero, the first
+    // on_load() (which map and overmap spawns call) caught up ~60 days, zeroing every special
+    // cooldown; and a set biosig_timer of -1 made the first try_biosignature() drop 51 items.
+    // Left unset, try_biosignature() starts the timer.
+    last_updated = calendar::turn;
     udder_timer = calendar::turn;
     set_anatomy( anatomy_default_anatomy );
     set_body();
@@ -276,7 +280,9 @@ monster::monster( const mtype_id &id ) : monster()
     moves = type->speed;
     Creature::set_speed_base( type->speed );
     hp = type->hp;
-    dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+    // MONAI-J03: cooldowns are worked out with the monster's target as npc, not the avatar
+    // wherever it is.  There is none yet: an empty npc, whose values read as 0.
+    dialogue d( get_talker_for( this ), std::make_unique<talker>() );
     for( const auto &sa : type->special_attacks ) {
         mon_special_attack &entry = special_attacks[sa.first];
         entry.cooldown = rng( 0, sa.second->cooldown.evaluate( d ) );
@@ -398,7 +404,9 @@ void monster::poly( const mtype_id &id )
     morale = type->morale;
     hp = static_cast<int>( hp_percentage * type->hp );
     special_attacks.clear();
-    dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+    Creature *const target = attack_target();
+    dialogue d( get_talker_for( this ), target == nullptr ? std::make_unique<talker>() :
+                get_talker_for( target ) );
     for( const auto &sa : type->special_attacks ) {
         mon_special_attack &entry = special_attacks[sa.first];
         entry.cooldown = sa.second->cooldown.evaluate( d );
@@ -1611,6 +1619,28 @@ std::vector<material_id> monster::get_absorb_material() const
 std::vector<material_id> monster::get_no_absorb_material() const
 {
     return type->no_absorb_material;
+}
+
+// MONAI-B09: one rule for the ABSORB_ITEMS attack and for the behavior tree's
+// items_available, which disagreed on mixed-material items
+bool monster::can_absorb_item( const item &it ) const
+{
+    const std::vector<material_id> &allowed = type->absorb_material;
+    const std::vector<material_id> &forbidden = type->no_absorb_material;
+    if( allowed.empty() && forbidden.empty() ) {
+        return true;
+    }
+    bool is_allowed = allowed.empty();
+    for( const material_type *mat_type : it.made_of_types() ) {
+        if( std::find( forbidden.begin(), forbidden.end(), mat_type->id ) != forbidden.end() ) {
+            return false;
+        }
+        if( !is_allowed &&
+            std::find( allowed.begin(), allowed.end(), mat_type->id ) != allowed.end() ) {
+            is_allowed = true;
+        }
+    }
+    return is_allowed;
 }
 
 void monster::set_patrol_route( const std::vector<point_rel_ms> &patrol_pts_rel_ms )
@@ -3163,15 +3193,21 @@ void monster::reset_stats()
     // Nothing here yet
 }
 
+// MONAI-J03: the cooldown's npc is the creature just attacked (the target), not the avatar;
+// with no target an empty npc, whose values read as 0
 void monster::reset_special( const std::string &special_name )
 {
-    dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+    Creature *const target = attack_target();
+    dialogue d( get_talker_for( this ), target == nullptr ? std::make_unique<talker>() :
+                get_talker_for( target ) );
     set_special( special_name, type->special_attacks.at( special_name )->cooldown.evaluate( d ) );
 }
 
 void monster::reset_special_rng( const std::string &special_name )
 {
-    dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+    Creature *const target = attack_target();
+    dialogue d( get_talker_for( this ), target == nullptr ? std::make_unique<talker>() :
+                get_talker_for( target ) );
     set_special( special_name, rng( 0,
                                     type->special_attacks.at( special_name )->cooldown.evaluate( d ) ) );
 }
@@ -4433,7 +4469,10 @@ void monster::hear_sound( const tripoint_bub_ms &source, const int vol, const in
     }
 
     const bool goodhearing = has_flag( mon_flag_GOODHEARING );
-    const int volume = goodhearing ? 2 * vol - dist : vol - dist;
+    // MONAI-J04: the type's hearing_mult (2 for GOODHEARING) and the HEARING_MULT enchantment
+    const double hearing = calculate_by_enchantment( type->get_hearing_mult(),
+                           enchant_vals::mod::HEARING_MULT );
+    const int volume = static_cast<int>( std::round( vol * hearing ) ) - dist;
     // Error is based on volume, louder sound = less error
     if( volume <= 0 ) {
         return;

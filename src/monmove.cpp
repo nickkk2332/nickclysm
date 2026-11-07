@@ -38,6 +38,7 @@
 #include "incapacitation.h"
 #include "item.h"
 #include "line.h"
+#include "magic_enchantment.h"
 #include "map.h"
 #include "map_field.h"
 #include "map_iterator.h"
@@ -493,9 +494,10 @@ void monster::anger_hostile_seen( const monster_plan &mon_plan )
             add_msg_debug( debugmode::DF_MONSTER,
                            "%s's character aggro triggered by seeing you", name() );
         } else {
+            // The target can be a monster (MONAI-B08): as_npc() is null then
             add_msg_debug( debugmode::DF_MONSTER,
                            "%s's character aggro triggered by seeing %s", name(),
-                           mon_plan.target->as_npc()->name );
+                           mon_plan.target->disp_name() );
         }
         aggro_character = true;
     }
@@ -527,6 +529,8 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
         return;
     }
 
+    const map &here = get_map();
+    const Creature &threat = *mon_plan.target;
     for( const shared_ptr_fast<monster> &tmp_ptr : get_creature_tracker().get_monsters_list() ) {
         monster &tmp = *tmp_ptr;
         if( tmp.is_dead() ) {
@@ -536,16 +540,17 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
         if( !type->baby_type.baby_monster.is_null() ) {
             is_baby = type->baby_type.baby_monster == tmp.type->id;
         }
-        if( !type->baby_type.baby_monster_group.is_null() ) {
+        // Either one: the group used to overwrite a match of the baby monster
+        if( !is_baby && !type->baby_type.baby_monster_group.is_null() ) {
             is_baby = MonsterGroupManager::IsMonsterInGroup(
                           type->baby_type.baby_monster_group, tmp.type->id );
         }
         if( is_baby ) {
-            // baby nearby; is the player too close? (Rated from the baby's position; this
-            // must not overwrite this monster's own target distance.)
-            const float baby_dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
-                                    mon_plan.smart_planning );
-            if( baby_dist <= 3 ) {
+            // baby nearby; is the player too close?  The baby's own distance, and it must
+            // see the player.  (MONAI-B08: this was the baby's rate_target() against this
+            // monster's target distance: a power rating for PRIORITIZE_TARGETS monsters, and
+            // FLT_MAX whenever the baby was farther from the player than this monster.)
+            if( rl_dist( tmp.pos_abs(), threat.pos_abs() ) <= 3 && tmp.sees( here, threat ) ) {
                 // proximity to baby; monster gets furious and less likely to flee
                 anger += mon_plan.angers_cub_threatened;
                 morale += mon_plan.angers_cub_threatened / 2;
@@ -989,6 +994,71 @@ bool monster::is_aquatic_danger( const tripoint_bub_ms &at_pos ) const
            !here.veh_at( at_pos ).part_with_feature( "BOARDABLE", false );
 }
 
+namespace
+{
+// How a monster of a size shoves a vehicle of a mass out of its way (velocity 0: it can't)
+struct vehicle_shove {
+    int moves_minimal = 0;
+    int veh_mass_moves_factor = 0;
+    int velocity = 0;
+    float damage_min = 0.0f;
+    float damage_max = 0.0f;
+};
+
+vehicle_shove vehicle_shove_for( const creature_size size, const units::mass &veh_mass )
+{
+    vehicle_shove shove;
+    switch( size ) {
+        case creature_size::tiny:
+        case creature_size::small:
+            break;
+        case creature_size::medium:
+            if( veh_mass < 500_kilogram ) {
+                shove.moves_minimal = 150;
+                shove.veh_mass_moves_factor = 20;
+                shove.velocity = 500;
+                shove.damage_min = 0.00F;
+                shove.damage_max = 0.01F;
+            }
+            break;
+        case creature_size::large:
+            if( veh_mass < 1000_kilogram ) {
+                shove.moves_minimal = 100;
+                shove.veh_mass_moves_factor = 8;
+                shove.velocity = 1000;
+                shove.damage_min = 0.00F;
+                shove.damage_max = 0.03F;
+            }
+            break;
+        case creature_size::huge:
+            if( veh_mass < 2000_kilogram ) {
+                shove.moves_minimal = 50;
+                shove.veh_mass_moves_factor = 4;
+                shove.velocity = 1500;
+                shove.damage_min = 0.00F;
+                shove.damage_max = 0.05F;
+            }
+            break;
+        default:
+            break;
+    }
+    return shove;
+}
+
+// A PUSH_VEH monster would shove the vehicle that blocks p out of its way
+bool can_shove_vehicle_at( const monster &z, map &here, const tripoint_bub_ms &p )
+{
+    if( !z.has_flag( mon_flag_PUSH_VEH ) || z.is_hallucination() ) {
+        return false;
+    }
+    const optional_vpart_position vp = here.veh_at( p );
+    if( !vp || !vp.obstacle_at_part() ) {
+        return false;
+    }
+    return vehicle_shove_for( z.get_size(), vp->vehicle().total_mass( here ) ).velocity > 0;
+}
+} // namespace
+
 bool monster::die_if_drowning( const tripoint_bub_ms &at_pos, const int chance )
 {
     map &here = get_map();
@@ -1329,6 +1399,8 @@ void monster::move()
     }
 
     tripoint_abs_ms next_step;
+    // The vehicle on next_step is in the way, and gets shoved aside once the step is final
+    bool shove_next_step = false;
     const bool can_open_doors =
         has_flag( mon_flag_CAN_OPEN_DOORS ) && !is_hallucination();
     const bool staggers = has_flag( mon_flag_STUMBLES );
@@ -1434,6 +1506,7 @@ void monster::move()
                     // When attacking an adjacent enemy, we're direct.
                     moved = true;
                     next_step = candidate_abs;
+                    shove_next_step = false;
                     break;
                 }
                 if( att == Attitude::FRIENDLY &&
@@ -1459,19 +1532,26 @@ void monster::move()
                 here.open_door( *this, candidate, !here.is_outside( pos_bub() ), true ) ) {
                 moved = true;
                 next_step = candidate_abs;
+                shove_next_step = false;
                 continue;
             } else if( can_open_doors &&
                        doors::can_unlock_door( here, *this, candidate ) ) {
                 doors::unlock_door( here, *this, candidate );
                 moved = true;
                 next_step = candidate_abs;
+                shove_next_step = false;
                 continue;
             }
 
-            // Try to shove vehicle out of the way
-            shove_vehicle( destination, tripoint_bub_ms( candidate ) );
+            // A vehicle we'd shove out of the way doesn't block the square.  The shove used
+            // to happen here, for every square considered, before one was chosen and even
+            // while pacified (MONAI-B10); it now happens once, on the square chosen.  Not on
+            // our goal's own square: shoving that away gets us no closer.
+            const bool shoves_vehicle = !pacified &&
+                                        !( has_dest() && candidate_abs == get_dest() ) &&
+                                        can_shove_vehicle_at( *this, here, candidate );
             // Bail out if we can't move there and we can't bash.
-            if( !pathed && !can_move_to( candidate ) ) {
+            if( !pathed && !shoves_vehicle && !can_move_to( candidate ) ) {
                 if( !can_bash || has_flag( json_flag_CANNOT_ATTACK ) ) {
                     continue;
                 }
@@ -1502,6 +1582,7 @@ void monster::move()
             if( progress > 0 && ( !moved || x_in_y( progress, switch_chance ) ) ) {
                 moved = true;
                 next_step = candidate_abs;
+                shove_next_step = shoves_vehicle;
                 // If we stumble, pick a random square, otherwise take the first one,
                 // which is the most direct path.
                 // Except if the direct path is bad, then check others
@@ -1516,6 +1597,10 @@ void monster::move()
     //  move to (moved = true).
     if( moved ) { // Actual effects of moving to the square we've chosen
         const tripoint_bub_ms local_next_step = here.get_bub( next_step );
+        if( shove_next_step ) {
+            // Try to shove vehicle out of the way
+            shove_vehicle( destination, local_next_step );
+        }
         const bool did_something =
             ( !pacified && attack_at( local_next_step ) ) ||
             ( !pacified && can_open_doors &&
@@ -1669,36 +1754,44 @@ void monster::footsteps( const tripoint_bub_ms &p )
     }
     made_footstep = true;
     int volume = 6; // same as player's footsteps
-    if( flies() || has_flag( mon_flag_SILENTMOVES ) ) {
-        volume = 0; // Flying monsters don't have footsteps!
+    if( type->footstep_volume ) {
+        // MONAI-J04: set in JSON, it replaces all of the below
+        volume = *type->footstep_volume;
+    } else {
+        if( flies() || has_flag( mon_flag_SILENTMOVES ) ) {
+            volume = 0; // Flying monsters don't have footsteps!
+        }
+        if( digging() ) {
+            volume = 10;
+        }
+        switch( type->size ) {
+            case creature_size::tiny:
+                volume = 0; // No sound for the tinies
+                break;
+            case creature_size::small:
+                volume /= 3;
+                break;
+            case creature_size::medium:
+                break;
+            case creature_size::large:
+                volume *= 1.5;
+                break;
+            case creature_size::huge:
+                volume *= 2;
+                break;
+            default:
+                break;
+        }
+        if( has_flag( mon_flag_LOUDMOVES ) ) {
+            volume += 6;
+        } else if( has_flag( mon_flag_QUIETMOVES ) ) {
+            volume -= 3;
+        }
     }
-    if( digging() ) {
-        volume = 10;
-    }
-    switch( type->size ) {
-        case creature_size::tiny:
-            volume = 0; // No sound for the tinies
-            break;
-        case creature_size::small:
-            volume /= 3;
-            break;
-        case creature_size::medium:
-            break;
-        case creature_size::large:
-            volume *= 1.5;
-            break;
-        case creature_size::huge:
-            volume *= 2;
-            break;
-        default:
-            break;
-    }
-    if( has_flag( mon_flag_LOUDMOVES ) ) {
-        volume += 6;
-    } else if( has_flag( mon_flag_QUIETMOVES ) ) {
-        volume -= 3;
-    }
-    if( volume == 0 ) {
+    volume = static_cast<int>( calculate_by_enchantment( volume, enchant_vals::mod::FOOTSTEP_NOISE,
+                               true ) );
+    // A small QUIETMOVES monster came to 6 / 3 - 3 = -1, which got past a == 0 test
+    if( volume <= 0 ) {
         return;
     }
     int dist = rl_dist( p, get_player_character().pos_bub() );
@@ -1724,12 +1817,10 @@ tripoint_bub_ms monster::scent_move()
     std::vector<tripoint_bub_ms> sdirection;
     std::vector<tripoint_bub_ms> smoves;
 
-    int bestsmell = 10;        // Squares with smell 0 are not eligible targets.
-    int smell_threshold = 200; // Squares at or above this level are ineligible.
-    if( has_flag( mon_flag_KEENNOSE ) ) {
-        bestsmell = 1;
-        smell_threshold = 400;
-    }
+    // Squares with smell 0 are not eligible targets.  "scent_sensitivity" in JSON, else
+    // 10 and 200, or 1 and 400 with KEENNOSE (MONAI-J04).
+    int bestsmell = type->get_scent_min();
+    int smell_threshold = type->get_scent_max(); // Squares at or above this level are ineligible.
 
     Character &player_character = get_player_character();
     const bool fleeing = is_fleeing( player_character );
@@ -2824,14 +2915,16 @@ void monster::knock_back_to( const tripoint_bub_ms &to )
         return;
     }
 
-    if( npc *const p = creatures.creature_at<npc>( to ) ) {
+    // The player as well as NPCs: creature_at<npc> skips the avatar, so a monster knocked
+    // toward the player landed on the player's tile (MONAI-B06)
+    if( Character *const p = creatures.creature_at<Character>( to ) ) {
         apply_damage( p, bodypart_id( "torso" ), 3 );
         add_effect( effect_stunned, 1_turns );
         p->deal_damage(
             this, bodypart_id( "torso" ),
             damage_instance( damage_bash, static_cast<float>( type->size ) ) );
         if( u_see ) {
-            add_msg( _( "The %1$s bounces off %2$s!" ), name(), p->get_name() );
+            add_msg( _( "The %1$s bounces off %2$s!" ), name(), p->disp_name() );
         }
 
         p->check_dead_state( &here );
@@ -2839,13 +2932,9 @@ void monster::knock_back_to( const tripoint_bub_ms &to )
     }
 
     // If we're still in the function at this point, we're actually moving a tile!
-    // die_if_drowning will kill the monster if necessary, but if the deep water
-    // tile is on a vehicle, we should check for swimmers out of water
-    if( !die_if_drowning( to ) && has_flag( mon_flag_AQUATIC ) ) {
-        die( &here, nullptr );
-        if( u_see ) {
-            add_msg( _( "The %s flops around and dies!" ), name() );
-        }
+    // die_if_drowning kills a monster that can drown in deep water.
+    if( die_if_drowning( to ) ) {
+        return;
     }
 
     // It's some kind of wall.
@@ -2860,6 +2949,18 @@ void monster::knock_back_to( const tripoint_bub_ms &to )
 
     } else { // It's no wall
         setpos( here, to );
+        // A swimmer knocked out of the water (where will_move_to() lets it go) dies.  AQUATIC
+        // monsters can't drown, so the old test ("didn't drown, and is AQUATIC") killed all of
+        // them, even in deep water.
+        if( has_flag( mon_flag_AQUATIC ) &&
+            !here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, to ) &&
+            !here.has_flag( ter_furn_flag::TFLAG_SWIM_UNDER, to ) ) {
+            die( &here, nullptr );
+            if( u_see ) {
+                add_msg( _( "The %s flops around and dies!" ), name() );
+            }
+            return;
+        }
     }
     check_dead_state( &here );
 }
@@ -2953,52 +3054,14 @@ void monster::shove_vehicle( const tripoint_bub_ms &remote_destination,
         if( vp ) {
             vehicle &veh = vp->vehicle();
             const units::mass veh_mass = veh.total_mass( here );
-            int shove_moves_minimal = 0;
-            int shove_veh_mass_moves_factor = 0;
-            int shove_velocity = 0;
-            float shove_damage_min = 0.00F;
-            float shove_damage_max = 0.00F;
-            switch( this->get_size() ) {
-                case creature_size::tiny:
-                case creature_size::small:
-                    break;
-                case creature_size::medium:
-                    if( veh_mass < 500_kilogram ) {
-                        shove_moves_minimal = 150;
-                        shove_veh_mass_moves_factor = 20;
-                        shove_velocity = 500;
-                        shove_damage_min = 0.00F;
-                        shove_damage_max = 0.01F;
-                    }
-                    break;
-                case creature_size::large:
-                    if( veh_mass < 1000_kilogram ) {
-                        shove_moves_minimal = 100;
-                        shove_veh_mass_moves_factor = 8;
-                        shove_velocity = 1000;
-                        shove_damage_min = 0.00F;
-                        shove_damage_max = 0.03F;
-                    }
-                    break;
-                case creature_size::huge:
-                    if( veh_mass < 2000_kilogram ) {
-                        shove_moves_minimal = 50;
-                        shove_veh_mass_moves_factor = 4;
-                        shove_velocity = 1500;
-                        shove_damage_min = 0.00F;
-                        shove_damage_max = 0.05F;
-                    }
-                    break;
-                default:
-                    break;
-            }
-            if( shove_velocity > 0 ) {
+            const vehicle_shove shove = vehicle_shove_for( this->get_size(), veh_mass );
+            if( shove.velocity > 0 ) {
                 add_msg_if_player_sees( this->pos_bub(), m_bad,
                                         //~ %1$s - monster name, %2$s - vehicle name
                                         _( "%1$s shoves %2$s out of their way!" ),
                                         this->disp_name(), veh.disp_name() );
-                int shove_moves = shove_veh_mass_moves_factor * veh_mass / 10_kilogram;
-                shove_moves = std::max( shove_moves, shove_moves_minimal );
+                int shove_moves = shove.veh_mass_moves_factor * veh_mass / 10_kilogram;
+                shove_moves = std::max( shove_moves, shove.moves_minimal );
                 this->mod_moves( -shove_moves );
                 const tripoint_rel_ms destination_delta( remote_destination -
                         nearby_destination );
@@ -3007,16 +3070,16 @@ void monster::shove_vehicle( const tripoint_bub_ms &remote_destination,
                     clamp( destination_delta.y(), -1, 1 ),
                     clamp( destination_delta.z(), -1, 1 ) );
                 veh.skidding = true;
-                veh.velocity = shove_velocity;
+                veh.velocity = shove.velocity;
                 if( shove_destination != tripoint_rel_ms::zero ) {
                     if( shove_destination.z() != 0 ) {
                         veh.vertical_velocity =
-                            shove_destination.z() < 0 ? -shove_velocity : +shove_velocity;
+                            shove_destination.z() < 0 ? -shove.velocity : +shove.velocity;
                     }
                     here.move_vehicle( veh, shove_destination, veh.face );
                 }
                 veh.move = tileray( destination_delta.xy() );
-                veh.smash( here, shove_damage_min, shove_damage_max, 0.10F );
+                veh.smash( here, shove.damage_min, shove.damage_max, 0.10F );
             }
         }
     }

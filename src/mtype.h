@@ -552,6 +552,12 @@ struct mtype {
         // Vision range is linearly scaled depending on lighting conditions
         int vision_day = 40;    /** vision range in bright light */
         int vision_night = 1;   /** vision range in total darkness */
+        // MONAI-J04: hearing, smell and footsteps as numbers.  Unset, the flags decide (see the
+        // getters): GOODHEARING, KEENNOSE, and the size and LOUDMOVES/QUIETMOVES/SILENTMOVES.
+        std::optional<float> hearing_mult;
+        std::optional<int> scent_min;
+        std::optional<int> scent_max;
+        std::optional<int> footstep_volume;
 
         unsigned int def_chance; // How likely a special "defensive" move is to trigger (0-100%, default 0)
         // Monster's ability to destroy terrain and vehicles
@@ -638,6 +644,12 @@ struct mtype {
         std::string get_description() const;
         ascii_art_id get_picture_id() const;
         std::string get_footsteps() const;
+        // Sounds are heard this many times as loud: hearing_mult, else 2 with GOODHEARING
+        float get_hearing_mult() const;
+        // Scent weaker than this isn't followed: scent_sensitivity min, else 1 with KEENNOSE, 10
+        int get_scent_min() const;
+        // Scent stronger than this is too strong to follow: max, else 400 with KEENNOSE, 200
+        int get_scent_max() const;
         void set_strategy();
         void add_goal( const std::string &goal_id );
         const behavior::node_t *get_goals() const;

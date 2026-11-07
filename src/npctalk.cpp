@@ -6477,7 +6477,8 @@ talk_effect_fun_t::func f_turn_cost( const JsonObject &jo, std::string_view memb
 {
     duration_or_var cost = get_duration_or_var( jo, member, true );
     return [cost]( dialogue & d ) {
-        Character *target = d.actor( false )->get_character();
+        // Any creature: a monster's EOC attack can take time too (MONAI-J02)
+        Creature *target = d.actor( false )->get_creature();
         if( target ) {
             target->mod_moves( -to_moves<int>( cost.evaluate( d ) ) );
         }

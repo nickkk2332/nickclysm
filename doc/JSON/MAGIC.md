@@ -1227,6 +1227,8 @@ Character status value  | Description
 `RANGE_DODGE`           | Gives the monster a percentage chance to dodge ranged attacks, including firearms
 `LUMINATION`            | Affects monster luminance
 `TOTAL_WEIGHT`          | Affects monsters weight
+`HEARING_MULT`          | Affects how loud the monster hears sounds (its `hearing_mult`, see [MONSTERS.md](MONSTERS.md#hearing_mult-scent_sensitivity-footstep_volume)).
+`FOOTSTEP_NOISE`        | Affects the noise the monster makes moving (its `footstep_volume`).
 
 `spell_values` also apply to monsters: they change the spells the monster casts.
 

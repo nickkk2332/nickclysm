@@ -1223,7 +1223,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```FLAMMABLE``` Monster catches fire, burns, and spreads fire to nearby objects.
 - ```FLASHBANGPROOF``` Monster is unaffected by flashbangs.  Robots have it through their species (`ROBOT`); a monster of another species without the flag is affected.
 - ```FLIES``` Can fly over open air without dropping z-level, over water, etc.
-- ```GOODHEARING``` Pursues sounds more than most monsters.
+- ```GOODHEARING``` Pursues sounds more than most monsters: hears them twice as loud (unless the monster sets `hearing_mult`) and follows them six times as long.
 - ```GRABS``` Its attacks may grab you!
 - ```GRAB_IMMUNE``` Characters can't grab it.
 - ```GROUP_BASH``` Gets help from monsters around it when bashing, adding their strength together.  Also lets it crowd-crush a grabbed character: with the `CROWD_CRUSH` world option on, a character held by a grab with enough adjacent `GROUP_BASH` monsters (not hallucinations, and of a size set by the `CROWD_CRUSH_*` external options) loses breath and is eventually crushed.  The crowd needed is the character's size class plus 1 (at least 2), one more while they stand; walls count only when crushers plus walls exceed 6; it doesn't happen underwater.  See `CROWD_CRUSH_RESIST` in [MAGIC.md](MAGIC.md).
@@ -1242,10 +1242,10 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```INFRARED_VISION``` The monster can see warm creatures out to the limit of its maximum day or night vision, which ever is higher
 - ```INSECTICIDEPROOF``` It's immune to insecticide even though it's made of bug flesh ("iflesh").
 - ```INTERIOR_AMMO``` Monster contains ammo inside itself, no need to load on launch.  Prevents ammo from being dropped on disable.
-- ```KEENNOSE``` Keen sense of smell.
+- ```KEENNOSE``` Keen sense of smell: follows scent from 1 to 400 instead of 10 to 200, unless the monster sets `scent_sensitivity`.
 - ```KEEP_DISTANCE``` Monster will try to keep `tracking_distance` number of tiles between it and its current target.
 - ```LOCKS_ON``` Once this monster establishes initial line-of-sight to the avatar, it gains a temporary effect where it always knows the avatar's location for its duration.
-- ```LOUDMOVES``` Makes move noises as if ~2 sizes louder, even if flying.
+- ```LOUDMOVES``` Makes move noises as if ~2 sizes louder, even if flying.  Ignored when the monster sets `footstep_volume`.
 - ```MAGIC_USER``` A monster that casts magical spells, used in mods for avatar detection abilities
 - ```MECH_DEFENSIVE``` This mech can protect you thoroughly when piloted.
 - ```MECH_RECON_VISION``` This mech grants you night-vision and enhanced overmap sight radius when piloted.
@@ -1282,7 +1282,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```PUSH_MON``` Can push creatures out of its way.
 - ```PUSH_VEH``` Can push vehicles out of its way.
 - ```QUEEN``` When it dies, local populations start to die off too.
-- ```QUIETMOVES``` Makes move noises as if ~2 sizes smaller.
+- ```QUIETMOVES``` Makes move noises as if ~2 sizes smaller.  Ignored when the monster sets `footstep_volume`.
 - ```RANGED_ATTACKER``` Monster has any sort of ranged attack.
 - ```REVIVES_HEALTHY``` When revived, this monster has full hitpoints and speed.
 - ```REVIVES``` Monster corpse will revive after a short period of time.
@@ -1291,7 +1291,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```SHEARABLE``` This monster can be sheared for wool.
 - ```SHORTACIDTRAIL``` Leaves an intermittent trail of acid.  See also `ACIDTRAIL`.
 - ```SILENT_DISAPPEAR``` If this monster dissapear (left no corpse), the `The %s disappears.` message won't be printed.
-- ```SILENTMOVES``` Makes no noise at all when moving.
+- ```SILENTMOVES``` Makes no noise at all when moving.  Ignored when the monster sets `footstep_volume`.
 - ```SLUDGEPROOF``` Ignores the effect of sludge trails.
 - ```SLUDGETRAIL``` Causes the monster to leave a sludge trap trail when moving.
 - ```SMALLSLUDGETRAIL``` Causes the monster to occasionally leave a 1-tile sludge trail when moving.
