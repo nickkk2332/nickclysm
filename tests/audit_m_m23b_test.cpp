@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -65,13 +66,14 @@ static const trap_str_id tr_test_veh_j05_spikes( "tr_test_veh_j05_spikes" );
 static const vpart_id vpart_frame( "frame" );
 static const vpart_id vpart_funnel( "funnel" );
 static const vpart_id vpart_muffler( "muffler" );
+static const vpart_id vpart_plating_spiked( "plating_spiked" );
 static const vpart_id vpart_rail_wheel( "rail_wheel" );
-static const vpart_id vpart_ram_spiked( "ram_spiked" );
 static const vpart_id vpart_seatbelt( "seatbelt" );
 static const vpart_id vpart_spring_plate( "spring_plate" );
 static const vpart_id vpart_test_veh_j06_shock_ram( "test_veh_j06_shock_ram" );
 static const vpart_id vpart_test_veh_j07_typed_muffler( "test_veh_j07_typed_muffler" );
 static const vpart_id vpart_wheel( "wheel" );
+static const vpart_id vpart_wheel_mount_wood( "wheel_mount_wood" );
 static const vpart_id vpart_wheel_wood( "wheel_wood" );
 
 static const vproto_id vehicle_prototype_car( "car" );
@@ -414,7 +416,7 @@ TEST_CASE( "veh-j05_wheel_faults_follow_the_data_chain", "[audit][vehicle]" )
         CHECK( messages.size() == 2 );
     }
     SECTION( "a cart wheel cracks or loses its axle, and a cracked one loses its axle" ) {
-        vehicle &cart = place_parts( here, { vpart_frame, vpart_wheel_wood } );
+        vehicle &cart = place_parts( here, { vpart_frame, vpart_wheel_mount_wood, vpart_wheel_wood } );
         const std::vector<int> wheels = parts_of( cart, vpart_wheel_wood );
         REQUIRE( wheels.size() == 1 );
         vehicle_part &wheel = cart.part( wheels[0] );
@@ -498,7 +500,8 @@ TEST_CASE( "veh-j05_traps_apply_wheel_faults_and_eocs", "[audit][vehicle][eoc]" 
 TEST_CASE( "veh-j06_ram_damage_goes_through_deal_damage", "[audit][vehicle][event]" )
 {
     CHECK( vpart_frame->get_collision_damage().type_damage( damage_bash ) == Approx( 1.0f ) );
-    CHECK( vpart_ram_spiked->get_collision_damage().type_damage( damage_cut ) == Approx( 1.0f ) );
+    // SHARP parts (blades, spiked plating; the spiked ram isn't SHARP) cut by default
+    CHECK( vpart_plating_spiked->get_collision_damage().type_damage( damage_cut ) == Approx( 1.0f ) );
     CHECK( vpart_test_veh_j06_shock_ram->get_collision_damage().type_damage( damage_electric ) ==
            Approx( 1.0f ) );
 
@@ -510,8 +513,14 @@ TEST_CASE( "veh-j06_ram_damage_goes_through_deal_damage", "[audit][vehicle][even
     } );
     map &here = get_map();
     vehicle &car = place( here, vehicle_prototype_car );
-    // the ram at the car's own position, so the car's whole mass is behind it
-    const int ram = car.install_part( here, point_rel_ms::zero, vpart_test_veh_j06_shock_ram );
+    // a ram is a structure of its own: on the tile in front of the car, so the car's whole mass
+    // is behind it
+    int front = 0;
+    for( int p = 0; p < car.part_count(); p++ ) {
+        front = std::max( front, car.part( p ).mount.x() );
+    }
+    const int ram = car.install_part( here, point_rel_ms( front + 1, 0 ),
+                                      vpart_test_veh_j06_shock_ram );
     REQUIRE( ram != -1 );
     car.refresh();
     REQUIRE( car.part_with_feature( ram, VPFLAG_ARMOR, true ) == -1 );

@@ -114,7 +114,8 @@ TEST_CASE( "uihud-j06_widget_beta_talker", "[audit][widget]" )
         CHECK_FALSE( contains( empty_charge, "0" ) );
         CHECK( shown( widget_audit_m30b_wielded_charge_hidden, ava ).empty() );
 
-        REQUIRE( ava.wield( *ava.i_add( item( itype_rock ) ) ) );
+        // a naked avatar's i_add() already wields the rock, so wielding it again would put it away
+        ava.set_wielded_item( item( itype_rock ) );
         item_location wielded = ava.get_wielded_item();
         REQUIRE( wielded );
         get_talker_for( wielded )->set_value( "audit_m30b_charge", diag_value( 42.0 ) );
