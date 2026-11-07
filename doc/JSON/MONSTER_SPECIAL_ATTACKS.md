@@ -352,9 +352,13 @@ A special defense attack, triggered when the monster is attacked.  It should con
 "special_when_hit": [ "ZAPBACK", 100 ]
 ```
 
+It can also be an array of objects, for several defenses or effect_on_conditions: see [special_when_hit in MONSTERS.md](MONSTERS.md#special_when_hit).
+
 - ```ACIDSPLASH``` Splashes acid on the attacker.
 - ```NONE``` No special attack to the attacker.
-- ```ZAPBACK``` Shocks attacker on hit.
+- ```RETURN_FIRE``` When hit by a noisy projectile from an attacker it can't see, fires back blindly at the attacker's tile with one of its `gun` special attacks in range.  Not for melee hits, silent shots or shots that did no damage.
+- ```SHOT_RICOCHET``` Fires a copy of the projectile that hit it, with 1.5 times its damage, at a random spot.
+- ```ZAPBACK``` Shocks a melee attacker that isn't immune to electricity on hit, from 1 to 5 electric damage to each arm.  A character is spared by non-conductive gloves, or by hitting with a non-conductive weapon.  The monster is also immune to electric damage.
 
 ## EOC attack
 

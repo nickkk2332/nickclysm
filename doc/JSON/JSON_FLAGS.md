@@ -1220,6 +1220,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```HAS_MIND``` Is sapient and capable of reason (mi-go, triffids, cyborgs, etc.).  `HUMAN` assumes `HAS_MIND`.
 - ```HEARS``` It can hear you.
 - ```HIT_AND_RUN``` Flee for several turns after a melee attack.
+- ```HORDE_ROAMER``` With `HEARS`: while off the map, it is part of the overmap's moving hordes, which wander and are drawn by loud noises.  Other monsters that aren't `DORMANT` stay where they are until the map is loaded around them.  The `ZOMBIE` and `FERAL` species give it to their monsters (a species' `flags` go to all its monsters, so a monster of those species can't do without it).
 - ```HUMAN``` It's a live human, as long as it's alive.
 - ```ID_CARD_DESPAWN``` Despawns when a science ID card is used on a nearby console.
 - ```IMMOBILE``` Doesn't move (e.g. turrets).

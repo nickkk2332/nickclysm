@@ -33,7 +33,15 @@ struct damage_type {
     std::pair<damage_type_id, float> derived_from = { damage_type_id(), 0.0f };
     cata::flat_set<std::string> immune_flags;
     cata::flat_set<std::string> mon_immune_flags;
+    // Monsters made of any of these are immune.
+    std::vector<material_id> mon_immune_materials;
     double bash_conversion_factor;
+    // Pain from damage of this type is the damage divided by this.
+    double pain_divisor = 4.0;
+    // Damage may set the creature on fire, with a chance of the damage in percent.
+    bool ignites = false;
+    // Damage may zap the creature, and pains a character more with EXTRA_ELEC_PAIN.
+    bool electrocutes = false;
     nc_color magic_color;
     bool melee_only = false;
     bool physical = false;

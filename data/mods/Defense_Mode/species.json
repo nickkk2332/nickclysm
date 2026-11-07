@@ -22,7 +22,7 @@
     "id": "ZOMBIE",
     "description": "a zombie",
     "footsteps": "shuffling.",
-    "flags": [ "ALL_SEEING", "NEMESIS" ],
+    "flags": [ "ALL_SEEING", "NEMESIS", "HORDE_ROAMER" ],
     "bleeds": "fd_blood"
   },
   {
@@ -30,7 +30,7 @@
     "id": "FERAL",
     "description": "a feral",
     "footsteps": "shuffling.",
-    "flags": [ "ALL_SEEING", "NEMESIS" ],
+    "flags": [ "ALL_SEEING", "NEMESIS", "HORDE_ROAMER" ],
     "bleeds": "fd_blood"
   },
   {

@@ -202,6 +202,9 @@ void harvest_proficiency_training::deserialize( const JsonObject &jo )
 
 const harvest_yield *harvest_drop_type::action_yield( butcher_type action ) const
 {
+    if( dissect_only_ && action != butcher_type::DISSECT ) {
+        return nullptr;
+    }
     if( !has_action_yield_ ) {
         // The rules of a drop type without its own, as they were before drop types had rules.
         static const harvest_yield full;
@@ -267,6 +270,15 @@ void harvest_drop_type::check_consistency()
                 if( !prof.is_valid() ) {
                     debugmsg( "harvest_drop_type %s trains unknown proficiency %s", type.id.str(),
                               prof.str() );
+                }
+            }
+        }
+        if( type.dissect_only_ ) {
+            for( const std::pair<const butcher_type, harvest_yield> &yield : type.action_yield_ ) {
+                if( yield.first != butcher_type::DISSECT ) {
+                    debugmsg( "harvest_drop_type %s is dissect_only, but its action_yield gives "
+                              "drops from %s: drop dissect_only, or the action", type.id.str(),
+                              io::enum_to_string( yield.first ) );
                 }
             }
         }

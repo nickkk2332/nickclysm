@@ -36,6 +36,8 @@
 #include "pathfinding.h"
 #include "point.h"
 #include "rng.h"
+#include "shearing.h"
+#include "skill.h"
 #include "string_formatter.h"
 #include "talker.h"  // IWYU pragma: keep
 #include "translations.h"
@@ -64,12 +66,9 @@ static const flag_id json_flag_TACK( "TACK" );
 static const flag_id json_flag_TIE_UP( "TIE_UP" );
 
 static const itype_id itype_cash_card( "cash_card" );
-static const itype_id itype_id_military( "id_military" );
 
 static const quality_id qual_CUT( "CUT" );
 static const quality_id qual_SHEAR( "SHEAR" );
-
-static const skill_id skill_survival( "survival" );
 
 namespace
 {
@@ -584,7 +583,7 @@ void milk_source( monster &source_mon )
 void shear_animal( monster &z )
 {
     Character &guy = get_player_character();
-    if( !guy.has_quality( qual_SHEAR ) ) {
+    if( !guy.has_quality( qual_SHEAR, z.type->shearing.quality_level() ) ) {
         add_msg( _( "You don't have a shearing tool." ) );
     }
 
@@ -644,11 +643,15 @@ bool Character::can_mount( const monster &critter ) const
     if( route.empty() ) {
         return false;
     }
+    const mon_mount_rules &rules = critter.type->mount_rules;
+    const float skill = get_skill_level( rules.skill );
+    const bool big_enough = static_cast<int>( critter.get_size() ) >=
+                            static_cast<int>( get_size() ) + rules.size_difference;
     return ( critter.has_flag( mon_flag_PET_MOUNTABLE ) && critter.friendly == -1 &&
              !critter.has_effect( effect_controlled ) && !critter.has_effect( effect_ridden ) ) &&
-           ( ( critter.has_effect( effect_monster_saddled ) && get_skill_level( skill_survival ) >= 1 ) ||
-             get_skill_level( skill_survival ) >= 4 ) && ( critter.get_size() >= ( get_size() + 1 ) &&
-                     get_weight() <= critter.get_weight() * critter.get_mountable_weight_ratio() );
+           ( ( critter.has_effect( effect_monster_saddled ) && skill >= rules.saddled_level ) ||
+             skill >= rules.unsaddled_level ) &&
+           ( big_enough && get_weight() <= critter.get_weight() * critter.get_mountable_weight_ratio() );
 }
 
 bool monexamine::pet_menu( monster &z )
@@ -750,16 +753,18 @@ bool monexamine::pet_menu( monster &z )
     }
     if( z.shearable() ) {
         bool available = true;
-        if( season_of_year( calendar::turn ) == WINTER ) {
-            amenu.addentry( shear, false, 'S',
-                            _( "This animal would freeze if you shear it during the winter." ) );
+        const season_type season = season_of_year( calendar::turn );
+        if( !z.type->shearing.in_season( season ) ) {
+            amenu.addentry( shear, false, 'S', season == WINTER ?
+                            _( "This animal would freeze if you shear it during the winter." ) :
+                            _( "This animal can't be sheared in this season." ) );
             available = false;
         } else if( z.has_effect( effect_sheared ) ) {
             amenu.addentry( shear, false, 'S', _( "This animal is not ready to be sheared again yet." ) );
             available = false;
         }
         if( available ) {
-            if( player_character.has_quality( qual_SHEAR, 1 ) ) {
+            if( player_character.has_quality( qual_SHEAR, z.type->shearing.quality_level() ) ) {
                 amenu.addentry( shear, true, 'S', _( "Shear the %s." ), pet_name );
             } else {
                 amenu.addentry( shear, false, 'S', _( "You cannot shear this animal without a shearing tool." ) );
@@ -768,7 +773,8 @@ bool monexamine::pet_menu( monster &z )
     }
     if( z.has_flag( mon_flag_PET_MOUNTABLE ) && !z.has_effect( effect_monster_saddled ) &&
         player_character.cache_has_item_with( json_flag_TACK ) ) {
-        if( player_character.get_skill_level( skill_survival ) >= 1 ) {
+        if( player_character.get_skill_level( z.type->mount_rules.skill ) >=
+            z.type->mount_rules.tack_level ) {
             amenu.addentry( attach_saddle, true, 'h', _( "Tack up the %s" ), pet_name );
         } else {
             amenu.addentry( attach_saddle, false, 'h', _( "You don't know how to saddle the %s" ), pet_name );
@@ -791,15 +797,20 @@ bool monexamine::pet_menu( monster &z )
             amenu.addentry( mount, true, 'r', _( "Mount the %s" ), pet_name );
         } else if( !z.has_flag( mon_flag_PET_MOUNTABLE ) ) {
             amenu.addentry( mount, false, 'r', _( "The %s cannot be mounted" ), pet_name );
-        } else if( z.get_size() <= player_character.get_size() ) {
+        } else if( static_cast<int>( z.get_size() ) < static_cast<int>( player_character.get_size() ) +
+                   z.type->mount_rules.size_difference ) {
             amenu.addentry( mount, false, 'r', _( "The %s is too small to carry your weight" ), pet_name );
-        } else if( player_character.get_skill_level( skill_survival ) < 1 ) {
-            amenu.addentry( mount, false, 'r', _( "You require survival skill 1 to ride a mount" ) );
+        } else if( player_character.get_skill_level( z.type->mount_rules.skill ) <
+                   z.type->mount_rules.saddled_level ) {
+            amenu.addentry( mount, false, 'r', _( "You require %1$s skill %2$d to ride a mount" ),
+                            z.type->mount_rules.skill->name(), z.type->mount_rules.saddled_level );
         } else if( player_character.get_weight() >= z.get_weight() * z.get_mountable_weight_ratio() ) {
             amenu.addentry( mount, false, 'r', _( "You are too heavy to mount the %s" ), pet_name );
         } else if( !z.has_effect( effect_monster_saddled ) &&
-                   player_character.get_skill_level( skill_survival ) < 4 ) {
-            amenu.addentry( mount, false, 'r', _( "You require survival skill 4 to ride without a saddle" ) );
+                   player_character.get_skill_level( z.type->mount_rules.skill ) <
+                   z.type->mount_rules.unsaddled_level ) {
+            amenu.addentry( mount, false, 'r', _( "You require %1$s skill %2$d to ride without a saddle" ),
+                            z.type->mount_rules.skill->name(), z.type->mount_rules.unsaddled_level );
         }
     } else {
         const itype &type = *item::find_type( z.type->mech_battery );
@@ -933,7 +944,7 @@ bool monexamine::pet_menu( monster &z )
 bool monexamine::mech_hack( monster &z )
 {
     Character &player_character = get_player_character();
-    itype_id card_type = itype_id_military;
+    const itype_id &card_type = z.type->mech_activation_item;
     if( player_character.has_amount( card_type, 1 ) ) {
         if( query_yn( _( "Swipe your ID card into the mech's security port?" ) ) ) {
             player_character.mod_moves( -100 );

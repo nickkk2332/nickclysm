@@ -24,6 +24,7 @@
   - ["aggro_character"](#aggro_character)
   - ["speed"](#speed)
   - ["mountable_weight_ratio"](#mountable_weight_ratio)
+  - ["mount_rules"](#mount_rules)
   - ["melee_skill"](#melee_skill)
   - ["dodge"](#dodge)
   - ["melee_damage"](#melee_damage)
@@ -118,6 +119,7 @@ Property                 | Description
 `morale`                 | (integer) Starting morale, monster will flee when (current aggression + current morale) < 0
 `aggro_character`        | (bool) If true the monster will always attack characters when angry.
 `mountable_weight_ratio` | (float) For mounts, max ratio of mount to rider weight, ex. `0.2` for `<=20%`
+`mount_rules`            | (object) For mounts, the skill and size a rider needs, see [mount_rules](#mount_rules)
 `melee_skill`            | (integer) Monster skill in melee combat, from `0-10`, with `4` being an average mob. Also see [monster melee skill scaling in GAME_BALANCE.md](/doc/design-balance-lore/GAME_BALANCE.md#monster-melee-skill-scaling)
 `dodge`                  | (integer) Monster's skill at dodging attacks
 `block`                  | (array of objects) Monster's ability to block attacks.  Currently limited to melee only.
@@ -155,6 +157,7 @@ Property                 | Description
 `mech_weapon`            | (string) If this monster is a rideable mech with built-in weapons, this is the weapons id
 `mech_str_bonus`         | (integer) If this monster is a rideable mech with enhanced strength, this is the strength it gives to the player when ridden
 `mech_battery`           | (string) If this monster is a rideable mech, this is battery's id. Does not support objects or arrays (i.e. ONE battery id only)
+`mech_activation_item`   | (string) If this monster is a rideable mech, the item used up to activate it. Defaults to `id_military`
 `starting_ammo`          | (object) Ammo that newly spawned monsters start with
 `mount_items`            | (array of objects) Mount-specific items this monster spawns with. Accepts entries for `tied`, `tack`, `armor`, and `storage`.
 `upgrades`               | (boolean or object) False if monster does not upgrade, or an object do define an upgrade
@@ -347,6 +350,23 @@ Monster speed. 100 is the normal speed for a human being - higher values are fas
 (float, optional)
 
 Used as the acceptable rider vs. mount weight percentage ratio. Defaults to "0.2", which means the mount is capable of carrying riders weighing `<= 20%` of the mount's weight.
+
+## "mount_rules"
+(object, optional)
+
+What a rider needs to ride this `PET_MOUNTABLE` monster. Every field is optional; these are the defaults:
+
+```jsonc
+"mount_rules": {
+  "skill": "survival",   // the skill the levels below are of
+  "saddled_level": 1,    // level to ride the monster with a saddle on
+  "unsaddled_level": 4,  // level to ride it without one
+  "tack_level": 1,       // level to put a saddle on it
+  "size_difference": 1   // the monster must be at least this many sizes larger than the rider
+}
+```
+
+Fields left out keep the values of the monster it was copied from (`copy-from`), or these defaults.
 
 ## "melee_skill"
 (integer, optional)
@@ -724,6 +744,19 @@ A set of items that are given to the player when they shear this monster. These 
 
 This means that when this monster is sheared, it will give: 100 units of wool, 10 to 100 pieces of rag, 25% of its body mass as leather and 60% of its volume as wool.
 
+It can also be an object, with the entries above as `entries` and rules for when the monster can be sheared:
+
+```jsonc
+"shearing": {
+  "entries": [ { "result": "wool", "amount": 100 } ],
+  "seasons": [ "SPRING", "SUMMER", "AUTUMN" ], // seasons it can be sheared in (default: all but winter)
+  "regrow": "30 days",                          // time until it can be sheared again (default: one season)
+  "quality_level": 2                            // SHEAR quality level needed (default: 1)
+}
+```
+
+Rules left out keep the values of the monster it was copied from (`copy-from`), or the defaults.
+
 ## "speed_description"
 (string, optional)
 
@@ -752,6 +785,26 @@ A special defense attack, triggered when the monster is attacked. It should cont
 ```jsonc
 "special_when_hit": [ "ZAPBACK", 100 ]
 ```
+
+It can also be an array of objects, for several defenses, or for effect_on_conditions:
+
+```jsonc
+"special_when_hit": [
+  { "id": "ZAPBACK", "chance": 100 },
+  { "eoc": "EOC_SPORE_BURST", "chance": 50, "ranged": false }
+]
+```
+
+Each object has either:
+- `id` (string): a built-in defense, as in the array form.
+- `eoc` (EOC id or inline EOC): an effect_on_condition run with the monster as `u` and the attacker, if any, as `npc`, and the context values `is_ranged` (1 for a hit by a projectile) and `bodypart` (the body part hit, `bp_null` when the monster is grabbed or held). It can cast a spell with `u_cast_spell`.
+
+and optionally:
+- `chance` (int, default 100): the defense is tried when a roll from 0 to 100 is at most this, as the number in the array form.
+- `melee` (bool, default true): tried on melee hits and when a character grabs or holds the monster.
+- `ranged` (bool, default true): tried on hits by projectiles.
+
+They are tried in order, each with its own roll.  Without `special_when_hit` a monster has no defense (`[ "NONE", 0 ]`).  A monster with a `ZAPBACK` defense is immune to electric damage.
 
 ## "attack_effs"
 (array of objects, optional)

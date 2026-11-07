@@ -493,10 +493,9 @@ int butcher_time_to_cut( Character &you, const item &corpse_item, const butcher_
     return time_to_cut;
 }
 
-static int butchery_dissect_skill_level( Character &you, int tool_quality,
-        const harvest_drop_type_id &htype )
+int butchery_dissect_skill_level( const Character &you, int tool_quality,
+                                  const harvest_drop_type_id &htype, butcher_type action )
 {
-    // DISSECT has special case factor calculation and results.
     if( htype.is_valid() ) {
         float sk_total = 0;
         int sk_count = 0;
@@ -504,7 +503,13 @@ static int butchery_dissect_skill_level( Character &you, int tool_quality,
             sk_total += you.get_average_skill_level( sk );
             sk_count++;
         }
-        return round( ( sk_total + tool_quality ) / ( sk_count > 0 ? sk_count : 1 ) );
+        // DISSECT has special case factor calculation and results: its fine cutting tool counts
+        // as skill. Other butchery counts its tool's BUTCHER quality in the roll and the yield
+        // only, not as skill too.
+        if( action == butcher_type::DISSECT ) {
+            sk_total += tool_quality;
+        }
+        return round( sk_total / ( sk_count > 0 ? sk_count : 1 ) );
     }
     return round( you.get_average_skill_level( skill_survival ) );
 }
@@ -742,14 +747,20 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
         for( item *item : corpse_item.all_items_top( pocket_type::CORPSE ) ) {
             dissectable_num++;
             const int skill_level = butchery_dissect_skill_level( you, tool_quality,
-                                    item->dropped_from );
+                                    item->dropped_from, action );
             const int butchery = roll_butchery_dissect( skill_level, you.get_dex(), tool_quality );
             dissectable_practice += ( 4 + butchery );
             int roll = butchery - corpse_item.damage_level();
             roll = roll < 0 ? 0 : roll;
             add_msg_debug( debugmode::DF_ACT_BUTCHER, "Roll penalty for corpse damage = %s",
                            0 - corpse_item.damage_level() );
-            butcher_dissect_item( *item, you.pos_bub(), calendar::turn, roll );
+            const bool success = butcher_dissect_item( *item, you.pos_bub(), calendar::turn, roll );
+            if( item->dropped_from.is_valid() ) {
+                const translation msg = item->dropped_from->dissect_msg( success );
+                if( !msg.empty() ) {
+                    you.add_msg_if_player( success ? m_neutral : m_bad, msg.translated() );
+                }
+            }
         }
         if( dissectable_num > 0 ) {
             practice += dissectable_practice / dissectable_num;
@@ -762,7 +773,8 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
     for( const harvest_entry &entry : ( action == butcher_type::DISSECT &&
                                         !mt.dissect.is_empty() ) ? *mt.dissect : *mt.harvest ) {
         const harvest_drop_type &drop_type = entry.drop_type();
-        const int skill_level = butchery_dissect_skill_level( you, tool_quality, entry.type );
+        const int skill_level = butchery_dissect_skill_level( you, tool_quality, entry.type,
+                                action );
         const int butchery = roll_butchery_dissect( skill_level, you.get_dex(), tool_quality );
         practice += ( 4 + butchery ) / entry_count;
         const float min_num = entry.base_num.first + butchery * entry.scale_num.first;
@@ -810,7 +822,8 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
             const translation msg = action == butcher_type::FIELD_DRESS ?
                                     entry.type->field_dress_msg( roll > 0 ) :
                                     action == butcher_type::QUICK || action == butcher_type::FULL ||
-                                    action == butcher_type::DISMEMBER ? entry.type->butcher_msg( roll > 0 ) : translation();
+                                    action == butcher_type::DISMEMBER ? entry.type->butcher_msg( roll > 0 ) :
+                                    action == butcher_type::DISSECT ? entry.type->dissect_msg( roll > 0 ) : translation();
             if( !msg.empty() ) {
                 you.add_msg_if_player( m_bad, msg.translated() );
             }

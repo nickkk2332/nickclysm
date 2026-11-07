@@ -129,6 +129,10 @@ void damage_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "mon_difficulty", mon_difficulty );
     optional( jo, was_loaded, "no_resist", no_resist );
     optional( jo, was_loaded, "bash_conversion_factor", bash_conversion_factor, 0.0 );
+    optional( jo, was_loaded, "pain_divisor", pain_divisor, 4.0 );
+    optional( jo, was_loaded, "ignites", ignites, false );
+    optional( jo, was_loaded, "electrocutes", electrocutes, false );
+    optional( jo, was_loaded, "mon_immune_materials", mon_immune_materials );
     if( jo.has_object( "immune_flags" ) ) {
         JsonObject jsobj = jo.get_object( "immune_flags" );
         if( jsobj.has_array( "monster" ) ) {
@@ -178,6 +182,16 @@ void damage_type::check()
         }
         if( dt.bash_conversion_factor < 0.0 ) {
             debugmsg( "damage type %s has bash conversion factor < 0.", dt.id.str() );
+        }
+        if( dt.pain_divisor <= 0.0 ) {
+            debugmsg( "damage type %s has pain_divisor %g: it must be above 0.", dt.id.str(),
+                      dt.pain_divisor );
+        }
+        for( const material_id &mat : dt.mon_immune_materials ) {
+            if( !mat.is_valid() ) {
+                debugmsg( "damage type %s has unknown mon_immune_materials %s.", dt.id.str(),
+                          mat.str() );
+            }
         }
     }
 }

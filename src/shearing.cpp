@@ -1,12 +1,17 @@
 #include "shearing.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
+#include "calendar.h"
+#include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "monster.h"
+#include "output.h"
 #include "rng.h"
+#include "string_formatter.h"
 #include "units.h"
 
 shearing_roll shearing_entry::roll( const monster &mon ) const
@@ -53,9 +58,41 @@ void shearing_entry::load( const JsonObject &jo )
     }
 }
 
-void shearing_data::deserialize( const JsonArray &ja )
+// "SPRING", "summer"...
+static season_type read_season( const JsonValue &jv )
 {
-    ja.read( entries_ );
+    const std::string name = to_lower_case( jv.get_string() );
+    for( int season = SPRING; season < NUM_SEASONS; ++season ) {
+        if( io::enum_to_string( static_cast<season_type>( season ) ) == name ) {
+            return static_cast<season_type>( season );
+        }
+    }
+    jv.throw_error( string_format( "invalid season \"%s\"", name ) );
+}
+
+// Rules not given keep what they were (from copy-from, or the defaults).
+void shearing_data::deserialize( const JsonValue &jv )
+{
+    if( jv.test_object() ) {
+        JsonObject jo = jv.get_object();
+        mandatory( jo, false, "entries", entries_ );
+        if( jo.has_member( "seasons" ) ) {
+            seasons_.clear();
+            for( const JsonValue jv_season : jo.get_array( "seasons" ) ) {
+                seasons_.insert( read_season( jv_season ) );
+            }
+        }
+        if( jo.has_member( "regrow" ) ) {
+            time_duration regrow;
+            mandatory( jo, false, "regrow", regrow );
+            regrow_ = regrow;
+        }
+        if( jo.has_member( "quality_level" ) ) {
+            mandatory( jo, false, "quality_level", quality_level_, numeric_bound_reader<int> { 1 } );
+        }
+    } else {
+        jv.read( entries_, true );
+    }
     valid_ = !entries_.empty();
 }
 
