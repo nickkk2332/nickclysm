@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <unordered_map>
@@ -1235,6 +1236,91 @@ bool Character::roll_bad_mutation( const mutation_category_id &categ ) const
     }
 }
 
+// Whether the character lacks the threshold a trait requires (threshreq), as mutate_towards
+// checks it: a threshold substitute counts unless the trait has strict_threshreq.
+static bool lacks_required_threshold( const Character &you, const mutation_branch &mdata )
+{
+    if( mdata.threshreq.empty() ) {
+        return false;
+    }
+    for( const trait_id &thresh : mdata.threshreq ) {
+        if( you.has_permanent_trait( thresh ) ) {
+            return false;
+        }
+        if( !mdata.strict_threshreq ) {
+            for( const trait_id &subst : thresh->threshold_substitutes ) {
+                if( you.has_permanent_trait( subst ) ) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// Whether mutate_towards( mut, cat ) stops at its threshold check, so the pick is wasted: the
+// character lacks a threshold the trait requires and has (or can't get in this category) the
+// prerequisites. A trait still missing a prerequisite isn't wasted: mutate_towards then mutates
+// towards the prerequisite, before checking the threshold.
+static bool pick_stops_at_threshold( const Character &you, const trait_id &mut,
+                                     const mutation_category_id &cat )
+{
+    const mutation_branch &mdata = mut.obj();
+    if( !lacks_required_threshold( you, mdata ) ) {
+        return false;
+    }
+    const auto redirects_to = [&you, &cat]( const std::vector<trait_id> &prereqs ) {
+        const auto has = [&you]( const trait_id & prereq ) {
+            return you.has_permanent_trait( prereq );
+        };
+        const auto in_category = [&cat]( const trait_id & prereq ) {
+            return cat == mutation_category_ANY || mutation_is_in_category( prereq, cat );
+        };
+        return std::none_of( prereqs.begin(), prereqs.end(), has ) &&
+               std::any_of( prereqs.begin(), prereqs.end(), in_category );
+    };
+    return !redirects_to( mdata.prereqs ) && !redirects_to( mdata.prereqs2 );
+}
+
+// Takes out of `candidates` the traits a pick would waste on a threshold the character lacks
+// (MUT-B05) and returns how many there were.
+static int drop_threshold_blocked( const Character &you, std::vector<trait_id> &candidates,
+                                   const mutation_category_id &cat )
+{
+    const auto blocked = std::remove_if( candidates.begin(), candidates.end(),
+    [&you, &cat]( const trait_id & mut ) {
+        return pick_stops_at_threshold( you, mut, cat );
+    } );
+    const int count = static_cast<int>( std::distance( blocked, candidates.end() ) );
+    candidates.erase( blocked, candidates.end() );
+    return count;
+}
+
+// Before MUT-B05 the blocked candidates stayed in the draw, and an attempt whose picks (`picks`
+// draws without putting back from `total`) all landed on them came to nothing. Filtering them
+// out would make mutation faster, most of all just before a threshold, where most of what is
+// left is blocked; so the attempt still comes to nothing with that same chance.
+static bool roll_threshold_stall( int total, int blocked, int picks )
+{
+    if( blocked <= 0 || total <= 0 ) {
+        return false;
+    }
+    if( blocked >= total ) {
+        return true;
+    }
+    double chance = 1.0;
+    for( int i = 0; i < std::min( picks, total ); i++ ) {
+        chance *= static_cast<double>( std::max( blocked - i, 0 ) ) / static_cast<double>( total - i );
+    }
+    return chance > 0.0 && x_in_y( chance, 1.0 );
+}
+
+static void threshold_stall_message( Character &you )
+{
+    you.add_msg_if_player(
+        _( "You feel something straining deep inside you, yearning to be free…" ) );
+}
+
 void Character::mutate( const int &true_random_chance, bool use_vitamins )
 {
     // Determine the highest mutation category
@@ -1391,11 +1477,20 @@ void Character::mutate( const int &true_random_chance, bool use_vitamins )
         if( one_in( 2 ) ) {
             if( !upgrades.empty() ) {
                 // (upgrade count) chances to pick an upgrade, 4 chances to pick something else.
-                size_t roll = rng( 0, upgrades.size() + 4 );
-                if( roll < upgrades.size() ) {
+                // An upgrade behind a threshold the character lacks still takes its chance, as
+                // an attempt that comes to nothing (see roll_threshold_stall).
+                const int total = static_cast<int>( upgrades.size() );
+                const int blocked = drop_threshold_blocked( *this, upgrades, cat );
+                const int roll = rng( 0, total + 4 );
+                if( roll < total - blocked ) {
                     // We got a valid upgrade index, so use it and return.
                     add_msg_debug( debugmode::DF_MUTATION, "mutate: upgrade roll succeeded" );
                     mutate_towards( upgrades[roll], cat, nullptr, use_vitamins );
+                    return;
+                }
+                if( roll < total ) {
+                    add_msg_debug( debugmode::DF_MUTATION, "mutate: upgrade roll hit a threshold" );
+                    threshold_stall_message( *this );
                     return;
                 }
             }
@@ -1438,6 +1533,14 @@ void Character::mutate( const int &true_random_chance, bool use_vitamins )
             if( mut_vit != vitamin_id::NULL_ID() &&
                 vitamin_get( mut_vit ) >= mutation_category_trait::get_category( cat ).threshold_min ) {
                 try_crossing_threshold( cat );
+            }
+            // After the threshold roll: a trait behind the threshold just crossed is open.
+            const int total = static_cast<int>( valid.size() );
+            const int blocked = drop_threshold_blocked( *this, valid, cat );
+            if( roll_threshold_stall( total, blocked, 2 ) ) {
+                add_msg_debug( debugmode::DF_MUTATION, "mutate: stalled at a threshold" );
+                threshold_stall_message( *this );
+                return;
             }
             if( mutate_towards( valid, cat, 2, use_vitamins ) ) {
                 add_msg_if_player( m_mixed, mutation_category_trait::get_category( cat ).mutagen_message() );
@@ -1520,6 +1623,13 @@ void Character::mutate_category( const mutation_category_id &cat, const bool use
         // Stop if mutation properly handled by mutation selector
         return;
     }
+    const int total = static_cast<int>( valid.size() );
+    const int blocked = drop_threshold_blocked( *this, valid, cat );
+    if( roll_threshold_stall( total, blocked, 2 ) ) {
+        add_msg_debug( debugmode::DF_MUTATION, "mutate_category: stalled at a threshold" );
+        threshold_stall_message( *this );
+        return;
+    }
     mutate_towards( valid, cat, 2, use_vitamins );
 }
 
@@ -1581,21 +1691,7 @@ bool Character::mutation_selector( const std::vector<trait_id> &prospective_trai
         }
 
         // Check threshold requirement
-        std::vector<trait_id> threshreq = mdata.threshreq;
-        bool c_has_threshreq = threshreq.empty() ? true : false;
-        for( size_t i = 0; !c_has_threshreq && i < threshreq.size(); i++ ) {
-            if( has_permanent_trait( threshreq[i] ) ) {
-                c_has_threshreq = true;
-            }
-            if( !mdata.strict_threshreq ) {
-                for( const trait_id &subst : threshreq[i]->threshold_substitutes ) {
-                    if( has_permanent_trait( subst ) ) {
-                        c_has_threshreq = true;
-                    }
-                }
-            }
-        }
-        if( !c_has_threshreq ) {
+        if( lacks_required_threshold( *this, mdata ) ) {
             continue;
         }
 

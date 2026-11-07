@@ -64,6 +64,7 @@
 #include "item_stack.h"
 #include "item_tname.h"
 #include "itype.h"
+#include "iuse.h"
 #include "lightmap.h"
 #include "line.h"
 #include "localized_comparator.h"
@@ -4715,6 +4716,31 @@ bool Character::invoke_item( item *used, const std::string &method )
     return invoke_item( used, method, pos_bub() );
 }
 
+// Removes an item that was used up from wherever it was used: carried, or where it lies
+// (ALLOWS_REMOTE_USE) on the ground or in a vehicle at pt. Returns whether it was found.
+static bool remove_used_item( Character &you, item &used, const tripoint_bub_ms &pt )
+{
+    if( you.has_item( used ) ) {
+        you.i_rem( &used );
+        return true;
+    }
+    map &here = get_map();
+    map_cursor ground( &here, pt );
+    if( ground.has_item( used ) ) {
+        ground.remove_item( used );
+        return true;
+    }
+    if( const optional_vpart_position vp = here.veh_at( pt ) ) {
+        vehicle_cursor cargo( vp->vehicle(), vp->part_index() );
+        if( cargo.has_item( used ) ) {
+            cargo.remove_item( used );
+            return true;
+        }
+    }
+    debugmsg( "Couldn't find the used %s to remove it", used.tname() );
+    return false;
+}
+
 bool Character::invoke_item( item *used, const std::string &method, const tripoint_bub_ms &pt,
                              int pre_obtain_moves )
 {
@@ -4789,6 +4815,20 @@ bool Character::invoke_item( item *used, const std::string &method, const tripoi
     if( actually_used->has_flag( flag_SINGLE_USE ) || actually_used->is_bionic() ) {
         i_rem( actually_used );
         return true;
+    }
+
+    // An item with no charges to spend has itself as its one use, for the use actions that say
+    // so: one of a stack counted by charges, else the item (USE-B08).
+    const use_function *use_fn = actually_used->type->get_use( method );
+    const bool no_charges = !actually_used->uses_firing_requirements() &&
+                            actually_used->ammo_required() == 0;
+    if( no_charges && use_fn != nullptr && use_fn->get_actor_ptr() != nullptr &&
+        use_fn->get_actor_ptr()->uses_up_item_without_charges() ) {
+        if( actually_used->count_by_charges() && actually_used->charges > 1 ) {
+            actually_used->mod_charges( -1 );
+            return false;
+        }
+        return remove_used_item( *this, *actually_used, pt );
     }
 
     return false;
@@ -5349,7 +5389,12 @@ void Character::passive_absorb_hit( const bodypart_id &bp, damage_unit &du ) con
 
 void Character::did_hit( Creature &target )
 {
-    enchantment_cache->cast_hit_you( *this, target );
+    did_hit( target, hit_type::melee );
+}
+
+void Character::did_hit( Creature &target, const hit_type hit )
+{
+    enchantment_cache->cast_hit_you( *this, target, hit );
 }
 
 void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,

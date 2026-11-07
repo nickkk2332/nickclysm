@@ -237,6 +237,12 @@ struct bionic {
         bool        auto_shutdown = true;
         /* An amount of time during which this bionic has been rendered inoperative. */
         time_duration        incapacitated_time;
+        /**
+         * Experience this bionic added to spells the character already knew, raising them to
+         * the level it teaches. Removing the bionic takes it back. Empty for bionics installed
+         * before this was recorded: removing those leaves the raised level.
+         */
+        std::map<spell_id, int> raised_spell_xp;
 
         bionic() : bionic( bionic_id( "bio_batteries" ), 'a', 0 ) { }
         bionic( bionic_id pid, char pinvlet, bionic_uid pbionic_uid,

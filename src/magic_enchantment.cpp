@@ -1,6 +1,7 @@
 #include "magic_enchantment.h"
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -17,12 +18,15 @@
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "item.h"
 #include "json.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "mod_tracker.h"
 #include "monster.h"
 #include "rng.h"
+#include "spell_cast_context.h"
 #include "talker.h"
 #include "units.h"
 #include "vehicle.h"
@@ -1538,7 +1542,9 @@ void enchant_cache::activate_passive( Character &guy ) const
 void enchant_cache::cast_hit_you( Creature &caster, const Creature &target ) const
 {
     for( const fake_spell &sp : hit_you_effect ) {
-        cast_enchantment_spell( caster, &target, sp );
+        if( sp.hit_types[hit_type::melee] ) {
+            cast_enchantment_spell( caster, &target, sp, hit_type::melee );
+        }
     }
 }
 
@@ -1549,10 +1555,13 @@ void enchant_cache::cast_hit_me( Creature &caster, const Creature *target ) cons
     }
 }
 
-void enchant_cache::cast_hit_you( Character &caster, const Creature &target ) const
+void enchant_cache::cast_hit_you( Character &caster, const Creature &target,
+                                  const hit_type hit ) const
 {
     for( const fake_spell &sp : hit_you_effect ) {
-        cast_enchantment_spell( caster, &target, sp );
+        if( sp.hit_types[hit] ) {
+            cast_enchantment_spell( caster, &target, sp, hit );
+        }
     }
 }
 
@@ -1564,22 +1573,28 @@ void enchant_cache::cast_hit_me( Character &caster, const Creature *target ) con
 }
 
 void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *target,
-        const fake_spell &sp ) const
+        const fake_spell &sp, const std::optional<hit_type> hit ) const
 {
     // check the chances
     if( !one_in( sp.trigger_once_in ) ) {
         return;
     }
 
+    global_variables::impl_t context;
+    if( hit ) {
+        context.emplace( "hit_type", diag_value( io::enum_to_string( *hit ) ) );
+    }
     if( sp.self ) {
         caster.add_msg_player_or_npc( m_good,
                                       sp.trigger_message,
                                       sp.npc_trigger_message,
                                       caster.get_name() );
-        sp.get_spell( caster, sp.level ).cast_all_effects( caster, caster.pos_bub() );
+        const spell spell_lvl = sp.get_spell( caster, sp.level );
+        const spell_cast_context scope( spell_lvl, context );
+        spell_lvl.cast_all_effects( caster, caster.pos_bub() );
     } else if( target != nullptr ) {
         const Creature &trg_crtr = *target;
-        const spell &spell_lvl = sp.get_spell( caster, sp.level );
+        const spell spell_lvl = sp.get_spell( caster, sp.level );
         if( !spell_lvl.is_valid_target( caster, trg_crtr.pos_bub() ) ||
             !spell_lvl.is_target_in_range( caster, trg_crtr.pos_bub() ) ) {
             return;
@@ -1590,6 +1605,7 @@ void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *ta
                                       sp.npc_trigger_message,
                                       caster.get_name(), trg_crtr.disp_name() );
 
+        const spell_cast_context scope( spell_lvl, context );
         spell_lvl.cast_all_effects( caster, trg_crtr.pos_bub() );
     }
 }

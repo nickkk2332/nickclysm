@@ -98,6 +98,7 @@ struct pick_info;
 } // namespace Pickup
 
 enum action_id : int;
+enum class hit_type : int;
 enum class magic_energy_type : int;
 enum class recipe_filter_flags : int;
 enum class steed_type : int;
@@ -1398,8 +1399,10 @@ class Character : public Creature, public visitable
         /** Handles special defenses from melee attack that hit us (source can be null) */
         void on_hit( map *here, Creature *source, bodypart_id bp_hit,
                      float difficulty = INT_MIN, dealt_projectile_attack const *proj = nullptr ) override;
-        // any side effects that might happen when the Character hits a Creature
+        // any side effects that might happen when the Character hits a Creature: its
+        // enchantments' hit_you_effect for this kind of hit (melee by default)
         void did_hit( Creature &target );
+        void did_hit( Creature &target, hit_type hit );
 
         /** Actually hurt the player, hurts a body_part directly, no armor reduction */
         void apply_damage( Creature *source, bodypart_id hurt, int dam,

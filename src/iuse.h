@@ -315,6 +315,14 @@ class iuse_actor
          * Finalizes the actor. Must be called after all items are loaded.
          */
         virtual void finalize( const itype_id &/*my_item_type*/ ) { }
+        /**
+         * Whether a use of an item that has no charges to spend (no ammo, charges or tool
+         * uses) still uses something up when use() reports charges spent: the item itself.
+         * Character::invoke_item then removes it, or one of a stack counted by charges.
+         */
+        virtual bool uses_up_item_without_charges() const {
+            return false;
+        }
 };
 
 struct use_function {

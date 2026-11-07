@@ -780,7 +780,7 @@ Identifier                  | Description
 `id`                        | Unique ID.  Must be one continuous word, use underscores if necessary.
 `has`                       | How an enchantment determines if it is in the right location in order to qualify for being active.  `WIELD` when wielded in your hand, `WORN` when worn as armor, `HELD` when in your inventory.
 `condition`                 | Determines the environment where the enchantment is active.  `ALWAYS` is active always and forevermore, `ACTIVE` whenever the item, mutation, bionic, or whatever the enchantment is attached to is active, `INACTIVE` whenever the item, mutation, bionic, or whatever the enchantment is attached to is inactive.  `DIALOG_CONDITION - ACTIVE` whenever the dialog condition in `condition` is true, eg `"condition": { "math": [ "u_effect_intensity('perk_insight') > 9" ] },`
-`hit_you_effect`            | A spell that activates when your melee attack hits a creature (not on a miss, and not against a hallucination).  The spell is centered on the location of the creature unless `"hit_self": true`, then it is centered on your location.  Follows the template for defining `fake_spell`.
+`hit_you_effect`            | A spell that activates when your attack hits a creature (not on a miss or a dodge, and not against a hallucination): a melee hit, a ranged hit (guns, bows and other fired weapons: once a shot for each creature the shot hit) or a thrown hit.  The spell is centered on the location of the creature unless `"hit_self": true`, then it is centered on your location; a spell centered on the creature must have it in range, so a short-range spell only goes off on hits that close.  Follows the template for defining `fake_spell`, plus `"hit_types"`: the kinds of hit that cast it, any of `"melee"`, `"ranged"` and `"thrown"` (default all three).  Give `[ "melee" ]` for an effect of contact, such as a weapon's edge, claws or an aura.  An `effect_on_condition` spell gets the kind of hit as the context value `hit_type` (`"melee"`, `"ranged"` or `"thrown"`).  Monsters cast theirs on melee hits only.
 `hit_me_effect`             | A spell that activates when you are hit by a creature.  The spell is centered on your location.  Follows the template for defining `fake_spell`
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
@@ -803,7 +803,7 @@ There are two possible syntaxes.  The first is by defining an enchantment object
     "description": "You are invisible.  Just that.",
     "condition": "ALWAYS",
     "has": "WIELD",
-    "hit_you_effect": [ { "id": "AEA_FIREBALL", "hit_self": true, "once_in": 12 } ],
+    "hit_you_effect": [ { "id": "AEA_FIREBALL", "hit_self": true, "once_in": 12, "hit_types": [ "melee" ] } ],
     "hit_me_effect": [ { "id": "AEA_HEAL" } ],
     "values": [ { "value": "STRENGTH", "multiply": 1.1, "add": -5 } ],
     "skills": [ { "value": "computer", "add": 3 } ],
