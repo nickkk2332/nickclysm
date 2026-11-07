@@ -100,6 +100,8 @@ struct talk_trial {
      */
     std::string name() const;
     std::vector<trial_mod> modifiers;
+    // "mod" entries that are math, each adding what it gives to the chance (MATH-J03)
+    std::vector<dbl_or_var> math_modifiers;
     explicit operator bool() const {
         return type != TALK_TRIAL_NONE;
     }

@@ -4,7 +4,9 @@
 #include <string>
 #include <string_view>
 
+#include "debug.h"
 #include "dialogue.h"
+#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "math_parser.h"
@@ -53,6 +55,7 @@ void jmath_func::load( JsonObject const &jo, std::string_view /*src*/ )
 {
     optional( jo, was_loaded, "num_args", num_params );
     optional( jo, was_loaded, "return", _str );
+    optional( jo, was_loaded, "optional_ids", optional_ids, false );
 
     for( auto const &iter : get_all_diag_funcs() ) {
         if( std::string const idstr = id.str(); iter.first == idstr ) {
@@ -72,6 +75,18 @@ void jmath_func::finalize()
 {
     _exp.parse( _str );
     _str.clear();
+    if( !optional_ids ) {
+        // MATH-J04: checked with the EOCs, once martial arts have made their buff effects
+        effect_on_conditions::add_load_check( [fid = id]() {
+            if( !fid.is_valid() ) {
+                return;
+            }
+            for( const std::string &err : fid->_exp.check_literal_ids() ) {
+                debugmsg( R"(jmath function "%s": %s.  If the id is another mod's, add "optional_ids": true.)",
+                          fid.str(), err );
+            }
+        } );
+    }
 }
 
 double jmath_func::eval( const_dialogue const &d ) const

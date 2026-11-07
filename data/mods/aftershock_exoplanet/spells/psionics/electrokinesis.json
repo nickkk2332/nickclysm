@@ -24,12 +24,12 @@
     },
     "base_energy_cost": {
       "math": [
-        "u_effect_intensity('effect_electrokin_see_electricity') > -1 ? 0 : max((2000 - (u_spell_level('afs_electrokinetic_see_electric') * 75)), 750)"
+        "u_effect_intensity('effect_afs_electrokin_see_electricity') > -1 ? 0 : max((2000 - (u_spell_level('afs_electrokinetic_see_electric') * 75)), 750)"
       ]
     },
     "base_casting_time": {
       "math": [
-        "u_effect_intensity('effect_electrokin_see_electricity') > -1 ? 10 : max((150 -(u_spell_level('afs_electrokinetic_see_electric') * 6)), 80)"
+        "u_effect_intensity('effect_afs_electrokin_see_electricity') > -1 ? 10 : max((150 -(u_spell_level('afs_electrokinetic_see_electric') * 6)), 80)"
       ]
     }
   },
@@ -134,12 +134,12 @@
     "magic_type": "aftershock_psionics",
     "base_energy_cost": {
       "math": [
-        "u_effect_intensity('effect_electrokin_hacking_interface') > 0 ? 0 : max((6500 - (u_spell_level('afs_electrokinetic_hacking_interface') * 150)), 3500)"
+        "u_effect_intensity('effect_afs_electrokin_hacking_interface') > 0 ? 0 : max((6500 - (u_spell_level('afs_electrokinetic_hacking_interface') * 150)), 3500)"
       ]
     },
     "base_casting_time": {
       "math": [
-        "u_effect_intensity('effect_electrokin_hacking_interface') > 0 ? 10 : max((350 -(u_spell_level('afs_electrokinetic_hacking_interface') * 9)), 150)"
+        "u_effect_intensity('effect_afs_electrokin_hacking_interface') > 0 ? 10 : max((350 -(u_spell_level('afs_electrokinetic_hacking_interface') * 9)), 150)"
       ]
     }
   },

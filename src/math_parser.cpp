@@ -475,6 +475,7 @@ class math_exp::math_exp_impl
                     output = {};
                     arity = {};
                     tree = thingie { 0.0 };
+                    literal_ids.clear();
                     return false;
                 }
 
@@ -493,7 +494,25 @@ class math_exp::math_exp_impl
             return type;
         }
 
+        std::vector<std::string> check_literal_ids() {
+            std::vector<std::string> errors;
+            for( const diag_literal_id &lit : literal_ids ) {
+                if( lit.is_known == nullptr || lit.is_known( lit.id ) ) {
+                    continue;
+                }
+                std::string err = string_format( R"(%s(): unknown %s "%s")", lit.func, lit.kind, lit.id );
+                if( std::find( errors.begin(), errors.end(), err ) == errors.end() ) {
+                    errors.push_back( std::move( err ) );
+                }
+            }
+            literal_ids.clear();
+            literal_ids.shrink_to_fit();
+            return errors;
+        }
+
     private:
+        // the ids the expression's dialogue functions name as literals (MATH-J04)
+        std::vector<diag_literal_id> literal_ids;
         struct op_ctxt {
             op_t op;
             std::string_view pos;
@@ -831,10 +850,12 @@ void math_exp::math_exp_impl::new_func()
                 _validate_unused_kwargs( v.df, kwargs );
                 output.emplace( std::in_place_type_t<func_diag>(), v.df->fe, v.df->fa, v.scope,
                                 params, kwargs );
-                std::get<func_diag>( output.top().data ).fca = v.df->fca;
+                func_diag &fd = std::get<func_diag>( output.top().data );
+                fd.fca = v.df->fca;
                 if( v.df->fc != nullptr ) {
-                    v.df->fc( std::get<func_diag>( output.top().data ).params );
+                    v.df->fc( fd.params );
                 }
+                collect_literal_ids( v.token, fd.params, fd.kwargs, literal_ids );
             },
             [&params, this]( pmath_func v )
             {
@@ -1088,4 +1109,9 @@ double math_exp::eval( dialogue &d ) const
 math_type_t math_exp::get_type() const
 {
     return impl->get_type();
+}
+
+std::vector<std::string> math_exp::check_literal_ids()
+{
+    return impl ? impl->check_literal_ids() : std::vector<std::string> {};
 }

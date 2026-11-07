@@ -326,22 +326,26 @@
     "min_duration": {
       "math": [
         "( ( (u_spell_level('clair_sense_hostile_creatures') + u_spell_level('clair_sense_hostile_creatures_knack') ) * 4500) + 12000) * psionic_power_modifiers()"
-      ]
+      ],
+      "optional_ids": true
     },
     "max_duration": {
       "math": [
         "( ( (u_spell_level('clair_sense_hostile_creatures') + u_spell_level('clair_sense_hostile_creatures_knack') ) * 7500) + 49000) * psionic_power_modifiers()"
-      ]
+      ],
+      "optional_ids": true
     },
     "base_energy_cost": {
       "math": [
         "u_effect_intensity('effect_clair_sense_hostile_creatures') > -1 ? 0 : max( (6500 - ( (u_spell_level('clair_sense_hostile_creatures') + u_spell_level('clair_sense_hostile_creatures_knack') ) * 120)), 3150)"
-      ]
+      ],
+      "optional_ids": true
     },
     "base_casting_time": {
       "math": [
         "u_effect_intensity('effect_clair_sense_hostile_creatures') > -1 ? 10 : max( (85 - ( (u_spell_level('clair_sense_hostile_creatures') + u_spell_level('clair_sense_hostile_creatures_knack') ) * 7)), 25)"
-      ]
+      ],
+      "optional_ids": true
     }
   },
   {

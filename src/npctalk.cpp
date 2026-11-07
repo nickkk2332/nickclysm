@@ -2444,6 +2444,12 @@ int talk_trial::calc_chance( const_dialogue const &d ) const
         add_msg_debug( debugmode::DF_NPC, "    %s modified trial chance by %d, now %d",
                        this_mod.first, trial_mod_int, chance );
     }
+    for( const dbl_or_var &math_mod : math_modifiers ) {
+        const int trial_mod_int = static_cast<int>( std::round( math_mod.evaluate( d ) ) );
+        chance += trial_mod_int;
+        add_msg_debug( debugmode::DF_NPC, "    math modified trial chance by %d, now %d",
+                       trial_mod_int, chance );
+    }
 
     return std::max( 0, std::min( 100, chance ) );
 }
@@ -3408,10 +3414,18 @@ talk_trial::talk_trial( const JsonObject &jo )
         read_condition( jo, "condition", condition, false );
     }
     if( jo.has_member( "mod" ) ) {
-        for( JsonArray jmod : jo.get_array( "mod" ) ) {
+        for( const JsonValue jmod : jo.get_array( "mod" ) ) {
+            if( jmod.test_object() ) {
+                // MATH-J03: { "math": [ "..." ] } adds what it gives, with any alpha talker
+                dbl_or_var math_mod;
+                jmod.read( math_mod, true );
+                math_modifiers.push_back( math_mod );
+                continue;
+            }
+            JsonArray pair = jmod.get_array();
             trial_mod this_modifier;
-            this_modifier.first = jmod.next_string();
-            this_modifier.second = jmod.next_int();
+            this_modifier.first = pair.next_string();
+            this_modifier.second = pair.next_int();
             modifiers.push_back( this_modifier );
         }
     }

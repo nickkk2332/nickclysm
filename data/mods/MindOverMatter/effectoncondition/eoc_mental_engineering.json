@@ -1512,7 +1512,7 @@
     "condition": {
       "and": [
         { "math": [ "u_spell_level_sum('school': 'TELEPATH') >= 60" ] },
-        { "math": [ "u_skill('social') >= 3" ] },
+        { "math": [ "u_skill('speech') >= 3" ] },
         { "u_has_trait": "TRUTHTELLER" }
       ]
     },
@@ -1531,7 +1531,7 @@
     "condition": {
       "and": [
         { "math": [ "u_spell_level_sum('school': 'TELEPATH') >= 70" ] },
-        { "math": [ "u_skill('social') >= 6" ] },
+        { "math": [ "u_skill('speech') >= 6" ] },
         { "not": { "u_has_trait": "LIAR" } },
         { "not": { "u_has_trait": "TRUTHTELLER" } }
       ]

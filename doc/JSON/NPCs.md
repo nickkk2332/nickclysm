@@ -861,6 +861,8 @@ The `difficulty` is only required if type is not `"NONE"` or `"CONDITION"` and, 
 
 `"SKILL_CHECK"` trials check the user's level in a skill, whose ID is read from the string object `skill_required` (a skill that doesn't exist is a load error). The `success` object is chosen if the skill level is equal to or greater than `difficulty`, and `failure` is chosen otherwise.
 
+`mod` is an optional list of modifiers to the chance, either named ones or math ([see `mod`](#mod)).
+
 Sample trials:
 ```jsonc
 "trial": { "type": "PERSUADE", "difficulty": 0, "mod": [ [ "TRUST", 3 ], [ "VALUE", 3 ], [ "ANGER", -3 ], [ "u_has_trait: PSYCHOPATH", -40 ] ] }
@@ -868,12 +870,16 @@ Sample trials:
 "trial": { "type": "CONDITION", "condition": { "npc_has_trait": "FARMER" } }
 "trial": { "type": "SKILL_CHECK", "difficulty": 3, "skill_required": "swimming" }
 "trial": { "type": "PERSUADE", "difficulty": { "math": [ "40 + n_npc_personality('altruism') * 3" ] }, "speech_practice": { "math": [ "_success ? 0 : 5" ] } }
+"trial": { "type": "LIE", "difficulty": { "math": [ "10 + u_lies_told * 5" ] }, "mod": [ [ "TRUST", 3 ], { "math": [ "u_has_trait('LIAR') * 15" ] } ] }
+"trial": { "type": "SKILL_CHECK", "difficulty": { "math": [ "n_lock_level + 2" ] }, "skill_required": "mechanics" }
 ```
 
 #### `mod`
 `mod` is an array of modifiers to the trial's chances. Each mod is comprised of two values, the modifier and a factor. These are multiplied together to get the total change to the % chance. A modifier of -10 and a factor of 2 would produce a total mod of -20 to the chances, taking a chance of 64% down to 44%.
 
-Note that *there is no check that mod types are valid*. Invalid mod types will always count as 0(being totally ignored). Check your spelling.
+A mod can also be a [math object](#math), which adds what it gives (rounded) to the chance. Unlike the named modifiers below, which read only the avatar and an NPC, it works with any talkers and can read anything math can, for example `"mod": [ [ "TRUST", 3 ], { "math": [ "n_npc_trust() * 2 - u_pain() / 10" ] } ]`. The chance is kept within 0 to 100 after all the mods.
+
+Note that *there is no check that mod types are valid*. Invalid mod types will always count as 0(being totally ignored). Check your spelling; the names are case-sensitive.
 
 Valid mod types are:
 
@@ -1502,6 +1508,13 @@ Dialogue functions return or manipulate game values. They are scoped just like [
 
 These functions support keyword-value pairs as optional arguments (kwargs) of the form `'keyword': argument`.
 
+An id written as a literal string, as in `u_has_trait('FEEBLE')` or `u_effect_intensity('bite', 'bodypart': 'torso')`, is checked when the game loads: one that names nothing loaded (a typo, or an id that was renamed) is a load error that says which function and id, instead of a value that is silently always 0 or -1. Ids in variables can only be checked when the function runs. The functions checked are those whose argument names an id: addictions, bionics, body parts, damage types, effects, EOCs (`time_until_eoc`), event statistics, field types, item flags, items, limb scores, magic schools, monsters, monster groups, species, mutation categories, proficiencies, qualities, skills, spells, traits, vehicle parts and vitamins, in the arguments the table below describes. A function's special values (`hp('ALL')`, `bionic_count('ANY')`, `gun_damage('ALL')`, the school `'NONE'`, an empty string) are not ids. Faction functions, `has_flag()` (character flags need no definition), `game_option()` and `mod_load_order()` are not checked.
+
+When the ids may rightly be missing, because they belong to a mod that may not be loaded, add `"optional_ids": true` to the math object and its ids are not checked:
+```jsonc
+{ "math": [ "u_vitamin('vitamin_psionic_drain') >= 15" ], "optional_ids": true }
+```
+
 _function arguments are `d`oubles (or sub-expressions), `s`trings, or `v`[ariables](#variables)_<br/>
 _some functions support array arguments or kwargs, denoted with square brackets [] (ex: [`d`/`v`])_
 
@@ -1714,6 +1727,8 @@ Math functions can be defined in JSON like this
   },
 ```
 where `_0`, `_1`, etc. are positional parameters.
+
+As in other math, ids the function names as literals are checked when the game loads ([dialogue functions](#dialogue-functions)); `"optional_ids": true` in the `jmath_function` turns that off when they may be another mod's.
 
 These functions can then be used like regular math functions, for example:
 ```jsonc
