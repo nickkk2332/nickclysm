@@ -33,6 +33,8 @@ extern int pixel_minimap_g;
 extern int pixel_minimap_b;
 extern int pixel_minimap_a;
 extern float combat_speed_modifier;
+// SOUND_ATTENUATION_PERCENT: the percentage of the summed sound_attenuation a sound loses
+extern int sound_attenuation_percent;
 
 namespace cata::options
 {

@@ -8,6 +8,7 @@
     "damage_modifier": 70,
     "description": "A sheet of glass that lets you see outside the vehicle.",
     "durability": 50,
+    "sound_attenuation": 3,
     "flags": [ "WINDSHIELD", "OBSTACLE", "WINDOW" ],
     "item": "glass_sheet",
     "location": "center",
@@ -84,6 +85,7 @@
     "damage_reduction": { "all": 16 },
     "description": "A sheet of glass that lets you see outside the vehicle.  Reinforced with wire to make it harder to break than normal glass.",
     "durability": 250,
+    "sound_attenuation": 5,
     "item": "reinforced_glass_sheet",
     "name": { "str": "reinforced windshield" },
     "requirements": {

@@ -2715,7 +2715,15 @@ A line that monsters, items and other speakers can say (see `PARROT` in [MONSTER
 { "type": "speech", "speaker": [ "mon_mi_go", "mon_mi_go_slaver" ], "sound": "\"Papaya!\"", "volume": 32 }
 ```
 
-A line with an `id` can `copy-from` another one (or an `abstract` one), and a later mod changes it by copying it under the same id: it keeps every member it doesn't name, and `speaker` takes `extend` and `delete`.  A second definition of the id without `copy-from` replaces the line.  A line without an `id` (like every vanilla line) is added to its speakers' lines, and nothing can change it later.
+A line with an `id` can `copy-from` another one (or an `abstract` one), and a later mod changes it by copying it under the same id: it keeps every member it doesn't name, and `speaker` takes `extend` and `delete`.  A second definition of the id without `copy-from` replaces the line, and keeps its place among its speakers' lines.  A line without an `id` is added to its speakers' lines, and nothing can change it later.
+
+Every vanilla line (`data/json/speech.json`) has an id `speech_<first speaker>_<n>`: its first `speaker`, and a number counting that speaker's lines from 1 in file order (`speech_mon_mi_go_1` is the first line whose speaker list starts with `mon_mi_go`).  The ids don't change when lines are added: `tools/json_tools/speech_ids.py <files>` names lines without an id, numbering on from the highest number the files already use for that first speaker.  A mod changes a vanilla line, or takes it away from a speaker or from everyone:
+
+```jsonc
+{ "type": "speech", "id": "speech_mon_mi_go_2", "copy-from": "speech_mon_mi_go_2", "sound": "\"Mango!\"" }
+{ "type": "speech", "id": "speech_mon_mi_go_3", "copy-from": "speech_mon_mi_go_3", "delete": { "speaker": [ "mon_mi_go_myrmidon" ] } }
+{ "type": "speech", "id": "speech_mon_mi_go_4", "copy-from": "speech_mon_mi_go_4", "speaker": [ ] }
+```
 
 ### Speed Description
 
@@ -3455,7 +3463,7 @@ For each harvest entry, the rules apply in this order to the amount rolled from 
 
 `trains_proficiencies` (array, optional): each `{ "proficiencies": [ ... ], "time_fraction": { "<action>": fraction } }` trains the first proficiency in the list the butcher doesn't have (the last one when they have all of them) for that fraction of the butchery time, when butchering a creature with a drop of this type with one of the listed actions. A list shared by several drop types of the same creature trains once.
 
-The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had; `mutagen` and `bionic` have none.
+The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had. `mutagen`, `mutagen_group`, `bionic` and `bionic_group` have `"action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 }`: the default without `FIELD_DRESS`, so an organ or implant in a creature's `harvest` list (as in Magiclysm) comes from full butchery or dissection, not also from field dressing first.
 
 ### Weapon Category
 
@@ -4057,7 +4065,23 @@ What muffles a sound is added up along the straight line from the sound to the l
 
 This applies to monsters hearing sounds (and so to what they follow), sound-triggered traps, NPCs, and the avatar: the messages, the sound markers on the map, deafening and waking up, `can_hear` checks such as shouted orders to followers, and the volume of sound effects. Horde signals outside the reality bubble ignore it.
 
-No vanilla terrain, furniture, field or vehicle part sets it, and with none loaded sounds skip the walk. The cost of a sound between z-levels comes from the external options `SOUND_Z_LEVEL_MULT` (5: each level counts as 5 tiles), `SOUND_UNDERGROUND_MULT` (5: when the lower of the two is underground, the first level between them counts as 5 levels) and `SOUND_DEEP_UNDERGROUND_MULT` (21: each further level between them below the surface counts as 21); see `data/core/external_options.json`.
+Vanilla values, by what the wall, door or window is made of (most are set on the abstract walls in `terrain-walls.json`, so copies of them inherit the value):
+
+| Value | Terrain | Vehicle parts |
+| ----- | ------- | ------------- |
+| 20 | rock and solid earth (`t_abstract_wall_earthen`, colored stone, smoothed rock, basalt), reinforced concrete walls | |
+| 15 | concrete (`t_abstract_wall_concrete`), brick and stone walls; closed reinforced and bulkhead doors | |
+| 12 | metal walls (`t_abstract_wall_metal`, scrap and junk metal walls) | |
+| 10 | log walls and palisades, solid grown wood and bark | heavy-duty boards |
+| 8 | wood, drywall and wattle walls (`t_abstract_wall_wood`); closed metal doors | |
+| 6 | boarded or shuttered windows, boarded doors | boards (metal, wooden, stow boards) |
+| 5 | closed wood doors | closed doors and hatches, reinforced windshields |
+| 4 | closed glass or plastic windows, glass doors and glass walls | |
+| 3 | | windshields |
+| 1 | | cloth boards and cloth doors |
+| 0 | open or broken doors and windows, empty frames, embrasures, half walls, fences, gates, bars and screens, columns, and walls of other materials (paper, wax, resin, flesh, fungus) | quarterpanels, curtains, open doors and hatches |
+
+Furniture and fields set none. A mod changes a value by redefining the object with a `copy-from` of its own id, which keeps everything else the same: `{ "type": "terrain", "id": "t_wall", "copy-from": "t_wall", "sound_attenuation": 12 }` (or a vehicle part's `{ "type": "vehicle_part", "id": "board", "copy-from": "board", "sound_attenuation": 0 }`). A copy takes the value of what it copies when it loads, so redefining an abstract wall in a mod changes only the mod's own copies of it, not the vanilla walls already loaded. The external option `SOUND_ATTENUATION_PERCENT` (`data/core/external_options.json`, default 100) scales every sum: 50 halves what everything muffles, 0 turns muffling off (sounds then skip the walk), 200 doubles it; a mod sets it with `{ "type": "EXTERNAL_OPTION", "name": "SOUND_ATTENUATION_PERCENT", "stype": "int", "value": 50 }`. With nothing loaded that muffles, sounds skip the walk too. The cost of a sound between z-levels comes from the external options `SOUND_Z_LEVEL_MULT` (5: each level counts as 5 tiles), `SOUND_UNDERGROUND_MULT` (5: when the lower of the two is underground, the first level between them counts as 5 levels) and `SOUND_DEEP_UNDERGROUND_MULT` (21: each further level between them below the surface counts as 21); see `data/core/external_options.json`.
 
 #### `bonus_fire_warmth_feet`
 

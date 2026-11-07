@@ -28,6 +28,7 @@
     "color": "magenta_yellow",
     "move_cost": 0,
     "coverage": 100,
+    "sound_attenuation": 15,
     "roof": "t_concrete_roof",
     "connect_groups": "WALL",
     "connects_to": "WALL",

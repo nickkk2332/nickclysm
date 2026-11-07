@@ -365,6 +365,7 @@
     "name": { "str": "Emergency Insulation" },
     "description": "Described in design documents as emergency insulation to protect against exposure to hard vacuum, this CBM is also useful in any encounter that causes instant frostbite.",
     "occupied_bodyparts": [ [ "torso", 5 ], [ "head", 1 ], [ "arm_l", 1 ], [ "arm_r", 1 ], [ "leg_l", 1 ], [ "leg_r", 1 ] ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [ "protect_cold" ],
     "act_cost": "1 kJ",
@@ -382,6 +383,7 @@
     "react_cost": "250 J",
     "activated_eocs": [ "eoc_bio_superheater_on" ],
     "deactivated_eocs": [ "eoc_bio_superheater_off" ],
+    "npc_use": "melee",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [
       {
@@ -408,6 +410,7 @@
     "react_cost": "1000 J",
     "activated_eocs": [ "eoc_bio_blade_electric_on" ],
     "deactivated_eocs": [ "eoc_bio_blade_electric_off" ],
+    "npc_use": "melee",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [
       {

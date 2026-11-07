@@ -8,16 +8,13 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "coordinates.h"
-#include "field_type.h"
 #include "game.h"
-#include "generic_factory.h"
 #include "global_vars.h"
 #include "item.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
-#include "mapdata.h"
 #include "messages.h"
 #include "monster.h"
 #include "options.h"
@@ -41,6 +38,7 @@ static const furn_str_id furn_test_f_sound_baffle( "test_f_sound_baffle" );
 static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_door_c( "t_door_c" );
+static const ter_str_id ter_t_door_o( "t_door_o" );
 static const ter_str_id ter_t_grass( "t_grass" );
 static const ter_str_id ter_t_window( "t_window" );
 static const ter_str_id ter_test_t_sound_baffle( "test_t_sound_baffle" );
@@ -146,11 +144,6 @@ bool avatar_hears_bang( int volume )
     const bool heard = has_message_containing( "a test bang" );
     Messages::clear_messages();
     return heard;
-}
-
-bool is_test_id( const std::string &id )
-{
-    return id.rfind( "test_", 0 ) == 0;
 }
 
 vehicle &place_hull( map &here, const vpart_id &hull )
@@ -345,60 +338,44 @@ TEST_CASE( "spat-j01_vehicle_hull_muffles_sound", "[audit][sound][vehicle]" )
     }
 }
 
-// Shipped data sets no sound_attenuation, so every sound reaches exactly who it reached
-// before: the same volume through vanilla walls, doors and vehicles as across open ground.
-TEST_CASE( "spat-j01_vanilla_content_muffles_nothing", "[audit][sound]" )
+// SPAT-J01-values: shipped walls, doors, windows and vehicle hulls muffle by what they are
+// made of (the table is in doc/JSON/JSON_INFO.md); open doors muffle nothing.
+TEST_CASE( "spat-j01_vanilla_content_muffles_by_material", "[audit][sound]" )
 {
-    for( const ter_t &ter : mapdata::terrain_data.get_all() ) {
-        if( ter.sound_attenuation != 0 ) {
-            CHECK( is_test_id( ter.id.str() ) );
-        }
-    }
-    for( const furn_t &furn : mapdata::furniture_data.get_all() ) {
-        if( furn.sound_attenuation != 0 ) {
-            CHECK( is_test_id( furn.id.str() ) );
-        }
-    }
-    for( const field_type &fd : field_types::get_all() ) {
-        if( fd.muffles_sound ) {
-            CHECK( is_test_id( fd.id.str() ) );
-        }
-    }
-    for( const vpart_info &vpi : vehicles::parts::get_all() ) {
-        if( vpi.sound_attenuation != 0 ) {
-            CHECK( is_test_id( vpi.id.str() ) );
-        }
-    }
-
     sound_scene scene;
     map &here = get_map();
     const int volume = 40 - get_weather().weather_id->sound_attn;
-    const int expected = volume - old_sound_distance( source, listener );
+    const int open_ground = volume - old_sound_distance( source, listener );
 
     SECTION( "a brick wall" ) {
         here.ter_set( mid, ter_t_brick_wall );
-        CHECK_FALSE( here.sound_muffled_on_level( 0 ) );
-        CHECK( here.sound_attenuation_between( source, listener ) == 0 );
-        CHECK( zombie_hears( listener, 40 ) == expected );
+        CHECK( here.sound_muffled_on_level( 0 ) );
+        CHECK( here.sound_attenuation_between( source, listener ) == 15 );
+        CHECK( zombie_hears( listener, 40 ) == open_ground - 15 );
     }
     SECTION( "a closed door" ) {
         here.ter_set( mid, ter_t_door_c );
+        CHECK( here.sound_attenuation_between( source, listener ) == 5 );
+        CHECK( zombie_hears( listener, 40 ) == open_ground - 5 );
+    }
+    SECTION( "an open door" ) {
+        here.ter_set( mid, ter_t_door_o );
         CHECK( here.sound_attenuation_between( source, listener ) == 0 );
-        CHECK( zombie_hears( listener, 40 ) == expected );
+        CHECK( zombie_hears( listener, 40 ) == open_ground );
     }
     SECTION( "a closed window" ) {
         here.ter_set( mid, ter_t_window );
-        CHECK( here.sound_attenuation_between( source, listener ) == 0 );
-        CHECK( zombie_hears( listener, 40 ) == expected );
+        CHECK( here.sound_attenuation_between( source, listener ) == 4 );
+        CHECK( zombie_hears( listener, 40 ) == open_ground - 4 );
     }
-    // the vehicle parts are walked here, since TEST_DATA has parts that muffle
-    for( const vpart_id &hull : {
-             vpart_board, vpart_door, vpart_windshield
-         } ) {
-        SECTION( "a vehicle " + hull.str() ) {
-            place_hull( here, hull );
-            CHECK( here.sound_attenuation_between( source, listener ) == 0 );
-            CHECK( zombie_hears( listener, 40 ) == expected );
+    const std::vector<std::pair<vpart_id, int>> hulls = {
+        { vpart_board, 6 }, { vpart_door, 5 }, { vpart_windshield, 3 }
+    };
+    for( const std::pair<vpart_id, int> &hull : hulls ) {
+        SECTION( "a vehicle " + hull.first.str() ) {
+            place_hull( here, hull.first );
+            CHECK( here.sound_attenuation_between( source, listener ) == hull.second );
+            CHECK( zombie_hears( listener, 40 ) == open_ground - hull.second );
         }
     }
 }

@@ -253,6 +253,13 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "SOUND_ATTENUATION_PERCENT",
+    "//": "Percentage of the sound_attenuation of the terrain, furniture, fields and vehicle parts between a sound and its hearer that the sound loses: 100 as set in their JSON, 50 half, 0 turns muffling off.",
+    "stype": "int",
+    "value": 100
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "SPAWN_ANIMAL_DENSITY",
     "//": "A scaling factor that determines density of wild, formerly domesticated and mutated animal spawns.",
     "stype": "float",

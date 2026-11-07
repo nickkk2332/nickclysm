@@ -75,7 +75,7 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `npc_decision_condition_math` (*npc*) | the same, with 4 condition and math nodes added to the priorities (`data/mods/TEST_DATA/npc_behavior_bench.json`) | NPC-J03 |
 | `npc_decision_condition_math_cached` (*npc*) | the same, with those 4 nodes evaluated every 5 turns | NPC-J03 |
 | `sound_open_ground` (*sound*) | 100 turns of 20 sounds and 100 footsteps, heard by 300 zombies (`process_sounds`) and the avatar (`process_sound_markers`), on open ground | SPAT-J01 |
-| `sound_vanilla_walls` (*sound*) | the same among a grid of brick walls, which muffle nothing: the muffling walk is skipped, so it should cost what `sound_open_ground` costs | SPAT-J01 |
+| `sound_brick_walls` (*sound*) | the same among a grid of brick walls, which muffle 15 since SPAT-J01-values (it was `sound_vanilla_walls` while vanilla walls muffled nothing and the walk was skipped) | SPAT-J01 |
 | `sound_muffling_walls` (*sound*) | the same among walls with a `sound_attenuation` (TEST_DATA), so every hearer in earshot walks the line to each sound cluster | SPAT-J01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 

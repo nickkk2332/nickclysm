@@ -417,7 +417,7 @@
     "name": "Survey Field",
     "desc": "Nearby terrain can be turned into fields if it is completely cleared of terrain that isn't grass or dirt.  Doing so makes that terrain eligible for usage for standard base camp expansion.  Note that log cutting does this conversion automatically when the trees are depleted, but not all terrain can be logged.",
     "behavior": "survey_field",
-    "skill": "gun",
+    "skill": "survival",
     "effects": [
       "If the expansion direction selected is eligible for conversion into a field this mission will perform that conversion.  If it is not eligible you are told as much, and would have to make it suitable for conversion by removing everything that isn't grass or soil.  Mining zones are useful to remove pavement, for instance.  Note that removal of buildings is dangerous, laborious, and may still fail to get rid of everything if e.g. a basement or an opening to underground areas (such as a manhole) remains."
     ],
@@ -439,7 +439,7 @@
     "name": "Survey Expansion",
     "desc": "Expansions open up new opportunities but can be expensive and time-consuming.  Pick them carefully, at most 8 can be built at each camp.",
     "behavior": "survey_expansion",
-    "skill": "gun",
+    "skill": "survival",
     "effects": [
       "Choose any one of the available expansions.  Starting with a farm is always a solid choice since food is used to support companion missions and minimal investment is needed to get it going.  A forge is also a great idea, allowing you to refine resources for subsequent expansions, craft better gear and make charcoal."
     ],

@@ -168,8 +168,8 @@ void hear_planned_turns()
 } // namespace
 
 // SPAT-J01: sounds and footsteps heard by 300 zombies and the avatar. With no terrain that
-// muffles on the level the muffling walk is skipped, so vanilla walls cost what open
-// ground costs; walls with a sound_attenuation walk one line per sound cluster and hearer.
+// muffles on the level the muffling walk is skipped; walls with a sound_attenuation (vanilla
+// brick walls have 15) walk one line per sound cluster and hearer.
 TEST_CASE( "bench_sound_open_ground", "[.][benchmark_scenario]" )
 {
     fixed_weather weather;
@@ -183,11 +183,11 @@ TEST_CASE( "bench_sound_open_ground", "[.][benchmark_scenario]" )
     clear_map();
 }
 
-TEST_CASE( "bench_sound_vanilla_walls", "[.][benchmark_scenario]" )
+TEST_CASE( "bench_sound_brick_walls", "[.][benchmark_scenario]" )
 {
     fixed_weather weather;
-    run_scenario( "sound_vanilla_walls",
-                  "the same among brick walls, which muffle nothing",
+    run_scenario( "sound_brick_walls",
+                  "the same among brick walls (sound_attenuation 15)",
     []() {
         build_noisy_town( ter_t_brick_wall );
     }, []() {
