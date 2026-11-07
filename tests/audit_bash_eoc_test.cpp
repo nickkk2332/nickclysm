@@ -173,7 +173,8 @@ TEST_CASE( "map-j01_tile_destroyed_is_sent_with_the_cause", "[audit][map][eoc]" 
     SECTION( "an explosion no creature set off" ) {
         const tripoint_bub_ms target = u.pos_bub() + tripoint_rel_ms( 8, 0, 0 );
         here.furn_set( target, furn_test_f_bash_eoc_crate );
-        explosion_handler::explosion( nullptr, target, 5.0f, 0.8f, false, 0 );
+        // a blast of power 60 bashes its center with strength 8
+        explosion_handler::explosion( nullptr, target, 60.0f, 0.8f, false, 0 );
         explosion_handler::process_explosions();
         REQUIRE( here.furn( target ) == furn_str_id::NULL_ID() );
         CHECK( bash_value( "test_bash_crate_cause" ).str() == "explosion" );

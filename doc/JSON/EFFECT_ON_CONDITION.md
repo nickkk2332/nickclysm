@@ -3150,7 +3150,7 @@ Store a handle to You or NPC in a variable object. `run_eocs` reads it back as `
 - A character's handle is its `character_id`, a number, as EVENT EOCs give it.
 - A monster's is `monster:` and its uid, a vehicle's `vehicle:` and its uid, and an item's `item:` and its uid, followed by where the item was (such as `@map:x,y,z` or `@character:id`), which is only where it's looked for first.
 
-A handle keeps naming the same thing when it moves and across saves, but it finds it only while it exists and is in the reality bubble. Otherwise `run_eocs` runs its `false_eocs`. A copy of a vehicle, or an item split off a stack, is a new one with a new handle. Furniture, zones and the other talkers have no handle: storing one is an error.
+A handle keeps naming the same creature or vehicle when it moves and across saves, but it finds it only while it exists and is in the reality bubble. Otherwise `run_eocs` runs its `false_eocs`. A copy of a vehicle is a new vehicle with a new handle. An item's handle finds the item wherever it is in the reality bubble and across saves, but most ways of moving an item (picking it up, dropping it, wielding it, splitting it off a stack) make a new copy of it, which the old handle doesn't find. Furniture, zones and the other talkers have no handle: storing one is an error.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |

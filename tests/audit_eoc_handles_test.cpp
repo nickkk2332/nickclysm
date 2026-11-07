@@ -109,7 +109,7 @@ TEST_CASE( "eoc-j01_a_stored_handle_finds_a_monster_after_it_moves", "[audit][eo
     CHECK( misses() == 1 );
 }
 
-TEST_CASE( "eoc-j01_a_stored_handle_finds_an_item_after_it_is_picked_up", "[audit][eoc]" )
+TEST_CASE( "eoc-j01_a_stored_handle_finds_an_item_wherever_it_is", "[audit][eoc]" )
 {
     clear_avatar();
     clear_map_without_vision();
@@ -130,17 +130,18 @@ TEST_CASE( "eoc-j01_a_stored_handle_finds_an_item_after_it_is_picked_up", "[audi
     const std::string handle = store_handle( get_talker_for( on_the_ground ) );
     CHECK( handle == string_format( "item:%d@map:%d,%d,%d", uid, where.x(), where.y(),
                                     where.z() ) );
-
-    // the handle still says the map, but the item is in the avatar's hands now
-    REQUIRE( u.wield( on_the_ground ) );
-    REQUIRE( u.get_wielded_item() );
-    REQUIRE( u.get_wielded_item()->uid().get_value() == uid );
     use_handle();
-    CHECK( marks( u.get_wielded_item()->maybe_get_value( "handle_marks" ) ) == 1 );
+    CHECK( marks( rock.maybe_get_value( "handle_marks" ) ) == 1 );
+
+    // Where the handle says it was is only where it's looked for first
+    get_globals().set_global_value( "test_handle", string_format( "item:%d@map:%d,%d,%d", uid,
+                                    where.x() + 5, where.y(), where.z() ) );
+    use_handle();
+    CHECK( marks( rock.maybe_get_value( "handle_marks" ) ) == 2 );
     CHECK( misses() == 0 );
 
     // gone, so the false_eocs run
-    static_cast<void>( u.remove_weapon() );
+    on_the_ground.remove_item();
     use_handle();
     CHECK( misses() == 1 );
 }

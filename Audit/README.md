@@ -194,7 +194,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | INV-J01 | fixed | `827993a0` | `tests/audit_pocket_keys_test.cpp`. Fixed 12 clothing pockets with `max_length`, plus pockets in hobo_stove, an Xedra tool and six monster guns. Bandoliers, pouches and quivers now get their `volume_encumber_modifier`, so they encumber less |
 | ACT-J01 | fixed | `cbbf71f0` | `tests/audit_activity_type_test.cpp`. The new EOC check found a misspelled `completion_eoc` in Limb_WIP |
 | MAGIC-J01 | fixed | `c9fdb7d1` | `tests/audit_spell_context_test.cpp`. Also fixes MAGIC-B19 (vehicle check on the wrong tile) |
-| EOC-J01 | partial | `3ce1e2f5` | `tests/audit_spawned_eocs_test.cpp`. Adds `spawned_eocs`, `npc_variables` and `item_variables`. Still open: a stable handle to a monster, item or vehicle in an EOC variable |
+| EOC-J01 | fixed | `3ce1e2f5`, PR B | `tests/audit_spawned_eocs_test.cpp`, `tests/audit_eoc_handles_test.cpp`. Adds `spawned_eocs`, `npc_variables` and `item_variables`, then `u_set_talker` handles to monsters, items and vehicles (vehicles get a persistent uid). Limit: most ways of moving an item copy it, and the copy has a new uid, so an item's handle stops finding it once it is picked up, dropped or wielded |
 | OMAP-J01 | partial | `917f2c3c` | `tests/audit_overmap_eoc_test.cpp`. Adds `set_overmap_terrain`, `place_overmap_special`, `add_overmap_note`, `delete_overmap_note`, `reveal_map` levels, `map_in_overmap_special` and `map_omt_seen`. Still open: overmap hordes, `closest_city` filters, overmap math functions |
 
 **Remaining small high-severity bugs.** All 48 small-effort critical and high bugs left after "Fix first" are in: 44 fixed, 4 partial. Agents fixed them in nine batches, each in its own worktree. A separate reviewer read each batch's diff, and review comments were applied before merging (10 of 48 needed changes). The batches were made against `master`, so they were cherry-picked onto this branch, with two conflicts resolved by hand: NPC-B02 with NPC-B01 in `npc_attack.cpp`, and LOOP-B02 with LOOP-P01 in `weather.cpp`. Running the new tests found two more real bugs, fixed here, and two test mistakes.
@@ -371,22 +371,22 @@ Modding features:
 | ID | Status | Commits | Regression test |
 |---|---|---|---|
 | ACT-J02 | partial | `06f6c4a4`, `13973129` | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading. Still open: the other activities that need a target |
-| ACT-J03 | partial | `2d596bc0`, `b53594ec` | `tests/audit_activities_crafting_test.cpp`. Still open: an "outcome" field on the event, and a context object on `u_assign_activity` |
-| CRAFT-J02 | partial | `e7222c8a` | `tests/audit_activities_crafting_test.cpp`. Still open: recipe start and fail hooks, and events for crafting, disassembly and recipe learning |
+| ACT-J03 | fixed | `2d596bc0`, `b53594ec`, PR B | `tests/audit_activities_crafting_test.cpp`. `character_finished_activity` and the completion/cancel EOCs get `outcome` (`completed`, `canceled`, `interrupted`); `u_assign_activity` takes a saved `context` for the activity's EOCs |
+| CRAFT-J02 | fixed | `e7222c8a`, PR B | `tests/audit_activities_crafting_test.cpp`. Recipe `start_eocs` and `fail_eocs`; events `character_crafts_item`, `character_disassembles_item` and `character_learns_recipe`. A failure has no event of its own; `fail_eocs` cover it per recipe |
 | TERR-J01 | partial | `33e6f99a`, `f93e4745` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: moving the hardcoded vanilla `post_special` functions to JSON |
 | CRAFT-J01 | partial | `b33ebcb7` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: inheriting inline requirements and extending or deleting component, tool and quality groups |
 | CAMP-J01 | fixed | `bda202de` | `tests/audit_construction_recipe_camp_test.cpp` |
 | MUT-J02 | partial | `baea3c27` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: a refund channel for cancelled activations, and a menu pre-check before the activation message |
 | MUT-J03 | partial | `eceb79dd`, `e3212448` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: bionic math functions, an ignore-cost option, and access to per-bionic state |
 | NPC-J01 | partial | `90eb6d45` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: giving other toggled bionics an `npc_use` (a content decision), priorities, and NPC use of spell bionics |
-| CMBT-J01 | partial | `7dfdc8e4` | `tests/audit_martial_art_events_test.cpp`. Still open: get-hit hooks for projectile and explosion hits, and context values for pre-hit technique EOCs |
+| CMBT-J01 | fixed | `7dfdc8e4`, PR B | `tests/audit_martial_art_events_test.cpp`. `ongethit_eocs` also run for projectile, shrapnel and explosion hits, with `hit_by`; technique `eocs` get the attack's context. Technique EOCs still can't change the hit's damage |
 | HLTH-J03 | partial | `79ed5939` | `tests/audit_diet_rules_test.cpp`. Still open: moving vanilla diet traits (vegan, gourmand, picky eater, ruminant and others) to these fields |
 | MAGIC-J02 | partial | `5c4fb57a` | `tests/audit_spell_enchant_test.cpp`. Still open: fail chance, difficulty, spell XP and sound values |
 | INV-J03 | fixed | `35ca98d9` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
 | VEH-J01 | partial | `ae836b32`, `398d4f09`, `673b3770` | `tests/audit_eoc_inventory_vehicle_test.cpp`. Still open: damaging vehicle parts from an EOC (it can split or delete the vehicle mid-EOC), owner, and weight (VINT-J04) |
 | VINT-J02 | fixed | `f28f99e1`, `743f2e40` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
 | LOOP-J01 | fixed | `a17a8639`, `ccfba742`, `374ce76a` | `tests/audit_weather_eoc_test.cpp` |
-| MAP-J01 | partial | `210feefe`, `85598110`, `f4d64d6b` | `tests/audit_bash_eoc_test.cpp`. Still open: a general "tile destroyed" event and a cause value for bashes with no creature (explosions, fire, vehicles) |
+| MAP-J01 | fixed | `210feefe`, `85598110`, `f4d64d6b`, PR B | `tests/audit_bash_eoc_test.cpp`. Every bash has a `cause` (`smash`, `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, `other`), and destroying terrain or furniture sends `tile_destroyed`. `character_smashes_tile` is unchanged: still sent before the bash, without its outcome |
 | MONAI-J01 | partial | `e08fb87c`, `54d15f8c`, `530d442b` | `tests/audit_monster_eoc_test.cpp`. Still open: forcing a monster's target or destination (the monster AI replaces both every turn) |
 | INV-J02 | fixed | `ca101f02`, `0dcb820a` | `tests/audit_mod_overrides_test.cpp` |
 | HLTH-J02 | partial | `c47dbf59`, `58e3fada` | `tests/audit_mod_overrides_test.cpp`. Still open: validating resist, remove and block lists in effects, because shipped data still has stale ids there |

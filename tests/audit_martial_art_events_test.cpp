@@ -147,7 +147,7 @@ TEST_CASE( "cmbt-j01_ongethit_eocs_run_for_projectiles_and_explosions", "[audit]
     }
 
     SECTION( "an explosion, once" ) {
-        explosion_handler::explosion( &attacker, you.pos_bub() + tripoint_rel_ms::east, 5.0f, 0.8f,
+        explosion_handler::explosion( &attacker, you.pos_bub() + tripoint_rel_ms::east, 60.0f, 0.8f,
                                       false, 0 );
         explosion_handler::process_explosions();
         CHECK( str_var( you, "cmbt_j01_gethit_by" ) == "explosion" );
