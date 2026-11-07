@@ -8,6 +8,6 @@ def parse_overmap_terrain(json, origin):
         radio = [radio]
     for station in radio:
         if "message" in station:
-            write_text(station["message"], origin,
-                       comment="Radio broadcast of overmap terrain \"{}\"".format(
-                           json.get("id")))
+            comment = "Radio broadcast of overmap terrain \"{}\"".format(
+                json.get("id"))
+            write_text(station["message"], origin, comment=comment)

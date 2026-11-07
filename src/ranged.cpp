@@ -2700,7 +2700,7 @@ item::sound_data item::gun_noise( const bool burst ) const
             noise = std::max( *fire_sound->volume, 0 );
         }
         if( !fire_sound->message.empty() ) {
-            return { noise, burst && !fire_sound->burst_message.empty() ?
+            return { noise, burst&& !fire_sound->burst_message.empty() ?
                      fire_sound->burst_message.translated() : fire_sound->message.translated()
                    };
         }
