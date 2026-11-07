@@ -379,7 +379,8 @@ TEST_CASE( "hlth-j12_comfort_condition_reads_a_dialogue_condition", "[audit][hea
     REQUIRE( u.has_effect( effect_test_audit_m15b_comfy ) );
     const comfort_data &comfy = u.get_comfort_data_for( pos );
     CHECK_FALSE( comfy.human_or_impossible() );
-    CHECK( comfy.base_comfort == comfort_data::COMFORT_VERY_COMFORTABLE );
+    // a copy: CHECK takes a reference, and the constant has no definition to bind it to
+    CHECK( comfy.base_comfort == static_cast<int>( comfort_data::COMFORT_VERY_COMFORTABLE ) );
     clear_avatar();
 }
 
