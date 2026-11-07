@@ -101,6 +101,19 @@ struct city_reference {
     int get_distance_from_bounds() const;
 };
 
+/** Which cities closest_city() may pick (the EOC closest_city filters). */
+struct city_filter {
+    /** Only cities the player has seen, as closest_known_city() */
+    bool known_only = false;
+    int min_size = 0;
+    /** No upper limit when negative */
+    int max_size = -1;
+    /** Any name when empty */
+    std::string name;
+    /** In overmap tiles from the search center to the city's center; no limit when negative */
+    int max_distance = -1;
+};
+
 struct camp_reference {
     static const camp_reference invalid;
     /** The camp itself, points into @ref overmap::camps */
@@ -140,7 +153,9 @@ struct overmap_with_local_coords {
  * @param cant_see If true, only terrain not seen by the player should be searched
  * @param existing_overmaps_only If true, will restrict searches to existing overmaps only. This
  * is particularly useful if we want to attempt to add a missing overmap special to an existing
- * overmap rather than creating many overmaps in an attempt to find it.
+ * overmap rather than creating many overmaps in an attempt to find it. If false, find_closest
+ * with om_special generates the missing overmaps around the origin's (one ring of them) when no
+ * existing one holds the special.
  * @param om_special If set, the terrain must be part of the specified overmap special.
 */
 struct omt_find_params {
@@ -614,6 +629,12 @@ class overmapbuffer
         city_reference closest_city( const tripoint_abs_sm &center );
 
         city_reference closest_known_city( const tripoint_abs_sm &center );
+        /**
+         * The closest city that passes the filter, or city_reference::invalid. Searched like
+         * closest_city(): the generated overmaps within 180 overmap tiles (OMAPX), or within
+         * filter.max_distance if that is farther.
+         */
+        city_reference closest_city( const tripoint_abs_sm &center, const city_filter &filter );
 
         //TODO: use display_description_at when converting UIs to ImGui
         std::string get_description_at( const tripoint_abs_sm &where, bool draw_origin = true );

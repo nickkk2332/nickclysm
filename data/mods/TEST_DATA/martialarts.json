@@ -169,6 +169,17 @@
     "name": "Test Post-Hit Technique",
     "melee_allowed": true,
     "attack_vectors": [ "vector_null" ],
+    "eocs": [
+      {
+        "id": "EOC_TEST_CMBT_J01_PRE_HIT",
+        "effect": [
+          { "copy_var": { "context_val": "technique" }, "target_var": { "u_val": "cmbt_j01_pre_hit_technique" } },
+          { "copy_var": { "context_val": "style" }, "target_var": { "u_val": "cmbt_j01_pre_hit_style" } },
+          { "copy_var": { "context_val": "bp" }, "target_var": { "u_val": "cmbt_j01_pre_hit_bp" } },
+          { "copy_var": { "context_val": "damage" }, "target_var": { "u_val": "cmbt_j01_pre_hit_damage" } }
+        ]
+      }
+    ],
     "post_hit_eocs": [
       {
         "id": "EOC_TEST_CMBT_J01_POST_HIT",
@@ -213,6 +224,13 @@
           { "copy_var": { "context_val": "damage" }, "target_var": { "u_val": "cmbt_j01_gethit_damage" } },
           { "copy_var": { "context_val": "bp" }, "target_var": { "u_val": "cmbt_j01_gethit_bp" } },
           { "math": [ "n_cmbt_j01_hit_them = 1" ] }
+        ]
+      },
+      {
+        "id": "EOC_TEST_CMBT_J01_GETHIT_BY",
+        "effect": [
+          { "copy_var": { "context_val": "hit_by" }, "target_var": { "u_val": "cmbt_j01_gethit_by" } },
+          { "math": [ "u_cmbt_j01_gethits += 1" ] }
         ]
       }
     ],

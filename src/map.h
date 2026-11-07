@@ -203,6 +203,24 @@ struct bash_params {
     Creature *basher = nullptr;
 };
 
+/**
+ * What bashes tiles while this lives: "explosion", "fire", "vehicle", "collapse" or
+ * "projectile". Bash EOCs and the tile_destroyed event get it as their "cause". A bash with no
+ * cause given is a "smash" when a creature does it, and "other" when nothing is known.
+ */
+class bash_cause_scope
+{
+    public:
+        explicit bash_cause_scope( const char *cause );
+        ~bash_cause_scope();
+        bash_cause_scope( const bash_cause_scope & ) = delete;
+        bash_cause_scope &operator=( const bash_cause_scope & ) = delete;
+        /** The cause of a bash now, by @p basher if a creature does it */
+        static std::string current( const Creature *basher );
+    private:
+        const char *previous;
+};
+
 /** Draw parameters used by map::drawsq() and similar methods. */
 struct drawsq_params {
     private:
@@ -466,16 +484,14 @@ class map
                 int );
 
         //FIXME some field processor use private methods
-        friend void field_processor_fd_fire( const tripoint_bub_ms &, field_entry &, field_proc_data & );
+        friend void field_processor_fire( const tripoint_bub_ms &, field_entry &, field_proc_data & );
         friend void field_processor_spread_gas( const tripoint_bub_ms &, field_entry &, field_proc_data & );
         friend void field_processor_wandering_field( const tripoint_bub_ms &, field_entry &,
                 field_proc_data & );
-        friend void field_processor_fd_fire_vent( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
-        friend void field_processor_fd_flame_burst( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
-        friend void field_processor_fd_incendiary( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
+        friend void field_processor_vent_cycle( const tripoint_bub_ms &, field_entry &,
+                                                field_proc_data & );
+        friend void field_processor_incendiary( const tripoint_bub_ms &, field_entry &,
+                                                field_proc_data & );
         friend void field_processor_monster_spawn( const tripoint_bub_ms &, field_entry &,
                 field_proc_data & );
 
@@ -540,6 +556,28 @@ class map
         void set_lightmap_cache_dirty_below( int zlev );
         void set_pathfinding_cache_dirty( int zlev );
         void set_pathfinding_cache_dirty( const tripoint_bub_ms &p );
+        // the sound_attenuation of tile p's terrain, furniture or fields changed; every
+        // change that dirties the transparency cache dirties this one too
+        void set_sound_attenuation_dirty( const tripoint_bub_ms &p );
+        /*@}*/
+
+        /**
+         * Sound muffling: the sound_attenuation of terrain, furniture, fields and vehicle
+         * parts. Terrain, furniture and fields come from a per-level cache built on first
+         * use after a change; vehicle parts are read where a sound crosses them.
+         */
+        /*@{*/
+        // Volume a sound loses crossing tile p
+        int sound_attenuation_at( const tripoint_bub_ms &p ) const;
+        // Volume a sound from `from` loses on its way to `to`: the sum of
+        // sound_attenuation_at over the tiles strictly between them on the line from one
+        // to the other. 0 without a walk when nothing loaded muffles sound, or when nothing
+        // on the levels the line crosses does. The walk stops once the sum reaches stop_at,
+        // for a caller to whom any more makes no difference.
+        int sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_bub_ms &to,
+                                       int stop_at = INT_MAX ) const;
+        // Whether anything on level zlev may muffle sound; brings its cache up to date
+        bool sound_muffled_on_level( int zlev ) const;
         /*@}*/
 
         void invalidate_map_cache( int zlev );
@@ -674,10 +712,10 @@ class map
         void spread_gas( field_entry &cur, const tripoint_bub_ms &p, int percent_spread,
                          const time_duration &outdoor_age_speedup, scent_block &sblk,
                          const oter_id &om_ter );
-        void create_hot_air( const tripoint_bub_ms &p, int intensity );
+        // Spreads the hot_air_field of the field's current intensity around p
+        void create_hot_air( const tripoint_bub_ms &p, const field_entry &cur );
         bool gas_can_spread_to( field_entry &cur, const maptile &dst );
         void gas_spread_to( field_entry &cur, maptile &dst, const tripoint_bub_ms &p );
-        int burn_body_part( Character &you, field_entry &cur, const bodypart_id &bp, int scale );
     public:
 
         // Movement and LOS
@@ -1760,9 +1798,11 @@ class map
         void clear_fields( const tripoint_bub_ms &p );
 
         /**
-         * Get applicable fd_electricity field type for a given point
+         * The field placed at p for the given type: its opaque_variant on a tile that isn't
+         * transparent, the field it is the opaque_variant of on a transparent one, else itself
+         * (fd_electricity and fd_electricity_unlit).
          */
-        const field_type_str_id &get_applicable_electricity_field( const tripoint_bub_ms &p ) const;
+        field_type_id placed_field_type( const tripoint_bub_ms &p, const field_type_id &type ) const;
 
     private:
         // Is called when field intensity is changed.
@@ -2141,6 +2181,8 @@ class map
         // true if any value changed.
         bool build_transparency_cache( int zlev );
         bool build_vision_transparency_cache( int zlev );
+        // rebuilds the dirty submaps of level zlev's sound_attenuation_cache
+        void build_sound_attenuation_cache( int zlev ) const;
         // cover cells the avatar's posture overrides in vision_transparency_cache
         // on level zlev, with the value each takes
         std::vector<std::pair<point_bub_ms, float>> observer_vision_overrides( int zlev ) const;

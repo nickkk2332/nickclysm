@@ -1654,6 +1654,9 @@ void ma_event_context::activate( Character &u,
         if( !grab_part.is_empty() && !grab_part.is_null() ) {
             d.set_value( "grab_part", grab_part.str() );
         }
+        if( !hit_by.empty() ) {
+            d.set_value( "hit_by", hit_by );
+        }
         eoc->activate_activation_only( d, "a martial art activation", "martial art being activated",
                                        "martial art" );
     }

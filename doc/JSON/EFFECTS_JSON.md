@@ -516,6 +516,8 @@ Basic definitions:
 "X_tick"       // Effect rolls for X triggering every Y ticks
 ```
 
+A given `X_chance` works as written at every intensity: where it comes to 0 or less (base plus scaling) X never triggers, which is how `-1` is used to turn X off, and a positive chance below 1 counts as 1. Leave `X_chance` out for X to trigger on every roll (every `X_tick`) that has a value to apply.
+
 Valid arguments:
 ```jsonc
 "str_mod"           // Positive values raises stat, negative values lowers stat

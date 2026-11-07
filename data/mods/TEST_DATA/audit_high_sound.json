@@ -1,0 +1,64 @@
+[
+  {
+    "type": "terrain",
+    "id": "test_t_soundproof_wall",
+    "name": "test soundproof wall",
+    "description": "SPAT-J01: a wall that muffles a sound crossing it by 50.  Any bash breaks it into dirt.",
+    "symbol": "#",
+    "color": "white",
+    "move_cost": 0,
+    "sound_attenuation": 50,
+    "flags": [ "NOITEM" ],
+    "bash": { "str_min": 1, "str_max": 1, "sound": "crash!", "ter_set": "t_dirt" }
+  },
+  {
+    "type": "terrain",
+    "id": "test_t_sound_baffle",
+    "name": "test sound baffle floor",
+    "description": "SPAT-J01: open, see-through ground that muffles a sound crossing it by 10.",
+    "symbol": ".",
+    "color": "brown",
+    "move_cost": 2,
+    "sound_attenuation": 10,
+    "flags": [ "TRANSPARENT", "FLAT" ]
+  },
+  {
+    "type": "furniture",
+    "id": "test_f_sound_baffle",
+    "name": "test sound baffle panel",
+    "description": "SPAT-J01: see-through furniture that muffles a sound crossing it by 7.",
+    "symbol": "|",
+    "color": "brown",
+    "move_cost_mod": 0,
+    "required_str": -1,
+    "sound_attenuation": 7,
+    "flags": [ "TRANSPARENT" ]
+  },
+  {
+    "type": "field_type",
+    "id": "test_fd_sound_damper",
+    "//": "SPAT-J01: a field that muffles a sound crossing it by 3, 6 or 12 with its intensity.",
+    "intensity_levels": [
+      { "name": "thin sound damper", "sym": "~", "sound_attenuation": 3 },
+      { "name": "sound damper", "sound_attenuation": 6 },
+      { "name": "thick sound damper", "sound_attenuation": 12 }
+    ],
+    "priority": 1
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_vp_soundproof_board",
+    "copy-from": "board",
+    "name": { "str": "test soundproof board" },
+    "description": "SPAT-J01: a board that muffles a sound crossing it by 30.",
+    "sound_attenuation": 30
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_vp_soundproof_door",
+    "copy-from": "door",
+    "name": { "str": "test soundproof door" },
+    "description": "SPAT-J01: a door that muffles a sound crossing it by 30 while it is closed.",
+    "sound_attenuation": 30
+  }
+]

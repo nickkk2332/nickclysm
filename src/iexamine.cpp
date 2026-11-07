@@ -144,6 +144,8 @@ static const faction_id faction_robofac( "robofac" );
 
 static const furn_str_id furn_f_arcfurnace_empty( "f_arcfurnace_empty" );
 static const furn_str_id furn_f_arcfurnace_full( "f_arcfurnace_full" );
+static const furn_str_id furn_f_autoclave( "f_autoclave" );
+static const furn_str_id furn_f_autoclave_full( "f_autoclave_full" );
 static const furn_str_id furn_f_compost_empty( "f_compost_empty" );
 static const furn_str_id furn_f_compost_full( "f_compost_full" );
 static const furn_str_id furn_f_diesel_tank( "f_diesel_tank" );
@@ -3049,6 +3051,13 @@ static void pick_firestarter_and_fire( Character &you, const tripoint_bub_ms &ex
     }
 }
 
+void iexamine::fire_process( Character &you, const tripoint_bub_ms &examp )
+{
+    pick_firestarter_and_fire( you, examp, firestarter_actor::start_type::PROCESS );
+}
+
+// The kilns, arc furnace, stook and autoclave are process_start / process_finish examine actors
+// now. These functions stay for mods that name them; they work on the vanilla ids only.
 // Highly modified fermenting vat functions
 void iexamine::kiln_empty( Character &you, const tripoint_bub_ms &examp )
 {
@@ -3444,8 +3453,8 @@ void iexamine::autoclave_empty( Character &you, const tripoint_bub_ms &examp )
     map &here = get_map();
     const furn_id &cur_autoclave_type = here.furn( examp );
     furn_id next_autoclave_type = furn_str_id::NULL_ID();
-    if( cur_autoclave_type == furn_id( "f_autoclave" ) ) {
-        next_autoclave_type = furn_id( "f_autoclave_full" );
+    if( cur_autoclave_type == furn_f_autoclave ) {
+        next_autoclave_type = furn_f_autoclave_full;
     } else {
         debugmsg( "Examined furniture has action autoclave_empty, but is of type %s",
                   cur_autoclave_type.id().c_str() );
@@ -3504,8 +3513,8 @@ void iexamine::autoclave_full( Character &, const tripoint_bub_ms &examp )
     map &here = get_map();
     const furn_id &cur_autoclave_type = here.furn( examp );
     furn_id next_autoclave_type = furn_str_id::NULL_ID();
-    if( cur_autoclave_type == furn_id( "f_autoclave_full" ) ) {
-        next_autoclave_type = furn_id( "f_autoclave" );
+    if( cur_autoclave_type == furn_f_autoclave_full ) {
+        next_autoclave_type = furn_f_autoclave;
     } else {
         debugmsg( "Examined furniture has action autoclave_full, but is of type %s",
                   cur_autoclave_type.id().c_str() );

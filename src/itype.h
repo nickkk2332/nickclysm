@@ -1400,7 +1400,7 @@ struct itype {
         /** Action to take when countdown expires */
         use_function countdown_action;
 
-        /** Actions to take when item is processed */
+        /** Actions to take when item is processed, indexed by action id (its type by default) */
         std::map<std::string, use_function> tick_action;
 
         /**
@@ -1508,13 +1508,13 @@ struct itype {
         // TODO: This is really legacy behavior and should maybe be removed
         material_id default_mat;
 
-        /** Actions an instance can perform (if any) indexed by action type */
+        /** Actions an instance can perform (if any) indexed by action id (its type by default) */
         std::map<std::string, use_function> use_methods;
 
         // @return returns itype_id of first ammo_id or itype_id::NULL_ID if not tool or no ammo defined
         const itype_id &tool_slot_first_ammo() const;
 
-        /** The factor of ammo consumption indexed by action type*/
+        /** The factor of ammo consumption indexed by action id (its type by default) */
         std::map<std::string, int> ammo_scale;
 
         /** Fields to emit when item is in active state */
@@ -1760,11 +1760,21 @@ struct itype {
         // returns read-only set of all item tags/flags
         const FlagsSetType &get_flags() const;
 
+        /**
+         * The use action with the id @p iuse_name; failing that, the first (by id) whose type is
+         * @p iuse_name, so code and old saves that name an action by its type still find it when
+         * it has an id.
+         */
         bool can_use( const std::string &iuse_name ) const;
         const use_function *get_use( const std::string &iuse_name ) const;
         // can use/get_use, but for tick actions
         bool has_tick( const std::string &iuse_name ) const;
         const use_function *get_tick( const std::string &iuse_name ) const;
+        /**
+         * The factor of ammo consumption of the use action @p method (found as get_use() finds
+         * it, then by its id), 1 when it has none.
+         */
+        int get_ammo_scale( const std::string &method ) const;
 
         // Here "invoke" means "actively use". "Tick" means "active item working"
         // TODO: Replace usage of map less overload.
@@ -1792,5 +1802,7 @@ struct itype {
 
 void load_charge_removal_blacklist( const JsonObject &jo, std::string_view src );
 void load_temperature_removal_blacklist( const JsonObject &jo, std::string_view src );
+// Empties both blacklists, so they don't carry over to the next world loaded
+void reset_removal_blacklists();
 
 #endif // CATA_SRC_ITYPE_H

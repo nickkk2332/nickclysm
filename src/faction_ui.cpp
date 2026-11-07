@@ -481,7 +481,7 @@ void faction_ui::your_follower_display()
             mission_string = _( "Current Mission: " ) + dest_string;
         } else {
             npc_companion_mission c_mission = picked_follower->get_companion_mission();
-            mission_string = _( "Current Mission: " ) + action_of( c_mission.miss_id.id );
+            mission_string = _( "Current Mission: " ) + action_of( c_mission.miss_id );
         }
 
         cataimgui::draw_colored_text( mission_string, col_width );

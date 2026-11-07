@@ -488,11 +488,13 @@ TEST_CASE( "familiar_load_refuses_duplicate_and_recursive_bonds", "[power_actors
     JsonOut out( buffer );
     get_power_actors().serialize( out );
     const std::string text = buffer.str();
-    const std::string duplicate = "\"id\":" + std::to_string( b.id );
+    // the bond's own id, which "definition" follows; a creature reference also has an "id",
+    // and can have the same number
+    const std::string duplicate = "\"id\":" + std::to_string( b.id ) + ",\"definition\"";
     std::string bad = text;
     const std::size_t pos = bad.find( duplicate );
     REQUIRE( pos != std::string::npos );
-    bad.replace( pos, duplicate.size(), "\"id\":" + std::to_string( a.id ) );
+    bad.replace( pos, duplicate.size(), "\"id\":" + std::to_string( a.id ) + ",\"definition\"" );
     CHECK_THROWS_AS( get_power_actors().deserialize( json_loader::from_string( bad ) ), JsonError );
     CHECK( get_power_actors().inspect().size() == 2 );
     const auto ref_json = []( const creature_ref & ref ) {

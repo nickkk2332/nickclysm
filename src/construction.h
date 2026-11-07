@@ -78,6 +78,8 @@ struct construction {
         bool was_loaded = false;
         // If true, the requirements are generated during finalization
         bool vehicle_start = false;
+        // JSON "place_appliance": the one component is placed on the tile as an appliance
+        bool place_appliance = false;
 
         // Custom constructibility check
         std::vector<bool ( * )( const tripoint_bub_ms & )> pre_specials;

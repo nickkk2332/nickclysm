@@ -175,7 +175,7 @@
           { "type": "bash", "multiply": -0.25 },
           { "type": "cut", "multiply": -0.25 },
           { "type": "bullet", "multiply": -0.5 },
-          { "type": "pierce", "multiply": -0.5 },
+          { "type": "stab", "multiply": -0.5 },
           { "type": "afs_laser", "multiply": -0.15 },
           { "type": "afs_plasma", "multiply": -0.15 },
           { "type": "afs_toxin_bullet", "multiply": -0.5 },

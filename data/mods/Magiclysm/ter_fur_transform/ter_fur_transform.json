@@ -100,7 +100,7 @@
         "message": "The ground shakes, a section of unnaturally smooth stone wall rising up."
       }
     ],
-    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT", "WALL" ] } ]
+    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT" ] } ]
   },
   {
     "type": "ter_furn_transform",
@@ -311,8 +311,6 @@
         "valid_furniture": [
           "f_null",
           "f_cattails",
-          "t_grass_tall",
-          "t_grass_long",
           "f_burdock",
           "f_lotus",
           "f_japanese_knotweed",
@@ -333,11 +331,7 @@
     "type": "ter_furn_transform",
     "id": "ter_druid_cause_rot_terrain",
     "terrain": [
-      {
-        "result": "t_dirt",
-        "valid_flags": [ "SHRUB", "GRAZEABLE" ],
-        "message": "The plants wither and rot into nothingness in seconds!"
-      },
+      { "result": "t_dirt", "valid_flags": [ "SHRUB" ], "message": "The plants wither and rot into nothingness in seconds!" },
       {
         "result": "t_tree_very_dead",
         "valid_flags": [ "TREE" ],
@@ -345,11 +339,7 @@
       }
     ],
     "furniture": [
-      {
-        "result": "f_null",
-        "valid_flags": [ "SHRUB", "GRAZEABLE" ],
-        "message": "The plants wither and rot into nothingness in seconds!"
-      }
+      { "result": "f_null", "valid_flags": [ "SHRUB" ], "message": "The plants wither and rot into nothingness in seconds!" }
     ]
   },
   {

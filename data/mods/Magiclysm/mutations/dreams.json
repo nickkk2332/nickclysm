@@ -1,12 +1,14 @@
 [
   {
     "type": "dream",
+    "id": "dream_DRAGON_BLACK_1",
     "messages": [ "You have a strange dream about dragons.", "Your dreams give you a strange scaly feeling." ],
     "category": "DRAGON_BLACK",
     "strength": 1
   },
   {
     "type": "dream",
+    "id": "dream_DRAGON_BLACK_2",
     "messages": [
       "You have a disturbing dream of rampaging in a village.",
       "While dreaming, you see a distinctively dragon-like reflection of yourself."
@@ -16,6 +18,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_DRAGON_BLACK_3",
     "messages": [
       "You blissfully dream of soaring over a human village.  The thought of destroying it and abducting the chiefs daughter is somewhat disturbing.",
       "You have a disturbingly lifelike dream of living as a dragon."
@@ -25,6 +28,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_DRAGON_BLACK_4",
     "messages": [
       "In your dream you are the nightmare of a human.",
       "You have a disturbingly satisfying dream of ravaging a human village.",

@@ -26,6 +26,8 @@ class event_bus
         void send_with_talker( Creature *, Creature *, const cata::event & ) const;
         void send_with_talker( Creature *, item_location *, const cata::event & ) const;
         void send_with_talker( vehicle *alpha, Creature *, const cata::event &e ) const;
+        /** For an event no creature caused: its EOCs get an empty alpha talker, not the avatar */
+        void send_without_talker( const cata::event &e ) const;
         template<event_type Type, typename... Args>
         void send( Args &&... args ) const {
             send( cata::event::make<Type>( std::forward<Args>( args )... ) );
