@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <numeric>
-#include <set>
 #include <string>
 #include <utility>
 
@@ -42,7 +41,6 @@ static const morale_type morale_cold( "morale_cold" );
 static const morale_type morale_hot( "morale_hot" );
 static const morale_type morale_perm_badtemper( "morale_perm_badtemper" );
 static const morale_type morale_perm_constrained( "morale_perm_constrained" );
-static const morale_type morale_perm_debug( "morale_perm_debug" );
 static const morale_type morale_perm_filthy( "morale_perm_filthy" );
 static const morale_type morale_perm_masochist( "morale_perm_masochist" );
 static const morale_type morale_perm_numb( "morale_perm_numb" );
@@ -68,21 +66,10 @@ static const trait_id trait_VANITY( "VANITY" );
 namespace
 {
 
+// HLTH-J08: a morale type's "permanent" (the core types the game sets as permanent have it)
 bool is_permanent_morale( const morale_type &id )
 {
-    static const std::set<morale_type> permanent_morale = {{
-            morale_perm_optimist,
-            morale_perm_badtemper,
-            morale_perm_numb,
-            morale_perm_masochist,
-            morale_perm_constrained,
-            morale_perm_filthy,
-            morale_perm_debug,
-            morale_perm_radiophile
-        }
-    };
-
-    return permanent_morale.count( id ) != 0;
+    return id.is_valid() && id->is_permanent();
 }
 
 } // namespace

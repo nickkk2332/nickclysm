@@ -173,6 +173,9 @@ enum class event_type : int {
     character_falls,
     character_climbs,
     character_moves,
+    character_gains_wound,
+    character_wound_progresses,
+    character_loses_wound,
     num_event_types // last
 };
 
@@ -240,7 +243,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 149,
+static_assert( static_cast<int>( event_type::num_event_types ) == 152,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1311,6 +1314,18 @@ struct event_spec<event_type::character_armor_damaged> {
     };
 };
 
+// HLTH-J04: a character (the avatar or an NPC) got a new wound on a body part: from a hit, an
+// EOC or a treatment that adds one. "wound" is the wound type id
+template<>
+struct event_spec<event_type::character_gains_wound> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "wound", cata_variant_type::string },
+        }
+    };
+};
+
 // the avatar climbed up or down height Z-levels with a climbing aid (doc/JSON/CLIMBING.md)
 template<>
 struct event_spec<event_type::character_climbs> {
@@ -1319,6 +1334,18 @@ struct event_spec<event_type::character_climbs> {
             { "climbing_aid", cata_variant_type::string },
             { "direction", cata_variant_type::string },
             { "height", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character's wound became another: a hit made it worse, or its progress_timer ran out
+template<>
+struct event_spec<event_type::character_wound_progresses> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "wound", cata_variant_type::string },
+            { "new_wound", cata_variant_type::string },
         }
     };
 };
@@ -1368,6 +1395,19 @@ struct event_spec<event_type::character_moves> {
             { "movement_mode", cata_variant_type::move_mode_id },
             { "underwater", cata_variant_type::bool_ },
             { "z", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character lost a wound: "healed" when it healed by itself, false when a treatment or an EOC
+// removed it
+template<>
+struct event_spec<event_type::character_loses_wound> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "wound", cata_variant_type::string },
+            { "healed", cata_variant_type::bool_ },
         }
     };
 };

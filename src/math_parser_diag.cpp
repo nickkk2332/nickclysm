@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -15,6 +16,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "achievement.h"
@@ -84,6 +86,7 @@
 #include "weather_gen.h"
 #include "weather_type.h"
 #include "worldfactory.h"
+#include "wound.h"
 
 class event_statistic;
 
@@ -1437,6 +1440,102 @@ void morale_ass( double val, dialogue &d, char scope, std::vector<diag_value> co
                  diag_kwargs const & /* kwargs */ )
 {
     d.actor( is_beta( scope ) )->set_morale( val );
+}
+
+// HLTH-J08, HLTH-J10: what one morale type adds to the character's morale now (0 without it)
+double morale_value_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const Character *ch = d.const_actor( is_beta( scope ) )->get_const_character();
+    return ch == nullptr ? 0 : ch->has_morale( morale_type( params[0].str( d ) ) );
+}
+
+// HLTH-J10: the stomach or guts: 'volume' and 'water' in ml, 'capacity' in ml, 'kcal'
+double stomach_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                     diag_kwargs const &kwargs )
+{
+    const std::string what = params[0].str( d );
+    const std::string organ = kwargs.kwarg_or( "organ", "stomach" ).str( d );
+    if( organ != "stomach" && organ != "guts" ) {
+        throw math::runtime_error( R"(Unknown organ "%s" for stomach(): "stomach" or "guts")", organ );
+    }
+    if( what != "volume" && what != "capacity" && what != "kcal" && what != "water" ) {
+        throw math::runtime_error(
+            R"(Unknown value "%s" for stomach(): "volume", "capacity", "kcal" or "water")", what );
+    }
+    const Character *ch = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( ch == nullptr ) {
+        return 0;
+    }
+    const stomach_contents &part = organ == "guts" ? ch->guts : ch->stomach;
+    if( what == "volume" ) {
+        return units::to_milliliter( part.contains() );
+    } else if( what == "capacity" ) {
+        return units::to_milliliter( part.capacity( *ch ) );
+    } else if( what == "kcal" ) {
+        return part.get_calories();
+    }
+    return units::to_milliliter( part.get_water() );
+}
+
+// HLTH-J10: where the first wound of a type is (its body part and its place in that part's
+// wounds), on the body part when one is named; nothing if there is none
+std::optional<std::pair<bodypart_str_id, size_t>> find_wound( const Character &ch,
+        const wound_type_id &type, const std::string &bp )
+{
+    for( const std::pair<const bodypart_str_id, bodypart> &part : ch.get_body() ) {
+        if( !bp.empty() && part.first.str() != bp ) {
+            continue;
+        }
+        const std::vector<wound> &wounds = part.second.get_wounds();
+        for( size_t i = 0; i < wounds.size(); ++i ) {
+            if( wounds[i].type == type ) {
+                return std::make_pair( part.first, i );
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+const wound *find_wound( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const Character *ch = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( ch == nullptr ) {
+        return nullptr;
+    }
+    const std::optional<std::pair<bodypart_str_id, size_t>> at = find_wound( *ch,
+            wound_type_id( params[0].str( d ) ), kwargs.kwarg_or( "bodypart" ).str( d ) );
+    return at ? &ch->get_body().at( at->first ).get_wounds()[at->second] : nullptr;
+}
+
+double wound_healing_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const wound *wd = find_wound( d, scope, params, kwargs );
+    return wd == nullptr ? -1 : 100.0 * wd->healing_percentage();
+}
+
+void wound_healing_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                        diag_kwargs const &kwargs )
+{
+    Character *ch = d.actor( is_beta( scope ) )->get_character();
+    if( ch == nullptr ) {
+        return;
+    }
+    const std::optional<std::pair<bodypart_str_id, size_t>> at = find_wound( *ch,
+            wound_type_id( params[0].str( d ) ), kwargs.kwarg_or( "bodypart" ).str( d ) );
+    if( at ) {
+        ch->get_part( at->first )->get_wounds()[at->second].set_healing_percentage(
+            std::clamp( val, 0.0, 100.0 ) / 100.0 );
+    }
+}
+
+double wound_pain_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                        diag_kwargs const &kwargs )
+{
+    const wound *wd = find_wound( d, scope, params, kwargs );
+    return wd == nullptr ? -1 : wd->get_pain();
 }
 
 double hp_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
@@ -4265,6 +4364,10 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "city_size", { "g", 1, city_size_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "moon_phase", { "g", 0, moon_phase_eval } },
     { "morale", { "un", 0, morale_eval, morale_ass, { "raw" } } },
+    { "morale_value", { "un", 1, morale_value_eval } },
+    { "stomach", { "un", 1, stomach_eval, {}, { "organ" } } },
+    { "wound_healing", { "un", 1, wound_healing_eval, wound_healing_ass, { "bodypart" } } },
+    { "wound_pain", { "un", 1, wound_pain_eval, {}, { "bodypart" } } },
     { "num_input", { "g", 2, num_input_eval } },
     { "oracle", { "g", 1, oracle_eval, {}, {}, oracle_check } },
     { "oxygen", { "un", 0, oxygen_eval, oxygen_ass } },
@@ -4415,6 +4518,7 @@ const literal_id_kind id_item_flag{ "item flag", &is_known_id<flag_id> };
 const literal_id_kind id_itype{ "item", &is_known_id<itype_id> };
 const literal_id_kind id_limb_score{ "limb score", &is_known_id<limb_score_id> };
 const literal_id_kind id_mongroup{ "monster group", &is_known_id<mongroup_id> };
+const literal_id_kind id_morale_type{ "morale type", &is_known_id<morale_type> };
 const literal_id_kind id_mtype{ "monster", &is_known_id<mtype_id> };
 const literal_id_kind id_mutation_category{ "mutation category", &is_known_id<mutation_category_id> };
 const literal_id_kind id_proficiency{ "proficiency", &is_known_id<proficiency_id> };
@@ -4426,6 +4530,7 @@ const literal_id_kind id_spell{ "spell", &is_known_spell };
 const literal_id_kind id_trait{ "trait", &is_known_id<trait_id> };
 const literal_id_kind id_vitamin{ "vitamin", &is_known_id<vitamin_id> };
 const literal_id_kind id_vpart{ "vehicle part", &is_known_id<vpart_id> };
+const literal_id_kind id_wound{ "wound", &is_known_id<wound_type_id> };
 
 // An argument that names an id: a positional one (every_arg for all of them), or a kwarg
 constexpr int every_arg = -1;
@@ -4481,6 +4586,7 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "mon_groups_nearby", { id_arg( every_arg, id_mongroup ) } },
     { "mon_species_nearby", { id_arg( every_arg, id_species ) } },
     { "monsters_nearby", { id_arg( every_arg, id_mtype ) } },
+    { "morale_value", { id_arg( 0, id_morale_type ) } },
     { "mutation_category_level", { id_arg( 0, id_mutation_category ) } },
     { "mutation_instability", { id_arg( 0, id_mutation_category ) } },
     { "proficiency", { id_arg( 0, id_proficiency ) } },
@@ -4514,6 +4620,8 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "vehicle_part_hp", { id_kwarg( "part", id_vpart ) } },
     { "vitamin", { id_arg( 0, id_vitamin ) } },
     { "warmth", { id_arg( 0, id_bodypart ) } },
+    { "wound_healing", { id_arg( 0, id_wound ), id_kwarg( "bodypart", id_bodypart ) } },
+    { "wound_pain", { id_arg( 0, id_wound ), id_kwarg( "bodypart", id_bodypart ) } },
 };
 
 void add_literal_id( std::string_view func, diag_value const &arg, literal_id_kind const &kind,

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -1699,19 +1700,34 @@ void Character::calc_sleep_recovery_rate( needs_rates &rates ) const
 void Character::check_needs_extremes()
 {
     // Check if we've overdosed... in any deadly way.
-    if( get_stim() > 250 ) {
+    // HLTH-J06: the lethal points are external options (data/core/external_options.json)
+    static const std::string stim_high_option( "OVERDOSE_STIM_HIGH" );
+    static const std::string stim_low_option( "OVERDOSE_STIM_LOW" );
+    static const std::string pkill_option( "OVERDOSE_PAINKILLER" );
+    static const std::string jetinjector_option( "OVERDOSE_JETINJECTOR_MINUTES" );
+    static const std::string adrenaline_option( "OVERDOSE_ADRENALINE_MINUTES" );
+    static const std::string drunk_option( "OVERDOSE_DRUNK_INTENSITY" );
+    // 0 turns a death by an effect off
+    const auto lethal_minutes = []( const std::string & option ) {
+        const int minutes = get_option<int>( option );
+        return minutes > 0 ? time_duration::from_minutes( minutes ) :
+               calendar::INDEFINITELY_LONG_DURATION;
+    };
+    if( get_stim() > get_option<int>( stim_high_option ) ) {
         add_msg_player_or_npc( m_bad,
                                _( "You have a sudden heart attack!" ),
                                _( "<npcname> has a sudden heart attack!" ) );
         get_event_bus().send<event_type::dies_from_drug_overdose>( getID(), efftype_id() );
         set_part_hp_cur( body_part_torso, 0 );
-    } else if( get_stim() < -200 || get_painkiller() > 240 ) {
+    } else if( get_stim() < get_option<int>( stim_low_option ) ||
+               get_painkiller() > get_option<int>( pkill_option ) ) {
         add_msg_player_or_npc( m_bad,
                                _( "Your breathing stops completely." ),
                                _( "<npcname>'s breathing stops completely." ) );
         get_event_bus().send<event_type::dies_from_drug_overdose>( getID(), efftype_id() );
         set_part_hp_cur( body_part_torso, 0 );
-    } else if( has_effect( effect_jetinjector ) && get_effect_dur( effect_jetinjector ) > 40_minutes ) {
+    } else if( has_effect( effect_jetinjector ) &&
+               get_effect_dur( effect_jetinjector ) > lethal_minutes( jetinjector_option ) ) {
         if( !has_flag( json_flag_PAIN_IMMUNE ) ) {
             add_msg_player_or_npc( m_bad,
                                    _( "Your heart spasms painfully and stops." ),
@@ -1722,13 +1738,15 @@ void Character::check_needs_extremes()
         }
         get_event_bus().send<event_type::dies_from_drug_overdose>( getID(), effect_jetinjector );
         set_part_hp_cur( body_part_torso, 0 );
-    } else if( get_effect_dur( effect_adrenaline ) > 50_minutes ) {
+    } else if( has_effect( effect_adrenaline ) &&
+               get_effect_dur( effect_adrenaline ) > lethal_minutes( adrenaline_option ) ) {
         add_msg_player_or_npc( m_bad,
                                _( "Your heart spasms and stops." ),
                                _( "<npcname>'s heart spasms and stops." ) );
         get_event_bus().send<event_type::dies_from_drug_overdose>( getID(), effect_adrenaline );
         set_part_hp_cur( body_part_torso, 0 );
-    } else if( get_effect_int( effect_drunk ) > 4 ) {
+    } else if( has_effect( effect_drunk ) && get_option<int>( drunk_option ) > 0 &&
+               get_effect_int( effect_drunk ) >= get_option<int>( drunk_option ) ) {
         add_msg_player_or_npc( m_bad,
                                _( "Your breathing slows down to a stop." ),
                                _( "<npcname>'s breathing slows down to a stop." ) );
@@ -2651,9 +2669,55 @@ bool Character::has_wounds( const bodypart_str_id &part ) const
 
 void Character::apply_wound( bodypart_id bp, wound_type_id wd )
 {
-    bodypart &body_bp = body.at( bp.id() );
-    body_bp.add_or_worsen_wound( wd );
+    // Nothing on a part the body doesn't have (an EOC of an earlier wound event may remove one)
+    const auto body_bp = body.find( bp.id() );
+    if( body_bp == body.end() ) {
+        return;
+    }
+    const std::optional<wound_change> done = body_bp->second.add_or_worsen_wound( wd );
     morale->on_stat_change( "perceived_pain", get_perceived_pain() );
+    if( done ) {
+        send_wound_events( { *done } );
+    }
+}
+
+void Character::remove_wounds_of_type( const bodypart_id &bp, const wound_type_id wd )
+{
+    // Quietly nothing when the part is gone (an EOC of an earlier wound event may remove it)
+    const auto part = body.find( bp.id() );
+    if( part == body.end() ) {
+        return;
+    }
+    const int removed = part->second.remove_all_wounds_of_type( wd );
+    if( removed == 0 ) {
+        return;
+    }
+    morale->on_stat_change( "perceived_pain", get_perceived_pain() );
+    wound_change gone;
+    gone.what = wound_change::kind::lost;
+    gone.bp = bp.id();
+    gone.wound = wd;
+    send_wound_events( std::vector<wound_change>( static_cast<size_t>( removed ), gone ) );
+}
+
+void Character::send_wound_events( const std::vector<wound_change> &changes )
+{
+    for( const wound_change &change : changes ) {
+        switch( change.what ) {
+            case wound_change::kind::gained:
+                get_event_bus().send<event_type::character_gains_wound>( getID(), change.bp,
+                        change.wound.str() );
+                break;
+            case wound_change::kind::progressed:
+                get_event_bus().send<event_type::character_wound_progresses>( getID(), change.bp,
+                        change.wound.str(), change.new_wound.str() );
+                break;
+            case wound_change::kind::lost:
+                get_event_bus().send<event_type::character_loses_wound>( getID(), change.bp,
+                        change.wound.str(), change.healed );
+                break;
+        }
+    }
 }
 
 // The part of `amount` that can be applied to `current` without taking it below `cap_min`
@@ -2675,8 +2739,10 @@ static int wound_mod_within_caps( int current, int amount, int cap_min, int cap_
 
 void Character::update_wounds( time_duration time_passed )
 {
+    // Sent once the body is no longer being looped over: their EOCs may change it
+    std::vector<wound_change> changes;
     for( auto& [bp_id, bp] : body ) {
-        bp.update_wounds( *this, time_passed );
+        bp.update_wounds( *this, time_passed, &changes );
 
         for( wound &wd : bp.get_wounds() ) {
             for( const wound_mod_values &mod_val : wd.type->get_modify_values() ) {
@@ -2727,6 +2793,9 @@ void Character::update_wounds( time_duration time_passed )
     }
 
     morale->on_stat_change( "perceived_pain", get_perceived_pain() );
+    if( !changes.empty() ) {
+        send_wound_events( changes );
+    }
 }
 
 bool Character::is_bleeding( const bodypart_id bp ) const

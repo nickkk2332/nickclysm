@@ -93,6 +93,8 @@ class wound_type
 
         // conditions that can be checked on loading of wounds
         bool allowed_on_bodypart( bodypart_str_id bp_id ) const;
+        // whether the character has one of the whitelist_flags (true when there are none)
+        bool allowed_by_whitelist_flags( const Character &who ) const;
         bool assign_bleeding_wound() const;
         bool is_bleeding_wound() const;
 
@@ -146,8 +148,9 @@ class wound_type
         // 0 means any amount
         unsigned int limit = 0;
 
-        // is assigned at finalization
+        // is assigned at finalization: "bleeding" when given, else whether it drains blood
         bool _is_bleeding_wound = false;
+        std::optional<bool> bleeding_;
 
         std::optional<wound_periodic_message> periodic_message;
 
@@ -169,6 +172,21 @@ enum class wound_update_ret {
     LAST
 };
 
+/** What happened to one of a character's wounds (HLTH-J04), for the events
+ * (Character::send_wound_events) sent once the wounds are no longer being looped over. */
+struct wound_change {
+    enum class kind : int {
+        gained,     // a new wound
+        progressed, // `wound` became `new_wound`: a hit made it worse, or its progress_timer ran out
+        lost        // it healed by itself (`healed`), or was treated or removed
+    };
+    kind what = kind::gained;
+    bodypart_str_id bp;
+    wound_type_id wound;
+    wound_type_id new_wound;
+    bool healed = false;
+};
+
 class wound
 {
     public:
@@ -181,6 +199,8 @@ class wound
         void deserialize( const JsonObject &jsin );
         // returns the wound healing progress divided by healing time
         float healing_percentage() const;
+        // sets the healing progress to this part (0 to 1) of the healing time (HLTH-J10)
+        void set_healing_percentage( double part );
         void mod_pain( int mod );
         // return how much pain this specific wound gives you, reduced depending on how long the wound presented.
         int get_pain() const;

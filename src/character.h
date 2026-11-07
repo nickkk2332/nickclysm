@@ -1032,6 +1032,11 @@ class Character : public Creature, public visitable
         void update_cached_mutations();
         /** Adds this specific wound to bodypart. 'force' bypasses all conditional checks and applies the wound directly */
         void apply_wound( bodypart_id bp, wound_type_id wd );
+        /** Removes every wound of this type from the body part, as treated (not healed) */
+        void remove_wounds_of_type( const bodypart_id &bp, wound_type_id wd );
+        /** Sends character_gains_wound, character_wound_progresses or character_loses_wound for
+         * each change (HLTH-J04); their EOCs may change the wounds again */
+        void send_wound_events( const std::vector<wound_change> &changes );
         /** Updates the status of wounds character has, and applies variety of effects they cause*/
         void update_wounds( time_duration time_passed );
         /** Returns true if bodypart in question has any bleeding wound */

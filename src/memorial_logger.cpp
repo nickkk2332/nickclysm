@@ -1206,6 +1206,9 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_falls:
         case event_type::character_climbs:
         case event_type::character_moves:
+        case event_type::character_gains_wound:
+        case event_type::character_wound_progresses:
+        case event_type::character_loses_wound:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

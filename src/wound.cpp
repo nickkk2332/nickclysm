@@ -48,6 +48,10 @@ void wound_type::load( const JsonObject &jo, const std::string_view & )
     optional( jo, was_loaded, "whitelist_body_part_types", whitelist_body_part_types );
     optional( jo, was_loaded, "blacklist_bp_with_flag", blacklist_bp_with_flag );
     optional( jo, was_loaded, "blacklist_body_part_types", blacklist_body_part_types );
+    // HLTH-J04: whether it counts as bleeding, when its vitamins shouldn't decide
+    if( jo.has_member( "bleeding" ) ) {
+        bleeding_ = jo.get_bool( "bleeding" );
+    }
 }
 
 wound::wound( wound_type_id wd ) :
@@ -96,7 +100,42 @@ void wound_type::check_consistency()
 
 void wound_type::check() const
 {
-
+    // HLTH-J04: the ids a wound refers to
+    for( const damage_type_id &dt : damage_types ) {
+        if( !dt.is_valid() ) {
+            debugmsg( "wound %s has unknown damage type %s in damage_types", id.str(), dt.str() );
+        }
+    }
+    if( damage_required.first > damage_required.second ) {
+        debugmsg( "wound %s has damage_required [%d, %d]: no damage is in that range", id.str(),
+                  damage_required.first, damage_required.second );
+    }
+    for( const wound_limb_score &ls : limb_scores ) {
+        if( !ls.score.is_valid() ) {
+            debugmsg( "wound %s has unknown limb score %s in limb_scores", id.str(), ls.score.str() );
+        }
+    }
+    for( const wound_mod_values &mv : mod_values ) {
+        if( mv.type == wound_mod_value_type::VITAMIN ) {
+            if( !mv.vitamin.has_value() ) {
+                debugmsg( "wound %s has a VITAMIN mod_values entry without vitamin_id", id.str() );
+            } else if( !mv.vitamin->is_valid() ) {
+                debugmsg( "wound %s has unknown vitamin %s in mod_values", id.str(), mv.vitamin->str() );
+            }
+        } else if( mv.vitamin.has_value() ) {
+            debugmsg( "wound %s has vitamin_id %s on a mod_values entry that isn't VITAMIN, which "
+                      "doesn't use it", id.str(), mv.vitamin->str() );
+        }
+    }
+    for( const wound_progress &wp : wound_progression ) {
+        if( !wp.id.is_valid() ) {
+            debugmsg( "wound %s has unknown wound %s in wound_progression", id.str(), wp.id.str() );
+        }
+    }
+    if( progress_timer.has_value() && !progress_timer->id.is_valid() ) {
+        debugmsg( "wound %s has unknown wound %s in progress_timer", id.str(),
+                  progress_timer->id.str() );
+    }
 }
 
 const std::vector<wound_type> &wound_type::get_all()
@@ -111,7 +150,7 @@ void wound_type::finalize_all()
 
 void wound_type::finalize()
 {
-    _is_bleeding_wound = assign_bleeding_wound();
+    _is_bleeding_wound = bleeding_.has_value() ? *bleeding_ : assign_bleeding_wound();
 }
 
 namespace
@@ -362,6 +401,15 @@ bool wound_type::allowed_on_bodypart( bodypart_str_id bp_id ) const
     return true;
 }
 
+bool wound_type::allowed_by_whitelist_flags( const Character &who ) const
+{
+    return whitelist_flags.empty() ||
+           std::any_of( whitelist_flags.begin(), whitelist_flags.end(),
+    [&who]( const json_character_flag & fl ) {
+        return who.has_flag( fl );
+    } );
+}
+
 bool wound_type::assign_bleeding_wound() const
 {
     for( const wound_mod_values &mv : mod_values ) {
@@ -475,13 +523,12 @@ bool wound_type::can_be_applied( const Character *who, const bp_wounds &pt_wd,
         return false;
     }
 
-    for( const json_character_flag &fl_wl : whitelist_flags ) {
-        if( !who->has_flag( fl_wl ) ) {
-            add_msg_debug( debugmode::DF_WOUNDS,
-                           "%s: wound %s require flag %s character do not have, wound is not applied",
-                           who->name, id.str(), fl_wl.str() );
-            return false;
-        }
+    // Any one of the flags will do, as documented (HLTH-J04)
+    if( !allowed_by_whitelist_flags( *who ) ) {
+        add_msg_debug( debugmode::DF_WOUNDS,
+                       "%s: wound %s requires one of its whitelist_flags, which the character doesn't have, wound is not applied",
+                       who->name, id.str() );
+        return false;
     }
 
     for( const json_character_flag &fl_bl : blacklist_flags ) {
@@ -520,6 +567,15 @@ void wound::deserialize( const JsonObject &jsin )
 float wound::healing_percentage() const
 {
     return healing_progress / to_seconds<float>( healing_time );
+}
+
+void wound::set_healing_percentage( const double part )
+{
+    // one that never heals stays as it is, as update_wound leaves it
+    if( healing_time == calendar::INDEFINITELY_LONG_DURATION ) {
+        return;
+    }
+    healing_progress = static_cast<float>( part * to_seconds<double>( healing_time ) );
 }
 
 void wound::mod_pain( const int mod )

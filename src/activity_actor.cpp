@@ -11588,12 +11588,25 @@ void fix_wound_activity_actor::finish( player_activity &act, Character &who )
     }
     who.invalidate_crafting_inventory();
 
+    // HLTH-J04: the wound events, sent once the treatment is done
+    std::vector<wound_change> changes;
     for( const wound_type_id &id : fix.wounds_removed ) {
-        bp->remove_wound( id );
+        if( bp->remove_wound( id ) ) {
+            wound_change treated;
+            treated.what = wound_change::kind::lost;
+            treated.bp = healed_bp.id();
+            treated.wound = id;
+            changes.push_back( treated );
+        }
     }
 
     for( const wound_type_id &id : fix.wounds_added ) {
         bp->add_wound( id );
+        wound_change added;
+        added.what = wound_change::kind::gained;
+        added.bp = healed_bp.id();
+        added.wound = id;
+        changes.push_back( added );
     }
 
     if( fix.mod_hp ) {
@@ -11609,6 +11622,7 @@ void fix_wound_activity_actor::finish( player_activity &act, Character &who )
     }
 
     add_msg( m_good, fix.success_msg.translated() );
+    who.send_wound_events( changes );
 }
 
 void fix_wound_activity_actor::serialize( JsonOut &jsout ) const

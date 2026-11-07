@@ -2049,6 +2049,13 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
     load_eocs( "apply_eocs", new_etype.apply_eocs );
     load_eocs( "intensity_change_eocs", new_etype.intensity_change_eocs );
     load_eocs( "remove_eocs", new_etype.remove_eocs );
+    // HLTH-J07: run every tick_eocs_interval while the creature has the effect, counted from
+    // when it gained it
+    load_eocs( "tick_eocs", new_etype.tick_eocs );
+    optional( jo, was_loaded, "tick_eocs_interval", new_etype.tick_eocs_interval, 1_turns );
+    if( new_etype.tick_eocs_interval < 1_turns ) {
+        jo.throw_error_at( "tick_eocs_interval", "must be at least 1 turn" );
+    }
 
     if( is_abstract ) {
         effect_type_abstracts[id] = new_etype;

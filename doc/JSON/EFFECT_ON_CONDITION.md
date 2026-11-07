@@ -99,6 +99,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | effect_type: "apply_eocs"                        | creature that gained the effect (Creature) | the creature that caused it, if it can be found (a character), otherwise NONE | `effect`, string, the effect id; `bodypart`, string, its body part (`bp_null` if none); `intensity`, int; `old_intensity`, int, 0
 | effect_type: "intensity_change_eocs"             | creature with the effect (Creature) | the creature that caused the change (or the effect), if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity`, int, the new intensity; `old_intensity`, int, the one before
 | effect_type: "remove_eocs"                       | creature that lost the effect (Creature) | the creature that caused the effect, if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity`, int, 0; `old_intensity`, int, the intensity it had
+| effect_type: "tick_eocs"                         | creature with the effect (Creature) | the creature that caused the effect, if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity` and `old_intensity`, int, both its intensity
 | mutation: "activated_eocs"                       | character (Character)       | NONE                        |
 | mutation: "deactivated_eocs"                     | character (Character)       | NONE                        |
 | mutation: "processed_eocs"                       | character (Character)       | NONE                        |
@@ -2538,6 +2539,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | character_finishes_construction | Triggers when a character finishes a construction, after its `post_special` and `post_eocs` | { "character", `character_id` },<br/> { "construction", `string` } (construction id),<br/> { "pos", `tripoint` } (location of the tile) | character / NONE |
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` },<br/> { "intensity", `int` } | character / NONE |
+| character_gains_wound | Triggers when a character (the avatar or an NPC) gets a new wound on a body part: from a hit, `u_add_wound`, or a treatment (`wound_fix`) that adds one.  A hit that makes a wound the part already has worse sends `character_wound_progresses` instead.  Statistics don't keep it | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "wound", `string` } (the wound type id) | character / NONE |
 | character_gets_headshot |  | { "character", `character_id` } | character / NONE |
 | character_grabs_creature | Triggers when a character takes hold of a creature: the grab action, `u_grab`, or anything that sets up a hold (grappling) | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "bodypart", `body_part` } (the part held; `bp_null` for a monster, which is held as a whole),<br/> { "strength", `int` } (of the hold, 1 to 100) | character (grabber) / creature (held: character or monster) |
 | character_hears_sound | Triggers when a character (the avatar or an NPC) hears a sound: once per sound it hears, asleep or awake, after its hearing, the weather, the distance and what lies between have lowered it, if anything is left (`heard_volume` above 0). `volume` is the sound's own volume, `category` its kind (`background`, `weather`, `sensory`, `music`, `movement`, `speech`, `electronic_speech`, `activity`, `destructive_activity`, `alarm`, `combat`, `alert` or `order`) and `location` where it was made. A sound made while the character's sounds are being heard (by an EOC of this event, say) doesn't send it again to that character before the next turn, so an EOC that answers every sound can't loop. Statistics don't keep it | { "character", `character_id` },<br/> { "volume", `int` },<br/> { "heard_volume", `int` },<br/> { "category", `string` },<br/> { "location", `tripoint` }, | character / NONE |
@@ -2548,6 +2550,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | character_learns_recipe | Triggers when a character learns a recipe it didn't know: `how` is `crafting` (memorized from a book while crafting), `disassembly` or `eoc` (`u_learn_recipe`, `u_roll_remainder`). Not sent for the recipes of a new character | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "how", `string` } | character / NONE |
 | character_learns_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_loses_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` } | character / NONE |
+| character_loses_wound | Triggers when a character loses a wound: `healed` is true when it healed by itself (its `healing_time` ran out), false when a treatment (`wound_fix`), `u_remove_wound` or `u_remove_all_wounds` removed it.  Statistics don't keep it | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "wound", `string` },<br/> { "healed", `bool` } | character / NONE |
 | character_melee_attacks_character |  | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "hits", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
 | character_melee_attacks_monster | | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "hits", `bool` },<br/> { "victim_type", `mtype_id` },| character / monster |
 | character_radioactively_mutates | triggered when a character mutates due to being irradiated | { "character", `character_id` }, | character / NONE |
@@ -2579,6 +2582,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | character_falls | Triggers when a character (the avatar or an NPC) falls down one or more Z-levels, after the landing. `height` is the number of Z-levels fallen, before anything (a small size, `ONE_STORY_FALL`, wings, a jetpack) softened it | { "character", `character_id` },<br/> { "height", `int` } | character / NONE |
 | character_climbs | Triggers when the avatar has climbed up or down with a [climbing aid](CLIMBING.md) without slipping: climbing up a wall or furniture, climbing down a ledge (the examine menu), or descending with `WALL_CLING`. `direction` is `up` or `down`, `climbing_aid` the aid's id | { "character", `character_id` },<br/> { "climbing_aid", `string` },<br/> { "direction", `string` },<br/> { "height", `int` } | character / NONE |
 | character_moves | Triggers when a character, the avatar or an NPC, steps onto another tile, after the step (as `avatar_moves` does for the avatar). Statistics don't keep it | { "character", `character_id` },<br/> { "mount", `mtype_id` },<br/> { "terrain", `ter_id` },<br/> { "movement_mode", `move_mode_id` },<br/> { "underwater", `bool` },<br/> { "z", `int` } | character / NONE |
+| character_wound_progresses | Triggers when a character's wound becomes another: a hit made it worse (`wound_progression`), or its `progress_timer` ran out.  `wound` is the wound it was, `new_wound` the one it is now.  Statistics don't keep it | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "wound", `string` },<br/> { "new_wound", `string` } | character / NONE |
 | companion_mission_finished | Triggers when a companion is back from a mission (camp missions and NPC jobs alike), is called back, or dies on it. A companion that dies on a mission also runs its `death_eocs` and sends `character_dies` first | { "npc", `character_id` },<br/> { "mission", `string` } (mission kind, as for `companion_mission_started`),<br/> { "pos", `tripoint` } (location of the overmap tile the mission was given from, the camp for camp missions, its north-west corner),<br/> { "outcome", `string` } (`returned`, `canceled` or `died`),<br/> { "camp_mission", `string` } (the [faction_mission](FACTION_MISSIONS.md) id of a camp mission from JSON, e.g. `camp_foraging`; empty for upgrades, crafting, fortifications and NPC jobs) | companion / NONE |
 | companion_mission_started | Triggers when a companion sets off on a mission | { "npc", `character_id` },<br/> { "mission", `string` } (mission kind, e.g. `Camp_Scouting` or `Scavenging_Patrol_Job`; for a camp mission from JSON its behavior, `Camp_Generic` for a generic one such as foraging),<br/> { "pos", `tripoint` } (location of the overmap tile the mission was given from, its north-west corner),<br/> { "camp_mission", `string` } (the [faction_mission](FACTION_MISSIONS.md) id of a camp mission from JSON, empty for the others) | companion / NONE |
 | consumes_marloss_item | | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
@@ -5928,6 +5932,24 @@ This can cancel the character's current activity.  When called from a consumptio
 { "u_fall_asleep": "2 hours" }
 ```
 
+#### `u_wake_up`, `npc_wake_up`
+Wakes the character up as a noise or an alarm would: it stops sleeping and lying down, and the `character_wakes_up` event is sent (with the cause `other`).  A character under anesthesia (`narcosis`) can't be woken.  Unlike `u_lose_effect: "sleep"`, this cleans up the alarm clock and `lying_down` and sends the event.  Does nothing to a character that is awake, apart from getting it up if it was lying down.
+
+```jsonc
+"u_wake_up"
+```
+
+#### `u_expose_to_disease`, `npc_expose_to_disease`
+Exposes the character to a `disease_type`, as eating food contaminated with it does: unless the character's health is above the disease's `health_threshold`, it gets the disease's `symptoms` effect, with a duration and intensity between the disease's minimum and maximum, on each of its `affected_bodyparts` (or on none).  A literal id is checked when the game loads.
+
+| Syntax | Optionality | Value | Info |
+| --- | --- | --- | --- |
+| "u_expose_to_disease" / "npc_expose_to_disease" | **mandatory** | string or [variable object](#variable-object) | id of the `disease_type` |
+
+```jsonc
+{ "u_expose_to_disease": "bad_food" }
+```
+
 #### `u_heal_all`, `npc_heal_all`, `u_hurt_all`, `npc_hurt_all`
 Heals or damages every body part by the given amount.  `u_hurt_all` uses the normal all-body damage and pain handling.
 
@@ -5977,9 +5999,11 @@ Your character or the NPC will gain a morale bonus
 | "u_add_morale" / "npc_add_morale" | **mandatory** | string or [variable object](#variable-object) | `morale_type`, that would be given by effect |
 | "bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default 1; mood bonus or penalty, that would be given by effect; can be stacked up to `max_bonus` cap, but each bonus is lower than previous (e.g. `bonus` of 100 gives mood bonus as 100, 141, 172, 198, 221 and so on) |
 | "max_bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default false; cap, beyond which mood won't increase or decrease; 0 means no cap unless `capped` is true (a bonus stacks onto a morale of the same sign with the diminishing formula above, and is added in full to one of the opposite sign) |
-| "duration" | optional | int, duration or [variable object](#variable-object) | default 1 hour; how long the morale effect would last |
+| "duration" | optional | int, duration or [variable object](#variable-object) | default 1 hour; how long the morale effect would last.  0 makes it permanent (it stays, without decaying, until `u_lose_morale` takes it away), which only a `morale_type` with `"permanent": true` can be: on any other type 0 is an error and adds nothing |
 | "decay_start" | optional | int, duration or [variable object](#variable-object) | default 30 min; when the morale effect would start to decay |
 | "capped" | optional | boolean | default false; if true, `bonus` is not decreased when stacked (e.g. `bonus` of 100 gives mood bonus as 100, 200, 300 and so on) |
+
+A `morale_type` is `{ "type": "morale_type", "id": "...", "text": "..." }`, with an optional `"permanent": true` (default false) for a type that can be given permanently, with a duration of 0.  The core types the game itself sets permanently (`morale_perm_optimist`, `morale_perm_badtemper`, `morale_perm_numb`, `morale_perm_masochist`, `morale_perm_radiophile`, `morale_perm_constrained`, `morale_perm_filthy` and `morale_perm_debug`) have it.  Math's `u_morale_value('type')` reads one type's current value.
 
 ##### Valid talkers:
 

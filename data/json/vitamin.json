@@ -55,9 +55,12 @@
     "excess": "betablock",
     "min": 0,
     "max": 864,
-    "//": [ "Takes 30 min to kick in, lasts 24 hours (or more)." ],
+    "//": [
+      "Takes 30 min to kick in, lasts 24 hours (or more).",
+      "The level never goes above max, so only the first intensity can be reached; [ 865, 1728 ] and [ 1729, 2592 ] (intensities 2 and 3) would need a max of 2592."
+    ],
     "rate": "100 s",
-    "disease_excess": [ [ 10, 864 ], [ 865, 1728 ], [ 1729, 2592 ] ]
+    "disease_excess": [ [ 10, 864 ] ]
   },
   {
     "id": "vit_bloodthinner",

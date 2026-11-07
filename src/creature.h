@@ -690,7 +690,8 @@ class Creature : public viewer
         enum class effect_eoc_hook : int {
             apply,
             intensity_change,
-            remove
+            remove,
+            tick // tick_eocs, every tick_eocs_interval (HLTH-J07)
         };
         /** Runs the effect type's apply_eocs, intensity_change_eocs or remove_eocs with this
          * creature as u and the creature that caused the effect, if it can be found, as npc.

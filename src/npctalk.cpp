@@ -4294,7 +4294,8 @@ talk_effect_fun_t::func f_add_wound( const JsonObject &jo, std::string_view memb
 
         wound_type_id wound_to_be_added = wound_type_id( wound_to_be_added_var.evaluate( d ) );
 
-        bp->add_or_worsen_wound( wound_to_be_added );
+        // through the character, for its pain and the wound events (HLTH-J04)
+        guy->apply_wound( bp->get_id(), wound_to_be_added );
     };
 }
 
@@ -4378,8 +4379,10 @@ talk_effect_fun_t::func f_remove_wound( const JsonObject &jo, std::string_view m
             wound_to_be_removed.emplace_back( v.evaluate( d ) );
         }
 
+        // an EOC of the wound events may change the body: keep the id, not the part
+        const bodypart_id bp_id = bp->get_id();
         for( const wound_type_id &wd_id : wound_to_be_removed ) {
-            bp->remove_all_wounds_of_type( wd_id );
+            guy->remove_wounds_of_type( bp_id, wd_id );
         }
 
     };
@@ -4405,8 +4408,10 @@ talk_effect_fun_t::func f_remove_all_wounds( const JsonObject &jo, std::string_v
             wound_to_be_removed.emplace_back( v.type );
         }
 
+        // an EOC of the wound events may change the body: keep the id, not the part
+        const bodypart_id bp_id = bp->get_id();
         for( const wound_type_id &wd_id : wound_to_be_removed ) {
-            bp->remove_all_wounds_of_type( wd_id );
+            guy->remove_wounds_of_type( bp_id, wd_id );
         }
 
     };
@@ -10748,6 +10753,46 @@ talk_effect_fun_t::func f_fall_asleep( const JsonObject &jo, std::string_view me
     };
 }
 
+// HLTH-J10: wakes the character as anything else does (not under narcosis), with the
+// character_wakes_up event (cause "other")
+talk_effect_fun_t::func f_wake_up( bool is_npc )
+{
+    return [is_npc]( dialogue & d ) {
+        Character *target = d.actor( is_npc )->get_character();
+        if( target ) {
+            target->wake_up();
+        }
+    };
+}
+
+// HLTH-J09: exposes the character to a disease_type, as eating contaminated food does
+talk_effect_fun_t::func f_expose_to_disease( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var disease = get_str_or_var( jo.get_member( member ), member );
+    if( jo.has_string( member ) ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = jo.get_string( member ), context]() {
+            if( !diseasetype_id( name ).is_valid() ) {
+                debugmsg( "Disease type \"%s\" (in %s) does not exist", name, context );
+            }
+        } );
+    }
+    return [is_npc, disease]( dialogue & d ) {
+        Character *target = require_character( d, is_npc, "expose_to_disease" );
+        if( target == nullptr ) {
+            return;
+        }
+        const diseasetype_id dis( disease.evaluate( d ) );
+        if( !dis.is_valid() ) {
+            debugmsg( "expose_to_disease: unknown disease_type \"%s\"\n%s", dis.str(),
+                      d.get_callstack() );
+            return;
+        }
+        target->expose_to_disease( dis );
+    };
+}
+
 talk_effect_fun_t::func f_heal_all( const JsonObject &jo, std::string_view member,
                                     std::string_view, bool is_npc )
 {
@@ -12652,6 +12697,7 @@ parsers = {
     { "u_add_addiction", "npc_add_addiction", jarg::member, &talk_effect_fun::f_add_addiction },
     { "u_lose_addiction", "npc_lose_addiction", jarg::member, &talk_effect_fun::f_lose_addiction },
     { "u_fall_asleep", "npc_fall_asleep", jarg::member | jarg::array, &talk_effect_fun::f_fall_asleep },
+    { "u_expose_to_disease", "npc_expose_to_disease", jarg::member, &talk_effect_fun::f_expose_to_disease },
     { "u_heal_all", "npc_heal_all", jarg::member | jarg::array, &talk_effect_fun::f_heal_all },
     { "u_hurt_all", "npc_hurt_all", jarg::member | jarg::array, &talk_effect_fun::f_hurt_all },
     { "u_fill_stomach", "npc_fill_stomach", jarg::member | jarg::array, &talk_effect_fun::f_fill_stomach },
@@ -12967,6 +13013,11 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
 
     if( effect_id == "u_vomit" || effect_id == "npc_vomit" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_vomit( effect_id == "npc_vomit" ) ) );
+        return;
+    }
+
+    if( effect_id == "u_wake_up" || effect_id == "npc_wake_up" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_wake_up( effect_id == "npc_wake_up" ) ) );
         return;
     }
 
