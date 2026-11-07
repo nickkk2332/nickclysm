@@ -2576,10 +2576,11 @@ std::shared_ptr<const tileset> renderer_recovery_test_support::install_tiles_bun
     desc.sprite_height = 1;
     desc.atlas_offset = 0;
     desc.expected_tilecount = 1;
+    // the atlas's sprites are 1x1, so is the tile: a draw divides by the tile size, and the
+    // highlight texture takes it
+    ts->tile_width = 1;
+    ts->tile_height = 1;
     if( with_highlight ) {
-        // highlight texture takes the tile size
-        ts->tile_width = 1;
-        ts->tile_height = 1;
         ts->set_default_item_highlight_index( 1 );
     }
     return upload_test_bundle( std::move( ts ), desc, memory_map_mode, renderer_instance_generation,

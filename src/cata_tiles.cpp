@@ -637,13 +637,11 @@ void cata_tiles::draw( const point &dest, const tripoint_bub_ms &center, int wid
         return;
     }
 
-#if defined(__ANDROID__)
-    // Attempted bugfix for Google Play crash - prevent divide-by-zero if no tile
-    // width/height specified
+    // the tile counts and offsets below divide by the tile size: a tileset without one
+    // (or a draw scale that rounds it down to 0) draws nothing rather than crash
     if( tile_width == 0 || tile_height == 0 ) {
         return;
     }
-#endif
 
     has_animated_tiles_ = false;
 

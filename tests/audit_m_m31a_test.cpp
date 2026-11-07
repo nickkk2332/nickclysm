@@ -199,6 +199,10 @@ class draw_logger
 
         // the second of two frames: the first memorizes what the avatar sees
         const std::vector<drawn_sprite_record> &draw() {
+            // a tile size of 0 draws nothing (the draw returns at once), so every lookup
+            // would fail for no visible reason
+            REQUIRE( tiles.get_tile_width() > 0 );
+            REQUIRE( tiles.get_tile_height() > 0 );
             for( int i = 0; i < 2; ++i ) {
                 log.clear();
                 tiles.set_draw_cache_dirty();
