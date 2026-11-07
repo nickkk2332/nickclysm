@@ -44,6 +44,8 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `submap_travel_dense` | 20 submap crossings over already generated terrain, with a dense base (2,700 items) and a full inventory | MAP-P01 |
 | `crafting_recompute` | crafting time and craftability for 300 recipes, 5 times, in a dense base, outside any query cache scope (the path activities and NPCs take) | CRAFT-P02, requirement checks |
 | `crafting_recompute_scoped` | the same, inside the query cache scope the crafting menu opens | crafting menu |
+| `crafting_panel_redraws_rebuilt` | the crafting menu's info panel for 2 recipes (crossbow: tools, qualities, proficiencies; bat: steps), 100 redraws each, built on every redraw as the menu did before, in a dense base, inside the menu's query cache scope | UIINV-P01 |
+| `crafting_panel_redraws_cached` | the same redraws, read from the menu's panel cache, which builds each panel once | UIINV-P01 |
 | `weather_catchup` | `sum_conditions` over 3 days at 4 locations, as a returning player's funnels and solar vehicles run it | LOOP-P01 |
 | `overmap_generate` | generating one overmap from scratch | OMAP-P01, OMAP-P02 |
 | `zone_sort_queries` | 2,000 "which loot zone takes this item" lookups with 9 category zones of 400 tiles | ACT-P01 |
@@ -82,7 +84,10 @@ but without the avatar's input handling and screen updates, which tests can't dr
 - DATA-P01 (a vsync-blocked redraw for every loading step) only exists in the tiles build
   with a real display.
 - UI redraw loops (the crafting menu's 100 Hz redraw, the surroundings menu) need a
-  display; `crafting_recompute` times the work such a redraw repeats.
+  display. The `crafting_panel_redraws_*` scenarios call the crafting menu's panel-building
+  code directly, without ImGui; `crafting_recompute` times the craftability checks behind
+  the recipe list.
+- REND-P02 (sprite lookups in the tiles renderer) only exists in the tiles build.
 
 ## Changing scenarios
 

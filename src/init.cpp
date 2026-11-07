@@ -833,6 +833,7 @@ void DynamicDataLoader::load_all_from_json( const JsonValue &jsin, const std::st
 void DynamicDataLoader::unload_data()
 {
     finalized = false;
+    data_changed();
     object_load_history.clear();
 
     achievement::reset();
@@ -1177,6 +1178,7 @@ void DynamicDataLoader::finalize_loaded_data()
         check_consistency();
     }
     finalized = true;
+    data_changed();
 }
 
 void DynamicDataLoader::check_consistency()

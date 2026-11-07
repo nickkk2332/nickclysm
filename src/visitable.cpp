@@ -853,6 +853,7 @@ std::list<item> item_location::remove_items_with( const std::function<bool( cons
 
 item temp_crafting_inventory::remove_item( item &it )
 {
+    changed();
     for( auto iter = item_copies.begin(); iter != item_copies.end(); ) {
         if( iter->get_item() == &it ) {
             item_copies.erase( iter );
@@ -874,7 +875,7 @@ item temp_crafting_inventory::remove_item( item &it )
 std::list<item> temp_crafting_inventory::remove_items_with( const
         std::function<bool( const item &e )> &filter, int count )
 {
-    drop_caches();
+    changed();
     std::list<item> res;
 
     if( count <= 0 ) {
