@@ -12,9 +12,6 @@
         { "math": [ "u_field_strength('fd_web') < 3" ] }
       ]
     },
-    "deactivate_condition": {
-      "or": [ { "not": { "u_has_trait": "WEB_WALKER" } }, { "u_has_trait": "WEB_SPINNER" }, { "u_has_trait": "WEB_WEAVER" } ]
-    },
     "effect": [ { "u_transform_radius": 0, "ter_furn_transform": "spider_clear_webs" } ]
   },
   {

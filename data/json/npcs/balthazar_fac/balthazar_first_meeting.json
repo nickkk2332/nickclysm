@@ -57,7 +57,7 @@
     "responses": [
       { "text": "You're locked in there, right?  How would I get them?", "topic": "TALK_BALTHAZAR_MEET_REWARD_EXCUSE_WEAK" },
       { "text": "That doesn't sound too promising…", "topic": "TALK_BALTHAZAR_MEET_REWARD_NEGOTIATE_WEAK_1" },
-      { "text": "Sounds good.", "topic": "TALK_BALTHAZAR_MEET_DESCRIPTION_WEAK_1" }
+      { "text": "Sounds good.", "topic": "TALK_BALTHAZAR_MEET_DESCRIPTION_WEAK" }
     ]
   },
   {

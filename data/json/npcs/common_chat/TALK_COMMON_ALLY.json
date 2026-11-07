@@ -111,12 +111,6 @@
         "switch": true
       },
       {
-        "text": "Mind if we just chat for a bit about your history?",
-        "topic": "TALK_CONVERSATION_RADIO",
-        "condition": { "not": "is_by_radio" },
-        "switch": true
-      },
-      {
         "text": "Let's just chitchat for a while, I could use some relaxation.",
         "topic": "TALK_FRIEND_CHAT",
         "condition": { "not": { "npc_has_effect": "asked_to_socialize" } }

@@ -425,6 +425,12 @@
   },
   {
     "type": "talk_topic",
+    "id": [ "TALK_TEST_TRUE_CONDITION_NEXT", "TALK_TEST_FALSE_CONDITION_NEXT" ],
+    "dynamic_line": "This is a test conversation that shouldn't appear in the game.",
+    "responses": [ { "text": "This is a basic test response.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "talk_topic",
     "id": "TALK_TEST_EFFECTS",
     "dynamic_line": "This is a test conversation that shouldn't appear in the game.",
     "responses": [

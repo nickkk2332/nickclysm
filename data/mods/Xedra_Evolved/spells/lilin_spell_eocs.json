@@ -702,7 +702,7 @@
       { "math": [ "u_vitamin('lilin_ruach_vitamin') -= 1200 * lilin_has_ruach_efficiency()" ] },
       { "npc_message": "Your wounded flesh knits together in moments.", "type": "neutral" },
       {
-        "foreach": "array",
+        "foreach": "ids",
         "target": "bodypart",
         "var": { "context_val": "bodypart" },
         "effect": [

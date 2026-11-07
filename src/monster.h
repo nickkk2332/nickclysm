@@ -608,6 +608,10 @@ class monster : public Creature
         bool death_drops = true;
         // If true, sound and message is suppressed for monster death.
         bool quiet_death = false;
+        // EOC-J10: set by u_prevent_death while die() runs the PREVENT_MONSTER_DEATH EOCs
+        bool death_prevented = false; // NOLINT(cata-serialize)
+        /** u_prevent_death: the death die() is about to cause doesn't happen (EOC-J10) */
+        void prevent_death();
         bool is_dead() const;
         bool death_finalized() const {
             return dead;
@@ -676,6 +680,8 @@ class monster : public Creature
         // Sets the plans for the forced goal; false (and forgets it) once the goal is over.
         bool follow_forced_goal();
         bool dead = false;
+        // die() is running the PREVENT_MONSTER_DEATH EOCs: a death they cause isn't prevented
+        bool running_prevent_death_eocs = false; // NOLINT(cata-serialize)
         /** Normal upgrades **/
         int next_upgrade_time();
         bool upgrades = false;

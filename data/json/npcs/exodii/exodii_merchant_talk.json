@@ -2151,5 +2151,12 @@
         "effect": { "run_eocs": "EOC_EXODII_HATES_YOU", "time_in_future": [ "100 seconds", "140 seconds" ] }
       }
     ]
+  },
+  {
+    "id": "TALK_EXODII_MERCHANT_Wont_Talk_To_Fair_Folk",
+    "//": "Only reached with Xedra Evolved (EOC_CONDITION_XE_YOU_ARE_FAIR_FOLK), which used to define it.",
+    "type": "talk_topic",
+    "dynamic_line": { "str": "&No matter what you do or say, the towering mass of metal will not acknowledge you." },
+    "responses": [ { "text": "Leave.", "topic": "TALK_DONE" } ]
   }
 ]

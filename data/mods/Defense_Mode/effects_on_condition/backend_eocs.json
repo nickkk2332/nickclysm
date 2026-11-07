@@ -2,7 +2,6 @@
   {
     "type": "effect_on_condition",
     "id": "scenario_defense_mode",
-    "deactivate_condition": { "math": [ "wave_number >= 1" ] },
     "effect": [
       { "math": [ "diffulty_modifier = 1" ] },
       { "math": [ "wave_money_modifier = -1000" ] },

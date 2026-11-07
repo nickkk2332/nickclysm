@@ -314,7 +314,7 @@
         "text": "I uh… found my way inside it a while ago.  The door was already open.  I kinda went through it already assuming whoever owned it was dead.",
         "trial": { "type": "LIE", "difficulty": 20, "mod": [ [ "TRUST", 2 ] ] },
         "success": { "topic": "BGSS_PREPPER_1_FOUND_LMOE2_BENICE" },
-        "failure": { "topic": "BGSS_PREPPER_1_FOUND_LMOE2_FAILLIE" }
+        "failure": { "topic": "BGSS_PREPPER_1_FOUND_LMOE4_FAILLIE" }
       },
       {
         "text": "So it WAS yours?  I broke in and stole a bunch of stuff from it.  Sorry, I guess.",
