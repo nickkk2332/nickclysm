@@ -47,7 +47,21 @@
     "description": "Ever since you had that life-threatening reaction to that Marloss junk, you can't bear the thought of ever eating it again!",
     "points": 0,
     "purifiable": false,
-    "valid": false
+    "valid": false,
+    "eat_condition": {
+      "condition": {
+        "not": {
+          "and": [
+            { "npc_has_flag": "MARLOSS" },
+            {
+              "or": [ { "npc_has_flag": "USE_EAT_VERB" }, { "npc_comestible_type": "FOOD" }, { "npc_comestible_type": "DRINK" } ]
+            }
+          ]
+        }
+      },
+      "fail_message": "After what happened that last time?  Nuh-uh.  You're not eating that alien poison.",
+      "checked": "first"
+    }
   },
   {
     "type": "mutation",
@@ -59,7 +73,21 @@
     "points": 1,
     "purifiable": false,
     "valid": false,
-    "flags": [ "mycus" ]
+    "flags": [ "mycus" ],
+    "eat_condition": {
+      "condition": {
+        "not": {
+          "and": [
+            { "npc_has_flag": "MARLOSS" },
+            {
+              "or": [ { "npc_has_flag": "USE_EAT_VERB" }, { "npc_comestible_type": "FOOD" }, { "npc_comestible_type": "DRINK" } ]
+            }
+          ]
+        }
+      },
+      "fail_message": "we no longer require this scaffolding.  we reserve it for other uses.",
+      "checked": "first"
+    }
   },
   {
     "type": "mutation",
@@ -81,7 +109,19 @@
     "threshreq": [ "THRESH_MYCUS" ],
     "cancels": [ "GOURMAND", "BEAK", "BEAK_PECK", "BEAK_HUM" ],
     "points": -5,
-    "purifiable": false
+    "purifiable": false,
+    "eat_condition": {
+      "condition": {
+        "or": [
+          { "npc_has_flag": "MYCUS_OK" },
+          {
+            "not": { "or": [ { "npc_has_flag": "USE_EAT_VERB" }, { "npc_comestible_type": "FOOD" }, { "npc_comestible_type": "DRINK" } ] }
+          }
+        ]
+      },
+      "fail_message": "We can't eat that.  It's not right for us.",
+      "checked": "first"
+    }
   },
   {
     "type": "mutation",

@@ -1110,10 +1110,8 @@ bool game::start_game()
             u.getID(), u.name, u.custom_profession );
     time_played_at_last_load = std::chrono::seconds( 0 );
     time_of_last_load = std::chrono::steady_clock::now();
-    tripoint_abs_omt abs_omt = u.pos_abs_omt();
-    const oter_id &cur_ter = overmap_buffer.ter( abs_omt );
-    get_event_bus().send<event_type::avatar_enters_omt>( abs_omt.raw(), cur_ter,
-            overmap_buffer.overmap_special_at( abs_omt ).value_or( overmap_special_id() ) );
+    // Before the scenario's EOCs, which may move the avatar and run the hooks of where it goes
+    cata_event_dispatch::avatar_starts_in_omt();
 
     effect_on_conditions::load_new_character( u );
     if( debug_menu::is_debug_character() ) {
@@ -12137,15 +12135,27 @@ void avatar_move_scope::end()
 }
 
 // Runs an OMT's entry_eoc or exit_eoc, with the OMT it belongs to and the terrains on both sides
-// of the boundary as context.
+// of the boundary as context. left_ter is empty at game start, when no OMT is left.
 static void run_omt_hook( const effect_on_condition_id &eoc, const tripoint_abs_omt &omt,
-                          const oter_id &left_ter, const oter_id &entered_ter )
+                          const std::optional<oter_id> &left_ter, const oter_id &entered_ter )
 {
     dialogue d( get_talker_for( get_avatar() ), nullptr );
     d.set_value( "omt_pos", project_to<coords::ms>( omt ) );
-    d.set_value( "left_oter_id", left_ter.id().str() );
+    d.set_value( "left_oter_id", left_ter ? left_ter->id().str() : std::string() );
     d.set_value( "entered_oter_id", entered_ter.id().str() );
     eoc->activate_activation_only( d, "OMT movement" );
+}
+
+void avatar_starts_in_omt()
+{
+    const tripoint_abs_omt abs_omt = get_avatar().pos_abs_omt();
+    const oter_id cur_ter = overmap_buffer.ter( abs_omt );
+    get_event_bus().send<event_type::avatar_enters_omt>( abs_omt.raw(), cur_ter,
+            overmap_buffer.overmap_special_at( abs_omt ).value_or( overmap_special_id() ) );
+    // LOOP-J02: the start OMT's entry_eoc never ran, so content set up on entry was missing
+    if( !cur_ter->get_entry_EOC().is_null() ) {
+        run_omt_hook( cur_ter->get_entry_EOC(), abs_omt, std::nullopt, cur_ter );
+    }
 }
 
 void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos )

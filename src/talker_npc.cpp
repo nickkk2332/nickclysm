@@ -56,10 +56,11 @@ static const flag_id json_flag_NO_UNWIELD( "NO_UNWIELD" );
 static const itype_id itype_foodperson_mask( "foodperson_mask" );
 static const itype_id itype_foodperson_mask_on( "foodperson_mask_on" );
 
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
+
 static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 std::string talker_npc_const::distance_to_goal() const
 {
@@ -369,7 +370,7 @@ static consumption_result try_consume( npc &p, item &it, std::string &reason )
             reason = p.chat_snippets().snip_consume_cant_consume.translated();
             return REFUSED;
         } else {
-            if( to_eat.rotten() && !p.as_character()->has_trait( trait_SAPROVORE ) ) {
+            if( to_eat.rotten() && !p.as_character()->has_flag( json_flag_SAPROVORE_DIET ) ) {
                 //TODO: once npc needs are operational again check npc hunger state and allow eating if desperate
                 reason = p.chat_snippets().snip_consume_rotten.translated();
                 return REFUSED;

@@ -43,6 +43,7 @@ enum class cata_variant_type : int {
     bool_,
     character_id,
     chrono_seconds,
+    damage_type_id,
     debug_menu_index,
     dimension_id,
     efftype_id,
@@ -190,7 +191,7 @@ struct convert_enum {
 };
 
 // These are the specializations of convert for each value type.
-static_assert( static_cast<int>( cata_variant_type::num_types ) == 50,
+static_assert( static_cast<int>( cata_variant_type::num_types ) == 51,
                "This assert is a reminder to add conversion support for any new types to the "
                "below specializations" );
 
@@ -262,6 +263,9 @@ struct convert<cata_variant_type::chrono_seconds> {
         return true;
     }
 };
+
+template<>
+struct convert<cata_variant_type::damage_type_id> : convert_string_id<damage_type_id> {};
 
 template<>
 struct convert<cata_variant_type::debug_menu_index> : convert_enum<debug_menu::debug_menu_index> {};
