@@ -149,6 +149,9 @@ class effect_type
 
         double get_mod_value( const std::string &type, mod_action action, uint8_t reduction_level,
                               int intensity ) const;
+        /** Whether base_mods or scaling_mods gives the value at all (get_mod_value is 0 if not). */
+        bool has_mod_value( const std::string &type, mod_action action,
+                            uint8_t reduction_level ) const;
 
         bool is_show_in_info() const;
 

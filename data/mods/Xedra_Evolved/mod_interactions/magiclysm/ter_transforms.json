@@ -1,0 +1,9 @@
+[
+  {
+    "type": "ter_furn_transform",
+    "id": "ter_arvore_fungicide",
+    "//": "Magiclysm's barren dirt; Xedra Evolved alone leaves plain dirt.",
+    "terrain": [ { "result": "t_dirt_barren", "valid_flags": [ "FUNGUS" ], "message": "The fungus withers and dies!" } ],
+    "furniture": [ { "result": "f_null", "valid_flags": [ "FUNGUS" ], "message": "The fungus withers and dies!" } ]
+  }
+]

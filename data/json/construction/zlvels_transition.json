@@ -13,7 +13,15 @@
     "components": [ [ [ "concrete", 5 ] ], [ [ "water", 5 ], [ "water_clean", 5 ] ] ],
     "pre_special": [ "check_empty", "check_stable", "check_up_OK", "check_nofloor_above", "check_ramp_high" ],
     "post_terrain": "t_ramp_up_high",
-    "post_special": "done_ramp_high"
+    "post_eocs": [
+      {
+        "id": "EOC_constr_concrete_ramp_high_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_ramp_down_high", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ]
   },
   {
     "type": "construction",
@@ -29,7 +37,15 @@
     "components": [ [ [ "concrete", 5 ] ], [ [ "water", 5 ], [ "water_clean", 5 ] ] ],
     "pre_special": [ "check_empty", "check_stable", "check_up_OK", "check_nofloor_above" ],
     "post_terrain": "t_ramp_up_low",
-    "post_special": "done_ramp_low"
+    "post_eocs": [
+      {
+        "id": "EOC_constr_concrete_ramp_low_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_ramp_down_low", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ]
   },
   {
     "type": "construction",
@@ -68,7 +84,15 @@
     "components": [ [ [ "material_soil", 50 ] ], [ [ "stick", 10 ], [ "2x4", 8 ], [ "stick_long", 5 ] ], [ [ "rock", 20 ] ] ],
     "pre_special": [ "check_empty", "check_stable", "check_up_OK", "check_nofloor_above", "check_ramp_high" ],
     "post_terrain": "t_earth_ramp_up_high",
-    "post_special": "done_ramp_high"
+    "post_eocs": [
+      {
+        "id": "EOC_constr_earth_ramp_high_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_ramp_down_high", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ]
   },
   {
     "type": "construction",
@@ -83,7 +107,15 @@
     "components": [ [ [ "material_soil", 50 ] ], [ [ "stick", 12 ], [ "stick_long", 6 ], [ "2x4", 6 ] ], [ [ "rock", 20 ] ] ],
     "pre_special": [ "check_empty", "check_stable", "check_up_OK", "check_nofloor_above" ],
     "post_terrain": "t_earth_ramp_up_low",
-    "post_special": "done_ramp_low"
+    "post_eocs": [
+      {
+        "id": "EOC_constr_earth_ramp_low_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_ramp_down_low", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ]
   },
   {
     "type": "construction",
@@ -156,7 +188,15 @@
     "pre_special": "check_nofloor_above",
     "pre_terrain": "t_wood_stairs_up_broken",
     "post_terrain": "t_wood_stairs_up",
-    "post_special": "done_wood_stairs"
+    "post_eocs": [
+      {
+        "id": "EOC_constr_repair_wood_stairs_up_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_wood_stairs_down", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ]
   },
   {
     "type": "construction",
@@ -212,7 +252,15 @@
     "pre_special": "check_nofloor_above",
     "pre_terrain": "t_wood_stairs_up_half",
     "post_terrain": "t_wood_stairs_up",
-    "post_special": "done_wood_stairs"
+    "post_eocs": [
+      {
+        "id": "EOC_constr_wood_stairs_up_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_wood_stairs_down", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ]
   },
   {
     "type": "construction",
@@ -238,7 +286,15 @@
     "pre_note": "Removes down scaffolding from directly above the construction tile.",
     "pre_terrain": "t_scaffolding_pipe_updown",
     "pre_special": "check_matching_down_above",
-    "post_special": "remove_above",
+    "post_eocs": [
+      {
+        "id": "EOC_remove_scaffolding_pipe_down_above_updown_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_open_air", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ],
     "post_terrain": "t_scaffolding_pipe_down",
     "byproducts": [
       { "item": "pipe", "count": 46 },
@@ -259,7 +315,15 @@
     "pre_note": "Removes scaffolding.",
     "pre_terrain": "t_scaffolding_pipe_up",
     "pre_special": "check_matching_down_above",
-    "post_special": "remove_above",
+    "post_eocs": [
+      {
+        "id": "EOC_remove_scaffolding_pipe_up_top",
+        "effect": [
+          { "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } },
+          { "set_terrain": "t_open_air", "location": { "context_val": "above" }, "radius": 0 }
+        ]
+      }
+    ],
     "post_terrain": "t_dirt",
     "byproducts": [
       { "item": "pipe", "count": 46 },

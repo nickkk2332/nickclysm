@@ -443,10 +443,10 @@ class item_contents
          * NOTE: upon expansion, this may need to be filtered by type enum depending on accessibility
          */
         VisitResponse visit_contents( const std::function<VisitResponse( const item_location & )> &func,
-                                      const item_location &parent, const std::set<pocket_type> &allowed_pockets = { pocket_type::CONTAINER } );
+                                      const item_location &parent, pocket_type_set allowed_pockets = { pocket_type::CONTAINER } );
         VisitResponse visit_contents_legacy( const std::function<VisitResponse( item *, item * )> &func,
                                              item *parent,
-                                             const std::set<pocket_type> &allowed_pockets = { pocket_type::CONTAINER } );
+                                             pocket_type_set allowed_pockets = { pocket_type::CONTAINER } );
         void remove_internal( const std::function<bool( item & )> &filter,
                               int &count, std::list<item> &res );
 

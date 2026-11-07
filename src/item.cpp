@@ -3316,7 +3316,7 @@ std::string item::get_book_skill() const
 bool item::is_map() const
 {
     return get_category_shallow().get_id() == item_category_maps ||
-           type->use_methods.count( "reveal_map" );
+           type->can_use( "reveal_map" );
 }
 
 bool item::is_engine() const
@@ -3399,7 +3399,7 @@ bool item::is_deployable() const
 
 bool item::is_transformable() const
 {
-    return type->use_methods.find( "transform" ) != type->use_methods.end();
+    return type->can_use( "transform" );
 }
 
 bool item::is_relic() const

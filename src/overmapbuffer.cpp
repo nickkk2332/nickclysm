@@ -60,6 +60,9 @@ static const oter_type_str_id oter_type_bridgehead_ground( "bridgehead_ground" )
 static const oter_type_str_id oter_type_bridgehead_ramp( "bridgehead_ramp" );
 
 static const int default_search_range = OMAPX * 5;
+// How many rings of overmaps around the origin's a search for a mission's overmap special may
+// generate when no overmap made so far holds one (1: the eight around it at most).
+static const int special_search_generated_rings = 1;
 
 // Moved from obsolete coordinate_conversions.h to its only remaining user.
 static int omt_to_sm_copy( int a )
@@ -1482,6 +1485,36 @@ class omt_terrain_search
 };
 } // namespace
 
+// The overmaps not made yet within special_search_generated_rings of the origin's that have an
+// OMT within max_dist of the origin, nearest first, each with the distance to its nearest OMT.
+// Searches for an overmap special make these when no overmap made so far holds the special:
+// generating overmaps is costly, so only the closest ones.
+static std::vector<std::pair<int, point_abs_om>> missing_overmaps_near( overmapbuffer &buffer,
+        const tripoint_abs_omt &origin, const int max_dist )
+{
+    const point_abs_om center = coords::project_to<coords::om>( origin.xy() );
+    std::vector<std::pair<int, point_abs_om>> missing;
+    for( const point_abs_om &om : closest_points_first( center, 0,
+            special_search_generated_rings ) ) {
+        const point_abs_omt corner = coords::project_to<coords::omt>( om );
+        const int dx = std::max( { 0, corner.x() - origin.x(),
+                                   origin.x() - ( corner.x() + OMAPX - 1 )
+                                 } );
+        const int dy = std::max( { 0, corner.y() - origin.y(),
+                                   origin.y() - ( corner.y() + OMAPY - 1 )
+                                 } );
+        const int om_dist = std::max( dx, dy );
+        if( om_dist <= max_dist && buffer.get_existing( om ) == nullptr ) {
+            missing.emplace_back( om_dist, om );
+        }
+    }
+    std::stable_sort( missing.begin(), missing.end(), []( const std::pair<int, point_abs_om> &a,
+    const std::pair<int, point_abs_om> &b ) {
+        return a.first < b.first;
+    } );
+    return missing;
+}
+
 tripoint_abs_omt overmapbuffer::find_closest(
     const tripoint_abs_omt &origin, const std::string &type, int const radius, bool must_be_seen,
     ot_match_type match_type, bool existing_overmaps_only,
@@ -1535,6 +1568,26 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
         const overmap_special_id special_id = params.om_special.value();
         tripoint_abs_omt result_pos = tripoint_abs_omt::invalid;
 
+        const auto search_overmap = [&]( const point_abs_om & om, const overmap & om_data ) {
+            const point_abs_omt om_base = coords::project_to<coords::omt>( om );
+            for( const auto &element : om_data.overmap_special_placements ) {
+                if( element.second != special_id || element.first.z() < params.min_z ||
+                    element.first.z() > params.max_z ) {
+                    continue;
+                }
+                const tripoint_abs_omt loc = om_base + element.first.raw();
+                const int dist_xy = square_dist( origin.xy(), loc.xy() );
+                // Ties keep the first match; the unsorted map supplies the randomness.
+                if( dist_xy < min_dist || dist_xy > max_dist || dist_xy >= found_dist ) {
+                    continue;
+                }
+                if( is_findable_location( loc, params ) ) {
+                    result_pos = loc;
+                    found_dist = dist_xy;
+                }
+            }
+        };
+
         // Keep going outward until no closer match can exist, rather than returning the first
         // ring with a hit: a match just across the border can be far closer than one at the
         // other end of the origin's own overmap (OMAP-B02).
@@ -1545,28 +1598,22 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
                 break;
             }
             for( const point_abs_om &om : closest_points_first( center, i, i ) ) {
-                overmap *om_data = get_existing( om );
-                if( om_data == nullptr ) {
-                    continue;
+                if( const overmap *om_data = get_existing( om ) ) {
+                    search_overmap( om, *om_data );
                 }
-                const point_abs_omt om_base = coords::project_to<coords::omt>( om );
+            }
+        }
 
-                for( const auto &element : om_data->overmap_special_placements ) {
-                    if( element.second != special_id || element.first.z() < params.min_z ||
-                        element.first.z() > params.max_z ) {
-                        continue;
-                    }
-                    const tripoint_abs_omt loc = om_base + element.first.raw();
-                    const int dist_xy = square_dist( origin.xy(), loc.xy() );
-                    // Ties keep the first match; the unsorted map supplies the randomness.
-                    if( dist_xy < min_dist || dist_xy > max_dist || dist_xy >= found_dist ) {
-                        continue;
-                    }
-                    if( is_findable_location( loc, params ) ) {
-                        result_pos = loc;
-                        found_dist = dist_xy;
-                    }
+        // No overmap made so far holds a match (OMAP-B02): a search allowed to make overmaps
+        // makes the missing ones next to the origin's, nearest first, until one holds a match
+        // that no other can beat.
+        if( result_pos.is_invalid() && !params.existing_only ) {
+            for( const std::pair<int, point_abs_om> &next :
+                 missing_overmaps_near( *this, origin, max_dist ) ) {
+                if( next.first >= found_dist ) {
+                    break;
                 }
+                search_overmap( next.second, get( next.second ) );
             }
         }
 
@@ -1659,23 +1706,31 @@ std::vector<tripoint_abs_omt> overmapbuffer::find_all( const tripoint_abs_omt &o
         const tripoint_abs_om center = coords::project_to<coords::om>( origin );
         const overmap_special_id special_id = params.om_special.value();
 
-        for( const point_abs_om &om : closest_points_first( center.xy(), om_min_range, om_max_range ) ) {
-            if( has( om ) ) {
-                overmap &om_data = get( om );
-                point_abs_omt om_base = coords::project_to<coords::omt>( om );
+        const auto search_overmap = [&]( const point_abs_om & om, const overmap & om_data ) {
+            const point_abs_omt om_base = coords::project_to<coords::omt>( om );
+            for( const auto &element : om_data.overmap_special_placements ) {
+                if( element.second == special_id ) {
+                    const tripoint_abs_omt loc = om_base + element.first.raw();
+                    if( is_findable_location( loc, params ) ) {
+                        const int dist_xy = square_dist( origin.xy(), loc.xy() );
 
-                for( auto &element : om_data.overmap_special_placements ) {
-                    if( element.second == special_id ) {
-                        const tripoint_abs_omt loc = om_base + element.first.raw();
-                        if( is_findable_location( loc, params ) ) {
-                            const int dist_xy = square_dist( origin.xy(), loc.xy() );
-
-                            if( dist_xy >= min_dist && dist_xy < max_dist ) {
-                                result.push_back( loc );
-                            }
+                        if( dist_xy >= min_dist && dist_xy < max_dist ) {
+                            result.push_back( loc );
                         }
                     }
                 }
+            }
+        };
+        for( const point_abs_om &om : closest_points_first( center.xy(), om_min_range, om_max_range ) ) {
+            if( const overmap *om_data = get_existing( om ) ) {
+                search_overmap( om, *om_data );
+            }
+        }
+        // As find_closest does: when no overmap made so far holds one (OMAP-B02)
+        if( result.empty() && !params.existing_only ) {
+            for( const std::pair<int, point_abs_om> &next :
+                 missing_overmaps_near( *this, origin, max_dist ) ) {
+                search_overmap( next.second, get( next.second ) );
             }
         }
     } else {
@@ -2024,6 +2079,25 @@ city_reference overmapbuffer::closest_known_city( const tripoint_abs_sm &center 
     }
 
     return city_reference::invalid;
+}
+
+city_reference overmapbuffer::closest_city( const tripoint_abs_sm &center,
+        const city_filter &filter )
+{
+    const tripoint_abs_omt center_omt = project_to<coords::omt>( center );
+    const int radius = std::max( OMAPX, filter.max_distance );
+    const std::vector<city_reference> cities = get_cities_near( center, omt_to_sm_copy( radius ) );
+    const auto it = std::find_if( cities.begin(), cities.end(),
+    [this, &filter, &center_omt]( const city_reference & elem ) {
+        const tripoint_abs_omt p = project_to<coords::omt>( elem.abs_sm_pos );
+        return elem.city->size >= filter.min_size &&
+               ( filter.max_size < 0 || elem.city->size <= filter.max_size ) &&
+               ( filter.name.empty() || elem.city->name == filter.name ) &&
+               ( filter.max_distance < 0 ||
+                 rl_dist( p.xy(), center_omt.xy() ) <= filter.max_distance ) &&
+               ( !filter.known_only || seen_more_than( p, om_vision_level::outlines ) );
+    } );
+    return it != cities.end() ? *it : city_reference::invalid;
 }
 
 void overmap_feature_grid::clear()

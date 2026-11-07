@@ -1457,7 +1457,22 @@
     "cancels": [ "CANNIBAL", "STRICT_HUMANITARIAN", "VEGETARIAN" ],
     "points": -4,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "eat_condition": {
+      "condition": {
+        "not": {
+          "or": [
+            { "npc_has_flag": "ALLERGEN_MEAT" },
+            { "npc_has_flag": "ALLERGEN_EGG" },
+            { "npc_has_flag": "ALLERGEN_MILK" },
+            { "npc_has_flag": "ANIMAL_PRODUCT" },
+            { "npc_has_flag": "ALLERGEN_CHEESE" },
+            { "npc_has_flag": "URSINE_HONEY" }
+          ]
+        }
+      },
+      "fail_message": "You're still not going to eat animal products."
+    }
   },
   {
     "type": "mutation",
@@ -4273,7 +4288,8 @@
     "cost": 0,
     "vitamin_cost": 160,
     "//": "Also allows you to break down normally indigestible triffid fiber 3x as quickly.",
-    "vitamin_rates": [ [ "triffid_fiber", 3600 ] ]
+    "vitamin_rates": [ [ "triffid_fiber", 3600 ] ],
+    "flags": [ "HERBIVORE_DIET" ]
   },
   {
     "type": "mutation",

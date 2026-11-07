@@ -1,0 +1,135 @@
+[
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_hellfire",
+    "//": "MAP-J02: fd_fire's behaviour picked through JSON: it spreads and burns as itself, smokes, makes hot air, decays like fire, hurts like fire and counts as a usable fire. Its smoke and hot air are copies of the vanilla ones, defined after it as the vanilla ones are after fd_fire.",
+    "intensity_levels": [
+      {
+        "name": "small hellfire",
+        "sym": "4",
+        "color": "magenta",
+        "dangerous": true,
+        "light_emitted": 20,
+        "translucency": 0.7,
+        "convection_temperature_mod": 300,
+        "heat_radiation": 1,
+        "hot_air_field": "audit_high_fields_hot_air1"
+      },
+      {
+        "name": "hellfire",
+        "light_emitted": 60,
+        "translucency": 0.4,
+        "heat_radiation": 2,
+        "hot_air_field": "audit_high_fields_hot_air2"
+      },
+      {
+        "name": "raging hellfire",
+        "light_emitted": 160,
+        "translucency": 0.1,
+        "heat_radiation": 3,
+        "hot_air_field": "audit_high_fields_hot_air3"
+      }
+    ],
+    "description_affix": "on",
+    "decay_amount_factor": 3,
+    "has_fire": true,
+    "priority": 4,
+    "half_life": "30 minutes",
+    "decay_mode": "fire",
+    "phase": "plasma",
+    "display_items": false,
+    "display_field": true,
+    "processors": [ { "type": "fire", "smoke_field": "audit_high_fields_smoke" }, "fungicide" ],
+    "contact_processors": [ "fire" ]
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_smoke",
+    "copy-from": "fd_smoke",
+    "legacy_enum_id": -1
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_hot_air1",
+    "copy-from": "fd_hot_air1",
+    "legacy_enum_id": -1
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_hot_air2",
+    "copy-from": "fd_hot_air2",
+    "legacy_enum_id": -1
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_hot_air3",
+    "copy-from": "fd_hot_air3",
+    "legacy_enum_id": -1
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_sparks",
+    "//": "MAP-J02: fd_electricity's arcing and contact damage picked through JSON, with no opaque variant.",
+    "intensity_levels": [
+      { "name": "test sparks", "sym": "9", "dangerous": true },
+      { "name": "test sparks" },
+      { "name": "test sparks" },
+      { "name": "test crackle" },
+      { "name": "test crackle" }
+    ],
+    "has_elec": true,
+    "half_life": "4 turns",
+    "phase": "plasma",
+    "processors": [ "arc" ],
+    "contact_processors": [ "electricity" ]
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_conveyor",
+    "//": "MAP-J02: fd_push_items' pushing, for test planks instead of rocks.",
+    "intensity_levels": [ { "name": "test conveyor", "sym": "&" } ],
+    "priority": -1,
+    "processors": [ { "type": "push_items", "items": [ "test_2x4" ] } ]
+  },
+  {
+    "type": "field_type",
+    "id": "audit_high_fields_tar",
+    "//": "MAP-J02: generic contact damage and an EOC run on contact. The second level replaces the damage and inherits the EOC.",
+    "intensity_levels": [
+      {
+        "name": "warm tar",
+        "sym": "~",
+        "color": "dark_gray",
+        "contact_damage": [
+          {
+            "damage_type": "heat",
+            "amount": 4,
+            "body_parts": "ground_contact",
+            "monster_mult": 2.0,
+            "message": "The tar burns you!",
+            "message_npc": "The tar burns <npcname>!"
+          }
+        ],
+        "eoc_on_contact": {
+          "id": "EOC_AUDIT_HIGH_FIELDS_TAR",
+          "effect": [
+            { "math": [ "audit_high_fields_tar_count += 1" ] },
+            { "math": [ "audit_high_fields_tar_intensity = _intensity" ] },
+            {
+              "if": "u_is_monster",
+              "then": [ { "math": [ "audit_high_fields_tar_monster = 1" ] } ],
+              "else": [ { "math": [ "audit_high_fields_tar_monster = 0" ] } ]
+            },
+            { "copy_var": { "context_val": "loc" }, "target_var": { "global_val": "audit_high_fields_tar_loc" } },
+            { "copy_var": { "context_val": "field" }, "target_var": { "global_val": "audit_high_fields_tar_field" } }
+          ]
+        }
+      },
+      {
+        "name": "boiling tar",
+        "contact_damage": [ { "damage_type": "heat", "amount": [ 5, 5 ], "body_parts": [ "torso" ], "monster_mult": 0 } ]
+      }
+    ],
+    "phase": "liquid"
+  }
+]
