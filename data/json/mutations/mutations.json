@@ -1736,7 +1736,9 @@
     "cancels": [ "LIGHTWEIGHT" ],
     "points": 1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "//": "DRUG_DURATION covers consume_drug use actions; alcohol and the hardcoded drugs still check the trait.",
+    "enchantments": [ { "values": [ { "value": "DRUG_DURATION", "multiply": -0.2 } ] } ]
   },
   {
     "type": "mutation",
@@ -1747,7 +1749,9 @@
     "cancels": [ "TOLERANCE" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "//": "DRUG_DURATION covers consume_drug use actions; alcohol and the hardcoded drugs still check the trait.",
+    "enchantments": [ { "values": [ { "value": "DRUG_DURATION", "multiply": 0.2 } ] } ]
   },
   {
     "type": "mutation",

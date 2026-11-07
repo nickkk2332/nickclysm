@@ -10,6 +10,7 @@
 #include <limits>
 #include <list>
 #include <memory>
+#include <string_view>
 #include <unordered_set>
 
 #include "action.h"
@@ -172,9 +173,7 @@ static const skill_id skill_traps( "traps" );
 
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
 static const trait_id trait_ILLITERATE( "ILLITERATE" );
-static const trait_id trait_LIGHTWEIGHT( "LIGHTWEIGHT" );
 static const trait_id trait_SORCERER( "SORCERER" );
-static const trait_id trait_TOLERANCE( "TOLERANCE" );
 
 static const trap_str_id tr_firewood_source( "tr_firewood_source" );
 
@@ -851,6 +850,32 @@ class drug_vitamin_reader : public generic_typed_reader<drug_vitamin_reader>
 };
 } // namespace
 
+// A consume_drug stat_adjustments stat must be one Character::mod_stat changes for good: str,
+// dex, per, int and the combat bonuses are reset every turn, so adjusting them did nothing
+// (USE-J05).
+static void check_drug_stat( const JsonObject &obj, const std::string &stat )
+{
+    static constexpr std::array<std::string_view, 8> lasting = {{
+            "hunger", "thirst", "sleepiness", "stamina", "oxygen", "healthy", "pain", "moves"
+        }
+    };
+    static constexpr std::array<std::string_view, 10> per_turn = {{
+            "str", "dex", "per", "int", "speed", "dodge", "block", "hit", "bash", "cut"
+        }
+    };
+    if( std::find( lasting.begin(), lasting.end(), stat ) != lasting.end() ) {
+        return;
+    }
+    if( std::find( per_turn.begin(), per_turn.end(), stat ) != per_turn.end() ) {
+        obj.throw_error_at( "stat_adjustments", string_format(
+                                "\"%s\" is a bonus that only lasts until the next turn: give an effect that changes it "
+                                "instead", stat ) );
+    }
+    obj.throw_error_at( "stat_adjustments", string_format(
+                            "unknown stat \"%s\" (use hunger, thirst, sleepiness, stamina, oxygen, healthy, pain or "
+                            "moves)", stat ) );
+}
+
 void consume_drug_iuse::load( const JsonObject &obj, const std::string & )
 {
     optional( obj, false, "activation_message", activation_message );
@@ -858,13 +883,49 @@ void consume_drug_iuse::load( const JsonObject &obj, const std::string & )
     optional( obj, false, "tools_needed", tools_needed );
 
     optional( obj, false, "effects", effects );
+    optional( obj, false, "remove_effects", remove_effects );
     optional( obj, false, "damage_over_time", damage_over_time );
     optional( obj, false, "stat_adjustments", stat_adjustments );
+    for( const std::pair<const std::string, int> &stat : stat_adjustments ) {
+        check_drug_stat( obj, stat.first );
+    }
     optional( obj, false, "fields_produced", fields_produced );
+    optional( obj, false, "field_count", field_count, 3 );
+    optional( obj, false, "field_radius", field_radius, 2 );
+    if( field_count < 0 ) {
+        obj.throw_error_at( "field_count", "can't be negative" );
+    }
+    if( field_radius < 0 ) {
+        obj.throw_error_at( "field_radius", "can't be negative" );
+    }
     optional( obj, false, "moves", moves, 100 );
+    if( obj.has_member( "consume_time" ) ) {
+        time_duration time = 0_turns;
+        mandatory( obj, false, "consume_time", time );
+        if( time < 0_turns ) {
+            obj.throw_error_at( "consume_time", "can't be negative" );
+        }
+        consume_time = time;
+    }
     optional( obj, false, "used_up_item", used_up_item, itype_id::NULL_ID() );
 
     optional( obj, false, "vitamins", vitamins, drug_vitamin_reader{} );
+}
+
+void consume_drug_iuse::finalize( const itype_id &my_item_type )
+{
+    for( const std::pair<const std::string, int> &field : fields_produced ) {
+        if( !field_type_str_id( field.first ).is_valid() ) {
+            debugmsg( "Item %s's consume_drug produces the unknown field %s", my_item_type.str(),
+                      field.first );
+        }
+    }
+    for( const efftype_id &eff : remove_effects ) {
+        if( !eff.is_valid() ) {
+            debugmsg( "Item %s's consume_drug removes the unknown effect %s", my_item_type.str(),
+                      eff.str() );
+        }
+    }
 }
 
 void consume_drug_iuse::info( const item &, std::vector<iteminfo> &dump ) const
@@ -921,14 +982,14 @@ std::optional<int> consume_drug_iuse::use( Character *p, item &it, map *here,
             return std::nullopt;
         }
     }
-    // Apply the various effects.
+    for( const efftype_id &eff : remove_effects ) {
+        p->remove_effect( eff );
+    }
+    // Apply the various effects. How long they last is the DRUG_DURATION enchantment value's
+    // (Substance Tolerance x0.8, Lightweight x1.2) (USE-J05)
     for( const iuse::effect_data &eff : effects ) {
-        time_duration dur = eff.duration;
-        if( p->has_trait( trait_TOLERANCE ) ) {
-            dur *= .8;
-        } else if( p->has_trait( trait_LIGHTWEIGHT ) ) {
-            dur *= 1.2;
-        }
+        const time_duration dur = p->enchantment_cache->modify_value( enchant_vals::mod::DRUG_DURATION,
+                                  eff.duration );
         p->add_effect( eff.id, dur, eff.bp, eff.permanent, eff.intensity );
     }
     //Apply the various damage_over_time
@@ -940,8 +1001,8 @@ std::optional<int> consume_drug_iuse::use( Character *p, item &it, map *here,
     }
     for( const auto &field : fields_produced ) {
         const field_type_id fid = field_type_id( field.first );
-        for( int i = 0; i < 3; i++ ) {
-            point_rel_ms offset( rng( -2, 2 ), rng( -2, 2 ) );
+        for( int i = 0; i < field_count; i++ ) {
+            point_rel_ms offset( rng( -field_radius, field_radius ), rng( -field_radius, field_radius ) );
             here->add_field( p->pos_bub( *here ) + offset, fid, field.second );
         }
     }
@@ -5719,6 +5780,66 @@ void weigh_self_actor::load( const JsonObject &jo, const std::string & )
 std::unique_ptr<iuse_actor> weigh_self_actor::clone() const
 {
     return std::make_unique<weigh_self_actor>( *this );
+}
+
+void wash_actor::load( const JsonObject &obj, const std::string & )
+{
+    const washing_rules defaults;
+    optional( obj, false, "soft", rules.soft, defaults.soft );
+    optional( obj, false, "hard", rules.hard, defaults.hard );
+    optional( obj, false, "water_requirement", rules.water, defaults.water );
+    optional( obj, false, "cleanser_requirement", rules.cleanser, defaults.cleanser );
+    optional( obj, false, "water_per", rules.water_per, defaults.water_per );
+    optional( obj, false, "cleanser_per", rules.cleanser_per, defaults.cleanser_per );
+    optional( obj, false, "time", rules.time, defaults.time );
+    optional( obj, false, "time_per", rules.time_per, defaults.time_per );
+    if( !rules.soft && !rules.hard ) {
+        obj.throw_error( "washes nothing: \"soft\" and \"hard\" are both false" );
+    }
+    const auto check_per = [&obj]( const std::string_view member, const units::volume & per ) {
+        if( per <= 0_ml ) {
+            obj.throw_error_at( member, "must be more than 0 ml" );
+        }
+    };
+    check_per( "water_per", rules.water_per );
+    check_per( "cleanser_per", rules.cleanser_per );
+    check_per( "time_per", rules.time_per );
+    if( rules.time < 0_turns ) {
+        obj.throw_error_at( "time", "can't be negative" );
+    }
+}
+
+void wash_actor::finalize( const itype_id &my_item_type )
+{
+    const std::array<requirement_id, 2> supplies = {{ rules.water, rules.cleanser }};
+    for( const requirement_id &req : supplies ) {
+        if( !req.is_empty() && !req.is_null() && !req.is_valid() ) {
+            debugmsg( "Item %s has a wash action with the unknown requirement %s",
+                      my_item_type.str(), req.str() );
+        }
+    }
+}
+
+std::optional<int> wash_actor::use( Character *p, item &, map *, const tripoint_bub_ms & ) const
+{
+    if( p == nullptr ) {
+        return std::nullopt;
+    }
+    if( p->fine_detail_vision_mod() > 4 ) {
+        p->add_msg_if_player( _( "You can't see to do that!" ) );
+        return std::nullopt;
+    }
+    // As the WASH_* use actions: washing with no free space might break it
+    if( p->free_space() <= 0_ml ) {
+        p->add_msg_if_player( _( "You're carrying too much to clean anything." ) );
+        return std::nullopt;
+    }
+    return iuse::wash_items( p, rules );
+}
+
+std::unique_ptr<iuse_actor> wash_actor::clone() const
+{
+    return std::make_unique<wash_actor>( *this );
 }
 
 void sew_advanced_actor::load( const JsonObject &obj, const std::string & )
