@@ -186,6 +186,12 @@ std::list<item> get_harvest_items( const itype &type, int plant_count,
 std::vector<seed_tuple> get_seed_entries( const std::vector<item_location> &seed_inv );
 int query_seed( const std::vector<seed_tuple> &seed_entries );
 void plant_seed( Character &you, const tripoint_bub_ms &examp, const itype_id &seed_id );
+/**
+ * Turns @p examp's terrain and furniture into a crop just sown with @p seed_id: plantable
+ * furniture becomes its plant_data transform, plantable terrain dirt (or a greenhouse) with a
+ * seed, anything else gets a seed. The seed item itself is the caller's to put there.
+ */
+void set_seeded_terrain( map &here, const tripoint_bub_ms &examp, const itype_id &seed_id );
 void clear_overgrown( Character &you, const tripoint_bub_ms &examp );
 void harvest_plant_ex( Character &you, const tripoint_bub_ms &examp );
 void harvest_plant( Character &you, const tripoint_bub_ms &examp, bool from_activity );

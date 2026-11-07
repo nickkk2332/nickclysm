@@ -823,11 +823,10 @@ bool veh_interact::update_part_requirements( map &here )
         msg = string_format( _( "Only one %1$s powered engine can be installed." ), conflict.value() );
         return false;
     }
-    if( veh->has_part( "NO_MODIFY_VEHICLE" ) && !sel_vpart_info->has_flag( "SIMPLE_PART" ) ) {
-        msg = _( "This vehicle cannot be modified in this way.\n" );
-        return false;
-    } else if( sel_vpart_info->has_flag( "NO_INSTALL_PLAYER" ) ) {
-        msg = _( "This part cannot be installed.\n" );
+    // the same gates hold for replacing a broken part (do_repair)
+    if( const std::string forbidden = veh_utils::install_forbidden_reason( *veh, *sel_vpart_info );
+        !forbidden.empty() ) {
+        msg = forbidden;
         return false;
     }
 
@@ -1163,6 +1162,12 @@ void veh_interact::do_repair( map &here )
         if( pt.is_broken() ) {
             ok = format_reqs( nmsg, vp.install_requirements(), vp.install_skills,
                               vp.install_time( player_character ) );
+            // replacing it is installing a new one: the install gates hold (VINT-B05)
+            const std::string forbidden = veh_utils::install_forbidden_reason( *veh, vp );
+            if( !forbidden.empty() ) {
+                nmsg += colorize( forbidden, c_light_red );
+                ok = false;
+            }
 
             if( pt.info().has_flag( "NEEDS_JACKING" ) ) {
 
@@ -1183,7 +1188,7 @@ void veh_interact::do_repair( map &here )
             if( !pt.is_repairable() ) {
                 nmsg += colorize( _( "This part cannot be repaired.\n" ), c_light_red );
                 ok = false;
-            } else if( veh->has_part( "NO_MODIFY_VEHICLE" ) && !vp.has_flag( "SIMPLE_PART" ) ) {
+            } else if( veh_utils::modification_forbidden( *veh, vp ) ) {
                 nmsg += colorize( _( "This vehicle cannot be repaired.\n" ), c_light_red );
                 ok = false;
             } else {
@@ -1796,8 +1801,7 @@ bool veh_interact::can_remove_part( map &here, int idx, const Character &you )
         return false;
     }
 
-    if( veh->has_part( "NO_MODIFY_VEHICLE" ) && !sel_vpart_info->has_flag( "SIMPLE_PART" ) &&
-        !smash_remove ) {
+    if( veh_utils::modification_forbidden( *veh, *sel_vpart_info ) && !smash_remove ) {
         msg = _( "This vehicle cannot be modified in this way.\n" );
         return false;
     } else if( sel_vpart_info->has_flag( "NO_UNINSTALL" ) ) {

@@ -3141,8 +3141,14 @@ std::optional<int> repair_item_actor::use( Character *p, item &it,
     // We also need to store which repair action this is in the activity: its id (its type, the
     // item_action_type, unless it has an "id"; old saves have the type)
     p->activity.str_values.push_back( id );
-    // storing of item_location to support repairs by tools on the ground
-    p->activity.targets.emplace_back( form_loc( *p, here, pos, it ) );
+    // storing of item_location to support repairs by tools on the ground. A tool a vehicle
+    // provides (a PSEUDO item) is nowhere: vehicle::use_vehicle_tool hands the activity the
+    // tile to find it on (VINT-J09), so it isn't an error that it can't be found.
+    if( it.has_flag( flag_PSEUDO ) ) {
+        p->activity.targets.emplace_back( try_form_loc( *p, here, pos, it ).value_or( item_location() ) );
+    } else {
+        p->activity.targets.emplace_back( form_loc( *p, here, pos, it ) );
+    }
     // All repairs are done in the activity, including charge cost and target item selection
     return 0;
 }

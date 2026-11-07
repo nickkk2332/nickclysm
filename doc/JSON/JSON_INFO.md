@@ -3025,7 +3025,7 @@ See [MUTATIONS.md](MUTATIONS.md)
 ]
 ```
 
-Every vehicle prototype is also a group of its own id that holds only that vehicle.
+Every vehicle prototype (except an `abstract` one) is also a group of its own id that holds only that vehicle.  A group left with nothing to pick (no vehicles, or none of any weight, say after a `delete`) is an error when the game data loads, and spawns nothing.
 
 A second definition of a group that already exists (from vanilla or an earlier mod) adds its `vehicles` to the group, like a `monstergroup`.  To change the group instead:
 
@@ -3054,13 +3054,17 @@ Vehicle components when installed on a vehicle.
                               // muffler part: % of the engine noise left (40 is 60% quieter;
                               //   100 doesn't muffle at all)
                               // horn part volume
+                              // reversing beeper (BEEPER) part volume
                               // light part intensity
                               // recharger part charging speed in watts
                               // funnel part: radius of the opening in mm (the area is pi * r^2)
                               // shock absorber part: damage it takes off the shock of a distant
                               //   collision to the other parts on its tile
                               // rotor part: extra diameter in meters
-                              // mirror part (EXTENDS_VISION): how far it extends vision
+                              // camera part (EXTENDS_VISION and CAMERA): how far it sees, less
+                              //   as it gets damaged (a plain mirror doesn't use it)
+                              // reaper part (REAPER): the most plants a harvest yields, unless
+                              //   its "reaper" field sets them (see REAPERs)
 "funnel_radius": "300 mm",    // (Optional) FUNNEL: radius of the opening; overrides bonus
 "muffle_factor": 0.4,         // (Optional) MUFFLER: share of the engine noise left at full health,
                               // 0 to 1 (0.4 is 60% quieter); overrides bonus
@@ -3118,7 +3122,15 @@ Vehicle components when installed on a vehicle.
   },
   "removal": { "skills": [ [ "mechanics", 1 ] ], "time": "200 s", "using": [ [ "vehicle_screw", 1 ] ] },
   "repair": { "skills": [ [ "mechanics", 1 ] ], "time": "20 s", "using": [ [ "adhesive", 1 ] ] }
-},
+},                            // With copy-from, each block given replaces the copied block as a
+                              // whole: "install": { "time": "5 m" } leaves the install with no
+                              // skills, tools or components (only the part's item), and a
+                              // "repair" block with no "using", "tools", "qualities" or
+                              // "components" makes the part unrepairable.  A block not given is
+                              // copied.  An action's XP comes from its own skills and time: a
+                              // repair gives XP in the repair skills for the repair time times
+                              // the damage levels repaired, a removal half of what its removal
+                              // skills and time would give.
 "control_requirements": {     // (Optional) Control requirements of the vehicle this part is installed.
   "air": {                    // Requirements of flying in air.
     "proficiencies": [ "prof_helicopter_pilot" ], // "proficiencies" is a list of proficiency names.
@@ -3128,10 +3140,16 @@ Vehicle components when installed on a vehicle.
                               // name and skill level.
   }
 },
-"pseudo_tools" : [            // Crafting tools provided by this part
-  { "id": "hotplate", "hotkey": "h" },
+"pseudo_tools" : [            // Crafting tools provided by this part; with copy-from it
+  { "id": "hotplate", "hotkey": "h" }, // replaces the copied tools, and [] removes them
   { "id": "pot" }
 ],
+"enchantments": [ "ench_id", { "condition": "ACTIVE", "values": [ ] } ], // (Optional)
+                              // Enchantments the part gives, ids or inline definitions (see
+                              // MAGIC.md); an inline one gets the id INLINE_ENCH_vpart_<part id>_<n>.
+                              // With copy-from the list replaces the copied one, "extend":
+                              // { "enchantments": [ ... ] } adds to it and "delete":
+                              // { "enchantments": [ "ench_id" ] } removes enchantments by id.
 "folded_volume": "750 ml", // volume this vpart takes in folded form, undefined or null disables folding
 "folding_tools": [ "needle_curved" ], // tool itype_ids required for folding
 "folding_time": "100 seconds", // time to fold this part
@@ -3248,6 +3266,14 @@ Examples:
 * `rail_wheel` has the field set to `{ "RAIL": [ 2, 8 ] }`. If wheel is on terrain flagged `RAIL` the traction is overridden to be 1/2 of value calculated by `map::move_cost_ter_furn`, this value is the first element and considered an override, so if there had been modifiers applied prior to this they are ignored. If on terrain not flagged with `RAIL` then traction will be 1/8 of base value.
 
 
+#### The following optional field is specific to REAPERs.
+```jsonc
+"reaper": {
+  "plant_yield": [ 1, 4 ],  // (Optional, default [ 1, bonus ]) The least and most plants a harvest yields
+  "seed_yield": [ 1, 3 ]    // (Optional, default [ 1, 3 ]) The least and most seeds it yields
+}
+```
+
 #### The following optional fields are specific to ROTORs.
 ```jsonc
 "rotor_diameter": 15,         // Rotor diameter in meters.  Larger rotors provide more lift. This also determines the size of the rotor during collisions.
@@ -3294,7 +3320,13 @@ variable: the part's tile).  See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md
   "eoc_on_start": "EOC_DRYER_START",       // Id or inline EOC run when the avatar starts it; the cycle
                                            // starts only if its condition holds (its false_effect can
                                            // say why not), and its effects can use up water, detergent...
-  "eoc_on_finish": "EOC_DRYER_DONE"        // Id or inline EOC run when it ends
+  "eoc_on_finish": "EOC_DRYER_DONE",       // Id or inline EOC run when it ends
+  "item_condition": { "u_has_flag": "FILTHY" }, // (Optional) The cycle starts only if every item
+                                           // inside meets this condition, with the item as alpha
+                                           // talker and the vehicle as beta (checked before
+                                           // eoc_on_start)
+  "item_condition_message": "Take out what isn't filthy first." // Shown when an item doesn't
+                                           // (else "The <part> can't process what it holds.")
 }
 ```
 `e`xamining the part's tile offers "Start the <part> (<duration>)", or "Stop the <part>" while it runs. An empty part can't be started. While the cycle runs nothing can be put in or taken out of the part, as with the washing machine. The EOCs run like an `activatable_eoc`: the avatar is the alpha talker, the vehicle the beta talker, and they get the context variables `vpart_id`, `vpart_variant` and `vpart_pos`. A cycle that ran out while the vehicle was away from the player finishes when it comes back. The vanilla washing machine, dishwasher, autoclave and mobile weather station keep their own code (their flags).
@@ -3311,6 +3343,7 @@ It also has a hotplate that can be activated by examining it with `e` then `h` o
   { "id": "pot" }
 ],
 ```
+An activated tool draws what it uses (battery charge, or a fuel such as gasoline) from the vehicle.  Any tool with a `repair_item` use works this way, a welder's or not: the repair finds it on the part's tile for each attempt, and the vehicle pays for what each attempt uses.
 
 ### Vehicle Part Locations
 
@@ -3371,8 +3404,8 @@ Damage resistance values, used by:
   "y" : 8,   // The y placement. Can be a single value or a range of possibilities. Not needed if placement is specified.
   "facing" : [90,270], // The facing of the vehicle. Can be a single value or an array of possible values. Not needed if placement is specified.
   "number" : 1, // The number of vehicles to spawn.
-  "fuel" : -1, // The fuel of the new vehicles. Defined in percentage. 0 is empty, 100 is full tank, -1 is random from 7% to 35% (default).
-  "status" : 1  // The status of the new vehicles. -1 = light damage (default), 0 = undamaged, 1 = disabled: destroyed seats, controls, tanks, tires, OR engine.
+  "fuel" : -1, // (Optional) The fuel of the new vehicles. Defined in percentage. 0 is empty, 100 is full tank, -1 is random from 7% to 35% (default).
+  "status" : 1  // (Optional) The status of the new vehicles. -1 = light damage (default), 0 = undamaged, 1 = disabled: destroyed seats, controls, tanks, tires, OR engine, 2 = pristine: undamaged, with no faults and no security. Any other value is an error.
 } } ]
 ```
 

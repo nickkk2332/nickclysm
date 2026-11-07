@@ -2280,7 +2280,8 @@ activity_reason_info multi_vehicle_repair_activity_actor::multi_activity_can_do(
         const vpart_info &vpinfo = part_elem->info();
         int vpindex = veh->index_of_part( part_elem, true );
         // if part is undamaged or beyond repair - can skip it.
-        if( !part_elem->is_repairable() ) {
+        // A NO_MODIFY_VEHICLE vehicle can't be repaired, as in veh_interact (VINT-B05)
+        if( !part_elem->is_repairable() || veh_utils::modification_forbidden( *veh, vpinfo ) ) {
             continue;
         }
         // If repairing this part would make the vehicle non-flyable, avoid it

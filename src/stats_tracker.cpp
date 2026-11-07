@@ -388,6 +388,8 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
     static const std::vector<std::string> vehicle_hit = {
         "target_name", "velocity_delta", "damage"
     };
+    // a summary per vehicle name (which players choose) would grow without end
+    static const std::vector<std::string> vehicle_name = { "vehicle_name" };
     switch( type ) {
         case event_type::becomes_wanted:
         case event_type::character_smashes_tile:
@@ -401,6 +403,12 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
             return monster_hurt;
         case event_type::vehicle_collides:
             return vehicle_hit;
+        case event_type::vehicle_part_installed:
+        case event_type::vehicle_part_removed:
+        case event_type::vehicle_part_repaired:
+        case event_type::vehicle_engine_started:
+        case event_type::vehicle_part_toggled:
+            return vehicle_name;
         default:
             return none;
     }

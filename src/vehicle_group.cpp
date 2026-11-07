@@ -141,6 +141,14 @@ void VehicleGroup::add_to_group( const vgroup_id &group, const vproto_id &type,
 void VehicleGroup::finalize_all()
 {
     vgroup_factory.finalize();
+    // pick() on a group with nothing to pick spawns nothing (VINT-B09): say so at load, as
+    // after a "delete" that took its last vehicle
+    for( const VehicleGroup &group : vgroup_factory.get_all() ) {
+        if( group.vehicles.get_weight() <= 0 ) {
+            debugmsg( "vehicle group %s has no vehicles to pick (none, or none of any weight)",
+                      group.id.str() );
+        }
+    }
 }
 
 void VehicleGroup::reset()
@@ -186,9 +194,15 @@ const VehicleLocation *VehiclePlacement::pick() const
 VehicleFunction_json::VehicleFunction_json( const JsonObject &jo )
     : vehicle( jo.get_string( "vehicle" ) ),
       number( jo, "number" ),
-      fuel( jo.get_int( "fuel" ) ),
-      status( jo.get_int( "status" ) )
+      // optional, with the defaults JSON_INFO.md documents (VINT-B09)
+      fuel( jo.get_int( "fuel", -1 ) ),
+      status( jo.get_int( "status", static_cast<int>( veh_spawn_status::DEFAULT_LIGHT_DMG ) ) )
 {
+    if( status < static_cast<int>( veh_spawn_status::DEFAULT_LIGHT_DMG ) ||
+        status >= static_cast<int>( veh_spawn_status::LAST ) ) {
+        jo.throw_error_at( "status", "status must be -1 (light damage), 0 (undamaged), "
+                           "1 (disabled) or 2 (pristine)" );
+    }
     if( jo.has_string( "placement" ) ) {
         placement = jo.get_string( "placement" );
     } else {
@@ -212,12 +226,18 @@ void VehicleFunction_json::apply( map &m, const std::string &terrain_name ) cons
                 return;
             }
             const tripoint_bub_ms pos{ loc->pick_point(), m.get_abs_sub().z() };
-            m.add_vehicle( vehicle->pick(), pos, loc->pick_facing(), fuel,
-                           static_cast<veh_spawn_status>( status ) );
+            const vproto_id picked = vehicle->pick();
+            if( !picked.is_null() ) {
+                m.add_vehicle( picked, pos, loc->pick_facing(), fuel,
+                               static_cast<veh_spawn_status>( status ) );
+            }
         } else {
             const tripoint_bub_ms pos{ location->pick_point(), m.get_abs_sub().z()};
-            m.add_vehicle( vehicle->pick(), pos, location->pick_facing(), fuel,
-                           static_cast<veh_spawn_status>( status ) );
+            const vproto_id picked = vehicle->pick();
+            if( !picked.is_null() ) {
+                m.add_vehicle( picked, pos, location->pick_facing(), fuel,
+                               static_cast<veh_spawn_status>( status ) );
+            }
         }
     }
 }
@@ -310,8 +330,10 @@ static void builtin_parkinglot( map &m, std::string_view )
             } else {
                 facing = one_in( 2 ) ? 0_degrees : 180_degrees;
             }
-            m.add_vehicle( VehicleGroup_parkinglot->pick(), pos_p, facing, -1,
-                           veh_spawn_status::DEFAULT_LIGHT_DMG );
+            const vproto_id picked = VehicleGroup_parkinglot->pick();
+            if( !picked.is_null() ) {
+                m.add_vehicle( picked, pos_p, facing, -1, veh_spawn_status::DEFAULT_LIGHT_DMG );
+            }
         }
     }
 }

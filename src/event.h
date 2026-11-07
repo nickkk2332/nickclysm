@@ -160,6 +160,14 @@ enum class event_type : int {
     vehicle_collides,
     vehicle_part_destroyed,
     vehicle_engine_stalls,
+    // VINT-J06: vehicle work by a character, with the vehicle as beta talker
+    vehicle_part_installed,
+    vehicle_part_removed,
+    vehicle_part_repaired,
+    vehicle_engine_started,
+    vehicle_engine_stopped,
+    vehicle_part_toggled,
+    appliance_placed,
     num_event_types // last
 };
 
@@ -227,7 +235,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 136,
+static_assert( static_cast<int>( event_type::num_event_types ) == 143,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1213,6 +1221,81 @@ template<>
 struct event_spec<event_type::vehicle_engine_stalls> {
     static constexpr std::array<event_field, 1> fields = {{
             { "reason", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a character finished installing a part on a vehicle (the vehicle activity, not an
+// EOC); its EOCs get the character as alpha and the vehicle as beta. vpart_id: the part's id
+template<>
+struct event_spec<event_type::vehicle_part_installed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a character removed a part from a vehicle (also an appliance taken down); the
+// vehicle is the beta talker, unless the removal took its last part
+template<>
+struct event_spec<event_type::vehicle_part_removed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a character repaired a vehicle part, or replaced a broken one (replaced); the
+// vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_part_repaired> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+            { "replaced", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// VINT-J06: a character started a vehicle's engines (some of them started); the vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_engine_started> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vehicle_name", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a running vehicle's engines were switched off (vehicle::stop_engines; a stall is
+// vehicle_engine_stalls); alpha is the vehicle, as for a stall
+template<>
+struct event_spec<event_type::vehicle_engine_stopped> : event_spec_empty {};
+
+// VINT-J06: a character switched a vehicle part on or off from the vehicle's electronics menu
+// (once per part switched); the vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_part_toggled> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+            { "enabled", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// VINT-J06: a character placed an appliance (or wiring); the new appliance is the beta talker
+template<>
+struct event_spec<event_type::appliance_placed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
         }
     };
 };

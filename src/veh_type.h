@@ -4,6 +4,7 @@
 
 #include <array>
 #include <bitset>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@ class JsonOut;
 class JsonValue;
 class vehicle;
 class vpart_info;
+struct const_dialogue;
 struct vehicle_prototype;
 template <typename T> class generic_factory;
 
@@ -205,6 +207,10 @@ struct vpslot_processing_cycle {
     // start EOC's condition holds
     std::optional<effect_on_condition_id> eoc_on_start;
     std::optional<effect_on_condition_id> eoc_on_finish;
+    // VINT-J08: the cycle starts only if every item inside meets it, the item as alpha talker
+    // and the vehicle as beta (all filthy, no CBMs...); if one doesn't, item_condition_message
+    std::function<bool( const_dialogue const & )> item_condition;
+    translation item_condition_message;
 };
 
 struct vpslot_terrain_transform {
@@ -357,6 +363,10 @@ class vpart_info
         std::vector<enchantment_id> enchantments;
         std::optional<effect_on_condition_id> activatable_eoc;
         std::optional<vpslot_processing_cycle> processing_cycle;
+        // REAPER: how many plants and seeds one harvest yields, at random between the two
+        // bounds; without a plant_yield, between 1 and bonus (VINT-J05)
+        std::optional<std::pair<int, int>> reaper_plant_yield;
+        std::pair<int, int> reaper_seed_yield = { 1, 3 };
 
         std::set<std::pair<itype_id, int>> get_pseudo_tools() const;
 
@@ -506,7 +516,8 @@ class vpart_info
         // Legacy catch-all, read by the part's flags (doc/JSON/JSON_INFO.md):
         // seatbelt (crash damage it takes off), muffler (% of the noise left), horn (sound volume),
         // light (intensity), recharging (watts), funnel (radius in mm), shock absorber (damage it
-        // takes off), rotor (extra diameter), mirror (vision range)
+        // takes off), rotor (extra diameter), camera (vision range), beeper (volume), reaper (the
+        // most plants a harvest yields)
         int bonus = 0;
 
         // Typed fields for some of those (VEH-J07); each falls back on bonus when unset
@@ -586,7 +597,10 @@ struct vehicle_prototype {
 
             void deserialize( const JsonObject &jo );
             bool operator==( const zone_def &other ) const {
-                return zone_type == other.zone_type && name == other.name && filter == other.name && pt == other.pt;
+                // filter == other.filter: it compared the filter with the other's name, so
+                // "delete" couldn't remove a zone (VINT-B08)
+                return zone_type == other.zone_type && name == other.name && filter == other.filter &&
+                       pt == other.pt;
             }
         };
 

@@ -897,6 +897,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```NANOFAB_TEMPLATE``` This item is nanofabricator template, and can use related syntax.
 - ```NEEDS_UNFOLD``` Has an additional time penalty upon wielding.  For melee weapons and guns this is offset by the relevant skill.  Stacks with `SLOW_WIELD`.
 - ```NO_CLEAN``` this item is impossible to clean.
+- ```NO_MACHINE_HARVEST``` A seed whose crop a vehicle `REAPER` leaves alone (the fungal and Marloss seeds), to be harvested by hand.
 - ```NO_PACKED``` This item is not protected against contamination and won't stay sterile.  Only applies to CBMs.
 - ```NO_REPAIR``` Prevents repairing of this item even if otherwise suitable tools exist.
 - ```NO_SALVAGE``` Item cannot be broken down through a salvage process.  Best used when something should not be able to be broken down (i.e. base components like leather patches).
@@ -1764,7 +1765,7 @@ Note: Vehicle parts requiring other parts is defined by setting a `requires_flag
 
 Note: Parts that can be switched on and off from the vehicle's electronics menu get that switch from their flag: a flag whose definition has a `vehicle_toggle` field (i.e. the `CONE_LIGHT` flag contains `"vehicle_toggle": { "name": "headlights", "hotkey": "TOGGLE_HEADLIGHT" }`). All parts with the flag switch together. See [Vehicle toggles](JSON_INFO.md#vehicle-toggles) for adding one in a mod.
 
-- ```ADVANCED_PLANTER``` This planter doesn't spill seeds and avoids damaging itself on non-diggable surfaces.
+- ```ADVANCED_PLANTER``` This planter avoids damaging itself where it can't sow.
 - ```AIRCRAFT_REPAIRABLE_NOPROF``` Allows the player to safely remove part from an aircraft without any proficiency.
 - ```AISLE_LIGHT``` This part lightens up surroundings.
 - ```AISLE``` Player can move over this part with less speed penalty than normal.
@@ -1841,9 +1842,9 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```NEEDS_WHEEL_MOUNT_MEDIUM``` Can only be installed on a part with `WHEEL_MOUNT_MEDIUM` flag.
 - ```NEEDS_WINDOW``` Can only be installed on a part with `WINDOW` flag.
 - ```NO_INSTALL_HIDDEN``` Part can't be installed by player and hidden in install menu (e.g. power cords, inflatable boat parts, summoned vehicle parts).
-- ```NO_INSTALL_PLAYER``` Part can't be installed by player but visible in install menu (e.g. helicopter rotors).
+- ```NO_INSTALL_PLAYER``` Part can't be installed by player but visible in install menu (e.g. helicopter rotors).  A broken one can't be replaced by players either.
 - ```NO_LEAK``` Causes a boat hull to float even when damaged.
-- ```NO_MODIFY_VEHICLE``` Installing a part with this flag on a vehicle will mean that it can no longer be modified.  Parts with this flag should not be installable by players.
+- ```NO_MODIFY_VEHICLE``` Installing a part with this flag on a vehicle will mean that it can no longer be modified: players can't install, replace, repair or remove its parts, nor NPCs repair them, except `SIMPLE_PART` ones (and `SMASH_REMOVE` ones can still be smashed off).  Parts with this flag should not be installable by players.
 - ```NO_REPAIR``` Cannot be repaired.
 - ```NO_UNINSTALL``` Cannot be uninstalled.
 - ```OBSTACLE``` Cannot walk through part, unless the part is also `OPENABLE`.
@@ -1855,12 +1856,12 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```OPENCLOSE_INSIDE```  Can be opened or closed, but only from inside the vehicle.
 - ```OVER``` Can be mounted over other parts.
 - ```PERPETUAL``` If paired with REACTOR, part produces electrical power without consuming fuel.
-- ```PLANTER``` Plants seeds into tilled dirt, spilling them when the terrain underneath is unsuitable.  It is damaged by running it over non-`DIGGABLE` surfaces.
+- ```PLANTER``` Sows the first seed in its cargo that can be sown on the tile underneath, as by hand: on terrain with the seed's `required_terrain_flag` (`PLANTABLE` by default: upturned dirt, a tilled greenhouse) and no furniture, or in furniture with that flag and `plant_data` (a planter box).  Seeds that can't be sown there stay in it.  Unless it is an `ADVANCED_PLANTER`, it is damaged where it can't sow on ground that is neither `PLOWABLE` nor `PLANTABLE`.
 - ```PLOW``` Tills the soil underneath the part while active.  Takes damage from unsuitable terrain at a level proportional to the speed of the vehicle.
 - ```POWER_TRANSFER``` Transmits power to and from an attached thingy (probably a vehicle).
 - ```PROTRUSION``` Part sticks out so no other parts can be installed over it.
 - ```REACTOR``` When enabled, part consumes fuel to generate epower.
-- ```REAPER``` Cuts down mature crops, depositing them on the square.
+- ```REAPER``` Harvests crops that are ready (furniture with `GROWTH_HARVEST`, in a field or a planter box, as by hand) and clears overgrown ones (`GROWTH_OVERGROWN`), depositing the harvest on the square (or in its cargo, if it is `CARGO`), and leaves the furniture the crop grew in (its `plant_data` `base`).  Crops from `NO_MACHINE_HARVEST` seeds are left alone.  How much it yields is set by its `reaper` field (see JSON_INFO.md).
 - ```RECHARGE``` Recharge items with the same flag (currently only the rechargeable battery mod).
 - ```REMOTE_CONTROLS``` Once installed, allows using vehicle through remote controls.
 - ```RESIST_RUNOVER_DAMAGE``` For wheels, doubles effective hardness when calculating chance to be damaged when running over items. Only useful on WHEEL parts.

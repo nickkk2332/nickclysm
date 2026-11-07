@@ -1193,6 +1193,13 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::vehicle_collides:
         case event_type::vehicle_part_destroyed:
         case event_type::vehicle_engine_stalls:
+        case event_type::vehicle_part_installed:
+        case event_type::vehicle_part_removed:
+        case event_type::vehicle_part_repaired:
+        case event_type::vehicle_engine_started:
+        case event_type::vehicle_engine_stopped:
+        case event_type::vehicle_part_toggled:
+        case event_type::appliance_placed:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

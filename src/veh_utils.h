@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -16,7 +17,12 @@
 
 class Character;
 class map;
+namespace cata
+{
+class event;
+}  // namespace cata
 class temp_crafting_inventory;
+class time_duration;
 class vehicle;
 class vpart_info;
 struct uilist_entry;
@@ -24,8 +30,25 @@ struct vehicle_part;
 
 namespace veh_utils
 {
-/** Calculates xp for interacting with given part. */
-int calc_xp_gain( const vpart_info &vp, const skill_id &sk, const Character &who );
+/**
+ * XP @p who earns in @p sk for an action on a vehicle part that needs @p skills (the part's
+ * install, repair or removal skills) and takes @p time (unscaled by skill): none unless @p sk is
+ * one of @p skills; 60 an hour up to one level above the requirement, falling with the square
+ * of the levels above it.
+ */
+int calc_xp_gain( const std::map<skill_id, int> &skills, const time_duration &time,
+                  const skill_id &sk, const Character &who );
+/**
+ * Whether a vehicle's NO_MODIFY_VEHICLE parts forbid players to install, replace, repair or
+ * remove @p vpi on it (a SIMPLE_PART stays allowed).
+ */
+bool modification_forbidden( const vehicle &veh, const vpart_info &vpi );
+/**
+ * Why a player can't install @p vpi on @p veh, or replace a broken one with a new one: the
+ * vehicle can't be modified (see modification_forbidden), or @p vpi is NO_INSTALL_PLAYER.
+ * Empty when they can.
+ */
+std::string install_forbidden_reason( const vehicle &veh, const vpart_info &vpi );
 /**
  * @return a pointer to vehicle_part repairable by \p who_arg
  * If no such part exists, returns a pointer to vehicle_part replaceable by \p whoarg
@@ -44,6 +67,12 @@ bool repair_part( map &here, vehicle &veh, vehicle_part &pt, Character &who );
  */
 const temp_crafting_inventory &repair_inventory( const Character &who, const tripoint_bub_ms &pos,
         int radius );
+
+/**
+ * Sends @p e (a vehicle event, VINT-J06) with @p veh as the beta talker; its EOCs' alpha is the
+ * character @p e names, or the avatar for an event that names none.
+ */
+void send_vehicle_event( vehicle &veh, const cata::event &e );
 
 /** Whether @p who could install @p vpart somewhere on @p veh, checked against @p inv. */
 bool can_install_anywhere( const Character &who, const temp_crafting_inventory &inv,

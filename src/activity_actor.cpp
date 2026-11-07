@@ -321,7 +321,6 @@ static const flag_id json_flag_NO_RELOAD( "NO_RELOAD" );
 static const furn_str_id furn_f_crate_o( "f_crate_o" );
 static const furn_str_id furn_f_gunsafe_mj( "f_gunsafe_mj" );
 static const furn_str_id furn_f_gunsafe_ml( "f_gunsafe_ml" );
-static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 static const furn_str_id furn_f_safe_c( "f_safe_c" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
 
@@ -7849,18 +7848,8 @@ void plant_seed_activity_actor::finish( player_activity &act, Character &who )
         }
         used_seed.front().set_flag( json_flag_HIDDEN_ITEM );
         here.add_item_or_charges( examp, used_seed.front() );
-        if( here.has_flag_furn( seed_id->seed->required_terrain_flag, examp ) &&
-            here.furn( examp )->plant != nullptr ) {
-            here.furn_set( examp, here.furn( examp )->plant->transform );
-        } else if( seed_id->seed->required_terrain_flag == ter_furn_flag::TFLAG_PLANTABLE ) {
-            if( here.ter( examp ).id() == ter_t_greenhouse_tilled ) {
-                here.set( examp, ter_t_greenhouse, furn_f_plant_seed );
-            } else {
-                here.set( examp, ter_t_dirt, furn_f_plant_seed );
-            }
-        } else {
-            here.furn_set( examp, furn_f_plant_seed );
-        }
+        // shared with the vehicle planter (VINT-J05)
+        iexamine::set_seeded_terrain( here, examp, seed_id );
         who.add_msg_player_or_npc( _( "You plant some %s." ), _( "<npcname> plants some %s." ),
                                    item::nname( seed_id ) );
     }
@@ -12239,9 +12228,14 @@ void vehicle_activity_actor::complete_vehicle( player_activity &act, Character &
             you.add_msg_if_player( m_good, _( "You install a %1$s into the %2$s." ), vp_new.name(), veh.name );
 
             for( const auto &sk : vpinfo.install_skills ) {
-                you.practice( sk.first, veh_utils::calc_xp_gain( vpinfo, sk.first, you ) );
+                you.practice( sk.first, veh_utils::calc_xp_gain( vpinfo.install_skills,
+                              vpinfo.install_moves, sk.first, you ) );
             }
             here.add_vehicle_to_cache( &veh );
+            // VINT-J06
+            veh_utils::send_vehicle_event( veh,
+                                           cata::event::make<event_type::vehicle_part_installed>( you.getID(), part_id.str(),
+                                                   veh.name ) );
             break;
         }
 
@@ -12405,9 +12399,11 @@ void vehicle_activity_actor::complete_vehicle( player_activity &act, Character &
                         }
                     }
                 }
-                for( const std::pair<const skill_id, int> &sk : vpi.install_skills ) {
-                    // removal is half as educational as installation
-                    you.practice( sk.first, veh_utils::calc_xp_gain( vpi, sk.first, you ) / 2 );
+                // removal is half as educational as installation; the removal skills and time
+                // count, not the install ones (VINT-B06)
+                for( const std::pair<const skill_id, int> &sk : vpi.removal_skills ) {
+                    you.practice( sk.first, veh_utils::calc_xp_gain( vpi.removal_skills,
+                                  vpi.removal_moves, sk.first, you ) / 2 );
                 }
             }
 
@@ -12438,13 +12434,16 @@ void vehicle_activity_actor::complete_vehicle( player_activity &act, Character &
             // Save these values now so they aren't lost when parts or vehicles are destroyed.
             const point_rel_ms part_mount = vp->mount;
             const tripoint_bub_ms part_pos = veh.bub_part_pos( here, *vp );
+            const std::string removed_part_id = vpi.id.str();
+            const std::string removed_from = veh.name;
+            const bool dismantled = veh.part_count_real() <= 1;
 
             veh.unlink_cables( here, part_mount, you,
                                false, /* unneeded as items will be unlinked if the connected part is removed */
                                appliance_removal || vpi.location == vpart_location_structure,
                                appliance_removal || vpi.has_flag( VPFLAG_CABLE_PORTS ) || vpi.has_flag( VPFLAG_BATTERY ) );
 
-            if( veh.part_count_real() <= 1 ) {
+            if( dismantled ) {
                 you.add_msg_if_player( _( "You completely dismantle the %s." ), veh.name );
                 act.set_to_null();
                 // destroy vehicle clears the cache
@@ -12474,6 +12473,14 @@ void vehicle_activity_actor::complete_vehicle( player_activity &act, Character &
                 for( const item_location &itl : locs ) {
                     you.may_activity_occupancy_after_end_items_loc.push_back( itl );
                 }
+            }
+            // VINT-J06: with the vehicle as beta talker, unless this took its last part
+            const cata::event removed = cata::event::make<event_type::vehicle_part_removed>(
+                                            you.getID(), removed_part_id, removed_from );
+            if( dismantled ) {
+                get_event_bus().send( removed );
+            } else {
+                veh_utils::send_vehicle_event( veh, removed );
             }
             break;
         }
@@ -12873,6 +12880,11 @@ void start_engines_activity_actor::finish( player_activity &act, Character &who 
     if( take_control && !veh->engine_on && !veh->velocity ) {
         who.controlling_vehicle = false;
         who.add_msg_if_player( _( "You let go of the controls." ) );
+    }
+    // VINT-J06
+    if( veh->engine_on ) {
+        veh_utils::send_vehicle_event( *veh,
+                                       cata::event::make<event_type::vehicle_engine_started>( who.getID(), veh_name ) );
     }
 }
 

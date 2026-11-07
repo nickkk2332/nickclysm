@@ -2308,7 +2308,10 @@ class vehicle
         void operate_planter( map &here );
         void autopilot_patrol_check( map &here );
         void toggle_autopilot( map &here );
+        // Autopilot patrol / follow: a stopped vehicle's engines are started as the player
+        // starts them, through the start activity and its checks (VINT-B03)
         void enable_patrol( map &here );
+        void enable_follow( map &here );
         void toggle_tracking();
         void display_effects();
         //scoop operation,pickups, battery drain, etc.
@@ -2794,6 +2797,8 @@ namespace processing_cycles
 {
 // whether the part's cycle is running
 bool running( const vehicle_part &vp );
+// whether every item the part holds meets its cycle's item_condition (true without one)
+bool items_meet_condition( vehicle &veh, int part );
 // the avatar turns the part on (running its start EOC, which may refuse) or, if it runs, off
 void toggle( vehicle &veh, int part );
 // what the part holds is processed once its cycle's time is up; called as its items are

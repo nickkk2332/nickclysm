@@ -3056,8 +3056,13 @@ class jmapgen_vehicle : public jmapgen_piece_with_has_vehicle_collision
             if( chosen_id.is_null() ) {
                 return;
             }
+            // the null id for a group with nothing to pick (VINT-B09)
+            const vproto_id picked = chosen_id->pick();
+            if( picked.is_null() ) {
+                return;
+            }
             tripoint_bub_ms const dst( x.get(), y.get(), dat.zlevel() + z.get() );
-            vehicle *veh = dat.m.add_vehicle( chosen_id->pick(), dst, random_entry( rotation ),
+            vehicle *veh = dat.m.add_vehicle( picked, dst, random_entry( rotation ),
                                               fuel, static_cast<veh_spawn_status>( status ) );
             if( veh && !faction.empty() ) {
                 veh->set_owner( faction_id( faction ) );
