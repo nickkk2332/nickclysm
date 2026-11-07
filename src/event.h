@@ -157,6 +157,9 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    vehicle_collides,
+    vehicle_part_destroyed,
+    vehicle_engine_stalls,
     num_event_types // last
 };
 
@@ -224,7 +227,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 136,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -838,10 +841,12 @@ struct event_spec<event_type::fails_to_remove_cbm> {
 template<>
 struct event_spec<event_type::falls_asleep_from_exhaustion> : event_spec_character {};
 
+// the vehicle is alpha (VEH-J03); "fuel" is what the tank held
 template<>
 struct event_spec<event_type::fuel_tank_explodes> {
-    static constexpr std::array<event_field, 1> fields = {{
+    static constexpr std::array<event_field, 2> fields = {{
             { "vehicle_name", cata_variant_type::string },
+            { "fuel", cata_variant_type::itype_id },
         }
     };
 };
@@ -1171,6 +1176,43 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// VEH-J03: a moving vehicle hit something; alpha is the vehicle, beta the creature it hit (none
+// for terrain and vehicles). collision_type is body, terrain, other (an obstacle that does not
+// break) or vehicle; velocity_delta (mph * 100) is the speed it lost, damage its part's damage.
+// Sent by vehicle::process_queued_events(), like vehicle_part_destroyed and fuel_tank_explodes
+template<>
+struct event_spec<event_type::vehicle_collides> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "collision_type", cata_variant_type::string },
+            { "target_name", cata_variant_type::string },
+            { "vpart_id", cata_variant_type::string },
+            { "velocity_delta", cata_variant_type::int_ },
+            { "damage", cata_variant_type::int_ },
+        }
+    };
+};
+
+// VEH-J03: damage broke a part of a vehicle on the main map; alpha is the vehicle
+template<>
+struct event_spec<event_type::vehicle_part_destroyed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "vpart_id", cata_variant_type::string },
+            { "damage_type", cata_variant_type::damage_type_id },
+        }
+    };
+};
+
+// VEH-J03: a running vehicle's engines stopped on their own; alpha is the vehicle. reason is
+// no_power (no engine has fuel or power left), no_battery (no charge for the ignition) or
+// reactor (its reactors ran out of fuel)
+template<>
+struct event_spec<event_type::vehicle_engine_stalls> {
+    static constexpr std::array<event_field, 1> fields = {{
+            { "reason", cata_variant_type::string },
         }
     };
 };

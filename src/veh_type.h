@@ -18,6 +18,7 @@
 #include "color.h"
 #include "lightmap.h"
 #include "coordinates.h"
+#include "damage.h"
 #include "memory_fast.h"
 #include "point.h"
 #include "requirements.h"
@@ -471,6 +472,13 @@ class vpart_info
         int dmg_mod = 100;
 
         /**
+         * Damage this part deals to a creature it rams, each amount a fraction of the collision
+         * damage: "collision_damage" if set, else cut 1.0 for SHARP parts and bash 1.0 otherwise
+         */
+        const damage_instance &get_collision_damage() const;
+        std::optional<damage_instance> collision_damage;
+
+        /**
          * Electrical power, flat rate energy (per second); positive for generation, negative for consumption
          * For electric motor consumption scaled with powertrain demand see @ref energy_consumption instead
          */
@@ -495,13 +503,25 @@ class vpart_info
         /** Removal time for component (@see removal_time), default is half \p install_moves */
         time_duration removal_moves = -1_seconds;
 
-        // seatbelt (str, currently non-functional #30239)
-        // muffler (% noise reduction)
-        // horn (sound volume)
-        // light (intensity)
-        // recharging (charging speed in watts)
-        // funnel (water collection area in mm^2)
+        // Legacy catch-all, read by the part's flags (doc/JSON/JSON_INFO.md):
+        // seatbelt (crash damage it takes off), muffler (% of the noise left), horn (sound volume),
+        // light (intensity), recharging (watts), funnel (radius in mm), shock absorber (damage it
+        // takes off), rotor (extra diameter), mirror (vision range)
         int bonus = 0;
+
+        // Typed fields for some of those (VEH-J07); each falls back on bonus when unset
+        std::optional<units::length> funnel_radius;
+        std::optional<double> muffle_factor;
+        std::optional<int> seatbelt_strength;
+        std::optional<int> shock_absorption;
+        /** FUNNEL: radius of the funnel's opening, in mm */
+        int get_funnel_radius_mm() const;
+        /** MUFFLER: share of the engine noise left, 0.4 is 60% quieter */
+        double get_muffle_factor() const;
+        /** SEATBELT: damage it takes off a passenger's crash damage */
+        int get_seatbelt_strength() const;
+        /** SHOCK_ABSORBER: damage it takes off the shock of a distant collision */
+        int get_shock_absorption() const;
         light_color_rgb light_color{};
 
         /** cargo weight modifier (percentage) */

@@ -31,6 +31,8 @@
 
 static const addiction_id addiction_alcohol( "alcohol" );
 
+static const itype_id itype_gasoline( "gasoline" );
+
 static const matype_id style_aikido( "style_aikido" );
 
 static const mutation_category_id mutation_category_URSINE( "URSINE" );
@@ -237,7 +239,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Succumbed to lack of sleep.", ch );
 
     check_memorial<event_type::fuel_tank_explodes>(
-        m,  "The fuel tank of the vehicle_name exploded!", "vehicle_name" );
+        m,  "The fuel tank of the vehicle_name exploded!", "vehicle_name", itype_gasoline );
 
     check_memorial<event_type::gains_addiction>(
         m,  "Became addicted to alcohol.", ch, addiction_alcohol );

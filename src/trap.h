@@ -84,6 +84,14 @@ struct vehicle_handle_trap_data {
     // the double represents the count or chance to spawn.
     std::vector<std::pair<itype_id, double>> spawn_items;
     trap_str_id set_trap = trap_str_id::NULL_ID();
+    // The wheel moves on along the runover chain of its faults, as when running over a
+    // sharp item (VEH-J05)
+    bool runover_faults = false;
+    // Faults set on the wheel, those it can have
+    std::vector<fault_id> wheel_faults;
+    // Run once the vehicles have moved, with the vehicle as alpha (u) and its driver, if any, as
+    // beta (npc)
+    std::vector<effect_on_condition_id> eocs;
 
     void deserialize( const JsonObject &jo );
 };

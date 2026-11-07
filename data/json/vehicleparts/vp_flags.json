@@ -439,7 +439,7 @@
   {
     "id": "FUNNEL",
     "type": "json_flag",
-    "//": "When set on vehicle part the, bonus field defines the funnel radius in mm^2 and part collects rain"
+    "//": "When set on a vehicle part, the part collects rain; funnel_radius (or the bonus field) is the radius of its opening in mm"
   },
   {
     "id": "HALF_BOARD",

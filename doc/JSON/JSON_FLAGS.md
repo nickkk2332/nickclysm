@@ -742,6 +742,8 @@ Can also be used as `pre_flags` for `construction`.
 - ```PLANT``` A 'furniture' that grows and fruits.
 - ```PLOWABLE``` Terrain can be plowed.
 - ```RAIL``` This is a railroad, railroad vehicles can use it to move.
+- ```RAIL_DIAGONAL``` A `RAIL` tile whose track runs diagonally.  Rail vehicles turning onto a straight course count it as a wrong tile (more than 2 of the 3 tiles ahead of a wheel and the turn is refused).  A rail with neither this nor `RAIL_STRAIGHT` (a ramp) suits both directions.
+- ```RAIL_STRAIGHT``` A `RAIL` tile whose track runs straight (north-south or east-west).  Rail vehicles turning onto a diagonal course count it as a wrong tile (more than 1 of the 3 tiles ahead of a wheel and the turn is refused).
 - ```RAMP_DOWN``` The end of a ramp that leads down, walking into this moves you one z-level down.  Overrides `WALL`, while still displaying the tile as Impassable.
 - ```RAMP_END``` Technical flag for proper work of ramps mechanics.
 - ```RAMP_UP``` The end of a ramp that leads up, walking into this moves you one z-level up.  Overrides `WALL`, while still displaying the tile as Impassable.
@@ -1905,9 +1907,9 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```BAD_COLD_START``` The engine starts as if the temperature was 20 F colder.  Does not stack with multiples of itself.
 - ```BAD_FUEL_PUMP``` Prevents engine from starting and makes it stutter.
 - ```BAD_STARTER``` Prevents engine from starting and makes click noise.
-- ```DOUBLE_FUEL_CONSUMPTION``` Doubles fuel consumption of the engine.  Does not stack with multiples of itself.
+- ```DOUBLE_FUEL_CONSUMPTION``` Doubles fuel consumption of the engine: a fault with it and no `fuel_consumption_mult` counts as `"fuel_consumption_mult": 2`.  Use `fuel_consumption_mult` for other amounts.
 - ```ENG_BACKFIRE``` Causes the engine to backfire as if it had zero hp.
 - ```EXTRA_EXHAUST``` Makes the engine emit more exhaust smoke.  Does not stack with multiples of itself.
 - ```IMMOBILIZER``` Prevents engine from starting and makes it beep.
 - ```NO_ALTERNATOR_CHARGE``` The alternator connected to this engine does not work.
-- ```REDUCE_ENG_POWER``` Multiplies engine power by 0.6.  Does not stack with multiples of itself.
+- ```REDUCE_ENG_POWER``` Multiplies engine power by 0.6: a fault with it and no `engine_power_mult` counts as `"engine_power_mult": 0.6`.  Use `engine_power_mult` for other amounts.

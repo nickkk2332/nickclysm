@@ -1431,6 +1431,9 @@ float map::vehicle_vehicle_collision( vehicle &veh, vehicle &veh2,
     }
     vehicle_part &vp1 = veh.part( c.part );
     vehicle_part &vp2 = veh2.part( c.target_part );
+    // for the vehicle_collides event (VEH-J03), before the parts are damaged
+    const std::string vp1_id = vp1.info().id.str();
+    const int velocity_before = veh.velocity;
 
     // Check whether avatar sees the collision, and log a message if so
     const avatar &you = get_avatar();
@@ -1599,6 +1602,12 @@ float map::vehicle_vehicle_collision( vehicle &veh, vehicle &veh2,
     if( dmg_veh2 > 800 ) {
         veh2.skidding = true;
     }
+
+    // VEH-J03: alpha is the vehicle that hit; the one it hit gets no talker, as it may be gone
+    // by the time the event is sent
+    veh.queue_event( cata::event::make<event_type::vehicle_collides>( std::string( "vehicle" ),
+                     veh2.disp_name(), vp1_id, std::abs( velocity_before - veh.velocity ),
+                     static_cast<int>( dmg_veh1 ) ) );
 
     // Return the impulse of the collision
     return dmg_veh1;

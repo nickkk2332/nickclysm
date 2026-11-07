@@ -62,6 +62,9 @@ generic_factory<vpart_info> vpart_info_factory( "vehicle_part", "id" );
 
 static const ammotype ammo_battery( "battery" );
 
+static const damage_type_id damage_bash( "bash" );
+static const damage_type_id damage_cut( "cut" );
+
 static const itype_id fuel_type_animal( "animal" );
 
 static const quality_id qual_JACK( "JACK" );
@@ -255,6 +258,7 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "location", location );
     optional( jo, was_loaded, "durability", durability, 0 );
     optional( jo, was_loaded, "damage_modifier", dmg_mod, 100 );
+    optional( jo, was_loaded, "collision_damage", collision_damage );
     optional( jo, was_loaded, "energy_consumption", energy_consumption, 0_W );
     optional( jo, was_loaded, "power", power, 0_W );
     optional( jo, was_loaded, "epower", epower, 0_W );
@@ -265,6 +269,10 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "folded_volume", folded_volume, std::nullopt );
     optional( jo, was_loaded, "size", size, 0_ml );
     optional( jo, was_loaded, "bonus", bonus, 0 );
+    optional( jo, was_loaded, "funnel_radius", funnel_radius, std::nullopt );
+    optional( jo, was_loaded, "muffle_factor", muffle_factor, std::nullopt );
+    optional( jo, was_loaded, "seatbelt_strength", seatbelt_strength, std::nullopt );
+    optional( jo, was_loaded, "shock_absorption", shock_absorption, std::nullopt );
     if( jo.has_array( "light_color" ) ) {
         JsonArray jarr = jo.get_array( "light_color" );
         light_color.r = jarr.get_int( 0 ) / 255.0f;
@@ -980,6 +988,22 @@ void vpart_info::check() const
                       id.c_str() );
         }
     }
+    if( collision_damage ) {
+        for( const damage_unit &du : *collision_damage ) {
+            if( !du.type.is_valid() ) {
+                debugmsg( "Invalid collision_damage type \"%s\" for vehicle part %s", du.type.c_str(),
+                          id.c_str() );
+            }
+        }
+    }
+    if( ( funnel_radius && *funnel_radius < 0_mm ) || ( seatbelt_strength && *seatbelt_strength < 0 ) ||
+        ( shock_absorption && *shock_absorption < 0 ) ) {
+        debugmsg( "vehicle part %s has a negative funnel_radius, seatbelt_strength or shock_absorption",
+                  id.str() );
+    }
+    if( muffle_factor && ( *muffle_factor < 0.0 || *muffle_factor > 1.0 ) ) {
+        debugmsg( "vehicle part %s has a muffle_factor outside 0 to 1", id.str() );
+    }
     if( has_flag( "EOC_ACTIVATION" ) != activatable_eoc.has_value() ) {
         debugmsg( "vehicle part %s must have both the EOC_ACTIVATION flag and an activatable_eoc, "
                   "or neither", id.str() );
@@ -1164,6 +1188,36 @@ requirement_data vpart_info::repair_requirements() const
 bool vpart_info::is_repairable() const
 {
     return !has_flag( "NO_REPAIR" ) && !repair_requirements().is_empty();
+}
+
+const damage_instance &vpart_info::get_collision_damage() const
+{
+    if( collision_damage ) {
+        return *collision_damage;
+    }
+    static const damage_instance sharp( damage_cut, 1.0f );
+    static const damage_instance blunt( damage_bash, 1.0f );
+    return has_flag( "SHARP" ) ? sharp : blunt;
+}
+
+int vpart_info::get_funnel_radius_mm() const
+{
+    return funnel_radius ? units::to_millimeter( *funnel_radius ) : bonus;
+}
+
+double vpart_info::get_muffle_factor() const
+{
+    return muffle_factor ? *muffle_factor : bonus / 100.0;
+}
+
+int vpart_info::get_seatbelt_strength() const
+{
+    return seatbelt_strength ? *seatbelt_strength : bonus;
+}
+
+int vpart_info::get_shock_absorption() const
+{
+    return shock_absorption ? *shock_absorption : bonus;
 }
 
 static time_duration scale_time( const std::map<skill_id, int> &sk, time_duration mv,

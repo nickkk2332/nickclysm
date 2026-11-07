@@ -384,6 +384,10 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
     static const std::vector<std::string> monster_hurt = {
         "victim_type", "bodypart", "damage_type"
     };
+    // every name, speed and damage of a collision: kept by type and part only
+    static const std::vector<std::string> vehicle_hit = {
+        "target_name", "velocity_delta", "damage"
+    };
     switch( type ) {
         case event_type::becomes_wanted:
         case event_type::character_smashes_tile:
@@ -395,6 +399,8 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
             return target;
         case event_type::monster_takes_damage:
             return monster_hurt;
+        case event_type::vehicle_collides:
+            return vehicle_hit;
         default:
             return none;
     }

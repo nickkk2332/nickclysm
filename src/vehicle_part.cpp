@@ -522,6 +522,33 @@ bool vehicle_part::has_fault_flag( const std::string &searched_flag ) const
     return base.has_fault_flag( searched_flag );
 }
 
+double vehicle_part::fault_engine_power_mult() const
+{
+    double mult = 1.0;
+    for( const fault_id &f : faults() ) {
+        mult *= f->engine_power_mult();
+    }
+    return mult;
+}
+
+double vehicle_part::fault_fuel_consumption_mult() const
+{
+    double mult = 1.0;
+    for( const fault_id &f : faults() ) {
+        mult *= f->fuel_consumption_mult();
+    }
+    return mult;
+}
+
+double vehicle_part::fault_exhaust_mult() const
+{
+    double mult = 1.0;
+    for( const fault_id &f : faults() ) {
+        mult *= f->exhaust_mult();
+    }
+    return mult;
+}
+
 bool vehicle_part::has_fault( const fault_id &fault ) const
 {
     return base.has_fault( fault );

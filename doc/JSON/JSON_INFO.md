@@ -1716,6 +1716,21 @@ Faults can be defined for more specialized damage of an item.
   "contact_area_mod": 0.5, // Modifies(multiplicative) the contact area of the vehicle part that this item is the base for
   "rolling_resistance_mod": 10.0, // Modifies(multiplicative) the rolling resistance of the vehicle part that this item is the base for
   "vehicle_move_penalty_mod": 5, // Modifies(additive) the move_penalty of terrain that this vehicle part moves over, thus decreasing traction. See wheel_terrain_modifiers
+  "engine_power_mult": 0.6, // (Optional) Multiplies the power of the engine that this item is the base for. Default 1, or 0.6 with the REDUCE_ENG_POWER flag. The multipliers of several faults multiply
+  "fuel_consumption_mult": 2.0, // (Optional) Multiplies the fuel the engine uses. Default 1, or 2 with the DOUBLE_FUEL_CONSUMPTION flag
+  "exhaust_mult": 1.5, // (Optional, default 1) Multiplies the smoke of a combustion engine (the EXTRA_EXHAUST flag still squares it)
+  "steering_mult": 0.5, // (Optional, default 1) Multiplies how much a steering wheel with this fault steers
+  "runover": { // (Optional) Wheel damage from running over sharp items, or a trap whose vehicle_data has "runover_faults": the wheel's faults with a "runover" entry form a chain
+    "weight": 100, // (default 0) A wheel in none of its chain faults gets one of them, picked by this weight; 0: only reached by escalating
+    "message": "You hear a loud pop from below!", // (Optional) Shown to the driver when running something over applies this fault
+    "escalates_to": [ { "fault": "fault_flat_tire_riding_on_rims", "weight": 100 } ] // What running something over again does to a wheel with this fault, picked by weight. Without it this is the worst state: a wheel with such a fault takes no more runover faults
+  },
+  "while_moving": { // (Optional) What a wheel with this fault does each turn its vehicle drives on (the first such fault of the wheel acts)
+    "sound": "hissssssss!", "sound_volume": 5, "sound_type": "sensory", // (Optional) sound made each turn; sound_type as in sounds.h (default sensory)
+    "escalates_to": "fault_flat_tire_riding_on_rims", // (Optional) a 1 in (wheel durability) chance per turn to turn into this fault
+    "damages_part": true, // (Optional, without escalates_to) the same chance to take one level of damage
+    "message": "The %s is damaged by driving with a flat!" // (Optional) shown then, %s is the part name
+  },
   "encumbrance_mult": 1.3, // if armor, item encumbrance will be multiplied by this amount, in this case 1.3x as much (100-> 130)
   "block_faults": [ "fault_handle_chipping", "fault_handle_cracked" ], // Faults, that cannot be applied if this fault is already presented on item. If there is already such a fault, it will be removed. Can't have chipped blade if the blade is gone
   "flags": [ "JAMMED_GUN" ] // optional flags, see below
@@ -2987,7 +3002,10 @@ See [MUTATIONS.md](MUTATIONS.md)
       "sound_type": "trap",
       "sound_variant": "bear_trap",
       "remove_trap": true,
-      "spawn_items": [ "beartrap" ]
+      "spawn_items": [ "beartrap" ],
+      "runover_faults": false, // (Optional) The wheel moves on along the runover chain of its faults, as when running over a sharp item (see Item faults)
+      "wheel_faults": [ "fault_punctured_tires" ], // (Optional) Faults set on the wheel, those it can have
+      "eocs": [ "EOC_RAN_OVER_TRAP" ] // (Optional) Run once the vehicles have moved that turn, with the vehicle as alpha (u) and its driver, if any, as beta (npc); context variables trap_id, vpart_id (the wheel) and trap_pos
     },
     "trigger_message_u": "A bear trap closes on your foot!", // This message will be printed when player steps on a trap
     "trigger_message_npc": "A bear trap closes on <npcname>'s foot!", // This message will be printed when NPC or monster steps on a trap
@@ -3031,13 +3049,30 @@ Vehicle components when installed on a vehicle.
 "name": "wheel",              // Displayed name
 "looks_like": "small_wheel",  // (Optional) hint to tilesets if this part has no tile,
                               // use the looks_like tile.
-"bonus": 100,                 // Function depends on part type:
-                              // seatbelt part is in "str" (non-functional #30239)
-                              // muffler part is % noise reduction
+"bonus": 100,                 // Function depends on part type (no units, read by the part's flags):
+                              // seatbelt part: damage it takes off a passenger's crash damage
+                              // muffler part: % of the engine noise left (40 is 60% quieter;
+                              //   100 doesn't muffle at all)
                               // horn part volume
                               // light part intensity
                               // recharger part charging speed in watts
-                              // funnel part water collection area in mm^2
+                              // funnel part: radius of the opening in mm (the area is pi * r^2)
+                              // shock absorber part: damage it takes off the shock of a distant
+                              //   collision to the other parts on its tile
+                              // rotor part: extra diameter in meters
+                              // mirror part (EXTENDS_VISION): how far it extends vision
+"funnel_radius": "300 mm",    // (Optional) FUNNEL: radius of the opening; overrides bonus
+"muffle_factor": 0.4,         // (Optional) MUFFLER: share of the engine noise left at full health,
+                              // 0 to 1 (0.4 is 60% quieter); overrides bonus
+"seatbelt_strength": 10,      // (Optional) SEATBELT: crash damage it takes off; overrides bonus
+"shock_absorption": 15,       // (Optional) SHOCK_ABSORBER: shock damage it takes off; overrides bonus
+"collision_damage": [ { "damage_type": "cut", "amount": 1.0, "armor_penetration": 5 } ],
+                              // (Optional) Damage the part deals to a creature it rams, as a damage
+                              // instance whose amounts are fractions of the collision damage (after
+                              // damage_modifier). Dealt like any other damage (armor, immunities,
+                              // ondamage_eocs): to every main body part of a character, 60-100% each,
+                              // and to a monster's whole body. Default: cut 1.0 for SHARP parts,
+                              // bash 1.0 otherwise
 "light_color": [ 255, 0, 0 ], // (Optional) colour of a light part's light, red, green and blue
                               // from 0 to 255; white if unset
 "color": "dark_gray",         // Color used when part is working
@@ -3168,7 +3203,9 @@ Unless specified as optional, the following fields are mandatory for parts with 
 "backfire_freq": 20,          // (Optional, default = 0) One in X chance of a backfire if the
                               // ratio of damaged HP to max HP is below the backfire_threshold.
 "noise_factor": 15,           // (Optional, default = 0). Multiple engine power by this number to
-                              // determine noise.
+                              // determine noise. Applies to every engine type (electric, muscle,
+                              // animal...), not only combustion; a moving vehicle also makes noise
+                              // from its speed (velocity / 500), engines on or off.
 "damaged_power_factor": 0.5,  // (Optional, default = 0) If more than 0, power when damaged is
                               // scaled to power * ( damaged_power_factor +
                               // ( 1 - damaged_power_factor ) * ( damaged HP / max HP )

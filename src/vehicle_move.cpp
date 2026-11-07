@@ -8,7 +8,9 @@
 #include <optional>
 #include <ostream>
 #include <set>
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include "bodypart.h"
 #include "cata_assert.h"
@@ -18,9 +20,13 @@
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enums.h"
+#include "event.h"
 #include "explosion.h"
+#include "fault.h"
 #include "field.h"
 #include "game.h"
 #include "item.h"
@@ -43,21 +49,17 @@
 #include "veh_type.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
+#include "weakpoint.h"
+#include "weighted_list.h"
 
 #define dbg(x) DebugLog((x),D_MAP) << __FILE__ << ":" << __LINE__ << ": "
 
 static const damage_type_id damage_bash( "bash" );
-static const damage_type_id damage_cut( "cut" );
 
 static const efftype_id effect_bleed( "bleed" );
 static const efftype_id effect_harnessed( "harnessed" );
 static const efftype_id effect_pet( "pet" );
 static const efftype_id effect_stunned( "stunned" );
-
-static const fault_id fault_axle_broken( "fault_axle_broken" );
-static const fault_id fault_cracked_rim( "fault_cracked_rim" );
-static const fault_id fault_flat_tire_riding_on_rims( "fault_flat_tire_riding_on_rims" );
-static const fault_id fault_punctured_tires( "fault_punctured_tires" );
 
 static const flag_id json_flag_CANNOT_TAKE_DAMAGE( "CANNOT_TAKE_DAMAGE" );
 static const flag_id json_flag_PUNCTURE_VEHICLE_WHEELS( "PUNCTURE_VEHICLE_WHEELS" );
@@ -70,17 +72,6 @@ static const proficiency_id proficiency_prof_boat_pilot( "prof_boat_pilot" );
 static const proficiency_id proficiency_prof_driver( "prof_driver" );
 
 static const skill_id skill_driving( "driving" );
-
-static const ter_str_id ter_t_railroad_track( "t_railroad_track" );
-static const ter_str_id ter_t_railroad_track_d( "t_railroad_track_d" );
-static const ter_str_id ter_t_railroad_track_d1( "t_railroad_track_d1" );
-static const ter_str_id ter_t_railroad_track_d2( "t_railroad_track_d2" );
-static const ter_str_id ter_t_railroad_track_d_on_tie( "t_railroad_track_d_on_tie" );
-static const ter_str_id ter_t_railroad_track_h( "t_railroad_track_h" );
-static const ter_str_id ter_t_railroad_track_h_on_tie( "t_railroad_track_h_on_tie" );
-static const ter_str_id ter_t_railroad_track_on_tie( "t_railroad_track_on_tie" );
-static const ter_str_id ter_t_railroad_track_v( "t_railroad_track_v" );
-static const ter_str_id ter_t_railroad_track_v_on_tie( "t_railroad_track_v_on_tie" );
 
 static const trait_id trait_DEFT( "DEFT" );
 static const trait_id trait_PROF_SKATER( "PROF_SKATER" );
@@ -116,6 +107,14 @@ int cmps_to_vmiph( int cmps )
 int vmiph_to_cmps( int vmiph )
 {
     return vmiph / mps_to_miph;
+}
+
+int vehicle::accel_from_power_ratio( const double watts_per_kg, const int cmps )
+{
+    // The ratio stays fractional and only the result is truncated: an int W/kg lost up to
+    // 1 W/kg, which is all of the acceleration of a vehicle with less than 1 W/kg
+    const double accel_cmps = 100.0 * 100.0 * watts_per_kg / cmps;
+    return static_cast<int>( accel_cmps * mps_to_miph );
 }
 
 int vehicle::slowdown( map &here, int at_velocity ) const
@@ -1156,19 +1155,30 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
                 critter->add_effect( effect_stunned, time_stunned );
             }
 
+            // The part's collision_damage (by default cut for SHARP parts, bash otherwise), each
+            // amount a fraction of the collision damage, dealt like any other damage, so armor,
+            // immunities and ondamage_eocs apply to characters and monsters alike (VEH-J06)
+            const damage_instance &coll_damage = vpi.get_collision_damage();
             if( ph != nullptr ) {
-                ph->hitall( dam, 40, driver );
+                // Every main body part takes 60-100% of it, as Character::hitall does
+                for( const bodypart_id &bp : ph->get_all_body_parts( get_body_part_flags::only_main ) ) {
+                    damage_instance part_damage = coll_damage;
+                    part_damage.mult_damage( dam * rng( 60, 100 ) / 100, true );
+                    ph->deal_damage( driver, bp, part_damage );
+                }
             } else {
-                const int armor = vpi.has_flag( "SHARP" ) ?
-                                  critter->get_armor_type( damage_cut, bodypart_id( "torso" ) ) :
-                                  critter->get_armor_type( damage_bash, bodypart_id( "torso" ) );
-                dam = std::max( 0, dam - armor );
-                critter->apply_damage( driver, bodypart_id( "torso" ), dam );
+                damage_instance hit = coll_damage;
+                hit.mult_damage( dam, true );
+                // The whole body, as before: no weakpoint is picked for a ram
+                weakpoint_attack attack;
+                attack.source = driver;
+                attack.target = critter;
+                attack.accuracy = 0.0;
+                // Edged damage makes a monster bleed in deal_damage
+                dam = critter->deal_damage( driver, bodypart_id( "torso" ), hit, attack,
+                                            weakpoint() ).total_damage();
                 if( !critter->has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
-                    if( vpi.has_flag( "SHARP" ) ) {
-                        critter->add_effect( effect_source( driver ), effect_bleed, 1_minutes * rng( 1, dam ),
-                                             critter->get_random_body_part_of_type( bp_type::torso ) );
-                    } else if( dam > 18 && rng( 1, 20 ) > 15 ) {
+                    if( !vpi.has_flag( "SHARP" ) && dam > 18 && rng( 1, 20 ) > 15 ) {
                         //low chance of lighter bleed even with non sharp objects.
                         critter->add_effect( effect_source( driver ), effect_bleed, 1_minutes,
                                              critter->get_random_body_part_of_type( bp_type::torso ) );
@@ -1273,6 +1283,14 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
     }
 
     ret.imp = part_dmg;
+    // VEH-J03: alpha is this vehicle, beta the creature it hit
+    if( critter == nullptr || !critter->is_hallucination() ) {
+        const std::string collision_type = ret.type == veh_coll_body ? "body" :
+                                           ret.type == veh_coll_bashable ? "terrain" : "other";
+        queue_event( cata::event::make<event_type::vehicle_collides>( collision_type, ret.target_name,
+                     vpi.id.str(), std::abs( prev_velocity - coll_velocity ),
+                     static_cast<int>( part_dmg ) ), critter == nullptr ? nullptr : get_talker_for( critter ) );
+    }
     return ret;
 }
 
@@ -1332,59 +1350,45 @@ double vehicle::wheel_damage_chance_vs_item( const item &it, const vehicle_part 
     return chance_to_damage;
 }
 
-static void apply_tire_punctures( vehicle_part *vp_wheel, std::vector<std::string> *messages )
+bool vehicle::apply_runover_faults( vehicle_part &wheel, std::vector<std::string> *messages )
 {
-    if( vp_wheel->has_fault( fault_flat_tire_riding_on_rims ) ) { // Already in worst possible state.
-        return;
-    }
-
-    if( !vp_wheel->has_fault( fault_punctured_tires ) ) {
-        if( vp_wheel->fault_set( fault_punctured_tires ) ) {
-            messages->emplace_back( string_format(
-                                        _( "You hear a loud pop from below, and your vehicle suddenly start to wobble like crazy!" ) ) );
-            return;
+    // The wheel's faults with a "runover" entry form a chain. A wheel in one of them moves on
+    // to one of its escalates_to (and gets nothing more once in one without); a wheel in none
+    // gets a first one by weight.
+    const fault_runover *current = nullptr;
+    for( const fault_id &f : wheel.faults() ) {
+        const fault_runover *step = f->runover();
+        if( step == nullptr ) {
+            continue;
         }
+        if( step->escalates_to.empty() ) {
+            // Already in the worst state
+            return false;
+        }
+        if( current == nullptr ) {
+            current = step;
+        }
+    }
+    weighted_int_list<fault_id> next;
+    if( current != nullptr ) {
+        next = current->escalates_to;
     } else {
-        // Already punctured, but get hit *again* --> chance to instantly set 100% flat
-        if( vp_wheel->fault_set( fault_flat_tire_riding_on_rims ) ) {
-            messages->emplace_back( string_format(
-                                        _( "With a jolt, hitting something has blown out your tire!" ) ) );
-            return;
+        for( const fault_id &f : wheel.faults_potential() ) {
+            const fault_runover *step = f->runover();
+            if( step != nullptr && step->weight > 0 && !wheel.has_fault( f ) ) {
+                next.add( f, step->weight );
+            }
         }
     }
-}
-
-static void apply_generic_wheel_fault( vehicle_part *vp_wheel, std::vector<std::string> *messages )
-{
-    if( vp_wheel->has_fault( fault_axle_broken ) ) { // Already in worst possible state.
-        return;
+    const fault_id *picked = next.pick();
+    if( picked == nullptr || !wheel.fault_set( *picked ) ) {
+        return false;
     }
-
-    // 90% chance to just crack rim on 'first' failure
-    // 10% chance to go straight to broken axle on any 'first' failure
-    // Wagon wheels are notorious for this kind of critical failure.
-    if( !vp_wheel->has_fault( fault_cracked_rim ) && x_in_y( 90, 100 ) ) {
-        if( vp_wheel->fault_set( fault_cracked_rim ) ) {
-            messages->emplace_back( string_format(
-                                        _( "You hear a crunch as you run something over!" ) ) );
-            return;
-        }
-    } else {
-        if( vp_wheel->fault_set( fault_axle_broken ) ) {
-            messages->emplace_back( string_format(
-                                        _( "Your vehicle lurches as one of the wheels gives out!" ) ) );
-            return;
-        }
+    const fault_runover *applied = ( *picked )->runover();
+    if( messages != nullptr && applied != nullptr && !applied->message.empty() ) {
+        messages->emplace_back( applied->message.translated() );
     }
-}
-
-static void apply_wheel_faults( vehicle_part *vp_wheel, std::vector<std::string> *messages )
-{
-    if( vp_wheel->faults_potential().count( fault_punctured_tires ) ) { // Most wheels
-        apply_tire_punctures( vp_wheel, messages );
-    } else if( vp_wheel->faults_potential().count( fault_cracked_rim ) ) { // Wooden cart wheels
-        apply_generic_wheel_fault( vp_wheel, messages );
-    }
+    return true;
 }
 
 void vehicle::damage_wheel_on_item( vehicle_part *vp_wheel, const item &it,
@@ -1397,7 +1401,7 @@ void vehicle::damage_wheel_on_item( vehicle_part *vp_wheel, const item &it,
     const double chance_to_damage = wheel_damage_chance_vs_item( it, *vp_wheel );
 
     if( chance_to_damage > 0.0 && chance_to_damage >= rng_float( 0.0, 1.0 ) ) {
-        apply_wheel_faults( vp_wheel, messages );
+        apply_runover_faults( *vp_wheel, messages );
         refresh_pivot( get_map() );
         return;
     }
@@ -1446,6 +1450,39 @@ void vehicle::handle_trap( map *here, const tripoint_bub_ms &p, vehicle_part &vp
         } else if( damage_done ) {
             // Hit the wheel directly since it ran right over the trap.
             damage_direct( *here, vp_wheel, veh_data.damage );
+        }
+        if( veh_data.runover_faults || !veh_data.wheel_faults.empty() ) {
+            std::vector<std::string> fault_messages;
+            bool faulted = veh_data.runover_faults && apply_runover_faults( vp_wheel, &fault_messages );
+            for( const fault_id &f : veh_data.wheel_faults ) {
+                faulted = vp_wheel.fault_set( f ) || faulted;
+            }
+            if( faulted ) {
+                if( player_is_driving_this_veh( here ) ) {
+                    for( const std::string &msg : fault_messages ) {
+                        add_msg( m_bad, msg );
+                    }
+                }
+                refresh_pivot( *here );
+            }
+        }
+        if( !veh_data.eocs.empty() ) {
+            // once the vehicles have moved, as the events: the map is going through the wheels
+            const std::vector<effect_on_condition_id> eocs = veh_data.eocs;
+            const std::string trap_id = tr.id.str();
+            const std::string vpart_id = vp_wheel.info().id.str();
+            const tripoint_abs_ms trap_pos = here->get_abs( p );
+            queue_action( [eocs, trap_id, vpart_id, trap_pos]( vehicle & veh ) {
+                Character *const eoc_driver = veh.get_driver( get_map() );
+                dialogue d( get_talker_for( veh ),
+                            eoc_driver == nullptr ? nullptr : get_talker_for( eoc_driver ) );
+                d.set_value( "trap_id", trap_id );
+                d.set_value( "vpart_id", vpart_id );
+                d.set_value( "trap_pos", trap_pos );
+                for( const effect_on_condition_id &eoc : eocs ) {
+                    eoc->activate( d );
+                }
+            } );
         }
         bool still_has_trap = true;
         if( veh_data.remove_trap || veh_data.do_explosion ) {
@@ -1872,18 +1909,16 @@ void vehicle::precalculate_vehicle_turning( map &here, units::angle new_turn_dir
                 break;
             }
 
-            // special case for rails
+            // special case for rails: the track direction comes from the RAIL_DIAGONAL and
+            // RAIL_STRAIGHT flags; a rail with neither (a ramp) suits both directions
             if( check_rail_direction ) {
-                const ter_str_id &terrain_at_wheel = here.ter( wheel_tripoint ).id();
                 // check is it correct tile to turn into
                 if( !is_diagonal_movement ) {
-                    const std::unordered_set<ter_str_id> diagonal_track_ters = { ter_t_railroad_track_d, ter_t_railroad_track_d1, ter_t_railroad_track_d2, ter_t_railroad_track_d_on_tie };
-                    if( diagonal_track_ters.find( terrain_at_wheel ) != diagonal_track_ters.end() ) {
+                    if( here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_RAIL_DIAGONAL, wheel_tripoint ) ) {
                         incorrect_tiles_not_diagonal++;
                     }
-                } else if( const std::unordered_set<ter_str_id> straight_track_ters = { ter_t_railroad_track, ter_t_railroad_track_on_tie, ter_t_railroad_track_h, ter_t_railroad_track_v, ter_t_railroad_track_h_on_tie, ter_t_railroad_track_v_on_tie };
-                           straight_track_ters.find( terrain_at_wheel ) != straight_track_ters.end() ) {
-                    incorrect_tiles_not_diagonal++;
+                } else if( here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_RAIL_STRAIGHT, wheel_tripoint ) ) {
+                    incorrect_tiles_diagonal++;
                 }
                 if( incorrect_tiles_diagonal > allowed_incorrect_tiles_diagonal ||
                     incorrect_tiles_not_diagonal > allowed_incorrect_tiles_not_diagonal ) {
@@ -2497,7 +2532,7 @@ units::angle map::shake_vehicle( vehicle &veh, const int velocity_before,
             throw_from_seat = d_vel * rng( 80, 120 ) > move_resist;
         } else {
             // Reduce potential damage based on quality of seatbelt
-            dmg -= veh.part( belt_idx ).info().bonus;
+            dmg -= veh.part( belt_idx ).info().get_seatbelt_strength();
         }
 
         // Damage passengers if d_vel is too high

@@ -189,6 +189,11 @@ void vehicle_handle_trap_data::deserialize( const JsonObject &jo )
     optional( jo, false, "sound_variant", sound_variant, "" );
     optional( jo, false, "spawn_items", spawn_items, named_pair_reader<itype_id, double> { "id", "chance", 1.0 } );
     optional( jo, false, "set_trap", set_trap, trap_str_id::NULL_ID() );
+    optional( jo, false, "runover_faults", runover_faults, false );
+    optional( jo, false, "wheel_faults", wheel_faults );
+    for( JsonValue jv : jo.get_array( "eocs" ) ) {
+        eocs.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
+    }
     if( set_trap != trap_str_id::NULL_ID() ) {
         remove_trap = false;
     } else {
@@ -416,6 +421,11 @@ void trap::check_consistency()
         }
         if( ( t.sound_threshold.first > 0 ) != ( t.sound_threshold.second > 0 ) ) {
             debugmsg( "trap %s has bad sound threshold of 0 and will trigger on anything", t.id.str() );
+        }
+        for( const fault_id &f : t.vehicle_data.wheel_faults ) {
+            if( !f.is_valid() ) {
+                debugmsg( "trap %s vehicle_data has unknown wheel fault %s", t.id.str(), f.str() );
+            }
         }
     }
 }
