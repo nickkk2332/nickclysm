@@ -12,7 +12,6 @@
     "//": "90 days worth of food for 1 person, at 3000kcal/day and full RDA of iron/calcium/vitC",
     "fac_food_supply": [ [ 0, { "calories": 270000000, "vitamins": { "iron": 8640, "calcium": 8640, "vitC": 8640 } } ] ],
     "wealth": 100000,
-    "currency": "embued_coin",
     "relations": {
       "lobby_beggars": {
         "kill on sight": false,
