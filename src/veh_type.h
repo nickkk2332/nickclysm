@@ -18,6 +18,8 @@
 #include "color.h"
 #include "lightmap.h"
 #include "coordinates.h"
+#include "dialogue_helpers.h"
+#include "global_vars.h"
 #include "memory_fast.h"
 #include "point.h"
 #include "requirements.h"
@@ -137,6 +139,15 @@ struct vpslot_engine {
     int m2c = 100;
     std::vector<std::string> exclusions;
     std::vector<itype_id> fuel_opts;
+    // VEH-J11: the engine's power in watts, evaluated with the vehicle as alpha and whoever is on
+    // the engine's tile as beta; replaces "power" and the built-in animal, muscle and wind formulas
+    std::optional<dbl_or_var> power_math;
+    // VEH-J11: the engine drives as well in reverse as forward (no 60% acceleration and 1/4 top
+    // speed in reverse). Unset until vpart_info::finalize(): true for battery engines.
+    std::optional<bool> full_reverse;
+    // VEH-J11: "The <vehicle>'s engine dies!" when it stops for lack of power. Unset until
+    // vpart_info::finalize(): false for animal, muscle, wind and mana engines.
+    std::optional<bool> stall_message;
 
     void deserialize( const JsonObject &jo );
 };
@@ -226,7 +237,17 @@ struct vpslot_terrain_transform {
 struct vp_control_req {
     std::set<std::pair<skill_id, int>> skills;
     std::set<proficiency_id> proficiencies;
+    // VEH-J08: what steering in this mode uses and trains. Unset falls back to driving and the
+    // built-in proficiency (prof_driver, or prof_boat_pilot in deep water); unset "trains" trains
+    // the handling proficiency.
+    std::optional<skill_id> handling_skill;
+    std::optional<proficiency_id> handling_proficiency;
+    std::optional<std::vector<proficiency_id>> trains;
+    // VEH-J08: "air" only. Needed to install, repair or remove parts of a flyable aircraft
+    // without losing its airworthiness (prof_aircraft_mechanic when no part sets it).
+    std::optional<proficiency_id> maintenance_proficiency;
 
+    bool empty() const;
     void deserialize( const JsonObject &jo );
 };
 
@@ -417,6 +438,8 @@ class vpart_info
         // required skill to control vehicle
         vp_control_req control_air;
         vp_control_req control_land;
+        // VEH-J08: in deep water
+        vp_control_req control_water;
 
         /** @ref item_group this part breaks into when destroyed */
         item_group_id breaks_into_group = item_group_id( "EMPTY_GROUP" );
@@ -582,6 +605,10 @@ struct vehicle_prototype {
         std::vector<zone_def> zone_defs;
         // what a vehicle built from it has to say: its "Talk to" entry starts with these
         std::vector<std::string> chat_topics;
+        // VEH-J10: variables each vehicle built from it starts with
+        global_variables::impl_t variables;
+        // VEH-J10: run with the vehicle as alpha when one is placed on the map
+        std::vector<effect_on_condition_id> spawn_eocs;
         std::vector<std::pair<vproto_id, mod_id>> src;
 
         shared_ptr_fast<vehicle> blueprint;

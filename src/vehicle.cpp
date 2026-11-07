@@ -137,6 +137,7 @@ static const proficiency_id proficiency_prof_athlete_master( "prof_athlete_maste
 static const proficiency_id proficiency_prof_boat_pilot( "prof_boat_pilot" );
 static const proficiency_id proficiency_prof_driver( "prof_driver" );
 
+static const skill_id skill_driving( "driving" );
 static const skill_id skill_swimming( "swimming" );
 
 static const vpart_id vpart_power_cord( "power_cord" );
@@ -1078,6 +1079,17 @@ bool vehicle::has_engine_type_not( const itype_id &ft, const bool enabled ) cons
     return false;
 }
 
+bool vehicle::has_full_reverse_engine() const
+{
+    for( const int p : engines ) {
+        const vehicle_part &vp = parts[p];
+        if( is_engine_on( vp ) && vp.info().engine_info->full_reverse.value_or( false ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<std::string> vehicle::has_engine_conflict( const vpart_info &possible_conflict ) const
 {
     if( !possible_conflict.engine_info ) {
@@ -1177,6 +1189,29 @@ void vehicle::backfire( map *here, const vehicle_part &vp ) const
     }
 }
 
+// VEH-J11: an engine's "power_math", in watts. Alpha is the vehicle; beta is the character on the
+// engine's tile, else the monster there (a harnessed animal), and the context variable
+// "has_rider" says whether there is one.
+static units::power engine_power_from_math( map &here, const vehicle &veh, const int vp_index,
+        const dbl_or_var &power_math )
+{
+    std::unique_ptr<const_talker> rider;
+    if( const Character *passenger = veh.get_passenger( vp_index ) ) {
+        rider = get_const_talker_for( *passenger );
+    } else if( const monster *mon = veh.get_monster( here, vp_index ) ) {
+        rider = get_const_talker_for( *mon );
+    }
+    const bool has_rider = rider != nullptr;
+    const_dialogue d( get_talker_for( veh ), std::move( rider ) );
+    d.set_value( "has_rider", has_rider ? 1.0 : 0.0 );
+    const double watts = power_math.evaluate( d );
+    if( !std::isfinite( watts ) ) {
+        return 0_W;
+    }
+    return units::from_watt( static_cast<std::int64_t>( std::llround( std::clamp( watts, -1e12,
+                             1e12 ) ) ) );
+}
+
 // engines & alternators all have power.
 // engines provide, whilst alternators consume.
 units::power vehicle::part_vpower_w( map &here, const vehicle_part &vp,
@@ -1186,7 +1221,9 @@ units::power vehicle::part_vpower_w( map &here, const vehicle_part &vp,
     const int vp_index = index_of_part( &vp );
     units::power pwr = vpi.power;
     if( vpi.has_flag( VPFLAG_ENGINE ) ) {
-        if( vpi.fuel_type == fuel_type_animal ) {
+        if( vpi.engine_info->power_math ) {
+            pwr = engine_power_from_math( here, *this, vp_index, *vpi.engine_info->power_math );
+        } else if( vpi.fuel_type == fuel_type_animal ) {
             int factor = 0;
             if( const monster *mon = get_monster( here, vp_index ); mon &&
                 mon->has_effect( effect_harnessed ) ) {
@@ -1243,9 +1280,15 @@ units::power vehicle::part_vpower_w( map &here, const vehicle_part &vp,
 // for motor consumption see @ref vpart_info::energy_consumption instead
 units::power vehicle::part_epower( const vehicle_part &vp ) const
 {
-    units::power e = vp.info().epower;
+    const vpart_info &vpi = vp.info();
+    units::power e = vpi.epower;
     if( e < 0_W ) {
         return e; // Consumers always draw full power, even if broken
+    }
+    // VEH-J09
+    if( vpi.has_flag( VPFLAG_SOLAR_PANEL ) || vpi.has_flag( VPFLAG_WIND_TURBINE ) ||
+        vpi.has_flag( VPFLAG_WATER_WHEEL ) ) {
+        e = std::max( 0_W, enchantment_cache.modify_value( enchant_vals::mod::VEH_RENEWABLE_OUTPUT, e ) );
     }
     return e * vp.health_percent();
 }
@@ -3885,8 +3928,8 @@ units::mass vehicle::weight_on_wheels( map &here ) const
             }
         }
     }
-    return enchantment_cache.modify_value( enchant_vals::mod::TOTAL_WEIGHT,
-                                           vehicle_mass - animal_mass );
+    // VEH-J09 / VEH-B15: total_mass() has applied TOTAL_WEIGHT already
+    return vehicle_mass - animal_mass;
 }
 
 const point_rel_ms &vehicle::rotated_center_of_mass( map &here ) const
@@ -4092,7 +4135,9 @@ units::power vehicle::basic_consumption( map &here, const itype_id &ftype ) cons
         if( vp.ammo_current() == fuel_type_battery && part_epower( vp ) >= 0_W ) {
             fcon -= part_epower( vp ); // Electric engine - use epower instead
         } else if( !is_perpetual_type( vp ) ) {
-            fcon += part_vpower_w( here,  vp );
+            // VEH-J09: as engine_fuel_usage() does
+            fcon += enchantment_cache.modify_value( enchant_vals::mod::FUEL_USAGE,
+                                                    part_vpower_w( here,  vp ) );
             if( vp.has_fault_flag( "DOUBLE_FUEL_CONSUMPTION" ) ) {
                 fcon *= 2;
             }
@@ -4130,6 +4175,8 @@ units::power vehicle::total_power( map &here, const bool fueled, const bool safe
             count++;
         }
     }
+    // VEH-J09
+    pwr = enchantment_cache.modify_value( enchant_vals::mod::VEH_ENGINE_POWER, pwr );
 
     for( const int p : alternators ) {
         const vehicle_part &vp = parts[p];
@@ -4257,12 +4304,17 @@ static double simple_cubic_solution( double a, double b, double c, double d )
 
 int vehicle::acceleration( map &here, const bool fueled, int at_vel_in_vmi ) const
 {
+    int accel;
     if( is_watercraft() ) {
-        return water_acceleration( here, fueled, at_vel_in_vmi );
+        accel = water_acceleration( here, fueled, at_vel_in_vmi );
     } else if( is_rotorcraft( here ) && is_flying ) {
-        return rotor_acceleration( here, fueled, at_vel_in_vmi );
+        accel = rotor_acceleration( here, fueled, at_vel_in_vmi );
+    } else {
+        accel = ground_acceleration( here, fueled, at_vel_in_vmi );
     }
-    return ground_acceleration( here, fueled, at_vel_in_vmi );
+    // VEH-J09
+    return static_cast<int>( enchantment_cache.modify_value( enchant_vals::mod::VEH_ACCELERATION,
+                             static_cast<double>( accel ) ) );
 }
 
 int vehicle::current_acceleration( map &here, const bool fueled ) const
@@ -4341,19 +4393,24 @@ int vehicle::max_rotor_velocity( map &here, const bool fueled ) const
 
 int vehicle::max_velocity( map &here, const bool fueled ) const
 {
+    int max_vel;
     if( is_flying && is_rotorcraft( here ) ) {
-        return max_rotor_velocity( here, fueled );
+        max_vel = max_rotor_velocity( here, fueled );
     } else if( is_watercraft() ) {
-        return max_water_velocity( here, fueled );
+        max_vel = max_water_velocity( here, fueled );
     } else {
-        return max_ground_velocity( here, fueled );
+        max_vel = max_ground_velocity( here, fueled );
     }
+    // VEH-J09
+    return static_cast<int>( enchantment_cache.modify_value( enchant_vals::mod::VEH_MAX_VELOCITY,
+                             static_cast<double>( max_vel ) ) );
 }
 
 int vehicle::max_reverse_velocity( map &here, const bool fueled ) const
 {
     int max_vel = max_velocity( here, fueled );
-    if( has_engine_type( fuel_type_battery, true ) ) {
+    // VEH-J11: battery engines by default
+    if( has_full_reverse_engine() ) {
         // Electric motors can go in reverse as well as forward
         return -max_vel;
     } else {
@@ -4391,13 +4448,17 @@ int vehicle::safe_water_velocity( map &here, const bool fueled ) const
 
 int vehicle::safe_velocity( map &here, const bool fueled ) const
 {
+    int safe_vel;
     if( is_flying && is_rotorcraft( here ) ) {
-        return safe_rotor_velocity( here, fueled );
+        safe_vel = safe_rotor_velocity( here, fueled );
     } else if( is_watercraft() ) {
-        return safe_water_velocity( here, fueled );
+        safe_vel = safe_water_velocity( here, fueled );
     } else {
-        return safe_ground_velocity( here, fueled );
+        safe_vel = safe_ground_velocity( here, fueled );
     }
+    // VEH-J09: the top speed's value scales the safe speed too
+    return static_cast<int>( enchantment_cache.modify_value( enchant_vals::mod::VEH_MAX_VELOCITY,
+                             static_cast<double>( safe_vel ) ) );
 }
 
 bool vehicle::do_environmental_effects( map &here ) const
@@ -4630,10 +4691,18 @@ struct drag_column {
 };
 } // namespace
 
+// VEH-J09: a drag coefficient with the vehicle's enchantment value for it
+static double enchanted_drag( const enchant_cache &ench, const enchant_vals::mod value,
+                              const double drag )
+{
+    return std::max( 0.0, ench.modify_value( value, drag ) );
+}
+
 double vehicle::coeff_air_drag() const
 {
     if( !coeff_air_dirty ) {
-        return coefficient_air_resistance;
+        return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_AIR_DRAG,
+                               coefficient_air_resistance );
     }
     constexpr double c_air_base = 0.25;
     constexpr double c_air_mod = 0.1;
@@ -4771,13 +4840,15 @@ double vehicle::coeff_air_drag() const
     // coeff_air_resistance = c_air_drag * cross_area * 1/2 * air_density
     coefficient_air_resistance = std::max( 0.1, c_air_drag * cross_area * 0.5 * air_density );
     coeff_air_dirty = false;
-    return coefficient_air_resistance;
+    return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_AIR_DRAG,
+                           coefficient_air_resistance );
 }
 
 double vehicle::coeff_rolling_drag( map &here ) const
 {
     if( !coeff_rolling_dirty ) {
-        return coefficient_rolling_resistance;
+        return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_ROLLING_RESISTANCE,
+                               coefficient_rolling_resistance );
     }
     constexpr double wheel_ratio = 1.25;
     constexpr double base_wheels = 4.0;
@@ -4801,7 +4872,8 @@ double vehicle::coeff_rolling_drag( map &here ) const
     }
     coefficient_rolling_resistance = newton_ratio * wheel_factor * to_kilogram( total_mass( here ) );
     coeff_rolling_dirty = false;
-    return coefficient_rolling_resistance;
+    return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_ROLLING_RESISTANCE,
+                           coefficient_rolling_resistance );
 }
 
 double vehicle::water_hull_height( map &here ) const
@@ -4888,7 +4960,7 @@ bool vehicle::would_install_prevent_flyable( const vpart_info &vpinfo, const Cha
 {
     if( flyable && !rotors.empty() && !( vpinfo.has_flag( "SIMPLE_PART" ) ||
                                          vpinfo.has_flag( "AIRCRAFT_REPAIRABLE_NOPROF" ) ) ) {
-        return !pc.has_proficiency( proficiency_prof_aircraft_mechanic );
+        return !has_aircraft_maintenance_proficiency( pc );
     } else {
         return false;
     }
@@ -4901,7 +4973,7 @@ bool vehicle::would_repair_prevent_flyable( const vehicle_part &vp, const Charac
             vp.info().has_flag( "AIRCRAFT_REPAIRABLE_NOPROF" ) ) {
             return false;
         } else {
-            return !pc.has_proficiency( proficiency_prof_aircraft_mechanic );
+            return !has_aircraft_maintenance_proficiency( pc );
         }
     } else {
         return false;
@@ -4911,10 +4983,36 @@ bool vehicle::would_repair_prevent_flyable( const vehicle_part &vp, const Charac
 bool vehicle::would_removal_prevent_flyable( const vehicle_part &vp, const Character &pc ) const
 {
     if( flyable && !rotors.empty() && !vp.info().has_flag( "SIMPLE_PART" ) ) {
-        return !pc.has_proficiency( proficiency_prof_aircraft_mechanic );
+        return !has_aircraft_maintenance_proficiency( pc );
     } else {
         return false;
     }
+}
+
+std::vector<proficiency_id> vehicle::aircraft_maintenance_proficiencies() const
+{
+    std::vector<proficiency_id> ret;
+    for( const int index : control_req_parts ) {
+        const std::optional<proficiency_id> &prof =
+            parts[index].info().control_air.maintenance_proficiency;
+        if( prof && std::find( ret.begin(), ret.end(), *prof ) == ret.end() ) {
+            ret.push_back( *prof );
+        }
+    }
+    if( ret.empty() ) {
+        ret.push_back( proficiency_prof_aircraft_mechanic );
+    }
+    return ret;
+}
+
+bool vehicle::has_aircraft_maintenance_proficiency( const Character &pc ) const
+{
+    for( const proficiency_id &prof : aircraft_maintenance_proficiencies() ) {
+        if( !pc.has_proficiency( prof ) ) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool vehicle::is_flying_in_air() const
@@ -4937,18 +5035,27 @@ bool vehicle::is_in_water( bool deep_water ) const
     return deep_water ? in_deep_water : in_water;
 }
 
+// Does pc meet one part's control requirements for one mode?
+static bool meets_control_req( const vp_control_req &req, const Character &pc )
+{
+    for( const proficiency_id &prof : req.proficiencies ) {
+        if( !pc.has_proficiency( prof ) ) {
+            return false;
+        }
+    }
+    for( const std::pair<string_id<Skill>, int> &skill : req.skills ) {
+        if( pc.get_skill_level( skill.first ) < skill.second ) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool vehicle::can_control_in_air( const Character &pc ) const
 {
     for( const int index : control_req_parts ) {
-        for( const proficiency_id prof : parts[index].info().control_air.proficiencies ) {
-            if( !pc.has_proficiency( prof ) ) {
-                return false;
-            }
-        }
-        for( const std::pair<string_id<Skill>, int> &skill : parts[index].info().control_air.skills ) {
-            if( pc.get_skill_level( skill.first ) < skill.second ) {
-                return false;
-            }
+        if( !meets_control_req( parts[index].info().control_air, pc ) ) {
+            return false;
         }
     }
     return true;
@@ -4957,24 +5064,72 @@ bool vehicle::can_control_in_air( const Character &pc ) const
 bool vehicle::can_control_on_land( const Character &pc ) const
 {
     for( const int index : control_req_parts ) {
-        for( const proficiency_id prof : parts[index].info().control_land.proficiencies ) {
-            if( !pc.has_proficiency( prof ) ) {
-                return false;
-            }
-        }
-        for( const std::pair<string_id<Skill>, int> &skill : parts[index].info().control_land.skills ) {
-            if( pc.get_skill_level( skill.first ) < skill.second ) {
-                return false;
-            }
+        if( !meets_control_req( parts[index].info().control_land, pc ) ) {
+            return false;
         }
     }
     return true;
 }
 
+bool vehicle::can_control_in_water( const Character &pc ) const
+{
+    for( const int index : control_req_parts ) {
+        if( !meets_control_req( parts[index].info().control_water, pc ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// VEH-J08: the control_requirements entry for how the vehicle moves now
+static const vp_control_req &active_control_req( const vpart_info &vpi, bool flying,
+        bool deep_water )
+{
+    if( flying ) {
+        return vpi.control_air;
+    }
+    return deep_water ? vpi.control_water : vpi.control_land;
+}
+
+skill_id vehicle::handling_skill() const
+{
+    for( const int index : control_req_parts ) {
+        const vp_control_req &req = active_control_req( parts[index].info(), is_flying, in_deep_water );
+        if( req.handling_skill ) {
+            return *req.handling_skill;
+        }
+    }
+    return skill_driving;
+}
+
+proficiency_id vehicle::handling_proficiency() const
+{
+    for( const int index : control_req_parts ) {
+        const vp_control_req &req = active_control_req( parts[index].info(), is_flying, in_deep_water );
+        if( req.handling_proficiency ) {
+            return *req.handling_proficiency;
+        }
+    }
+    // In the air too: flying used the driver proficiency before control_requirements could say
+    return in_deep_water && !is_flying ? proficiency_prof_boat_pilot : proficiency_prof_driver;
+}
+
+std::vector<proficiency_id> vehicle::trained_pilot_proficiencies() const
+{
+    for( const int index : control_req_parts ) {
+        const vp_control_req &req = active_control_req( parts[index].info(), is_flying, in_deep_water );
+        if( req.trains ) {
+            return *req.trains;
+        }
+    }
+    return { handling_proficiency() };
+}
+
 double vehicle::coeff_water_drag( map &here ) const
 {
     if( !coeff_water_dirty ) {
-        return coefficient_water_resistance;
+        return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_WATER_DRAG,
+                               coefficient_water_resistance );
     }
     int structural_part_count = 0;
     for( int structural_part_idx : all_parts_at_location( vpart_location_structure ) ) {
@@ -4991,7 +5146,8 @@ double vehicle::coeff_water_drag( map &here ) const
         hull_height = 0.3;
         draft_m = 1.0;
         coefficient_water_resistance = 1250.0;
-        return coefficient_water_resistance;
+        return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_WATER_DRAG,
+                               coefficient_water_resistance );
     }
     double hull_coverage = static_cast<double>( floating.size() ) / structural_part_count;
 
@@ -5027,7 +5183,8 @@ double vehicle::coeff_water_drag( map &here ) const
     // coeff_water_resistance = c_water_drag * cross_area * 1/2 * water_density
     coefficient_water_resistance = c_water_drag * width_m * draft_m * 0.5 * water_density;
     coeff_water_dirty = false;
-    return coefficient_water_resistance;
+    return enchanted_drag( enchantment_cache, enchant_vals::mod::VEH_WATER_DRAG,
+                           coefficient_water_resistance );
 }
 
 float vehicle::k_traction( map &here, float wheel_traction_area ) const
@@ -5047,16 +5204,21 @@ float vehicle::k_traction( map &here, float wheel_traction_area, units::mass mas
         return 1.0f;
     }
 
+    // VEH-J09: wheel traction only (not floating or flying)
+    const auto enchanted_traction = [this]( const float traction ) {
+        return static_cast<float>( std::max( 0.0,
+                                             enchantment_cache.modify_value( enchant_vals::mod::VEH_TRACTION, traction ) ) );
+    };
     const float fraction_without_traction = 1.0f - wheel_traction_area / wheel_area();
     if( fraction_without_traction == 0 ) {
-        return 1.0f;
+        return enchanted_traction( 1.0f );
     }
     const float mass_penalty = fraction_without_traction * to_kilogram( mass );
     float traction = std::min( 1.0f, wheel_traction_area / mass_penalty );
     add_msg_debug( debugmode::DF_VEHICLE, "%s has traction %.2f", name, traction );
 
     // For now make it easy until it gets properly balanced: add a low cap of 0.1
-    return std::max( 0.1f, traction );
+    return enchanted_traction( std::max( 0.1f, traction ) );
 }
 
 int vehicle::drag_str_req_at( map &here, const tripoint_bub_ms &tile_pos,
@@ -5450,7 +5612,7 @@ void vehicle::consume_fuel( map &here, int load, bool idling )
 
     // if engine is under load, player is actively piloting a vehicle, so train appropriate vehicle proficiency
     if( load > 0 ) {
-        practice_pilot_proficiencies( *driver, in_deep_water );
+        practice_pilot_proficiencies( *driver, *this );
     }
 
     if( load > 0 && fuel_left( here, fuel_type_muscle ) > 0 &&
@@ -5508,13 +5670,12 @@ void vehicle::consume_fuel( map &here, int load, bool idling )
     }
 }
 
-void practice_pilot_proficiencies( Character &p, bool &boating )
+void practice_pilot_proficiencies( Character &p, const vehicle &veh )
 {
-    if( !p.has_proficiency( proficiency_prof_driver ) && !boating ) {
-        p.practice_proficiency( proficiency_prof_driver, 1_seconds );
-    }
-    if( !p.has_proficiency( proficiency_prof_boat_pilot ) && boating ) {
-        p.practice_proficiency( proficiency_prof_boat_pilot, 1_seconds );
+    for( const proficiency_id &prof : veh.trained_pilot_proficiencies() ) {
+        if( !p.has_proficiency( prof ) ) {
+            p.practice_proficiency( prof, 1_seconds );
+        }
     }
 }
 
@@ -5579,7 +5740,8 @@ units::power vehicle::total_accessory_epower() const
             epower += vp.info().epower;
         }
     }
-    return epower;
+    // VEH-J09: scales what the accessories draw (a positive amount)
+    return -enchantment_cache.modify_value( enchant_vals::mod::VEH_EPOWER_DRAIN, -epower );
 }
 
 std::pair<int, int> vehicle::battery_power_level( ) const
@@ -6313,9 +6475,11 @@ void vehicle::idle( map &here, bool on_map )
             }
         }
     } else {
-        if( engine_on &&
-            ( has_engine_type_not( fuel_type_muscle, true ) && has_engine_type_not( fuel_type_animal, true ) &&
-              has_engine_type_not( fuel_type_wind, true ) && has_engine_type_not( fuel_type_mana, true ) ) ) {
+        // VEH-J11: "stall_message" is false for animal, muscle, wind and mana engines by default
+        const bool stall_message = std::any_of( engines.begin(), engines.end(), [this]( const int p ) {
+            return is_engine_on( parts[p] ) && parts[p].info().engine_info->stall_message.value_or( true );
+        } );
+        if( engine_on && stall_message ) {
             add_msg_if_player_sees( pos_bub( here ), _( "The %s's engine dies!" ), name );
         }
         engine_on = false;
@@ -8223,6 +8387,12 @@ int vehicle::damage_direct( map &here, vehicle_part &vp, int dmg, const damage_t
 {
     if( vp.removed ) {
         return dmg; // part is already dead
+    }
+    // VEH-J09
+    if( dmg > 0 ) {
+        dmg = std::max( 0, static_cast<int>( std::lround(
+                enchantment_cache.modify_value( enchant_vals::mod::VEH_PART_DAMAGE_TAKEN,
+                                                static_cast<double>( dmg ) ) ) ) );
     }
     const vpart_info &vpi = vp.info();
     const tripoint_bub_ms vppos = bub_part_pos( here, vp );

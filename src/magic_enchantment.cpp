@@ -212,6 +212,17 @@ namespace io
             case enchant_vals::mod::MUT_OUT_OF_TREE_INSTABILITY_MULT: return "MUT_OUT_OF_TREE_INSTABILITY_MULT";
             case enchant_vals::mod::BLOCK_EFFECTIVENESS: return "BLOCK_EFFECTIVENESS";
             case enchant_vals::mod::BLOCK_STAMINA_COST: return "BLOCK_STAMINA_COST";
+            case enchant_vals::mod::VEH_ENGINE_POWER: return "VEH_ENGINE_POWER";
+            case enchant_vals::mod::VEH_MAX_VELOCITY: return "VEH_MAX_VELOCITY";
+            case enchant_vals::mod::VEH_ACCELERATION: return "VEH_ACCELERATION";
+            case enchant_vals::mod::VEH_AIR_DRAG: return "VEH_AIR_DRAG";
+            case enchant_vals::mod::VEH_ROLLING_RESISTANCE: return "VEH_ROLLING_RESISTANCE";
+            case enchant_vals::mod::VEH_WATER_DRAG: return "VEH_WATER_DRAG";
+            case enchant_vals::mod::VEH_TRACTION: return "VEH_TRACTION";
+            case enchant_vals::mod::VEH_PART_DAMAGE_TAKEN: return "VEH_PART_DAMAGE_TAKEN";
+            case enchant_vals::mod::VEH_COLLISION_DAMAGE: return "VEH_COLLISION_DAMAGE";
+            case enchant_vals::mod::VEH_RENEWABLE_OUTPUT: return "VEH_RENEWABLE_OUTPUT";
+            case enchant_vals::mod::VEH_EPOWER_DRAIN: return "VEH_EPOWER_DRAIN";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );
@@ -711,12 +722,32 @@ bool enchantment::is_monster_relevant() const
 // Returns true if this enchantment is relevant to vehicles. Enchantments that are not relevant to vehicles are not processed by vehicles.
 bool enchantment::is_vehicle_relevant() const
 {
+    const auto vehicle_value = []( const enchant_vals::mod value ) {
+        switch( value ) {
+            case enchant_vals::mod::TOTAL_WEIGHT:
+            case enchant_vals::mod::FUEL_USAGE:
+            case enchant_vals::mod::TURNING_DIFFICULTY:
+            // VEH-J09
+            case enchant_vals::mod::VEH_ENGINE_POWER:
+            case enchant_vals::mod::VEH_MAX_VELOCITY:
+            case enchant_vals::mod::VEH_ACCELERATION:
+            case enchant_vals::mod::VEH_AIR_DRAG:
+            case enchant_vals::mod::VEH_ROLLING_RESISTANCE:
+            case enchant_vals::mod::VEH_WATER_DRAG:
+            case enchant_vals::mod::VEH_TRACTION:
+            case enchant_vals::mod::VEH_PART_DAMAGE_TAKEN:
+            case enchant_vals::mod::VEH_COLLISION_DAMAGE:
+            case enchant_vals::mod::VEH_RENEWABLE_OUTPUT:
+            case enchant_vals::mod::VEH_EPOWER_DRAIN:
+                return true;
+            default:
+                return false;
+        }
+    };
     // Check add values.
     for( const std::pair<const enchant_vals::mod, dbl_or_var> &pair_values :
          values_add ) {
-        if( pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
-            pair_values.first == enchant_vals::mod::FUEL_USAGE ||
-            pair_values.first == enchant_vals::mod::TURNING_DIFFICULTY ) {
+        if( vehicle_value( pair_values.first ) ) {
             return true;
         }
     }
@@ -724,9 +755,7 @@ bool enchantment::is_vehicle_relevant() const
     // Check mult values.
     for( const std::pair<const enchant_vals::mod, dbl_or_var> &pair_values :
          values_multiply ) {
-        if( pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
-            pair_values.first == enchant_vals::mod::FUEL_USAGE ||
-            pair_values.first == enchant_vals::mod::TURNING_DIFFICULTY ) {
+        if( vehicle_value( pair_values.first ) ) {
             return true;
         }
     }

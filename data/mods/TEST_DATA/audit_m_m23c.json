@@ -1,0 +1,104 @@
+[
+  {
+    "id": "test_m23c_pilot_controls",
+    "copy-from": "controls",
+    "type": "vehicle_part",
+    "//": "VEH-J08: controls whose control_requirements set handling, training and maintenance; used in tests/audit_m_m23c_test.cpp",
+    "control_requirements": {
+      "land": { "handling_skill": "mechanics", "handling_proficiency": "prof_helicopter_pilot", "trains": [ "prof_boat_pilot" ] },
+      "water": { "proficiencies": [ "prof_boat_pilot" ] },
+      "air": { "maintenance_proficiency": "prof_helicopter_pilot" }
+    }
+  },
+  {
+    "id": "test_m23c_pilot_cart",
+    "type": "vehicle",
+    "//": "VEH-J08: no wheels, so it floats in deep water",
+    "name": "TEST m23c pilot cart",
+    "parts": [ { "x": 0, "y": 0, "parts": [ "frame#vertical", "seat", "test_m23c_pilot_controls" ] } ]
+  },
+  {
+    "id": "test_m23c_spirit_engine",
+    "copy-from": "engine_electric_small",
+    "type": "vehicle_part",
+    "//": "VEH-J11: power from math (the vehicle's m23c_watts, plus the rider's m23c_bonus), no full reverse although it runs on battery, and no stall message",
+    "power_math": { "math": [ "u_m23c_watts + ( _has_rider ? n_m23c_bonus : 0 )" ] },
+    "full_reverse": false,
+    "stall_message": false
+  },
+  {
+    "id": "test_m23c_spirit_cart",
+    "type": "vehicle",
+    "//": "VEH-J10 / VEH-J11: starts with variables and runs a spawn EOC",
+    "name": "TEST m23c spirit cart",
+    "parts": [ { "x": 0, "y": 0, "parts": [ "frame#vertical", "seat", "test_m23c_spirit_engine", "medium_storage_battery" ] } ],
+    "variables": { "m23c_watts": 1000, "m23c_kind": "cart" },
+    "spawn_eocs": [ { "id": "EOC_TEST_M23C_SPAWNED", "effect": [ { "math": [ "u_m23c_spawned++" ] } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_engine_power",
+    "//": "VEH-J09: each of these doubles one vehicle enchantment value",
+    "name": [ "TEST m23c engine power" ],
+    "desc": [ "Doubles a vehicle's engine power." ],
+    "enchantments": [ { "values": [ { "value": "VEH_ENGINE_POWER", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_max_velocity",
+    "name": [ "TEST m23c max velocity" ],
+    "desc": [ "Doubles a vehicle's top speed." ],
+    "enchantments": [ { "values": [ { "value": "VEH_MAX_VELOCITY", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_acceleration",
+    "name": [ "TEST m23c acceleration" ],
+    "desc": [ "Doubles a vehicle's acceleration." ],
+    "enchantments": [ { "values": [ { "value": "VEH_ACCELERATION", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_drag",
+    "name": [ "TEST m23c drag" ],
+    "desc": [ "Doubles a vehicle's air, rolling and water drag." ],
+    "enchantments": [
+      {
+        "values": [
+          { "value": "VEH_AIR_DRAG", "multiply": 1 },
+          { "value": "VEH_ROLLING_RESISTANCE", "multiply": 1 },
+          { "value": "VEH_WATER_DRAG", "multiply": 1 }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_traction",
+    "name": [ "TEST m23c traction" ],
+    "desc": [ "Doubles a vehicle's traction." ],
+    "enchantments": [ { "values": [ { "value": "VEH_TRACTION", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_damage_taken",
+    "name": [ "TEST m23c damage taken" ],
+    "desc": [ "Doubles the damage a vehicle's parts take." ],
+    "enchantments": [ { "values": [ { "value": "VEH_PART_DAMAGE_TAKEN", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_power_flow",
+    "name": [ "TEST m23c power flow" ],
+    "desc": [ "Doubles a vehicle's renewable output and accessory drain." ],
+    "enchantments": [ { "values": [ { "value": "VEH_RENEWABLE_OUTPUT", "multiply": 1 }, { "value": "VEH_EPOWER_DRAIN", "multiply": 1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m23c_veh_weight",
+    "//": "VEH-J09 / VEH-B15",
+    "name": [ "TEST m23c weight" ],
+    "desc": [ "Doubles a vehicle's weight." ],
+    "enchantments": [ { "values": [ { "value": "TOTAL_WEIGHT", "multiply": 1 } ] } ]
+  }
+]
