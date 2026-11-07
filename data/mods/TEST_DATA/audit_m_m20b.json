@@ -120,6 +120,7 @@
     "id": "mon_test_m20b_mech",
     "copy-from": "mon_mech_recon",
     "name": { "str": "test science mech", "//~": "NO_I18N" },
+    "broken_itype": "broken_mech_recon",
     "mech_activation_item": "id_science"
   }
 ]

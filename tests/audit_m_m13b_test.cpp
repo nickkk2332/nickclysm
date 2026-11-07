@@ -45,8 +45,8 @@ static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_bandages( "bandages" );
 static const itype_id itype_battery( "battery" );
 static const itype_id itype_cig_butt( "cig_butt" );
-static const itype_id itype_flashlight( "flashlight" );
 static const itype_id itype_lamp_oil( "lamp_oil" );
+static const itype_id itype_laptop( "laptop" );
 static const itype_id itype_oil_lamp( "oil_lamp" );
 static const itype_id itype_test_m13b_antivenom( "test_m13b_antivenom" );
 static const itype_id itype_test_m13b_herb_cig( "test_m13b_herb_cig" );
@@ -169,7 +169,8 @@ TEST_CASE( "use-j10_item_power_is_battery_and_charges_are_writable", "[audit][eo
     map &here = get_map();
     const tripoint_bub_ms spot = u.pos_bub() + tripoint_rel_ms::east;
 
-    item &light = here.add_item( spot, item( itype_flashlight ) );
+    // a laptop holds its battery charge itself (a flashlight takes a battery cell)
+    item &light = here.add_item( spot, item( itype_laptop ) );
     REQUIRE_FALSE( light.is_null() );
     light.ammo_set( itype_battery, 40 );
     REQUIRE( light.ammo_remaining() == 40 );

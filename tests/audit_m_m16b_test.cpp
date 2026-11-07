@@ -255,8 +255,10 @@ TEST_CASE( "prog-j06_skill_exp_can_practice", "[audit][skill][math_parser]" )
     const int practiced = u.get_skill_level_object( skill ).exercise( true );
     CHECK( practiced > 0 );
 
-    // the same as practicing for it
+    // the same as practicing for it, from the same start (the theory it gained too, or the
+    // practice would catch up to it faster)
     u.get_skill_level_object( skill ).set_exercise( 0, true );
+    u.get_skill_level_object( skill ).set_knowledge_exercise( 0, true );
     u.set_focus( 100 );
     u.practice( skill, 10, MAX_SKILL, true, true );
     CHECK( u.get_skill_level_object( skill ).exercise( true ) == practiced );

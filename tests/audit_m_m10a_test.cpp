@@ -313,6 +313,7 @@ TEST_CASE( "item-j04_math_reads_and_writes_item_charges", "[audit][item][eoc][ma
 
     // a stack counted by charges: its size, never below 1
     item ammo( itype_9mm, calendar::turn, 10 );
+    u.remove_weapon();
     REQUIRE( u.wield( ammo ) );
     item_location held = u.get_wielded_item();
     REQUIRE( held );
@@ -326,6 +327,7 @@ TEST_CASE( "item-j04_math_reads_and_writes_item_charges", "[audit][item][eoc][ma
     // a magazine: the ammo loaded in it, up to its capacity
     item mag( itype_glockmag );
     mag.ammo_set( itype_9mm, 5 );
+    u.remove_weapon();
     REQUIRE( u.wield( mag ) );
     item_location held_mag = u.get_wielded_item();
     REQUIRE( held_mag );
@@ -347,6 +349,7 @@ TEST_CASE( "item-j04_math_reads_and_writes_item_state", "[audit][item][eoc][math
     avatar &u = get_avatar();
 
     item food( itype_audit_m10a_cured );
+    u.remove_weapon();
     REQUIRE( u.wield( food ) );
     item_location held = u.get_wielded_item();
     REQUIRE( held );
@@ -355,16 +358,20 @@ TEST_CASE( "item-j04_math_reads_and_writes_item_state", "[audit][item][eoc][math
     dialogue d( get_talker_for( u ), get_talker_for( held ) );
     run_math( d, "n_item_temperature() = 300" );
     CHECK( units::to_kelvin( held->temperature ) == Approx( 300 ) );
-    CHECK( math_true( d, "n_item_temperature() > 299 && n_item_temperature() < 301" ) );
+    // math has no &&: two comparisons
+    CHECK( math_true( d, "n_item_temperature() > 299" ) );
+    CHECK( math_true( d, "n_item_temperature() < 301" ) );
     run_math( d, "n_item_freshness() = 0.5" );
     CHECK( held->get_relative_rot() == Approx( 0.5 ) );
-    CHECK( math_true( d, "n_item_freshness() > 0.49 && n_item_freshness() < 0.51" ) );
+    CHECK( math_true( d, "n_item_freshness() > 0.49" ) );
+    CHECK( math_true( d, "n_item_freshness() < 0.51" ) );
     run_math( d, "n_item_wetness() = 40" );
     CHECK( held->wetness == 40 );
     CHECK( math_true( d, "n_item_wetness() == 40" ) );
 
     // an item without a tracked temperature reads 0; one that isn't a relic has no charges
     item widget( itype_audit_m10a_fault_parent );
+    u.remove_weapon();
     REQUIRE( u.wield( widget ) );
     item_location held_widget = u.get_wielded_item();
     REQUIRE( held_widget );
@@ -383,6 +390,7 @@ TEST_CASE( "item-j04_math_reads_and_writes_item_state", "[audit][item][eoc][math
 
     // relic charges, no more than the maximum
     item relic( itype_audit_m10a_relic );
+    u.remove_weapon();
     REQUIRE( u.wield( relic ) );
     item_location held_relic = u.get_wielded_item();
     REQUIRE( held_relic );
@@ -401,6 +409,7 @@ TEST_CASE( "item-j04_u_transform_item_transforms_the_alpha_item", "[audit][item]
     clear_avatar();
     avatar &u = get_avatar();
     item widget( itype_audit_m10a_fault_parent );
+    u.remove_weapon();
     REQUIRE( u.wield( widget ) );
     item_location held = u.get_wielded_item();
     REQUIRE( held );
@@ -423,6 +432,7 @@ TEST_CASE( "item-j05_relic_activation_sends_activates_artifact", "[audit][item][
     clear_avatar();
     avatar &u = get_avatar();
     item relic( itype_audit_m10a_relic );
+    u.remove_weapon();
     REQUIRE( u.wield( relic ) );
     item_location held = u.get_wielded_item();
     REQUIRE( held );
@@ -448,6 +458,7 @@ TEST_CASE( "item-j05_relic_recharges_while_its_eoc_condition_holds", "[audit][it
     on_out_of_scope cleanup = forget_globals( { "audit_m10a_recharge", "audit_m10a_recharge_ran" } );
     avatar &u = get_avatar();
     item relic( itype_audit_m10a_relic );
+    u.remove_weapon();
     REQUIRE( u.wield( relic ) );
     item_location held = u.get_wielded_item();
     REQUIRE( held );
@@ -577,6 +588,7 @@ TEST_CASE( "item-j08_fault_fix_condition_and_effect_on_conditions", "[audit][ite
     on_out_of_scope cleanup = forget_globals( { "audit_m10a_can_oil", "audit_m10a_oiled" } );
     avatar &u = get_avatar();
     item widget( itype_audit_m10a_fault_parent );
+    u.remove_weapon();
     REQUIRE( u.wield( widget ) );
     REQUIRE( u.get_wielded_item() );
     u.get_wielded_item()->set_fault( fault_audit_m10a_squeak, true );

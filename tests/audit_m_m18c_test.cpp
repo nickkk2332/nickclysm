@@ -458,7 +458,8 @@ TEST_CASE( "cmbt-j11_flashbang_immunity_is_data", "[audit][explosion]" )
     avatar &u = get_avatar();
     const tripoint_bub_ms center = u.pos_bub() + tripoint( 6, 0, 0 );
     monster &zombie = spawn_test_monster( "mon_zombie", center + tripoint::north );
-    monster &bot = spawn_test_monster( "mon_manhack", center + tripoint::south );
+    // a ROBOT (the manhack is ROBOT_FLYING, which flashbangs always stunned)
+    monster &bot = spawn_test_monster( "mon_grocerybot", center + tripoint::south );
     REQUIRE( bot.type->in_species( species_ROBOT ) );
     explosion_handler::flashbang( center, true, 8 );
     CHECK( zombie.has_effect( effect_stunned ) );

@@ -318,8 +318,10 @@ TEST_CASE( "mondt-b09_dressing_takes_bones_from_the_corpse", "[audit][butchery]"
     const int roll = 1000;
     int total = 0;
     const int tries = 200;
+    // one seed for the whole run: the first draw after seeding with 4200, 4201... is nearly the
+    // same number each time (the engine's output is close to linear in the seed)
+    rng_set_engine_seed( 4200u );
     for( int i = 0; i < tries; ++i ) {
-        rng_set_engine_seed( 4200u + i );
         const std::optional<int> taken = butchery_entry_yield( bone, roll, butcher_type::FIELD_DRESS,
                                          whole, mt, you );
         const std::optional<int> left = butchery_entry_yield( bone, roll, butcher_type::FULL, dressed,

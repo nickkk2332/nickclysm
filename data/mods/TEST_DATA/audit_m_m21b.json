@@ -35,7 +35,7 @@
     "type": "ITEM",
     "name": { "str": "test antidote" },
     "description": "NPC-J08 test: a healing item that cures poison.",
-    "weight": "10 g",
+    "weight": "5 g",
     "volume": "10 ml",
     "material": [ "cotton" ],
     "symbol": "!",

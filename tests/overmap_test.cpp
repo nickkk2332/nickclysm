@@ -120,7 +120,14 @@ TEST_CASE( "overmap_location_flags_are_valid", "[overmap][flags]" )
 
     for( const std::string &flag : flags ) {
         CAPTURE( flag );
-        CHECK( io::enum_is_valid<oter_flags>( flag ) );
+        if( !io::enum_is_valid<oter_flags>( flag ) ) {
+            // a mod's own flag (OMAP-J12) is valid if some overmap terrain has it
+            const std::vector<oter_t> &all_oters = overmap_terrains::get_all();
+            CHECK( std::any_of( all_oters.begin(), all_oters.end(), [&flag]( const oter_t &ot ) {
+                return ot.has_flag( std::string_view( flag ) );
+            } ) );
+            continue;
+        }
         CHECK( io::string_to_enum_optional<oter_flags>( flag ).has_value() );
     }
 }

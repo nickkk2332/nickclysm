@@ -28,6 +28,7 @@
     "type": "MONSTER",
     "copy-from": "mon_manhack",
     "name": { "str": "test m18c EMP bot", "//~": "NO_I18N" },
+    "broken_itype": "broken_manhack",
     "emp_deactivate_one_in": 1
   },
   {
@@ -36,6 +37,7 @@
     "type": "MONSTER",
     "copy-from": "mon_manhack",
     "name": { "str": "test m18c hardened bot", "//~": "NO_I18N" },
+    "broken_itype": "broken_manhack",
     "hp": 500,
     "emp_deactivate_one_in": 0
   }

@@ -3899,9 +3899,14 @@ bool heal_actor::can_cure( const Character &patient, const bodypart_id &healed )
 
 float heal_actor::cure_urgency( const Character &patient, const bodypart_id &healed ) const
 {
+    // An effect on the whole body counts for the torso, which it is treated through (NPC-J08),
+    // or for every part of a patient without one
+    const bodypart_id torso( "torso" );
+    const bool whole_body_here = healed == torso || !patient.has_part( torso );
     float urgency = 0.0f;
     for( const cure_data &cure : cures ) {
-        if( const std::optional<bodypart_id> on = cure_target( patient, cure.effect, healed ) ) {
+        const std::optional<bodypart_id> on = cure_target( patient, cure.effect, healed );
+        if( on && ( *on != bodypart_str_id::NULL_ID().id() || whole_body_here ) ) {
             urgency += cure.chance * to_minutes<float>( patient.get_effect_dur( cure.effect, *on ) );
         }
     }

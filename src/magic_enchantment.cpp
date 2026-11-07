@@ -534,7 +534,9 @@ void enchantment::load_enchantment_list( const JsonObject &jo, const bool was_lo
 {
     const auto load_all = [&]( const JsonArray & ja ) {
         for( const JsonValue jv : ja ) {
-            std::string inline_id = "INLINE_ENCH_" + owner + "_" + std::to_string( inline_count++ );
+            // only an inline enchantment takes a number: a named one keeps its id
+            std::string inline_id = jv.test_object() ? "INLINE_ENCH_" + owner + "_" +
+                                    std::to_string( inline_count++ ) : std::string();
             list.push_back( load_inline_enchantment( jv, src, inline_id ) );
         }
     };

@@ -287,9 +287,13 @@ TEST_CASE( "veh-b06_armor_takes_one_hit_when_it_is_the_target", "[audit][vehicle
     REQUIRE( veh.part( frame_idx ).info().id == vpart_frame );
     vehicle_part &armor = veh.part( armor_idx );
     vehicle_part &frame = veh.part( frame_idx );
+    // set_hp sets the damage before the degradation, and damage can't go below degradation, so
+    // a first call clears the wear of the last hit and a second one the damage
     const auto mend = [&]() {
-        veh.set_hp( armor, armor.info().durability, false, 0 );
-        veh.set_hp( frame, frame.info().durability, false, 0 );
+        for( int pass = 0; pass < 2; ++pass ) {
+            veh.set_hp( armor, armor.info().durability, false, 0 );
+            veh.set_hp( frame, frame.info().durability, false, 0 );
+        }
     };
     constexpr int dmg = 10;
 
