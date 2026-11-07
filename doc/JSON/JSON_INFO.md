@@ -2219,7 +2219,7 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "post_terrain": "t_pit_spiked",                                     // Terrain type after construction is complete
 "post_special": "done_mine_upstairs",                               // Required to do something beyond setting the post terrain. The syntax also allows for a square bracket enclosed list of specials which all have to be fulfilled
 "pre_note": "Build a spikes on a diggable terrain",                 // Create an annotation to this recipe
-"dark_craftable": true,                                             // If true, you can construct it with lack of light
+"dark_craftable": true,                                             // If true, you can construct it with lack of light (and so can every construction of its group in the construction menu)
 "byproducts": [ { "item": "material_soil", "count": [ 2, 5 ] } ],   // Items, that would be left after construction
 "strict": false,                                                    // If true, the build activity for this construction will only look for prerequisites in the same group
 "on_display": false,                                                // This is a hidden construction item, used by faction camps to calculate construction times but not available to the player
@@ -2290,8 +2290,8 @@ When a construction is finished, the `character_finishes_construction` event is 
 |---                     |---
 | `done_trunk_plank`     | Generate logs and then planks here (under the assumption the tile was a trunk or stump)
 | `done_grave`           | Finish grave digging by performing burial activities
-| `done_vehicle`         | Create a new vehicle and name it
-| `done_appliance`       | Finish the placement of a partially placed appliance
+| `done_vehicle`         | Create a new vehicle and name it, from the construction's one component (any category or id)
+| `done_appliance`       | Finish the placement of a partially placed appliance, from the construction's one component (any category or id)
 | `done_wiring`          | Place a wiring "appliance" at the location
 | `done_deconstruct`     | Finish deconstruction of furniture or, if not present, terrain
 | `done_dig_grave`       | Finish digging up a grave and find what's inside of it
@@ -2995,10 +2995,19 @@ See [MUTATIONS.md](MUTATIONS.md)
     "funnel_radius": 200, // millimeters. The higher the more rain it will capture.
     "comfort": 0, // Same property affecting furniture and terrain
     "floor_bedding_warmth": -500, // Same property affecting furniture and terrain. Also affects how comfortable a resting place this is(affects healing). Vanilla values should not exceed 1000.
-    "eocs": [ "EOC_COOL_EOC_TRAP" ], // array of eocs to trigger, only usable with "action": "eocs". The alpha talker is the creature that triggered the trap and the trap's location is passed as a context variable trap_location for use with ranged traps. Items can't currently trigger eoc traps.
+    "eocs": [ "EOC_COOL_EOC_TRAP" ], // array of eocs to trigger, only usable with "action": "eocs". The alpha talker is the creature that triggered the trap and the trap's location is passed as a context variable trap_location for use with ranged traps. A copy-from child's "eocs" replace its parent's, and a child with another "action" drops them.
+    "item_eocs": [ "EOC_PLATE_PRESSED" ], // only with "action": "eocs": run when an item thrown or dropped onto the trap (see "trigger_weight") or a sound (see "sound_threshold") sets it off; without them, those do nothing to an eocs trap. No alpha talker; context values trap (the trap id), trap_location, and trigger_item (the item's type id, empty for a sound). The trap is removed first, unless it has the UNCONSUMED flag.
+    "disarm_eocs": [ "EOC_DISARMED" ], // run after the trap is disarmed or taken down, with the disarmer as alpha and the context values trap and trap_location (the trap is gone by then)
+    "disarm_fail_eocs": [ "EOC_DISARM_FAILED" ], // the same, after a failed attempt to disarm it (whether or not that set it off)
+    "disarm_condition": { "u_has_trait": "TRAPPER" }, // the disarmer (alpha) must meet it to try, else "disarm_condition_msg" (a format string with %s for the trap's name) is shown. Context values trap and trap_location.
+    "easy_take_down_condition": { "u_has_worn_with_flag": "DIMENSIONAL_ANCHOR" }, // a disarmer (alpha) who meets it takes the trap down without a roll, as for a trap with no avoidance and no difficulty
+    "trigger_damage": [ { "damage_type": "cut", "min": 9, "max": 15 } ], // "beartrap", "board", "caltrops" and "caltrops_glass" actions only: the damage they deal ("amount", or a random amount from "min" to "max", per damage type), in place of their own (beartrap 12 bash and 18 cut, board 3-5 cut, caltrops 9-15 cut, glass caltrops 3-10 cut)
+    "tetanus_chance": 35, // beartrap, board and caltrops: one in this many cutting hits gives tetanus (0: never). Their own: 128 (beartrap), 35. "tetanus_chance_resistant" is the same for infection resistance (512, 256).
+    "break_weight": "100 kg", // board and caltrops: a creature this heavy always breaks the trap, a lighter one may, in proportion (100 kg board, 200 kg caltrops)
+    "self_disarm_chance": 40, // board and caltrops: percent chance that a trap a creature didn't break disarms itself, as if disarmed (40 board, 20 caltrops)
     "spell_data": { "id": "bear_trap" }, // data required for trapfunc::spell(), only usable with "action": "spell"
     "trigger_weight": "200 g", // If an item with this weight or more is thrown onto the trap, it triggers. Defaults to 500 grams.
-    "drops": [ "beartrap" ], // ID of item spawned when disassembled
+    "drops": [ "beartrap" ], // ID of item spawned when disassembled, and when an item sets off a "beartrap" action trap
     "flags": [ "UNDODGEABLE", "AVATAR_ONLY" ], // UNDODGEABLE means that it can not be dodged, no roll required. AVATAR_ONLY means only the player can trigger this trap.
     "vehicle_data": {
       "damage": 300,

@@ -96,6 +96,9 @@ struct computer_option {
     std::string name;
     computer_action action;
     int security;
+    // TERR-J09: run when the option is chosen, after the action (an option may have only
+    // these: its action is then "null"), with the user as alpha and the computer as beta
+    std::vector<effect_on_condition_id> eocs;
 
     computer_option();
     computer_option( const std::string &N, computer_action A, int S );
@@ -108,6 +111,8 @@ struct computer_option {
 
 struct computer_failure {
     computer_failure_type type;
+    // run when this failure happens, after its action (if any), as computer_option::eocs
+    std::vector<effect_on_condition_id> eocs;
 
     computer_failure();
     explicit computer_failure( computer_failure_type t ) : type( t ) {
@@ -118,6 +123,10 @@ struct computer_failure {
     // Load from data files
     static computer_failure from_json( const JsonObject &jo );
 };
+
+// An EOC of a computer in mapgen JSON: an id, or an inline EOC (added once, however many
+// times the mapgen JSON is set up)
+effect_on_condition_id load_computer_eoc( const JsonValue &jv );
 
 class computer
 {
@@ -162,6 +171,9 @@ class computer
         std::string access_denied;
         std::vector<std::string> chat_topics; // What it has to say.
         std::vector<effect_on_condition_id> eocs; // Effect on conditions to run when accessed.
+        // false: eocs replace the terminal (no login, options or failures); true: they run
+        // once the user has logged in, before the options (mapgen "eocs_mode": "on_login")
+        bool eocs_on_login = false;
         // Miscellaneous key/value pairs.
         global_variables::impl_t values;
         // Methods for setting/getting misc key/value pairs.

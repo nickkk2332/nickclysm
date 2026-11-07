@@ -322,8 +322,6 @@ static const trait_id trait_SHELL3( "SHELL3" );
 static const trait_id trait_THRESH_MARLOSS( "THRESH_MARLOSS" );
 static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
 
-static const trap_str_id tr_telepad( "tr_telepad" );
-
 // @TODO maybe make this a property of the item (depend on volume/type)
 static const time_duration milling_time = 6_hours;
 
@@ -4760,17 +4758,24 @@ void trap::examine( const tripoint_bub_ms &examp ) const
         add_msg( m_info, _( "That %s looks too dangerous to mess with.  Best leave it alone." ), name() );
         return;
     }
+    // "disarm_condition"
+    if( !can_try_disarm( player_character, examp ) ) {
+        add_msg( m_info, disarm_condition_msg.translated(), name() );
+        return;
+    }
+    // What the disarm EOCs get: the trap is gone from the map by the time they run
+    const tripoint_abs_ms trap_location = here.get_abs( examp );
 
     // Some traps are not actual traps. Those should get a different query, no skill checks, and the option to grab it right away.
-    // If there is a telepad and we are anchored, there is no risk involved in disarming it also.
-    if( easy_take_down() || ( id == tr_telepad &&
-                              player_character.worn_with_flag(
-                                  flag_DIMENSIONAL_ANCHOR ) ) ) { // Separated so saying no doesn't trigger the other query.
+    // A trap's "easy_take_down_condition" can say the same (a telepad, for a character
+    // wearing a dimensional anchor). Separated so saying no doesn't trigger the other query.
+    if( easy_take_down( player_character, examp ) ) {
         if( !query_yn( _( "There is a %s there.  Take down?" ), name() ) ) {
             return;
         }
         add_msg( _( "The %s is taken down." ), name() );
         on_disarmed( here, examp );
+        run_eocs( disarm_eocs, &player_character, trap_location );
         return;
     }
 
@@ -4809,11 +4814,13 @@ void trap::examine( const tripoint_bub_ms &examp ) const
             if( difficulty > 1.25 * traps_skill_level ) { // failure might have set off trap
                 player_character.practice( skill_traps, 1.5 * ( difficulty - traps_skill_level ) );
             }
+            run_eocs( disarm_eocs, &player_character, trap_location );
         } else if( roll >= ( difficulty * .8 ) ) {
             add_msg( _( "You fail to disarm the trap." ) );
             if( difficulty > 1.25 * traps_skill_level ) {
                 player_character.practice( skill_traps, 1.5 * ( difficulty - traps_skill_level ) );
             }
+            run_eocs( disarm_fail_eocs, &player_character, trap_location );
         } else {
             add_msg( m_bad, _( "You fail to disarm the trap, and you set it off!" ) );
             trigger( examp, player_character );
@@ -4822,6 +4829,7 @@ void trap::examine( const tripoint_bub_ms &examp ) const
                 // case the trap may not be disarmable).
                 player_character.practice( skill_traps, 2 * difficulty );
             }
+            run_eocs( disarm_fail_eocs, &player_character, trap_location );
         }
         //Picking up bubble wrap continuously could powerlevel trap proficiencies, with no risk involved.
         if( difficulty != 0 ) {

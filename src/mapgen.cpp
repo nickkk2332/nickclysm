@@ -3637,6 +3637,8 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
         std::vector<computer_failure> failures;
         std::vector<std::string> chat_topics;
         std::vector<effect_on_condition_id> eocs;
+        // "eocs_mode": "on_login" (the eocs run once logged in) or "replace" (the default)
+        bool eocs_on_login = false;
         bool target;
         jmapgen_computer( const JsonObject &jsi, std::string_view/*context*/ ) {
             jsi.read( "name", name );
@@ -3654,9 +3656,16 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
                 }
             }
             if( jsi.has_array( "eocs" ) ) {
-                for( const std::string &eoc : jsi.get_string_array( "eocs" ) ) {
-                    eocs.emplace_back( eoc );
+                // ids or inline EOCs
+                for( JsonValue jv : jsi.get_array( "eocs" ) ) {
+                    eocs.emplace_back( load_computer_eoc( jv ) );
                 }
+            }
+            const std::string eocs_mode = jsi.get_string( "eocs_mode", "replace" );
+            if( eocs_mode == "on_login" ) {
+                eocs_on_login = true;
+            } else if( eocs_mode != "replace" ) {
+                jsi.throw_error_at( "eocs_mode", R"(eocs_mode must be "replace" or "on_login")" );
             }
             if( jsi.has_array( "chat_topics" ) ) {
                 for( const std::string &topic : jsi.get_string_array( "chat_topics" ) ) {
@@ -3683,6 +3692,7 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
             for( const effect_on_condition_id &eoc : eocs ) {
                 cpu->add_eoc( eoc );
             }
+            cpu->eocs_on_login = eocs_on_login;
             for( const std::string &chat_topic : chat_topics ) {
                 cpu->add_chat_topic( chat_topic );
             }
@@ -3699,6 +3709,22 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
                 if( !eoc.is_valid() ) {
                     debugmsg( "Invalid effect_on_condition \"%s\" for a computer in %s", eoc.str(),
                               context );
+                }
+            }
+            for( const computer_option &opt : options ) {
+                for( const effect_on_condition_id &eoc : opt.eocs ) {
+                    if( !eoc.is_valid() ) {
+                        debugmsg( "Invalid effect_on_condition \"%s\" for the computer option \"%s\" in %s",
+                                  eoc.str(), opt.name, context );
+                    }
+                }
+            }
+            for( const computer_failure &fail : failures ) {
+                for( const effect_on_condition_id &eoc : fail.eocs ) {
+                    if( !eoc.is_valid() ) {
+                        debugmsg( "Invalid effect_on_condition \"%s\" for a computer failure in %s",
+                                  eoc.str(), context );
+                    }
                 }
             }
             for( const std::string &topic : chat_topics ) {

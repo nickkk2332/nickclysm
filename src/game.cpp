@@ -4589,7 +4589,8 @@ void game::use_computer( const tripoint_bub_ms &p )
         }
         return;
     }
-    if( used->eocs.empty() ) {
+    // "eocs_mode": "on_login" runs them inside the session, once logged in
+    if( used->eocs.empty() || used->eocs_on_login ) {
         computer_session( *used ).use();
     } else {
         dialogue d( get_talker_for( get_avatar() ), get_talker_for( used ) );

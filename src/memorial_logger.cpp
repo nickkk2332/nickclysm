@@ -1209,6 +1209,7 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_gains_wound:
         case event_type::character_wound_progresses:
         case event_type::character_loses_wound:
+        case event_type::monster_triggers_trap:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

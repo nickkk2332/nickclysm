@@ -1392,11 +1392,12 @@ Creates a `f_console` furniture. Despite the only required field is `name`, you 
 | Field  | Description
 | ---    | ---
 | name          | (required, string) a name for a computer
-| options       | (optional, array of objects) set of options available for player. `name` (string) - displayed name for an option. `action` - id of a hardcoded action from `computer_session.cpp`
-| failures      | (optional, array of objects) set of failures that could happen in case of unsuccessful hacking attempt. `action` - id of a hardcoded computer failure from `computer_session.cpp`. Only one random failure from the set could happen per one unsuccessful hacking attempt
+| options       | (optional, array of objects) set of options available for player. `name` (string) - displayed name for an option. `action` - id of a hardcoded action from `computer_session.cpp`. `security` (integer, default 0) - the hack needed to use it. `eocs` (array of EOC ids or inline EOCs) - run when the option is chosen, after its action, with the player as alpha, the computer as beta and the context value `pos` (the computer's location); an option with `eocs` needs no `action`
+| failures      | (optional, array of objects) set of failures that could happen in case of unsuccessful hacking attempt. `action` - id of a hardcoded computer failure from `computer_session.cpp`. `eocs` - run when the failure happens, after its action, as an option's; a failure with `eocs` needs no `action`. Only one random failure from the set could happen per one unsuccessful hacking attempt
 | security      | (optional, integer) value for determining the difficulty of hacking this computer. It's checked versus player's computer skill and intelligence
 | access_denied | (optional, string) message displayed to the player if `security` > 0. Defaults to `"ERROR!  Access denied!"`
-| eocs          | (optional, array of strings) a name for an `effect` that will shoot when player examines the computer
+| eocs          | (optional, array of EOC ids or inline EOCs) run when the player uses the computer, with the player as alpha and the computer as beta. See `eocs_mode`
+| eocs_mode     | (optional, string) `"replace"` (the default): the `eocs` run instead of the terminal, which then has no login, `security`, options or failures. `"on_login"`: the terminal works as usual and the `eocs` run once the player has logged in (after any hack of `security`), before the options, with the context value `pos`
 | chat_topics   | (optional, array of strings) conversation topics if dialog is opened with the computer
 
 
@@ -1407,8 +1408,11 @@ Example for placing computer console (either by using a character in the rows ar
   "a": {
     "name": "Test computer 1",
     "security": 3,
-    "options": [ { "name": "Test unlock action", "action": "unlock" } ],
-    "failures": [ { "action": "shutdown" }, { "action": "alarm" } ],
+    "options": [
+      { "name": "Test unlock action", "action": "unlock" },
+      { "name": "Vent reactor", "security": 3, "eocs": [ "EOC_VENT" ] }
+    ],
+    "failures": [ { "action": "shutdown" }, { "action": "alarm" }, { "eocs": [ "EOC_LOCKDOWN" ] } ],
     "access_denied": "ERROR!  Access denied!  Unauthorized access will be met with lethal force!"
   }
 },

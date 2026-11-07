@@ -159,6 +159,16 @@ String.
 The furniture the reader's tile becomes when it is hacked open.
 Without it the furniture stays as it is.
 
+#### `hack_difficulty`
+Optional, defaults to 6.
+Integer (0 or greater).
+The hack roll needed to open it. The roll is random around the hacker's hacking level (computer skill, tool quality and intelligence; standard deviation 5): below 0 it sets off an alarm, from 0 to below `hack_difficulty` nothing happens.
+
+#### `hack_eocs`
+Optional.
+Array of strings and or effect_on_condition objects.
+Run once the reader is hacked open (after its changes), with the hacker as alpha and the context value `pos`, the reader's location.
+
 #### `despawn_monsters`
 Optional, defaults to true.
 Boolean (true/false).
@@ -198,6 +208,7 @@ Multiple items can be specified by adding more keys, e.g. `{ "a": "b", "x": "y" 
 Optional, defaults to true.
 Boolean (true/false).
 Whether or not to query the player before activating and potentially consuming a card.
+With `false`, examining the reader with a card uses it at once.
 
 #### `query_msg`
 Optional, defaults to nothing.
@@ -238,6 +249,35 @@ What message to print when attempting to activate the cardreader after it has al
 Mandatory.
 Array of strings and or effect_on_condition objects.
 Run all of the eocs upon being examined with u as the examiner and npc as null. See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)
+They get the context values `this` (the id of the terrain or furniture the action belongs to), `terrain`, `furniture`, `examined_layer` (`terrain` or `furniture`) and `pos` (the tile).
+
+#### `condition`
+Optional.
+A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions), with the examiner as alpha and the same context values.
+When it isn't met, the EOCs don't run: examining shows `condition_fail_msg` if there is one; without one, the action is greyed out in the examine menu, and a tile whose only action it is can't be examined.
+
+#### `condition_fail_msg`
+Optional.
+String.
+Shown to the examiner when `condition` isn't met.
+
+#### `npc_usable`
+Optional, defaults to true.
+Boolean (true/false).
+Whether an NPC (for example one told to examine the tile from an EOC, `npc_examine`) may use this action.
+An NPC uses the first examine actor it may use: one whose `condition` it meets and that is `npc_usable` (other actor types always count as usable), else the tile's first built-in examine action.
+
+#### Example
+```jsonc
+  "examine_action": {
+    "type": "effect_on_condition",
+    "name": "Pray",
+    "condition": { "u_has_trait": "SPIRITUAL" },
+    "condition_fail_msg": "You feel nothing.",
+    "npc_usable": false,
+    "effect_on_conditions": [ "EOC_ALTAR" ]
+  }
+```
 
 ### `mortar`
 

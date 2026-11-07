@@ -95,16 +95,10 @@
 static const activity_id ACT_MULTIPLE_CONSTRUCTION( "ACT_MULTIPLE_CONSTRUCTION" );
 
 static const construction_category_id construction_category_ALL( "ALL" );
-static const construction_category_id construction_category_APPLIANCE( "APPLIANCE" );
 static const construction_category_id construction_category_DECONSTRUCT( "DECONSTRUCT" );
 static const construction_category_id construction_category_FILTER( "FILTER" );
 static const construction_category_id construction_category_OTHER( "OTHER" );
 static const construction_category_id construction_category_REPAIR( "REPAIR" );
-
-static const construction_group_str_id
-construction_group_deconstruct_simple_furniture( "deconstruct_simple_furniture" );
-
-static const construction_str_id construction_constr_veh( "constr_veh" );
 
 
 static const flag_id json_flag_FILTHY( "FILTHY" );
@@ -1128,8 +1122,8 @@ construction_id construction_menu( const bool blueprint )
             }
             if( !blueprint ) {
                 if( player_can_build( player_character, total_inv, constructs[select] ) ) {
-                    if( constructs[select] != construction_group_deconstruct_simple_furniture &&
-                        !player_can_see_to_build( player_character, constructs[select] ) ) {
+                    // a group with a "dark_craftable" construction can be built in the dark
+                    if( !player_can_see_to_build( player_character, constructs[select] ) ) {
                         add_msg( m_info, _( "It is too dark to construct right now." ) );
                     } else if( !g->warn_player_maybe_anger_local_faction( true ) ) {
                         continue; // player declined to mess with faction's stuff
@@ -1544,9 +1538,8 @@ void build_construction_activity_actor::complete_construction( player_activity &
     }
 
     // partial_con contains components for vehicle and appliance construction
-    // it's removal is handled in done_appliance() / done_vehicle
-    if( !built.place_appliance && pc->id->category != construction_category_APPLIANCE &&
-        pc->id->id != construction_constr_veh ) {
+    // it's removal is handled in done_appliance() / done_vehicle, whatever the category or id
+    if( !built.uses_components_after_completion() ) {
         here.partial_con_remove( terp );
     }
 
@@ -2795,6 +2788,14 @@ void construction::finalize()
     requirement_data::save_requirement( requirements_, requirements );
     reqs_using.clear();
     inp_mngr.pump_events();
+}
+
+bool construction::uses_components_after_completion() const
+{
+    return place_appliance || std::any_of( post_specials.begin(), post_specials.end(),
+    []( void ( *special )( const tripoint_bub_ms &, Character & ) ) {
+        return special == construct::done_appliance || special == construct::done_vehicle;
+    } );
 }
 
 bool construction::is_blacklisted() const

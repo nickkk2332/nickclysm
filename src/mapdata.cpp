@@ -687,8 +687,15 @@ std::string map_data_common_t::name() const
 
 bool map_data_common_t::can_examine( const tripoint_bub_ms &examp ) const
 {
-    if( !examine_actor.empty() ) {
-        return true;
+    return can_examine( examp, get_player_character() );
+}
+
+bool map_data_common_t::can_examine( const tripoint_bub_ms &examp, const Character &who ) const
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
+        if( act->can_examine( who, examp, *this ) ) {
+            return true;
+        }
     }
 
     for( const iexamine_functions &func : examine_func ) {
@@ -726,6 +733,17 @@ std::vector<cata::clone_ptr<iexamine_actor>> map_data_common_t::get_examine() co
     return examine_actor;
 }
 
+const iexamine_actor *map_data_common_t::npc_examine_actor( const Character &who,
+        const tripoint_bub_ms &examp ) const
+{
+    for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
+        if( act->npc_can_use( who, examp, *this ) ) {
+            return act.get();
+        }
+    }
+    return nullptr;
+}
+
 void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) const
 {
     if( examine_actor.empty() && examine_func.empty() ) {
@@ -742,12 +760,13 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
         return;
     }
 
-    // if NPC, pick the very first option
+    // if NPC, pick the first examine actor it may use (an EOC actor can say no with its
+    // "condition" or "npc_usable"), else the first examine action
     // TODO, but i have no idea how to approach it for generic use cases
     if( you.is_npc() ) {
-        if( examine_actor.size() > 0 ) {
-            examine_actor.front()->call_with_context( you, examp, *this );
-        } else {
+        if( const iexamine_actor *act = npc_examine_actor( you, examp ) ) {
+            act->call_with_context( you, examp, *this );
+        } else if( !examine_func.empty() ) {
             examine_func.front().examine( you, examp );
         }
         return;
@@ -764,6 +783,7 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
 
     for( const cata::clone_ptr<iexamine_actor> &act : examine_actor ) {
         uilist_entry e( act->get_name() );
+        e.enabled = act->can_examine( you, examp, *this );
         selector.addentry( e );
     }
 

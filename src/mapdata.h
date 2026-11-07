@@ -572,7 +572,13 @@ struct map_data_common_t {
         */
         std::array<int, NUM_SEASONS> symbol_;
 
+        // Whether examining it at examp does something, for the avatar or for who
         bool can_examine( const tripoint_bub_ms &examp ) const;
+        bool can_examine( const tripoint_bub_ms &examp, const Character &who ) const;
+        // The examine actor an NPC who examines it at examp uses: the first one it may use
+        // (iexamine_actor::npc_can_use), nullptr if none
+        const iexamine_actor *npc_examine_actor( const Character &who,
+                const tripoint_bub_ms &examp ) const;
         // checks if it has corresponding examine_func
         bool has_examine( iexamine_examine_function func ) const;
         // checks if it has corresponding examine_actor

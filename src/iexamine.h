@@ -41,6 +41,19 @@ struct iexamine_actor {
                                     const map_data_common_t & ) const {
         call( you, pos );
     }
+    // Whether examining with this action does something for `who` at `pos` now: it runs, or it
+    // says why it can't. One that doesn't is greyed out in the examine menu, and a tile whose
+    // actions all don't can't be examined. `owner` is the terrain or furniture it belongs to.
+    virtual bool can_examine( const Character &/*who*/, const tripoint_bub_ms &/*pos*/,
+                              const map_data_common_t &/*owner*/ ) const {
+        return true;
+    }
+    // Whether an NPC that examines the tile may use this action now: an NPC takes the first
+    // action that it may use.
+    virtual bool npc_can_use( const Character &who, const tripoint_bub_ms &pos,
+                              const map_data_common_t &owner ) const {
+        return can_examine( who, pos, owner );
+    }
     virtual void finalize() const = 0;
     // Load-time checks of the actor of terrain or furniture `owner`, once all data is loaded.
     virtual void check( const std::string &/*owner*/ ) const {}

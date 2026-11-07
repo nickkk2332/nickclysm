@@ -1019,9 +1019,14 @@ static int hack_level( const Character &who, item_location &tool )
                   ( who.get_int() ) / 2.0f - 8 );
 }
 
-static hack_result hack_attempt( Character &who, item_location &tool )
+// `difficulty`: the roll needed to succeed (a card reader's "hack_difficulty")
+static hack_result hack_attempt( Character &who, item_location &tool, int difficulty )
 {
     map &here = get_map();
+    // a hack loaded from a save that didn't keep the tool
+    if( !tool ) {
+        return hack_result::UNABLE;
+    }
 
     // TODO: Remove this once player -> Character migration is complete
     {
@@ -1040,7 +1045,7 @@ static hack_result hack_attempt( Character &who, item_location &tool )
             tool->consume_tool_uses( 2, here, tool.pos_bub( here ), &who );
         }
         return hack_result::FAIL;
-    } else if( success < 6 ) {
+    } else if( success < difficulty ) {
         return hack_result::NOTHING;
     } else {
         return hack_result::SUCCESS;
@@ -1119,6 +1124,7 @@ void hacking_activity_actor::hack_success( Character &who, const tripoint_bub_ms
         bool furniture_reader = false;
         if( const cardreader_examine_actor *reader = cardreader_at( examp, furniture_reader ) ) {
             reader->hack( examp, furniture_reader );
+            reader->run_hack_eocs( who, examp );
         }
     }
 }
@@ -1126,7 +1132,14 @@ void hacking_activity_actor::hack_success( Character &who, const tripoint_bub_ms
 void hacking_activity_actor::finish( player_activity &act, Character &who )
 {
     tripoint_bub_ms examp = get_map().get_bub( act.placement );
-    switch( hack_attempt( who, tool ) ) {
+    int difficulty = 6;
+    if( get_hack_type( examp ) == hack_type::DOOR ) {
+        bool furniture_reader = false;
+        if( const cardreader_examine_actor *reader = cardreader_at( examp, furniture_reader ) ) {
+            difficulty = reader->get_hack_difficulty();
+        }
+    }
+    switch( hack_attempt( who, tool, difficulty ) ) {
         case hack_result::UNABLE:
             who.add_msg_if_player( _( "You cannot hack this." ) );
             break;
@@ -1150,12 +1163,18 @@ void hacking_activity_actor::finish( player_activity &act, Character &who )
 
 void hacking_activity_actor::serialize( JsonOut &jsout ) const
 {
-    jsout.write_null();
+    jsout.start_object();
+    jsout.member( "tool", tool );
+    jsout.end_object();
 }
 
 std::unique_ptr<activity_actor> hacking_activity_actor::deserialize( JsonValue &jsin )
 {
     hacking_activity_actor actor( {} );
+    // Older saves wrote null: the hack then ends without a tool ("You cannot hack this.")
+    if( jsin.test_null() ) {
+        return actor.clone();
+    }
     JsonObject data = jsin.get_object();
     data.read( "tool", actor.tool );
     return actor.clone();

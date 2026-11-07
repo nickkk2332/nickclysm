@@ -1,0 +1,251 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28B_COUNT_A",
+    "//": "TERR-J03/J07 fixture: counts its runs.",
+    "effect": [ { "math": [ "m28b_a += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28B_COUNT_B",
+    "effect": [ { "math": [ "m28b_b += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28B_ITEM",
+    "//": "TERR-J07 fixture: what an item or a sound that set the trap off gets.",
+    "effect": [
+      { "math": [ "m28b_item_runs += 1" ] },
+      { "copy_var": { "context_val": "trigger_item" }, "target_var": { "global_val": "m28b_item" } },
+      { "copy_var": { "context_val": "trap" }, "target_var": { "global_val": "m28b_item_trap" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28B_DISARMED",
+    "effect": [
+      { "math": [ "m28b_disarmed += 1" ] },
+      { "copy_var": { "context_val": "trap" }, "target_var": { "global_val": "m28b_disarmed_trap" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28B_HACKED",
+    "effect": [ { "math": [ "m28b_hacked += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M28B_OPTION",
+    "//": "TERR-J09 fixture: an EOC of a computer option.",
+    "effect": [ { "math": [ "m28b_option += 1" ] } ]
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m28b_gated",
+    "name": "m28b gated altar",
+    "description": "TERR-J03 fixture: its EOC runs only while the global m28b_allow is 1; no message otherwise.",
+    "symbol": "_",
+    "color": "white",
+    "move_cost": 2,
+    "flags": [ "TRANSPARENT" ],
+    "examine_action": {
+      "type": "effect_on_condition",
+      "name": "Pray",
+      "condition": { "math": [ "m28b_allow == 1" ] },
+      "effect_on_conditions": [ "EOC_TEST_M28B_COUNT_A" ]
+    }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m28b_gated_msg",
+    "copy-from": "t_test_m28b_gated",
+    "name": "m28b gated altar with a message",
+    "description": "TERR-J03 fixture: as t_test_m28b_gated, but says why.",
+    "examine_action": {
+      "type": "effect_on_condition",
+      "name": "Pray",
+      "condition": { "math": [ "m28b_allow == 1" ] },
+      "condition_fail_msg": "You feel nothing.",
+      "effect_on_conditions": [ "EOC_TEST_M28B_COUNT_A" ]
+    }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m28b_npc_choice",
+    "copy-from": "t_test_m28b_gated",
+    "name": "m28b two-way altar",
+    "description": "TERR-J03 fixture: an NPC may not use the first action, so it uses the second.",
+    "examine_action": [
+      {
+        "type": "effect_on_condition",
+        "name": "Avatar only",
+        "npc_usable": false,
+        "effect_on_conditions": [ "EOC_TEST_M28B_COUNT_A" ]
+      },
+      { "type": "effect_on_condition", "name": "Anyone", "effect_on_conditions": [ "EOC_TEST_M28B_COUNT_B" ] }
+    ]
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m28b_reader_noquery",
+    "name": "m28b card reader",
+    "description": "TERR-J04 fixture: uses a science card without asking.",
+    "symbol": "6",
+    "color": "pink",
+    "move_cost": 0,
+    "flags": [ "NOITEM" ],
+    "examine_action": {
+      "type": "cardreader",
+      "flags": [ "SCIENCE_CARD" ],
+      "consume_card": false,
+      "allow_hacking": false,
+      "despawn_monsters": false,
+      "radius": 2,
+      "terrain_changes": { "t_door_metal_locked": "t_door_metal_c" },
+      "query": false,
+      "success_msg": "m28b doors open.",
+      "redundant_msg": "m28b doors already open."
+    }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m28b_reader_query",
+    "copy-from": "t_test_m28b_reader_noquery",
+    "name": "m28b asking card reader",
+    "description": "TERR-J04 fixture: asks first (and the tests answer no).",
+    "examine_action": {
+      "type": "cardreader",
+      "flags": [ "SCIENCE_CARD" ],
+      "consume_card": false,
+      "allow_hacking": false,
+      "despawn_monsters": false,
+      "radius": 2,
+      "terrain_changes": { "t_door_metal_locked": "t_door_metal_c" },
+      "query": true,
+      "query_msg": "Swipe the card?",
+      "success_msg": "m28b doors open.",
+      "redundant_msg": "m28b doors already open."
+    }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m28b_reader_hack",
+    "copy-from": "t_test_m28b_reader_noquery",
+    "name": "m28b hackable card reader",
+    "description": "TERR-J04 fixture: harder to hack, and runs an EOC once hacked.",
+    "examine_action": {
+      "type": "cardreader",
+      "flags": [ "SCIENCE_CARD" ],
+      "despawn_monsters": false,
+      "radius": 2,
+      "terrain_changes": { "t_door_metal_locked": "t_door_metal_c" },
+      "query": false,
+      "hack_difficulty": 9,
+      "hack_eocs": [ "EOC_TEST_M28B_HACKED" ],
+      "success_msg": "m28b doors open.",
+      "redundant_msg": "m28b doors already open."
+    }
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_m28b_plate",
+    "name": "m28b pressure plate",
+    "color": "light_gray",
+    "symbol": "_",
+    "visibility": -1,
+    "avoidance": 0,
+    "difficulty": 3,
+    "trigger_weight": "100 g",
+    "action": "eocs",
+    "eocs": [ "EOC_TEST_M28B_COUNT_A" ],
+    "item_eocs": [ "EOC_TEST_M28B_ITEM" ],
+    "disarm_eocs": [ "EOC_TEST_M28B_DISARMED" ],
+    "disarm_condition": { "math": [ "m28b_allow == 1" ] },
+    "drops": [ "rock" ]
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_m28b_plate_kept",
+    "copy-from": "tr_test_m28b_plate",
+    "name": "m28b lasting pressure plate",
+    "flags": [ "UNCONSUMED" ]
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_m28b_plate_child",
+    "copy-from": "tr_test_m28b_plate",
+    "name": "m28b pressure plate that counts B",
+    "//": "TERR-J06 fixture: its eocs replace its parent's; it has no item_eocs.",
+    "eocs": [ "EOC_TEST_M28B_COUNT_B" ],
+    "item_eocs": [  ]
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_m28b_plate_inert",
+    "copy-from": "tr_test_m28b_plate",
+    "name": "m28b inert pressure plate",
+    "//": "TERR-J06 fixture: another action drops the parent's eocs.",
+    "action": "none"
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_m28b_beartrap",
+    "copy-from": "tr_beartrap",
+    "name": "m28b bear trap",
+    "//": "TERR-J08 fixture: its own damage, no tetanus, and it gives back a rock.",
+    "trigger_damage": [ { "damage_type": "pure", "amount": 7 } ],
+    "tetanus_chance": 0,
+    "drops": [ "rock" ]
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_m28b_caltrops",
+    "copy-from": "tr_caltrops",
+    "name": "m28b caltrops",
+    "trigger_damage": [ { "damage_type": "cut", "min": 1, "max": 2 } ],
+    "tetanus_chance": 9,
+    "tetanus_chance_resistant": 99,
+    "break_weight": "50 kg",
+    "self_disarm_chance": 5
+  },
+  {
+    "type": "construction_group",
+    "id": "test_m28b_other_appliance",
+    "name": "Place m28b test appliance"
+  },
+  {
+    "type": "construction",
+    "id": "constr_test_m28b_other_appliance",
+    "group": "test_m28b_other_appliance",
+    "//": "TERR-J05 fixture: done_appliance in another category than APPLIANCE.",
+    "category": "OTHER",
+    "required_skills": [ [ "fabrication", 0 ] ],
+    "time": "1 m",
+    "components": [ [ [ "box_battery_charger", 1 ] ] ],
+    "pre_special": "check_empty",
+    "post_special": "done_appliance"
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_m28b_computer",
+    "//": "TERR-J09 fixture: a terminal with EOC options and failures, and EOCs run on login.",
+    "object": {
+      "place_computers": [
+        {
+          "name": "m28b terminal",
+          "x": 3,
+          "y": 3,
+          "security": 2,
+          "eocs": [ "EOC_TEST_M28B_OPTION", { "id": "EOC_TEST_M28B_INLINE_LOGIN", "effect": [ { "math": [ "m28b_login += 1" ] } ] } ],
+          "eocs_mode": "on_login",
+          "options": [
+            { "name": "m28b run", "security": 1, "eocs": [ "EOC_TEST_M28B_OPTION" ] },
+            { "name": "m28b unlock", "action": "unlock", "eocs": [ "EOC_TEST_M28B_OPTION" ] }
+          ],
+          "failures": [ { "eocs": [ "EOC_TEST_M28B_OPTION" ] }, { "action": "alarm" } ]
+        },
+        { "name": "m28b plain terminal", "x": 5, "y": 3, "options": [ { "name": "m28b lock", "action": "lock" } ] }
+      ]
+    }
+  }
+]
