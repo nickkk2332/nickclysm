@@ -2714,16 +2714,24 @@ void overmap::build_special_connection( const overmap_connection &connection,
                                         const bool must_be_unexplored )
 {
     const special_connection_target target = route.target.value_or( connection.special_target );
-    std::optional<point_om_omt> source;
+    // The search writes the point it finds into `source` itself: GCC 9 reports a
+    // maybe-uninitialized std::optional<point> when the search's result is kept.
+    point_om_omt source;
+    bool found = false;
     if( target == special_connection_target::nearest_existing ) {
         const int max_dist = route.max_length.value_or( std::max( OMAPX, OMAPY ) );
-        source = find_point_closest_first( dest.xy(), 1, max_dist, [&]( const point_om_omt & p ) {
+        find_point_closest_first( dest.xy(), 1, max_dist, [&]( const point_om_omt & p ) {
             const tripoint_om_omt tp( p, dest.z() );
-            return inbounds( tp ) && connection.has( ter( tp ) ) &&
-                   std::find( special_omts.begin(), special_omts.end(), tp ) == special_omts.end();
+            if( inbounds( tp ) && connection.has( ter( tp ) ) &&
+                std::find( special_omts.begin(), special_omts.end(), tp ) == special_omts.end() ) {
+                source = p;
+                found = true;
+                return true;
+            }
+            return false;
         } );
     }
-    if( !source ) {
+    if( !found ) {
         // TODO: don't treat non roads like roads
         if( cit ) {
             source = cit.pos;
@@ -2731,10 +2739,10 @@ void overmap::build_special_connection( const overmap_connection &connection,
             source = get_fallback_road_connection_point();
         }
     }
-    if( route.max_length && square_dist( *source, dest.xy() ) > *route.max_length ) {
+    if( route.max_length && square_dist( source, dest.xy() ) > *route.max_length ) {
         return;
     }
-    build_connection( *source, dest.xy(), dest.z(), connection, must_be_unexplored, initial_dir );
+    build_connection( source, dest.xy(), dest.z(), connection, must_be_unexplored, initial_dir );
 }
 
 // connect the points to each other using a minimum spanning tree
