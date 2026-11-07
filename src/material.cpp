@@ -115,6 +115,8 @@ void material_type::load( const JsonObject &jsobj, std::string_view )
     optional( jsobj, was_loaded, "rotting", _rotting, false );
     optional( jsobj, was_loaded, "soft", _soft, false );
     optional( jsobj, was_loaded, "uncomfortable", _uncomfortable, false );
+    optional( jsobj, was_loaded, "wet_warmth_retention", _wet_warmth_retention,
+              numeric_bound_reader<float> { 0.0f, 1.0f }, 0.0f );
 
     optional( jsobj, was_loaded, "vitamins", _vitamins, weighted_string_id_reader<vitamin_id, double> { 1.0 } );
 
@@ -332,6 +334,11 @@ bool material_type::soft() const
 bool material_type::uncomfortable() const
 {
     return _uncomfortable;
+}
+
+float material_type::wet_warmth_retention() const
+{
+    return _wet_warmth_retention;
 }
 
 fuel_data material_type::get_fuel_data() const

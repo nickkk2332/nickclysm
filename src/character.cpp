@@ -347,7 +347,6 @@ static const start_location_id start_location_sloc_shelter_safe( "sloc_shelter_s
 
 static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
 static const trait_id trait_ARACHNID_ARMS_OK( "ARACHNID_ARMS_OK" );
-static const trait_id trait_BIRD_EYE( "BIRD_EYE" );
 static const trait_id trait_CF_HAIR( "CF_HAIR" );
 static const trait_id trait_CHITIN2( "CHITIN2" );
 static const trait_id trait_CHITIN3( "CHITIN3" );
@@ -374,9 +373,6 @@ static const trait_id trait_INSOMNIA( "INSOMNIA" );
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
 static const trait_id trait_LIGHTSTEP( "LIGHTSTEP" );
 static const trait_id trait_M_IMMUNE( "M_IMMUNE" );
-static const trait_id trait_NIGHTVISION( "NIGHTVISION" );
-static const trait_id trait_NIGHTVISION2( "NIGHTVISION2" );
-static const trait_id trait_NIGHTVISION3( "NIGHTVISION3" );
 static const trait_id trait_NOMAD( "NOMAD" );
 static const trait_id trait_NOMAD2( "NOMAD2" );
 static const trait_id trait_NOMAD3( "NOMAD3" );
@@ -2549,18 +2545,17 @@ void Character::recalc_sight_limits()
     if( has_nv_goggles() ) {
         vision_mode_cache.set( NV_GOGGLES );
     }
-    if( has_active_mutation( trait_NIGHTVISION3 ) ||
-        ( is_mounted() && mounted_creature->has_flag( mon_flag_MECH_RECON_VISION ) ) ) {
-        vision_mode_cache.set( NIGHTVISION_3 );
-    }
-    if( has_active_mutation( trait_NIGHTVISION2 ) ) {
-        vision_mode_cache.set( NIGHTVISION_2 );
-    }
-    if( has_active_mutation( trait_NIGHTVISION ) ) {
-        vision_mode_cache.set( NIGHTVISION_1 );
-    }
-    if( has_trait( trait_BIRD_EYE ) ) {
-        vision_mode_cache.set( BIRD_EYE );
+    // Night vision of a mech's recon vision or of traits' night_vision_range, the best of them
+    // counting, as the hardcoded Night Vision traits did (CHAR-J03)
+    night_vision_range_cache = ( is_mounted() &&
+                                 mounted_creature->has_flag( mon_flag_MECH_RECON_VISION ) ) ? 10.0f : 0.0f;
+    for( const std::pair<const trait_id, trait_data> &mut : cached_mutations ) {
+        const mutation_branch &branch = mut.first.obj();
+        // An activatable trait sees in the dark while it is on
+        const bool on = branch.activated ? mut.second.powered : mut.second.corrupted == 0;
+        if( on && branch.night_vision_range > night_vision_range_cache ) {
+            night_vision_range_cache = branch.night_vision_range;
+        }
     }
 
     if( has_flag( json_flag_SUPER_CLAIRVOYANCE ) ) {
@@ -2591,24 +2586,15 @@ float Character::get_vision_threshold( float light_level ) const
                                      ( LIGHT_AMBIENT_LIT - LIGHT_AMBIENT_MINIMAL ) );
 
     float range = get_per() / 3.0f;
-    if( vision_mode_cache[NIGHTVISION_3] ) {
-        range += 10;
-    } else if( vision_mode_cache[NIGHTVISION_2] ) {
-        range += 4.5;
-    } else if( vision_mode_cache[NIGHTVISION_1] ) {
-        range += 2;
-    }
-
-    if( vision_mode_cache[BIRD_EYE] ) {
-        range++;
-    }
+    // Night Vision traits or a mech's recon vision (CHAR-J03)
+    range += night_vision_range_cache;
 
     // bionic night vision and other old night vision flagged items
     if( worn_with_flag( flag_GNV_EFFECT ) || has_flag( json_flag_NIGHT_VISION ) ) {
         range += 10;
-    } else {
-        range = enchantment_cache->modify_value( enchant_vals::mod::NIGHT_VIS, range );
     }
+    // Applies with goggles too, or every NIGHT_VIS bonus and penalty was lost while they were on
+    range = enchantment_cache->modify_value( enchant_vals::mod::NIGHT_VIS, range );
 
     // Clamp range to 1+, so that we can always see where we are
     range = std::max( 1.0f, range * get_limb_score( limb_score_night_vis ) );

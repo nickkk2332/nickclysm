@@ -2916,6 +2916,7 @@
     "chip_resist": 6,
     "breathability": "MOISTURE_WICKING",
     "wind_resist": 60,
+    "wet_warmth_retention": 1.0,
     "repaired_with": "felt_patch",
     "salvaged_into": "felt_patch",
     "dmg_adj": [ "ripped", "torn", "shredded", "tattered" ],
@@ -2938,6 +2939,7 @@
     "copy-from": "wool",
     "repaired_with": "null",
     "wind_resist": 65,
+    "wet_warmth_retention": 0.0,
     "resist": { "bash": 2, "cut": 2, "acid": 4, "heat": 0, "bullet": 1.5 }
   },
   {

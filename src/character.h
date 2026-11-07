@@ -4427,6 +4427,9 @@ class Character : public Creature, public visitable
         // Cached vision values.
         std::bitset<NUM_VISION_MODES> vision_mode_cache;
         int sight_max = 0;
+        // Tiles of night vision from traits' night_vision_range (the best counts) or a mech's
+        // recon vision, set by recalc_sight_limits (CHAR-J03)
+        float night_vision_range_cache = 0.0f;
 
         /// turn the character expired, if calendar::before_time_starts it has not been set yet.
         /// @todo change into an optional<time_point>

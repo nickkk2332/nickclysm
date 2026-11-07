@@ -23,6 +23,7 @@
 #include "flat_set.h"
 #include "translation.h"
 #include "type_id.h"
+#include "units.h"
 
 class Character;
 class JsonObject;
@@ -89,6 +90,17 @@ struct limb_score_effect {
     float red_mod;
     float scaling;
     float red_scaling;
+
+    void load( const JsonObject &jo );
+    void deserialize( const JsonObject &jo );
+};
+
+// A shift of the body temperature an effect gives while a character has it (CHAR-J06)
+struct effect_body_temperature {
+    // The part whose temperature moves; unset: the part the effect is on, or every part for a
+    // whole-body effect
+    std::optional<bodypart_str_id> body_part;
+    units::temperature_delta add = units::from_celsius_delta( 0 );
 
     void load( const JsonObject &jo );
     void deserialize( const JsonObject &jo );
@@ -174,6 +186,14 @@ class effect_type
         const time_duration &intensity_duration() const {
             return int_dur_factor;
         }
+        /** Shifts of the body temperature while a character has the effect (CHAR-J06) */
+        const std::vector<effect_body_temperature> &get_body_temperature() const {
+            return body_temperature;
+        }
+        /** Clothing warmth per intensity the effect adds to the part it is on (CHAR-J06) */
+        int get_warmth_per_intensity() const {
+            return warmth_per_intensity;
+        }
         std::vector<enchantment_id> enchantments;
         cata::flat_set<json_character_flag> immune_flags;
         cata::flat_set<json_character_flag> immune_bp_flags;
@@ -255,6 +275,8 @@ class effect_type
         std::unordered_map<std::string, std::unordered_map<uint32_t, modifier_value_arr>> mod_data;
         std::vector<vitamin_rate_effect> vitamin_data;
         std::vector<limb_score_effect> limb_score_data;
+        std::vector<effect_body_temperature> body_temperature;
+        int warmth_per_intensity = 0;
         std::vector<effect_dur_mod> effect_dur_scaling;
         std::vector<std::pair<int, int>> kill_chance;
         std::vector<std::pair<int, int>> red_kill_chance;

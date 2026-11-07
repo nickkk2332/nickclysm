@@ -439,7 +439,7 @@ Field            | Description
 `stat`           | Affected statistic.  Can be any of: `hit`, `dodge`, `block`, `speed`, `movecost`, `damage`, `armor`, `arpen`, `crit_chance`, `block_effectiveness`.
 `type`           | Damage type for the affected statistic (`bash`, `cut`, `heat`, etc.).   Only needed if the affected statistic is either `damage`, `armor`, or `arpen`.
 `scale`          | Value of the bonus.
-`scaling-stat`   | (Optional) Stat used for scaling.  Can be any of the four classic stats (`str`, `dex`, `int`, `per`) or any skill (`bashing`, `dodge`, `unarmed`, `rifles`, `spellcraft`, etc.).  If the scaling stat is specified, the value of the bonus is multiplied by the corresponding user stat/skill.
+`scaling-stat`   | (Optional) Stat used for scaling.  Can be any of the four classic stats (`str`, `dex`, `int`, `per`) or the id of any skill, a mod's skills included (`bashing`, `dodge`, `unarmed`, `rifle`, `spellcraft`, etc.).  The old short names `bash`, `cut`, `stab`, `athletics` (the `swimming` skill), `marksmanship` (`gun`) and `drive` (`driving`) still work.  A name that is neither a stat nor a skill is a load error.  If the scaling stat is specified, the value of the bonus is multiplied by the corresponding user stat/skill.
 
 * Bonuses must be written in the correct order.
 * Tokens of "useless" type will not cause an error, but will not have any effect.  For example, `speed` in a technique will have no effect (`movecost` should be used for techniques).

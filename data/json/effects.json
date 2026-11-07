@@ -775,7 +775,8 @@
     "id": "heating_bionic",
     "name": [ "Heated" ],
     "max_intensity": 1000,
-    "desc": [ "At least one of your bionics is producing heat and warming you." ]
+    "desc": [ "At least one of your bionics is producing heat and warming you." ],
+    "warmth_per_intensity": 1
   },
   {
     "type": "effect_type",
@@ -3598,6 +3599,7 @@
         ]
       }
     ],
+    "body_temperature": [ { "add": -1.5 } ],
     "blood_analysis_description": "Viral Infection"
   },
   {
@@ -3635,6 +3637,7 @@
         ]
       }
     ],
+    "body_temperature": [ { "body_part": "head", "add": 3 } ],
     "blood_analysis_description": "Viral Infection"
   },
   {

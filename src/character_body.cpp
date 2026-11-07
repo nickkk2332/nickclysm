@@ -31,6 +31,7 @@
 #include "math_parser_diag_value.h"
 #include "map.h"
 #include "mapdata.h"
+#include "mutation.h"
 #include "output.h"
 #include "overmapbuffer.h"
 #include "pimpl.h"
@@ -67,9 +68,7 @@ static const efftype_id effect_bleed( "bleed" );
 static const efftype_id effect_blisters( "blisters" );
 static const efftype_id effect_cig( "cig" );
 static const efftype_id effect_cold( "cold" );
-static const efftype_id effect_common_cold( "common_cold" );
 static const efftype_id effect_disinfected( "disinfected" );
-static const efftype_id effect_flu( "flu" );
 static const efftype_id effect_frostbite( "frostbite" );
 static const efftype_id effect_frostbite_recovery( "frostbite_recovery" );
 static const efftype_id effect_hot( "hot" );
@@ -96,6 +95,7 @@ static const json_character_flag json_flag_COLDBLOOD( "COLDBLOOD" );
 static const json_character_flag json_flag_COLDBLOOD2( "COLDBLOOD2" );
 static const json_character_flag json_flag_COLDBLOOD3( "COLDBLOOD3" );
 static const json_character_flag json_flag_ECTOTHERM( "ECTOTHERM" );
+static const json_character_flag json_flag_FROSTBITE_VULNERABLE( "FROSTBITE_VULNERABLE" );
 static const json_character_flag json_flag_HEATSINK( "HEATSINK" );
 static const json_character_flag json_flag_HEAT_IMMUNE( "HEAT_IMMUNE" );
 static const json_character_flag json_flag_HUNGER_DISRUPTION( "HUNGER_DISRUPTION" );
@@ -108,19 +108,10 @@ static const morale_type morale_comfy( "morale_comfy" );
 static const morale_type morale_pyromania_nearfire( "morale_pyromania_nearfire" );
 static const morale_type morale_pyromania_nofire( "morale_pyromania_nofire" );
 
-static const trait_id trait_CHITIN_FUR( "CHITIN_FUR" );
-static const trait_id trait_CHITIN_FUR2( "CHITIN_FUR2" );
-static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
 static const trait_id trait_DEBUG_LS( "DEBUG_LS" );
 static const trait_id trait_DEBUG_NOTEMP( "DEBUG_NOTEMP" );
-static const trait_id trait_FELINE_FUR( "FELINE_FUR" );
-static const trait_id trait_FUR( "FUR" );
-static const trait_id trait_LIGHTFUR( "LIGHTFUR" );
-static const trait_id trait_LUPINE_FUR( "LUPINE_FUR" );
 static const trait_id trait_M_DEPENDENT( "M_DEPENDENT" );
 static const trait_id trait_PYROMANIA( "PYROMANIA" );
-static const trait_id trait_SLIMY( "SLIMY" );
-static const trait_id trait_URSINE_FUR( "URSINE_FUR" );
 
 static const vitamin_id vitamin_blood( "blood" );
 
@@ -130,15 +121,12 @@ void Character::update_body_wetness( const w_point &weather )
     // assuming average temperature and humidity
     constexpr time_duration average_drying = 30_minutes;
 
-    // Fur/slime retains moisture
+    // Fur/slime retains moisture: the traits' drying_time_mult, the largest counting (CHAR-J06)
     float trait_mult = 1.0;
-    if( has_trait( trait_LIGHTFUR ) || has_trait( trait_FUR ) || has_trait( trait_FELINE_FUR ) ||
-        has_trait( trait_LUPINE_FUR ) || has_trait( trait_CHITIN_FUR ) || has_trait( trait_CHITIN_FUR2 ) ||
-        has_trait( trait_CHITIN_FUR3 ) ) {
-        trait_mult = 2.0;
-    }
-    if( has_trait( trait_URSINE_FUR ) || has_trait( trait_SLIMY ) ) {
-        trait_mult = 4.0;
+    for( const std::pair<const trait_id, trait_data> &mut : cached_mutations ) {
+        if( mut.second.corrupted == 0 ) {
+            trait_mult = std::max( trait_mult, mut.first->drying_time_mult );
+        }
     }
 
     // Weather slows down drying
@@ -446,7 +434,25 @@ void Character::update_bodytemp()
     const bool has_sleep_state = has_sleep || in_sleep_state();
     const bool heat_immune = has_flag( json_flag_HEAT_IMMUNE );
     const bool has_heatsink = has_flag( json_flag_HEATSINK ) || heat_immune;
-    const bool has_common_cold = has_effect( effect_common_cold );
+    // Effects' body temperature shifts (CHAR-J06): those for one part, then those for every part
+    std::map<bodypart_id, units::temperature_delta> effect_part_temp;
+    units::temperature_delta effect_all_parts_temp = 0_C_delta;
+    for( const auto &[eff_id, by_part] : *effects ) {
+        for( const effect_body_temperature &shift : eff_id->get_body_temperature() ) {
+            if( shift.body_part.has_value() ) {
+                // Once for the effect, wherever it is
+                effect_part_temp[shift.body_part->id()] += shift.add;
+                continue;
+            }
+            for( const std::pair<const bodypart_id, effect> &part_eff : by_part ) {
+                if( part_eff.first.id() == bodypart_str_id::NULL_ID() ) {
+                    effect_all_parts_temp += shift.add;
+                } else {
+                    effect_part_temp[part_eff.first] += shift.add;
+                }
+            }
+        }
+    }
     const std::pair<int, int> climate_control = climate_control_strength();
     const int climate_control_heat = climate_control.first;
     const int climate_control_chill = climate_control.second;
@@ -614,12 +620,13 @@ void Character::update_bodytemp()
         }
 
         mod_part_temp_conv( bp, sunlight_warmth );
-        // DISEASES
-        if( bp == body_part_head && has_effect( effect_flu ) ) {
-            mod_part_temp_conv( bp, 3_C_delta );
+        // DISEASES and other effects: the flu's fever and the common cold's chill are in JSON
+        const auto part_temp = effect_part_temp.find( bp );
+        if( part_temp != effect_part_temp.end() ) {
+            mod_part_temp_conv( bp, part_temp->second );
         }
-        if( has_common_cold ) {
-            mod_part_temp_conv( bp, -1.5_C_delta );
+        if( effect_all_parts_temp != 0_C_delta ) {
+            mod_part_temp_conv( bp, effect_all_parts_temp );
         }
 
         temp_equalizer( bp, bp->connected_to );
@@ -813,7 +820,7 @@ void Character::update_bodytemp()
 void Character::update_frostbite( const bodypart_id &bp, const int FBwindPower,
                                   const std::map<bodypart_id, int> &warmth_per_bp )
 {
-    // FROSTBITE - only occurs to hands, feet, face
+    // FROSTBITE - only occurs to FROSTBITE_VULNERABLE parts: hands, feet, face
     /**
 
     Source : http://www.atc.army.mil/weather/windchill.pdf
@@ -845,8 +852,8 @@ void Character::update_frostbite( const bodypart_id &bp, const int FBwindPower,
     const float player_local_temp = units::to_fahrenheit( get_weather().get_temperature( pos_bub() ) );
     const units::temperature temp_after = get_part_temp_cur( bp );
 
-    if( bp == body_part_mouth || bp == body_part_foot_r ||
-        bp == body_part_foot_l || bp == body_part_hand_r || bp == body_part_hand_l ) {
+    // A body part flag, so a mod's parts can freeze too (CHAR-J06)
+    if( bp->has_flag( json_flag_FROSTBITE_VULNERABLE ) ) {
         // Handle the frostbite timer
         // Need temps in F, windPower already in mph
         int wetness_percentage = 100 * get_part_wetness_percentage( bp ); // 0 - 100

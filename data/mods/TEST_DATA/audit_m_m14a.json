@@ -1,0 +1,150 @@
+[
+  {
+    "type": "json_flag",
+    "id": "TEST_M14A_HORN_GAPS"
+  },
+  {
+    "type": "mutation",
+    "id": "test_m14a_horns",
+    "name": "Test Horns",
+    "points": 0,
+    "description": "CHAR-J02: horns that keep rigid headwear off, unless the headwear has room for them.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "allow_soft_gear": true,
+    "restricts_gear": [ "head" ],
+    "allowed_items": [ "TEST_M14A_HORN_GAPS" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_m14a_no_cotton",
+    "name": "Test Cotton Allergy",
+    "points": 0,
+    "description": "CHAR-J02: can't wear cotton, and says so with the default message.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "unwearable_materials": [ "cotton" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_m14a_nv_flag",
+    "name": "Test Night Vision Flag",
+    "points": 0,
+    "description": "CHAR-J03: sees in the dark like night vision goggles.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "NIGHT_VISION" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_m14a_night_vis",
+    "name": "Test Night Vis",
+    "points": 0,
+    "description": "CHAR-J03: a NIGHT_VIS enchantment.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "enchantments": [ { "values": [ { "value": "NIGHT_VIS", "add": 5 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m14a_hand_heat",
+    "name": [ "Test Hand Heat" ],
+    "desc": [ "CHAR-J06: warms the left hand, wherever the effect is." ],
+    "body_temperature": [ { "body_part": "hand_l", "add": 10 } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m14a_local_heat",
+    "name": [ "Test Local Heat" ],
+    "desc": [ "CHAR-J06: warms the part it is on." ],
+    "body_temperature": [ { "add": "10 C" } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_m14a_warming_aura",
+    "name": [ "Test Warming Aura" ],
+    "desc": [ "CHAR-J06: warms every part like clothing, more with intensity." ],
+    "max_intensity": 5,
+    "warmth_per_intensity": 3
+  },
+  {
+    "id": "test_m14a_cotton_shirt",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": "TEST m14a cotton shirt",
+    "description": "CHAR-J02: a plain cotton shirt.",
+    "weight": "150 g",
+    "volume": "500 ml",
+    "price": "5 USD",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "white",
+    "warmth": 10,
+    "material_thickness": 1,
+    "armor": [ { "encumbrance": 2, "coverage": 100, "covers": [ "torso" ] } ]
+  },
+  {
+    "id": "test_m14a_wool_shirt",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "test_m14a_cotton_shirt",
+    "name": "TEST m14a wool shirt",
+    "description": "CHAR-J02: a wool shirt, as warm wet as dry.",
+    "material": [ "wool" ]
+  },
+  {
+    "id": "test_m14a_leather_vest",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "test_m14a_cotton_shirt",
+    "name": "TEST m14a leather vest",
+    "description": "CHAR-J02: made from an animal.",
+    "material": [ "leather" ]
+  },
+  {
+    "id": "test_m14a_animal_shirt",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "test_m14a_cotton_shirt",
+    "name": "TEST m14a animal-product shirt",
+    "description": "CHAR-J02: cotton, but its type is flagged as an animal product.",
+    "extend": { "flags": [ "ANIMAL_PRODUCT" ] }
+  },
+  {
+    "id": "test_m14a_steel_helmet",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": "TEST m14a steel helmet",
+    "description": "CHAR-J02: rigid headwear.",
+    "weight": "1000 g",
+    "volume": "2 L",
+    "price": "20 USD",
+    "material": [ "steel" ],
+    "symbol": "[",
+    "color": "light_gray",
+    "material_thickness": 2,
+    "armor": [ { "encumbrance": 10, "coverage": 100, "covers": [ "head" ] } ]
+  },
+  {
+    "id": "test_m14a_horned_helmet",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "test_m14a_steel_helmet",
+    "name": "TEST m14a horned helmet",
+    "description": "CHAR-J02: rigid headwear with room for horns.",
+    "extend": { "flags": [ "TEST_M14A_HORN_GAPS" ] }
+  },
+  {
+    "id": "test_m14a_cotton_hat",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "test_m14a_cotton_shirt",
+    "name": "TEST m14a cotton hat",
+    "description": "CHAR-J02: soft headwear.",
+    "armor": [ { "encumbrance": 2, "coverage": 100, "covers": [ "head" ] } ]
+  }
+]

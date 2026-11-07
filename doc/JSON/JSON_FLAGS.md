@@ -329,6 +329,7 @@ Some armor flags, such as `WATCH` and `ALARMCLOCK` are compatible with other ite
 - ```ALWAYS_HEAL``` This bodypart regenerates every regen tick (5 minutes, currently) regardless if the part would have healed normally.
 - ```BIONIC_LIMB``` This bodypart is mechanical and thus cannot bleed or cause pain when hit. 
 - ```BONELESS``` This bodypart has no bones and thus cannot suffer from broken bones. 
+- ```FROSTBITE_VULNERABLE``` This bodypart can get frostbite in the cold.  The mouth, hands and feet have it; mutant parts made from them with `copy-from` list their own flags so they don't, as before.
 - ```HEAL_OVERRIDE``` This bodypart will always regenerate its `heal_bonus` HP instead of it modifying the base healing step.  Without `ALWAYS_HEAL` this still only happens when the part would have healed non-zero amount of damage.
 - ```IGNORE_TEMP``` This bodypart is ignored for temperature calculations.
 - ```LIMB_LOWER``` This bodypart is close to the ground, and as such has a higher chance to be attacked by small monsters - hitsize is tripled for creatures that can't attack upper limbs.

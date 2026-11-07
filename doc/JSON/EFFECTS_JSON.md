@@ -509,6 +509,17 @@ While a creature's effects are being processed each turn, these EOCs wait until 
 Limb score modifiers work as multipliers in the limb score calculations.  The example modifier will halve the non-resistant player's lift score at intensity 1 and decrease it by 10% of the start value for every successive intensity level (*0.4 at int 2, *0.3 at int 3 etc.), while decreasing a resistant character's lift score by 25% and intensifying in 5% steps (*0.70 at int 2, *0.65 at int 3).  Limb score modifiers are applied after health/encumbrance penalties multiplicatively (ex. 1.0 starting lift score reduced by two *0.5 modifiers equals 0.25, not 0), and separate instances of the same effect applied to separate bodyparts will be counted separately (ex. two instances of "staggered" on a character's arms will each apply their limb score modifiers).
 
 
+### Body temperature
+
+```jsonc
+    "body_temperature": [ { "body_part": "head", "add": 3 } ],
+    "warmth_per_intensity": 1
+```
+
+- "body_temperature"     Optional array.  While a character has the effect, each entry moves the temperature its body part tends toward (as clothing, fire and the weather do) by `add`: degrees Celsius as a number (`3`, `-1.5`) or a string with units (`"3 C"`, `"-1500 mC"`).  With `body_part`, that part, once however many parts the effect is on; without it, the part the effect is on, or every part for an effect on the whole body.  The flu's fever (+3 °C on the head) and the common cold's chill (-1.5 °C everywhere) are defined this way.
+- "warmth_per_intensity" Optional integer (default 0).  Adds this much clothing warmth per intensity to the part the effect is on, or to every part for an effect on the whole body, not reduced by wetness.  The heat of bionics (`heating_bionic`, 1 per intensity) is defined this way.
+
+
 ### Effect effects
 ```jsonc
     "base_mods" : {

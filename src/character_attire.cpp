@@ -36,6 +36,7 @@
 #include "json.h"
 #include "line.h"
 #include "map.h"
+#include "material.h"
 #include "melee.h"
 #include "messages.h"
 #include "mutation.h"
@@ -52,7 +53,6 @@
 static const damage_type_id damage_heat( "heat" );
 
 static const efftype_id effect_bleed( "bleed" );
-static const efftype_id effect_heating_bionic( "heating_bionic" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_onfire( "onfire" );
 
@@ -63,23 +63,8 @@ static const flag_id json_flag_SHAPESHIFTED_ARMOR( "SHAPESHIFTED_ARMOR" );
 
 static const json_character_flag json_flag_BIONIC_LIMB( "BIONIC_LIMB" );
 
-static const material_id material_acidchitin( "acidchitin" );
-static const material_id material_bone( "bone" );
-static const material_id material_chitin( "chitin" );
-static const material_id material_fur( "fur" );
-static const material_id material_gutskin( "gutskin" );
-static const material_id material_leather( "leather" );
-static const material_id material_wool( "wool" );
-
 static const sub_bodypart_str_id sub_body_part_foot_sole_l( "foot_sole_l" );
 static const sub_bodypart_str_id sub_body_part_foot_sole_r( "foot_sole_r" );
-
-static const trait_id trait_ANTENNAE( "ANTENNAE" );
-static const trait_id trait_ANTLERS( "ANTLERS" );
-static const trait_id trait_HORNS_POINTED( "HORNS_POINTED" );
-static const trait_id trait_SQUEAMISH( "SQUEAMISH" );
-static const trait_id trait_VEGAN( "VEGAN" );
-static const trait_id trait_WOOLALLERGY( "WOOLALLERGY" );
 
 nc_color item_penalties::color_for_stacking_badness() const
 {
@@ -137,24 +122,18 @@ ret_val<void> Character::can_wear( const item &it, bool with_equip_change ) cons
         return ret_val<void>::make_failure( _( "Putting on a %s would be tricky." ), it.tname() );
     }
 
-    if( has_trait( trait_WOOLALLERGY ) && ( it.made_of( material_wool ) ||
-                                            it.has_own_flag( flag_wooled ) ) ) {
-        return ret_val<void>::make_failure( _( "Can't wear that, it's made of wool!" ) );
-    }
-
-    if( has_trait( trait_VEGAN ) && ( it.made_of( material_leather ) ||
-                                      it.has_own_flag( flag_ANIMAL_PRODUCT ) ||
-                                      it.made_of( material_fur ) ||
-                                      it.made_of( material_wool ) ||
-                                      it.made_of( material_chitin ) ||
-                                      it.made_of( material_bone ) ||
-                                      it.made_of( material_gutskin ) ||
-                                      it.made_of( material_acidchitin ) ) ) {
-        return ret_val<void>::make_failure( _( "Can't wear that, it's made from an animal!" ) );
-    }
-
-    if( it.is_filthy() && has_trait( trait_SQUEAMISH ) ) {
-        return ret_val<void>::make_failure( _( "Can't wear that, it's filthy!" ) );
+    // Wool allergy, vegans and the squeamish say what they refuse in their JSON (CHAR-J02)
+    for( const trait_id &mut : get_functioning_mutations() ) {
+        const mutation_branch &branch = mut.obj();
+        if( branch.refuses_to_wear( it ) ) {
+            if( !branch.unwearable_message.empty() ) {
+                return ret_val<void>::make_failure( branch.unwearable_message.translated() );
+            }
+            return ret_val<void>::make_failure( is_avatar() ?
+                                                _( "Your %s mutation prevents you from wearing your %s." ) :
+                                                _( "My %s mutation prevents me from wearing this %s." ), mutation_name( mut ),
+                                                it.type_name() );
+        }
     }
 
     if( !it.has_flag( flag_OVERSIZE ) && !it.has_flag( flag_INTEGRATED ) &&
@@ -169,14 +148,8 @@ ret_val<void> Character::can_wear( const item &it, bool with_equip_change ) cons
                                                     it.type_name() );
             }
         }
-        if( it.covers( body_part_head ) && !it.has_flag( flag_SEMITANGIBLE ) &&
-            it.is_rigid() &&
-            ( has_trait( trait_HORNS_POINTED ) || has_trait( trait_ANTENNAE ) ||
-              has_trait( trait_ANTLERS ) ) ) {
-            return ret_val<void>::make_failure( _( "Cannot wear a helmet over %s." ),
-                                                ( has_trait( trait_HORNS_POINTED ) ? _( "horns" ) :
-                                                  ( has_trait( trait_ANTENNAE ) ? _( "antennae" ) : _( "antlers" ) ) ) );
-        }
+        // Pointed horns, antennae and antlers restrict rigid headwear through their JSON
+        // restricts_gear, so allowed_items can let a horned helmet through (CHAR-J02)
     }
 
     if( it.has_flag( flag_SPLINT ) ) {
@@ -2002,22 +1975,45 @@ std::map<bodypart_id, int> outfit::warmth( const Character &guy ) const
     item_warmth_by_bodypart.reserve( bodyparts.size() );
     for( const item &clothing : worn ) {
         clothing.get_warmth_by_bodypart( item_warmth_by_bodypart );
+        // The best of its materials' wet_warmth_retention: wool keeps all (CHAR-J02)
+        float wet_retention = 0.0f;
+        for( const std::pair<const material_id, int> &mat : clothing.made_of() ) {
+            if( mat.second != 0 ) {
+                wet_retention = std::max( wet_retention, mat.first->wet_warmth_retention() );
+            }
+        }
         for( const auto &[bp, item_warmth] : item_warmth_by_bodypart ) {
             if( !guy.has_part( bp ) ) {
                 continue;
             }
             double warmth_val = item_warmth;
-            // Wool items do not lose their warmth due to being wet.
-            // Warmth is reduced by 0 - 66% based on wetness.
-            if( !clothing.made_of( material_wool ) ) {
-                warmth_val *= 1.0 - 0.66 * guy.get_part_wetness_percentage( bp );
+            // Warmth is reduced by 0 - 66% based on wetness, less for materials that keep it.
+            if( wet_retention < 1.0f ) {
+                warmth_val *= 1.0 - 0.66 * guy.get_part_wetness_percentage( bp ) * ( 1.0 - wet_retention );
             }
 
             total_warmth[bp] += static_cast<int>( warmth_val );
         }
     }
     for( const bodypart_id &bp : bodyparts ) {
-        total_warmth[bp] += guy.get_effect_int( effect_heating_bionic, bp );
+        // Every part has an entry, warmed or not
+        total_warmth.try_emplace( bp, 0 );
+    }
+    // Effects that warm the part they are on, or every part (CHAR-J06)
+    for( const effect &eff : guy.get_effects() ) {
+        const int per_intensity = eff.get_effect_type()->get_warmth_per_intensity();
+        if( per_intensity == 0 ) {
+            continue;
+        }
+        const int warmth = eff.get_intensity() * per_intensity;
+        const bodypart_id eff_bp = eff.get_bp();
+        if( eff_bp.id() == bodypart_str_id::NULL_ID() ) {
+            for( const bodypart_id &bp : bodyparts ) {
+                total_warmth[bp] += warmth;
+            }
+        } else if( guy.has_part( eff_bp ) ) {
+            total_warmth[eff_bp] += warmth;
+        }
     }
     return total_warmth;
 }

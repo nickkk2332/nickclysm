@@ -126,6 +126,22 @@ void limb_score_effect::deserialize( const JsonObject &jo )
     load( jo );
 }
 
+void effect_body_temperature::load( const JsonObject &jo )
+{
+    optional( jo, false, "body_part", body_part );
+    // Degrees Celsius as a number (3, -1.5), or a string with units ("3 C", "-1500 mC")
+    if( jo.has_number( "add" ) ) {
+        add = units::from_celsius_delta( jo.get_float( "add" ) );
+    } else {
+        mandatory( jo, false, "add", add );
+    }
+}
+
+void effect_body_temperature::deserialize( const JsonObject &jo )
+{
+    load( jo );
+}
+
 void effect_dur_mod::load( const JsonObject &jo )
 {
     mandatory( jo, false, "effect_id", effect_id );
@@ -656,6 +672,12 @@ void effect_type::verify() const
     for( const limb_score_effect &score : limb_score_data ) {
         if( !score.score_id.is_valid() ) {
             debugmsg( "effect_type %s has unknown limb score %s", id.str(), score.score_id.str() );
+        }
+    }
+    for( const effect_body_temperature &temp : body_temperature ) {
+        if( temp.body_part.has_value() && !temp.body_part->is_valid() ) {
+            debugmsg( "effect_type %s has body_temperature for unknown body part %s", id.str(),
+                      temp.body_part->str() );
         }
     }
     for( const effect_dur_mod &scaling : effect_dur_scaling ) {
@@ -1885,6 +1907,8 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "vitamins", new_etype.vitamin_data );
     optional( jo, was_loaded, "limb_score_mods", new_etype.limb_score_data );
+    optional( jo, was_loaded, "body_temperature", new_etype.body_temperature );
+    optional( jo, was_loaded, "warmth_per_intensity", new_etype.warmth_per_intensity, 0 );
     optional( jo, was_loaded, "effect_dur_scaling", new_etype.effect_dur_scaling );
     optional( jo, was_loaded, "chance_kill", new_etype.kill_chance );
     optional( jo, was_loaded, "chance_kill_resist", new_etype.red_kill_chance );
