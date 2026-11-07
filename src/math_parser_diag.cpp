@@ -505,7 +505,7 @@ double damage_level_eval( const_dialogue const &d, char scope,
 
 // add_effect keeps a main_parts_only effect on the main part, so read and write it there,
 // or setting it on a hand would add a second effect instead of changing the first
-static bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
+bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
 {
     if( bp_str.empty() ) {
         return bodypart_str_id::NULL_ID();

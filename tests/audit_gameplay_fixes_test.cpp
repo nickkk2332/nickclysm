@@ -1,6 +1,9 @@
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "bodypart.h"
@@ -33,10 +36,13 @@
 #include "point.h"
 #include "ret_val.h"
 #include "type_id.h"
+#include "units.h"
 
 static const bionic_id bio_laser( "bio_laser" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
 
+static const efftype_id effect_audit_hlth_j02_stale_lists( "audit_hlth_j02_stale_lists" );
+static const efftype_id effect_cureall( "cureall" );
 static const efftype_id effect_test_grapple_focus( "test_grapple_focus" );
 static const efftype_id effect_test_grapple_mark( "test_grapple_mark" );
 
@@ -45,11 +51,12 @@ static const faction_id faction_your_followers( "your_followers" );
 static const flag_id json_flag_HERBIVORE_DIET( "HERBIVORE_DIET" );
 
 static const itype_id itype_apple( "apple" );
-static const itype_id itype_debug_backpack( "debug_backpack" );
 static const itype_id itype_egg_chicken( "egg_chicken" );
 static const itype_id itype_meat_cooked( "meat_cooked" );
 
 static const matec_id test_cmbt_b02( "test_cmbt_b02" );
+
+static const mtype_id mon_zombie( "mon_zombie" );
 
 static const skill_id skill_gun( "gun" );
 static const skill_id skill_melee( "melee" );
@@ -159,7 +166,7 @@ TEST_CASE( "npc-b01_an_npc_fires_its_cbm_gun", "[audit][npc_attack][bionics]" )
     REQUIRE_FALSE( guy.can_wield( *gun ).success() );
     REQUIRE( gun->ammo_sufficient( &guy ) );
 
-    monster *zombie = g->place_critter_at( mtype_id( "mon_zombie" ),
+    monster *zombie = g->place_critter_at( mon_zombie,
                                            start + tripoint_rel_ms( 5, 0, 0 ) );
     REQUIRE( zombie != nullptr );
     guy.evaluate_best_attack( zombie );
@@ -283,7 +290,7 @@ TEST_CASE( "hlth-j02_unknown_ids_in_effect_lists_are_reported", "[audit][effect]
     })" );
     load_effect_type( stale, "audit_hlth_j02" );
     const std::string errors = capture_debugmsg_during( []() {
-        efftype_id( "audit_hlth_j02_stale_lists" )->verify();
+        effect_audit_hlth_j02_stale_lists->verify();
     } );
     CHECK_THAT( errors,
                 Catch::Matchers::Contains( "unknown trait AUDIT_NO_SUCH_TRAIT in resist_traits" ) );
@@ -292,7 +299,7 @@ TEST_CASE( "hlth-j02_unknown_ids_in_effect_lists_are_reported", "[audit][effect]
     CHECK_THAT( errors, Catch::Matchers::Contains( "audit_no_such_block in blocks_effects" ) );
     // the fixed shipped effect
     CHECK( capture_debugmsg_during( []() {
-        efftype_id( "cureall" )->verify();
+        effect_cureall->verify();
     } ).empty() );
 }
 

@@ -1,8 +1,10 @@
 #include <functional>
+#include <list>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "activity_actor.h"
@@ -54,11 +56,11 @@ static const activity_id ACT_TEST_HOOKS( "ACT_TEST_HOOKS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
 static const effect_on_condition_id
+effect_on_condition_EOC_TEST_ACT_HOOK_TARGET( "EOC_TEST_ACT_HOOK_TARGET" );
+static const effect_on_condition_id
 effect_on_condition_EOC_TEST_ASSIGN_WITH_CONTEXT( "EOC_TEST_ASSIGN_WITH_CONTEXT" );
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_LEARN_THE_FAIL_RECIPE( "EOC_TEST_LEARN_THE_FAIL_RECIPE" );
-static const effect_on_condition_id
-effect_on_condition_EOC_TEST_ACT_HOOK_TARGET( "EOC_TEST_ACT_HOOK_TARGET" );
 
 static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_blindfold( "blindfold" );

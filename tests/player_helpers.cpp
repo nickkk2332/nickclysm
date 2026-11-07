@@ -9,6 +9,7 @@
 
 #include "avatar.h"
 #include "bionics.h"
+#include "body_part_set.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
