@@ -315,7 +315,7 @@
     "name": { "str": "crude goedendag" },
     "description": "A stout wooden pole, slightly thicker at the end, with a metal cap and a spike protruding straight up from the top.",
     "weapon_category": [ "GREAT_HAMMERS", "SPEARS" ],
-    "faults": [ { "fault_group": "handle_long" } ]
+    "extend": { "faults": [ { "fault_group": "handle_long" } ] }
   },
   {
     "type": "ITEM",

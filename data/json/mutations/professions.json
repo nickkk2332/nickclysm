@@ -49,6 +49,8 @@
     "profession": true,
     "purifiable": false,
     "valid": false,
+    "flags": [ "SURGICAL_TRAINING" ],
+    "enchantments": [ { "values": [ { "value": "BIONIC_SURGERY_SKILL", "add": 3 } ] } ],
     "//": "In the US, a medical 'residency' is essentially an extended post-graduate, on-the-job medical training.  The idea here is that hospital computer systems would recognize the PC as a valid user and grant access."
   },
   {
@@ -69,6 +71,7 @@
     "profession": true,
     "purifiable": false,
     "valid": false,
+    "flags": [ "NO_BOOK_COMPLEXITY_PENALTY" ],
     "enchantments": [ { "values": [ { "value": "READING_SPEED_MULTIPLIER", "multiply": -0.1 } ] } ]
   },
   {

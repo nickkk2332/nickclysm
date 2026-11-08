@@ -510,6 +510,14 @@ class json_flag
             return taste_mod_;
         }
 
+        /** Multiplies how fast an item that has this flag itself rots (1 is no change) */
+        float rot_multiplier() const {
+            return rot_multiplier_;
+        }
+
+        /** The flags whose rot_multiplier isn't 1, with it, in load order */
+        static const std::vector<std::pair<flag_id, float>> &rot_multipliers();
+
         /** Vehicle parts with this flag are switched on and off together */
         bool is_vehicle_toggle() const {
             return vehicle_toggle_;
@@ -524,6 +532,17 @@ class json_flag
         const std::string &vehicle_toggle_hotkey() const {
             return vehicle_toggle_hotkey_;
         }
+
+        /** Actions (keybinding ids) a character with this flag can't take, and what they're told */
+        struct blocked_actions_t {
+            std::vector<std::string> actions;
+            translation message;
+        };
+        const std::vector<blocked_actions_t> &blocked_actions() const {
+            return blocked_actions_;
+        }
+        /** The flags with blocked_actions, set when flags are finalized */
+        static const std::vector<flag_id> &get_action_blocking();
 
         /** Is this a valid (non-null) flag */
         explicit operator bool() const;
@@ -546,9 +565,11 @@ class json_flag
         bool craft_inherit_ = false;
         std::string requires_flag_;
         int taste_mod_ = 0;
+        float rot_multiplier_ = 1.0f;
         bool vehicle_toggle_ = false;
         translation vehicle_toggle_name_;
         std::string vehicle_toggle_hotkey_;
+        std::vector<blocked_actions_t> blocked_actions_;
 
         /** Load flag definition from JSON */
         void load( const JsonObject &jo, std::string_view src );

@@ -37,6 +37,12 @@ class oracle_t
         virtual const Creature *creature() const {
             return nullptr;
         }
+        // MONAI-J09: the creature the subject is after, npc in its dialogue conditions and math
+        // scores: a monster's attack target. nullptr when there is none (and for NPCs): npc is
+        // then an empty talker, as before.
+        virtual const Creature *target() const {
+            return nullptr;
+        }
         // Tells subjects apart from one turn to the next, so that "evaluate_every" keeps its
         // results per subject. Without a key, every node is evaluated every time.
         virtual std::optional<int> cache_key() const {

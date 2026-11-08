@@ -14,6 +14,7 @@
 #include "item_group.h"
 #include "itype.h"
 #include "npc.h"
+#include "string_formatter.h"
 
 namespace
 {
@@ -31,12 +32,39 @@ bool icg_entry::operator==( icg_entry const &rhs ) const
 
 bool icg_entry::matches( item const &it, npc const &beta ) const
 {
-    const_dialogue temp( get_const_talker_for( get_avatar() ), get_const_talker_for( beta ) );
-    return ( !condition || condition( temp ) ) &&
-           ( itype.is_empty() || it.typeId() == itype ) &&
-           ( category.is_empty() || it.get_category_shallow().id == category ) &&
-           ( item_group.is_empty() ||
-             item_group::group_contains_item( item_group, it.typeId() ) );
+    // the filters first: the condition needs a dialogue built
+    if( ( !itype.is_empty() && it.typeId() != itype ) ||
+        ( !category.is_empty() && it.get_category_shallow().id != category ) ||
+        ( !item_group.is_empty() &&
+          !item_group::group_contains_item( item_group, it.typeId() ) ) ) {
+        return false;
+    }
+    return !condition || condition( trade_dialogue( it, beta ) );
+}
+
+const_dialogue icg_entry::trade_dialogue( item const &it, npc const &beta )
+{
+    const_dialogue d( get_const_talker_for( get_avatar() ), get_const_talker_for( beta ) );
+    d.set_value( "trade_item", it.typeId().str() );
+    d.set_value( "trade_item_category", it.get_category_shallow().id.str() );
+    d.set_value( "trade_item_count", static_cast<double>( it.count() ) );
+    d.set_value( "trade_item_damage", static_cast<double>( it.damage_level() ) );
+    d.set_value( "trade_item_rotten", it.rotten() ? 1.0 : 0.0 );
+    d.set_value( "trade_item_owner", it.get_owner().str() );
+    return d;
+}
+
+void icg_entry::check( const std::string_view owner ) const
+{
+    if( !itype.is_empty() && !itype.is_valid() ) {
+        debugmsg( "%s names the item %s, which doesn't exist", owner, itype.str() );
+    }
+    if( !category.is_empty() && !category.is_valid() ) {
+        debugmsg( "%s names the item category %s, which doesn't exist", owner, category.str() );
+    }
+    if( !item_group.is_empty() && !item_group::group_is_defined( item_group ) ) {
+        debugmsg( "%s names the item group %s, which doesn't exist", owner, item_group.str() );
+    }
 }
 
 /** @relates string_id */
@@ -56,6 +84,18 @@ bool string_id<shopkeeper_blacklist>::is_valid() const
 void shopkeeper_blacklist::reset()
 {
     shop_blacklist_factory.reset();
+}
+
+void shopkeeper_blacklist::check_all()
+{
+    shop_blacklist_factory.check();
+}
+
+void shopkeeper_blacklist::check() const
+{
+    for( const icg_entry &entry : entries ) {
+        entry.check( string_format( "shopkeeper_blacklist %s", id.str() ) );
+    }
 }
 
 std::vector<shopkeeper_blacklist> const &shopkeeper_blacklist::get_all()
@@ -80,6 +120,18 @@ bool string_id<shopkeeper_whitelist>::is_valid() const
 void shopkeeper_whitelist::reset()
 {
     shop_whitelist_factory.reset();
+}
+
+void shopkeeper_whitelist::check_all()
+{
+    shop_whitelist_factory.check();
+}
+
+void shopkeeper_whitelist::check() const
+{
+    for( const icg_entry &entry : entries ) {
+        entry.check( string_format( "shopkeeper_whitelist %s", id.str() ) );
+    }
 }
 
 std::vector<shopkeeper_whitelist> const &shopkeeper_whitelist::get_all()
@@ -214,6 +266,7 @@ void shopkeeper_cons_rates::check() const
         if( rate.itype.is_empty() && rate.category.is_empty() && rate.item_group.is_empty() ) {
             debugmsg( "empty shop rate filter in %s.", id.c_str() );
         }
+        rate.check( string_format( "shopkeeper_consumption_rates %s", id.str() ) );
     }
 }
 

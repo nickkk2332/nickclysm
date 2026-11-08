@@ -42,8 +42,9 @@ oter_type_id overmap_location::get_random_terrain() const
 
 void overmap_location::load( const JsonObject &jo, std::string_view )
 {
-    optional( jo, was_loaded, "flags", flags );
-    optional( jo, was_loaded, "terrains", terrains );
+    // OMAP-J11: readers, so that a copy-from can extend or delete flags and terrains.
+    optional( jo, was_loaded, "flags", flags, string_reader{} );
+    optional( jo, was_loaded, "terrains", terrains, string_id_reader<oter_type_t> {} );
     if( flags.empty() && terrains.empty() ) {
         jo.throw_error( "At least one flag or terrain must be specified." );
     }
@@ -69,12 +70,13 @@ void overmap_location::finalize()
         io::get_enum_lookup_map<oter_flags>();
     for( const std::string &elem : flags ) {
         auto it = oter_flags_map.find( elem );
-        if( it == oter_flags_map.end() ) {
-            continue;
-        }
-        oter_flags check_flag = it->second;
+        // OMAP-J12: a flag that isn't an engine flag is a mod's own overmap terrain flag.
+        // (A bool and a plain enum, not std::optional: GCC 9 LTO reports a false
+        // maybe-uninitialized on the optional.)
+        const bool engine_flag = it != oter_flags_map.end();
+        const oter_flags check_flag = engine_flag ? it->second : oter_flags::num_oter_flags;
         for( const oter_t &ter_elem : overmap_terrains::get_all() ) {
-            if( ter_elem.has_flag( check_flag ) ) {
+            if( engine_flag ? ter_elem.has_flag( check_flag ) : ter_elem.has_flag( elem ) ) {
                 terrains.insert( ter_elem.get_type_id() );
             }
         }

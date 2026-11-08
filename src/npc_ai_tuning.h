@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "calendar.h"
+#include "units.h"
 
 class Character;
 class JsonObject;
@@ -51,11 +52,17 @@ struct npc_ai_tuning {
     float camp_work;
     float return_to_camp;
     float free_time;
+    // boarding the avatar's parked vehicle, and once on a belted seat or bed (low enough that a
+    // tired passenger sleeps)
+    float embark;
+    float embark_seated;
 
     // hunger from which an NPC that burns stored calories counts as starving
     int starvation_hunger;
     // the least a camp meal serves an NPC that is merely hungry
     int camp_meal_kcal;
+    // a body part this cold or colder makes it need to regulate its temperature
+    units::temperature cold_body_temperature;
 
     // a settling NPC tries to fall asleep this often
     time_duration settle_interval;
@@ -66,6 +73,14 @@ struct npc_ai_tuning {
     time_duration stall_window;
     // a stalled sleep steps aside for other work this long
     time_duration stall_duration;
+    // noise wakes counted within this long hold its sleep back
+    time_duration restless_window;
+
+    // NPC-J08: an NPC bandages and disinfects a body part at or below this percentage of its
+    // HP: a limb, the torso and the head
+    int first_aid_limb;
+    int first_aid_torso;
+    int first_aid_head;
 
     // the defaults
     npc_ai_tuning();

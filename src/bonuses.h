@@ -18,26 +18,6 @@ enum scaling_stat : int {
     STAT_DEX,
     STAT_INT,
     STAT_PER,
-    SKILL_BASHING,
-    SKILL_CUTTING,
-    SKILL_DODGE,
-    SKILL_MELEE,
-    SKILL_STABBING,
-    SKILL_SWIMMING,
-    SKILL_UNARMED,
-    SKILL_GUN,
-    SKILL_PISTOL,
-    SKILL_RIFLE,
-    SKILL_SHOTGUN,
-    SKILL_SMG,
-    SKILL_ARCHERY,
-    SKILL_THROW,
-    SKILL_LAUNCHER,
-    SKILL_DRIVE,
-    SKILL_FIRSTAID,
-    SKILL_SPELLCRAFT,
-    SKILL_METAPHYSICS,
-    SKILL_GRAMARYE,
     NUM_STATS
 };
 
@@ -80,10 +60,15 @@ struct affected_type {
 
 // This is the bonus we are indexing
 struct effect_scaling {
-    scaling_stat stat;
-    float scale;
+    // One of the four stats, or STAT_NULL for a skill (when `skill` is set) or a flat value
+    scaling_stat stat = STAT_NULL;
+    // The skill the bonus scales with: any skill, a mod's too (CHAR-J04)
+    skill_id skill;
+    float scale = 0.0f;
 
     float get( const Character &u ) const;
+    // The name of the stat or skill the bonus scales with, empty for a flat bonus
+    std::string scaling_name() const;
 
     explicit effect_scaling( const JsonObject &obj );
 };
@@ -101,6 +86,8 @@ class bonus_container
         float get_mult( const Character &u, affected_stat stat ) const;
 
         std::string get_description() const;
+        // Reports scaling skills that don't exist; context names the owner in the message
+        void check( const std::string &context ) const;
 
     private:
         void load( const JsonArray &jarr, bool mult );

@@ -3,6 +3,7 @@
 #define CATA_SRC_MOVE_MODE_H
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <string_view>
@@ -14,7 +15,9 @@
 #include "type_id.h"
 #include "units.h"
 
+class Character;
 class JsonObject;
+struct const_dialogue;
 template<typename T>
 class generic_factory;
 
@@ -64,6 +67,11 @@ class move_mode
         int _mech_power_use = 0;
         int _swim_speed_mod = 0;
 
+        // Who may switch to this mode, with the character as u_; no condition: anyone (CHAR-J07)
+        std::function<bool( const_dialogue const & )> _condition;
+        // Moves added to the cost of switching to this mode
+        int _switch_cost = 0;
+
         nc_color _panel_color;
         nc_color _symbol_color;
         uint32_t _panel_letter;
@@ -104,6 +112,10 @@ class move_mode
         char letter() const;
         bool stop_hauling() const;
         move_mode_type type() const;
+
+        // Whether the mode's JSON "condition" lets the character switch to it
+        bool condition_allows( const Character &who ) const;
+        int switch_cost() const;
 
         // Const because it's modifying a mutable
         void set_cycle( const move_mode_id &mode ) const;

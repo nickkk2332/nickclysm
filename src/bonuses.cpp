@@ -1,36 +1,18 @@
 #include "bonuses.h"
 
 #include <algorithm>
+#include <initializer_list>
 #include <string>
 #include <utility>
 
 #include "character.h"
 #include "damage.h"
+#include "debug.h"
 #include "flexbuffer_json.h"
+#include "skill.h"
 #include "string_formatter.h"
 #include "translation.h"
 #include "translations.h"
-
-static const skill_id skill_archery( "archery" );
-static const skill_id skill_bashing( "bashing" );
-static const skill_id skill_cutting( "cutting" );
-static const skill_id skill_dodge( "dodge" );
-static const skill_id skill_drive( "drive" );
-static const skill_id skill_firstaid( "firstaid" );
-static const skill_id skill_gramarye( "gramarye" );
-static const skill_id skill_gun( "gun" );
-static const skill_id skill_launcher( "launcher" );
-static const skill_id skill_melee( "melee" );
-static const skill_id skill_metaphysics( "metaphysics" );
-static const skill_id skill_pistol( "pistol" );
-static const skill_id skill_rifle( "rifle" );
-static const skill_id skill_shotgun( "shotgun" );
-static const skill_id skill_smg( "smg" );
-static const skill_id skill_spellcraft( "spellcraft" );
-static const skill_id skill_stabbing( "stabbing" );
-static const skill_id skill_swimming( "swimming" );
-static const skill_id skill_throw( "throw" );
-static const skill_id skill_unarmed( "unarmed" );
 
 static bool needs_damage_type( affected_stat as )
 {
@@ -58,39 +40,21 @@ static const std::map<std::string, scaling_stat> scaling_stat_map = {{
         std::make_pair( "str", STAT_STR ),
         std::make_pair( "dex", STAT_DEX ),
         std::make_pair( "int", STAT_INT ),
-        std::make_pair( "per", STAT_PER ),
-        std::make_pair( "bash", SKILL_BASHING ),
-        std::make_pair( "cut", SKILL_CUTTING ),
-        std::make_pair( "dodge", SKILL_DODGE ),
-        std::make_pair( "melee", SKILL_MELEE ),
-        std::make_pair( "stab", SKILL_STABBING ),
-        std::make_pair( "athletics", SKILL_SWIMMING ),
-        std::make_pair( "unarmed", SKILL_UNARMED ),
-        std::make_pair( "marksmanship", SKILL_GUN ),
-        std::make_pair( "pistol", SKILL_PISTOL ),
-        std::make_pair( "rifle", SKILL_RIFLE ),
-        std::make_pair( "shotgun", SKILL_SHOTGUN ),
-        std::make_pair( "smg", SKILL_SMG ),
-        std::make_pair( "archery", SKILL_ARCHERY ),
-        std::make_pair( "throw", SKILL_THROW ),
-        std::make_pair( "launcher", SKILL_LAUNCHER ),
-        std::make_pair( "drive", SKILL_DRIVE ),
-        std::make_pair( "firstaid", SKILL_FIRSTAID ),
-        std::make_pair( "spellcraft", SKILL_SPELLCRAFT ),
-        std::make_pair( "metaphysics", SKILL_METAPHYSICS ),
-        std::make_pair( "gramarye", SKILL_GRAMARYE )
+        std::make_pair( "per", STAT_PER )
     }
 };
 
-static scaling_stat scaling_stat_from_string( const std::string &s )
-{
-    const auto &iter = scaling_stat_map.find( s );
-    if( iter == scaling_stat_map.end() ) {
-        return STAT_NULL;
+// Any other "scaling-stat" names a skill by its id (CHAR-J04).  These are the short names
+// the old closed list used for skills whose id is different; they still work.
+static const std::map<std::string, std::string> legacy_scaling_skill_names = {{
+        std::make_pair( "athletics", "swimming" ),
+        std::make_pair( "bash", "bashing" ),
+        std::make_pair( "cut", "cutting" ),
+        std::make_pair( "drive", "driving" ),
+        std::make_pair( "marksmanship", "gun" ),
+        std::make_pair( "stab", "stabbing" )
     }
-
-    return iter->second;
-}
+};
 
 static affected_stat affected_stat_from_string( const std::string &s )
 {
@@ -128,32 +92,15 @@ static const std::map<scaling_stat, std::string> scaling_stat_map_translation = 
         std::make_pair( STAT_DEX, translate_marker( "dexterity" ) ),
         std::make_pair( STAT_INT, translate_marker( "intelligence" ) ),
         std::make_pair( STAT_PER, translate_marker( "perception" ) ),
-        std::make_pair( SKILL_BASHING, translate_marker( "bashing" ) ),
-        std::make_pair( SKILL_CUTTING, translate_marker( "cutting" ) ),
-        std::make_pair( SKILL_DODGE, translate_marker( "dodging" ) ),
-        std::make_pair( SKILL_MELEE, translate_marker( "melee" ) ),
-        std::make_pair( SKILL_STABBING, translate_marker( "stabbing" ) ),
-        std::make_pair( SKILL_SWIMMING, translate_marker( "swimming" ) ),
-        std::make_pair( SKILL_UNARMED, translate_marker( "unarmed" ) ),
-        std::make_pair( SKILL_GUN, translate_marker( "marksmanship" ) ),
-        std::make_pair( SKILL_PISTOL, translate_marker( "pistols" ) ),
-        std::make_pair( SKILL_RIFLE, translate_marker( "rifles" ) ),
-        std::make_pair( SKILL_SHOTGUN, translate_marker( "shotguns" ) ),
-        std::make_pair( SKILL_SMG, translate_marker( "SMGs" ) ),
-        std::make_pair( SKILL_ARCHERY, translate_marker( "archery" ) ),
-        std::make_pair( SKILL_THROW, translate_marker( "throwing" ) ),
-        std::make_pair( SKILL_LAUNCHER, translate_marker( "launchers" ) ),
-        std::make_pair( SKILL_DRIVE, translate_marker( "driving" ) ),
-        std::make_pair( SKILL_FIRSTAID, translate_marker( "health care" ) ),
-        std::make_pair( SKILL_SPELLCRAFT, translate_marker( "spellcraft" ) ),
-        std::make_pair( SKILL_METAPHYSICS, translate_marker( "metaphysics" ) ),
-        std::make_pair( SKILL_GRAMARYE, translate_marker( "gramarye" ) ),
     }
 };
 
-static std::string string_from_scaling_stat( const scaling_stat &s )
+std::string effect_scaling::scaling_name() const
 {
-    const auto &iter = scaling_stat_map_translation.find( s );
+    if( !skill.is_empty() ) {
+        return skill.is_valid() ? skill->name() : skill.str();
+    }
+    const auto &iter = scaling_stat_map_translation.find( stat );
     return iter != scaling_stat_map_translation.end() ? _( iter->second ) : "";
 }
 
@@ -161,10 +108,16 @@ bonus_container::bonus_container() = default;
 
 effect_scaling::effect_scaling( const JsonObject &obj )
 {
-    if( obj.has_string( "scaling-stat" ) ) {
-        stat = scaling_stat_from_string( obj.get_string( "scaling-stat" ) );
-    } else {
-        stat = STAT_NULL;
+    if( obj.has_member( "scaling-stat" ) ) {
+        const std::string name = obj.get_string( "scaling-stat" );
+        const auto stat_iter = scaling_stat_map.find( name );
+        if( stat_iter != scaling_stat_map.end() ) {
+            stat = stat_iter->second;
+        } else {
+            // A skill, a mod's too: bonus_container::check reports one that doesn't exist
+            const auto legacy = legacy_scaling_skill_names.find( name );
+            skill = skill_id( legacy != legacy_scaling_skill_names.end() ? legacy->second : name );
+        }
     }
 
     scale = obj.get_float( "scale" );
@@ -267,6 +220,22 @@ float bonus_container::get_mult( const Character &u, affected_stat stat ) const
     return get_mult( u, stat, damage_type_id() );
 }
 
+void bonus_container::check( const std::string &context ) const
+{
+    for( const bonus_map *bonuses : {
+             &bonuses_flat, &bonuses_mult
+         } ) {
+        for( const std::pair<const affected_type, std::vector<effect_scaling>> &boni : *bonuses ) {
+            for( const effect_scaling &sf : boni.second ) {
+                if( !sf.skill.is_empty() && !sf.skill.is_valid() ) {
+                    debugmsg( "%s: \"scaling-stat\" \"%s\" is neither a stat (str, dex, int, per) "
+                              "nor a skill", context, sf.skill.str() );
+                }
+            }
+        }
+    }
+}
+
 std::string bonus_container::get_description() const
 {
     std::string dump;
@@ -281,10 +250,11 @@ std::string bonus_container::get_description() const
         }
 
         for( const effect_scaling &sf : boni.second ) {
-            if( sf.stat ) {
+            const std::string scaling = sf.scaling_name();
+            if( !scaling.empty() ) {
                 //~ %1$s: bonus name, %2$d: bonus percentage, %3$s: stat name
                 dump += string_format( pgettext( "martial art bonus", "* %1$s: <stat>%2$d%%</stat> of %3$s" ),
-                                       type, static_cast<int>( sf.scale * 100 ), string_from_scaling_stat( sf.stat ) );
+                                       type, static_cast<int>( sf.scale * 100 ), scaling );
             } else {
                 //~ %1$s: bonus name, %2$d: bonus percentage
                 dump += string_format( pgettext( "martial art bonus", "* %1$s: <stat>%2$d%%</stat>" ),
@@ -305,10 +275,11 @@ std::string bonus_container::get_description() const
         }
 
         for( const effect_scaling &sf : boni.second ) {
-            if( sf.stat ) {
+            const std::string scaling = sf.scaling_name();
+            if( !scaling.empty() ) {
                 //~ %1$s: bonus name, %2$+d: bonus percentage, %3$s: stat name
                 dump += string_format( pgettext( "martial art bonus", "* %1$s: <stat>%2$+d%%</stat> of %3$s" ),
-                                       type, static_cast<int>( sf.scale * 100 ), string_from_scaling_stat( sf.stat ) );
+                                       type, static_cast<int>( sf.scale * 100 ), scaling );
             } else {
                 //~ %1$s: bonus name, %2$+d: bonus value
                 dump += string_format( pgettext( "martial art bonus", "* %1$s: <stat>%2$+d</stat>" ),
@@ -323,6 +294,10 @@ std::string bonus_container::get_description() const
 
 float effect_scaling::get( const Character &u ) const
 {
+    if( !skill.is_empty() ) {
+        // bonus_container::check reported a skill that doesn't exist
+        return skill.is_valid() ? scale * u.get_skill_level( skill ) : 0.0f;
+    }
     float bonus = 0.0f;
     switch( stat ) {
         case STAT_STR:
@@ -336,66 +311,6 @@ float effect_scaling::get( const Character &u ) const
             break;
         case STAT_PER:
             bonus = scale * u.get_per();
-            break;
-        case SKILL_BASHING:
-            bonus = scale * u.get_skill_level( skill_bashing );
-            break;
-        case SKILL_CUTTING:
-            bonus = scale * u.get_skill_level( skill_cutting );
-            break;
-        case SKILL_DODGE:
-            bonus = scale * u.get_skill_level( skill_dodge );
-            break;
-        case SKILL_MELEE:
-            bonus = scale * u.get_skill_level( skill_melee );
-            break;
-        case SKILL_STABBING:
-            bonus = scale * u.get_skill_level( skill_stabbing );
-            break;
-        case SKILL_SWIMMING:
-            bonus = scale * u.get_skill_level( skill_swimming );
-            break;
-        case SKILL_UNARMED:
-            bonus = scale * u.get_skill_level( skill_unarmed );
-            break;
-        case SKILL_GUN:
-            bonus = scale * u.get_skill_level( skill_gun );
-            break;
-        case SKILL_PISTOL:
-            bonus = scale * u.get_skill_level( skill_pistol );
-            break;
-        case SKILL_RIFLE:
-            bonus = scale * u.get_skill_level( skill_rifle );
-            break;
-        case SKILL_SHOTGUN:
-            bonus = scale * u.get_skill_level( skill_shotgun );
-            break;
-        case SKILL_SMG:
-            bonus = scale * u.get_skill_level( skill_smg );
-            break;
-        case SKILL_ARCHERY:
-            bonus = scale * u.get_skill_level( skill_archery );
-            break;
-        case SKILL_THROW:
-            bonus = scale * u.get_skill_level( skill_throw );
-            break;
-        case SKILL_LAUNCHER:
-            bonus = scale * u.get_skill_level( skill_launcher );
-            break;
-        case SKILL_DRIVE:
-            bonus = scale * u.get_skill_level( skill_drive );
-            break;
-        case SKILL_FIRSTAID:
-            bonus = scale * u.get_skill_level( skill_firstaid );
-            break;
-        case SKILL_SPELLCRAFT:
-            bonus = scale * u.get_skill_level( skill_spellcraft );
-            break;
-        case SKILL_METAPHYSICS:
-            bonus = scale * u.get_skill_level( skill_metaphysics );
-            break;
-        case SKILL_GRAMARYE:
-            bonus = scale * u.get_skill_level( skill_gramarye );
             break;
         case STAT_NULL:
             bonus = scale;

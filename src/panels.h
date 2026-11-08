@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "coords_fwd.h"
@@ -141,11 +142,13 @@ class panel_manager
 
         void init();
 
+        // Write and read the panel_options file's contents
+        void serialize( JsonOut &json );
+        void deserialize( const JsonArray &ja );
+
     private:
         bool save();
         bool load();
-        void serialize( JsonOut &json );
-        void deserialize( const JsonArray &ja );
         // update the screen offsets so the game knows how to adjust the main window
         void update_offsets( int x );
 
@@ -154,6 +157,9 @@ class panel_manager
         int width_left = 0; // NOLINT(cata-serialize)
         std::string current_layout_id;
         std::map<std::string, panel_layout> layouts;
+        // Panel order and toggles (name, enabled) saved for layouts this world's mods don't
+        // have; written back as they were, so other worlds' sidebars keep their settings
+        std::map<std::string, std::vector<std::pair<std::string, bool>>> unloaded_layouts;
 
         friend widget;
 };

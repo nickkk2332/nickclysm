@@ -63,6 +63,16 @@ class talker_item_const: public const_talker_cloner<talker_item_const>
 
         int get_price() const override;
         int get_price_postapoc() const override;
+
+        // inventory queries answer for what the item holds, not for the item itself
+        int charges_of( const itype_id &item_id ) const override;
+        bool has_charges( const itype_id &item_id, int count ) const override;
+        bool has_charges( const itype_id &item_id, int count, bool in_tools ) const override;
+        bool has_amount( const itype_id &item_id, int count ) const override;
+        int get_amount( const itype_id &item_id ) const override;
+        bool has_item_with_flag( const flag_id &flag ) const override;
+        std::vector<const item *> const_items_with( const std::function<bool( const item & )> &filter )
+        const override;
     private:
         const item_location *me_it_const{};
 };
@@ -93,6 +103,12 @@ class talker_item: public talker_item_const, public talker_cloner<talker_item>
         void set_fault( const fault_id &fault_id, bool force, const Character *holder ) override;
         void set_random_fault_of_type( const std::string &fault_type, bool force,
                                        const Character *holder ) override;
+
+        // puts the item into this one's container pockets, or on its tile if it doesn't fit
+        void i_add( const item &new_item ) override;
+        void i_add_or_drop( item &new_item, bool force_equip = false ) override;
+        void remove_items_with( const std::function<bool( const item & )> &filter ) override;
+        std::vector<item *> items_with( const std::function<bool( const item & )> &filter ) override;
 
     private:
         item_location *me_it{};

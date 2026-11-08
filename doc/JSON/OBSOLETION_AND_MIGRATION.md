@@ -20,6 +20,7 @@
 - [Overmap specials migration](#overmap-specials-migration)
 - [Dialogue / EoC variable migration](#dialogue--eoc-variable-migration)
 - [Activity Migration](#activity-migration)
+- [Effect on condition migration](#effect-on-condition-migration)
 - [Ammo types](#ammo-types)
 - [Spells](#spells)
 - [city_building](#city_building)
@@ -194,9 +195,25 @@ The only spells that require migration are one that are actual spells that chara
   },
 ```
 
+Migrations are applied when a save is loaded, before the saved spell ids are checked, so the `from` spell's JSON can be deleted.  The new spell keeps the old one's experience (of two old spells migrated into one, the higher), and its hotkey and favorite.  Migrations can chain (`spell_a` to `spell_b`, then `spell_b` to `spell_c`).
+
 # Monster migration
 
-Monster can be removed without migration, the game replace all critters without matched monster id with mon_breather when loaded
+A monster type can be removed without a migration: a saved monster whose type no longer exists loads as a `mon_breather`.  A `monster_migration` renames the type of saved monsters, or removes them, when a save loads:
+
+```jsonc
+  {
+    "type": "monster_migration",
+    "from": "mon_foo",  // Mandatory. Id of the monster type that was renamed or removed.
+    "to": "mon_bar"     // Optional. The type saved monsters of "from" become. Without "to", they are removed (they don't turn into breathers).
+  },
+  {
+    "type": "monster_migration",
+    "from": "mon_old_placeholder"
+  }
+```
+
+It applies to monsters on the map, in hordes and monster groups on the overmap, and to the monster spawn points saved in map squares.  A later `monster_migration` from the same id replaces the earlier one.
 
 # Recipe migration
 
@@ -349,24 +366,60 @@ Overmap special can be either migrated to another overmap special, or just remov
 ```
 
 # Dialogue / EoC variable migration
-For EOC/dialogue variables you can use `var_migration`. This currently only migrates **Character**, and **Global** vars. If "to" isn't provided the variable will be migrated to a key of "NULL_VALUE".
+For EOC/dialogue variables you can use `var_migration`.  When a save loads, it renames a saved variable, or erases it when there is no `"to"`.  It applies to global variables, the variables of the avatar and NPCs, of monsters, of items, of vehicles and of computers.
 
 ```jsonc
 {
     "type": "var_migration",
-    "from": "temp_var",
-    "to": "new_temp_var"
+    "from": "temp_var",        // Mandatory. The variable's old name.
+    "to": "new_temp_var"       // Optional. Its new name. Without "to" the variable is erased.
 },
 {
     "type": "var_migration",
-    "from": "temp_var"
+    "from": "temp_var"         // erased
+},
+{
+    "type": "var_migration",
+    "from": "charge_level",
+    "to": "mana_charge",
+    "scope": [ "item" ]        // Optional. Only these saved variables: "global", "character" (the avatar and NPCs), "monster", "item", "vehicle", "computer". All of them by default.
+},
+{
+    "type": "var_migration",
+    "from": "mymod_old_",
+    "to": "mymod_",
+    "prefix": true             // Optional, default false. "from" is a prefix: every variable whose name starts with it is renamed (mymod_old_x becomes mymod_x), or erased without "to".
 }
 ```
+
+A variable already saved under the new name keeps its value (the old one is dropped).  A later `var_migration` from the same `"from"` replaces the earlier one, and the migrations of one world's mods don't apply to another world's save.  (Before 2.0 a migration without `"to"` renamed the variable to `"NULL_VALUE"`.)
 
 # Activity Migration
 See if it is mentioned in `src/savegame_legacy.cpp`.
 
-In `src/savegame_json.cpp` in `player_activity::deserialize( const JsonObject &data )` add to `std::set<std::string> obs_activities` the activity ID with comment to remove it after the next version (after 0.B when in 0.A experimental). There should always be at least one example left.
+An `activity_migration` renames the type of a saved activity (the character's current activity and its backlog), or drops the activity, when a save loads:
+
+```jsonc
+  {
+    "type": "activity_migration",
+    "from": "ACT_FOO",  // Mandatory. Id of the activity type that was renamed or removed.
+    "to": "ACT_BAR"     // Optional. The type the saved activity becomes; its saved data must suit that type. Without "to", the activity is dropped.
+  }
+```
+
+Obsolete activities are `activity_migration`s without `"to"` (see `data/json/obsoletion_and_migration_0.J/player_activities.json`), with a comment to remove them after the next version.  A later `activity_migration` from the same id replaces the earlier one.
+
+# Effect on condition migration
+
+Queued and inactive effect_on_conditions are saved by id.  One that no longer exists is dropped when a save loads.  An `effect_on_condition_migration` renames a saved EOC, or drops it:
+
+```jsonc
+  {
+    "type": "effect_on_condition_migration",
+    "from": "EOC_FOO",  // Mandatory. Id of the EOC that was renamed or removed.
+    "to": "EOC_BAR"     // Optional. The EOC queued instead, at the same time and with the same context. Without "to", it is dropped.
+  }
+```
 
 # Ammo types
 
@@ -374,7 +427,7 @@ Ammo types don't need an infrastructure to be obsoleted, but it is required to r
 
 # Spells
 
-Spells have no infrastructure to migrate them, just copy the entire json of obsoleted spell to the obsoletion folder. Additionally one can make EoC, that makes the level of the spell to be -1, and make the spell run this EoC, removing it in such way
+Spells learned by characters are migrated with `spell_migration` (see [Spell migration](#spell-migration)).  Monster spells are not saved and need no migration.
 
 # city_building
 

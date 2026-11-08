@@ -1,0 +1,117 @@
+[
+  {
+    "//": "USE-J05 fixture: an effect a test drug gives.",
+    "type": "effect_type",
+    "id": "test_m13a_drugged",
+    "name": [ { "str": "Test Drugged", "//~": "NO_I18N" } ],
+    "desc": [ { "str": "Given by a test drug.", "//~": "NO_I18N" } ]
+  },
+  {
+    "//": "USE-J05 fixture: an effect a test drug removes.",
+    "type": "effect_type",
+    "id": "test_m13a_ailment",
+    "name": [ { "str": "Test Ailment", "//~": "NO_I18N" } ],
+    "desc": [ { "str": "Removed by a test drug.", "//~": "NO_I18N" } ]
+  },
+  {
+    "//": "USE-J05 fixture: a trait that doubles how long drugs last, through DRUG_DURATION.",
+    "type": "mutation",
+    "id": "TEST_M13A_DRUG_SENSITIVE",
+    "name": { "str": "Test drug sensitivity" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait: drugs last twice as long (USE-J05).",
+    "enchantments": [ { "values": [ { "value": "DRUG_DURATION", "multiply": 1 } ] } ]
+  },
+  {
+    "//": "USE-J05 fixture: a drug with its own consume time.",
+    "id": "test_m13a_quick_pill",
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "comestible_type": "MED",
+    "name": { "str": "TEST quick pill" },
+    "description": "Takes two minutes to take (USE-J05).",
+    "weight": "1 g",
+    "volume": "10 ml",
+    "symbol": "!",
+    "color": "white",
+    "use_action": { "type": "consume_drug", "activation_message": "You take the %s.", "consume_time": "2 m" }
+  },
+  {
+    "//": "USE-J06 fixture: a cleanser for the test washboard.",
+    "id": "test_m13a_soapstone",
+    "type": "ITEM",
+    "name": { "str": "TEST soapstone" },
+    "description": "Cleans what the test washboard washes (USE-J06).",
+    "weight": "50 g",
+    "volume": "50 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_gray"
+  },
+  {
+    "//": "USE-J06 fixture: the cleanser of the test washboard.",
+    "id": "test_m13a_soapstone_cleanser",
+    "type": "requirement",
+    "components": [ [ [ "test_m13a_soapstone", 1 ] ] ]
+  },
+  {
+    "//": "USE-J06 fixture: washes soft items with soapstone and no water.",
+    "id": "test_m13a_washboard",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "TEST washboard" },
+    "description": "Washes soft items with soapstone (USE-J06).",
+    "weight": "500 g",
+    "volume": "1 L",
+    "material": [ "wood" ],
+    "symbol": ";",
+    "color": "brown",
+    "use_action": {
+      "type": "wash",
+      "hard": false,
+      "water_requirement": "",
+      "cleanser_requirement": "test_m13a_soapstone_cleanser",
+      "cleanser_per": "500 ml",
+      "time": "20 s",
+      "time_per": "500 ml"
+    }
+  },
+  {
+    "//": "USE-J07 fixture: counts the uses on the user.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M13A_USE",
+    "effect": [ { "math": [ "u_test_m13a_uses += 1" ] } ]
+  },
+  {
+    "//": "USE-J07 fixture: refuses the use, so nothing is spent.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M13A_REFUSE",
+    "effect": [ { "math": [ "_cancel = 1" ] } ]
+  },
+  {
+    "//": "USE-J07 fixture: a plain item with a named use action.",
+    "id": "test_m13a_widget",
+    "type": "ITEM",
+    "name": { "str": "TEST widget" },
+    "description": "Pressed for the activation event test (USE-J07).",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "use_action": [
+      { "type": "effect_on_conditions", "id": "test_m13a_press", "effect_on_conditions": [ "EOC_TEST_M13A_USE" ] },
+      { "type": "effect_on_conditions", "id": "test_m13a_refuse", "effect_on_conditions": [ "EOC_TEST_M13A_REFUSE" ] }
+    ]
+  },
+  {
+    "//": "USE-J07 fixture: reacts to the test widget's activations, and nothing else.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M13A_ACTIVATED",
+    "eoc_type": "EVENT",
+    "required_event": "character_activates_item",
+    "condition": { "compare_string": [ "test_m13a_widget", { "context_val": "itype" } ] },
+    "effect": [ { "math": [ "u_test_m13a_activations += 1" ] }, { "math": [ "u_test_m13a_activated_charges = _charges" ] } ]
+  }
+]

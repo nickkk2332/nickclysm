@@ -2,7 +2,6 @@
 #include <map>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "avatar.h"

@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_SLEEP_H
 #define CATA_SRC_SLEEP_H
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,7 @@
 class Character;
 class JsonObject;
 class item;
+struct const_dialogue;
 template <typename T> struct enum_traits;
 
 /**
@@ -41,6 +43,8 @@ struct comfort_data {
         vehicle,
         character,
         trait,
+        // HLTH-J12: any dialogue condition, about the sleeper (alpha) and the spot (context "loc")
+        condition,
         last
     };
 
@@ -54,6 +58,8 @@ struct comfort_data {
         bool active = false;
         /** If the truth value of the condition should be inverted **/
         bool invert = false;
+        /** The dialogue condition of a `condition` category condition **/
+        std::function<bool( const_dialogue const & )> dialogue_condition;
 
         bool is_condition_true( const Character &guy, const tripoint_bub_ms &p ) const;
         void deserialize( const JsonObject &jo );

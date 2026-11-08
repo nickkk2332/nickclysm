@@ -232,7 +232,7 @@
     "use_action": [ "EHANDCUFFS" ],
     "tick_action": [ "EHANDCUFFS_TICK" ],
     "//": "Don't add ELECTRONIC flag here, since these handcuffs have their own behavior when affected by EMP blast",
-    "flags": [ "ALWAYS_TWOHAND", "TRADER_AVOID", "WATER_BREAK" ]
+    "flags": [ "ALWAYS_TWOHAND", "BINDS_HANDS", "TRADER_AVOID", "WATER_BREAK" ]
   },
   {
     "id": "eink_tablet_pc",

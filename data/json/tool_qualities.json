@@ -19,6 +19,7 @@
   {
     "type": "tool_quality",
     "id": "GLARE",
+    "disassembly_substitute": {  },
     "name": { "str": "glare protection" }
   },
   {
@@ -262,11 +263,13 @@
   {
     "type": "tool_quality",
     "id": "SEW",
+    "disassembly_substitute": { "qualities": [ { "id": "CUT" } ] },
     "name": { "str": "sewing" }
   },
   {
     "type": "tool_quality",
     "id": "KNIT",
+    "disassembly_substitute": {  },
     "name": { "ctxt": "tool_quality", "str": "knitting" }
   },
   {

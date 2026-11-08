@@ -56,6 +56,8 @@ class leap_actor : public mattack_actor
         float max_consider_range = 0.0f;
 
         std::vector<mon_effect_data> self_effects;
+        // Run after landing, with the target (if any) as npc
+        std::vector<effect_on_condition_id> eoc;
 
         translation message;
 
@@ -72,7 +74,10 @@ class mon_spellcasting_actor : public mattack_actor
     public:
         fake_spell spell_data;
 
+        // Cast without a target, always at the caster's own tile
         bool allow_no_target = false;
+        // Cast at the target if there is one in range, else at the caster's own tile
+        bool target_optional = false;
 
         mon_spellcasting_actor() = default;
         ~mon_spellcasting_actor() override = default;
@@ -85,8 +90,15 @@ class mon_spellcasting_actor : public mattack_actor
 class mon_eoc_actor : public mattack_actor
 {
     public:
-        int range = 1;
+        // Farthest a target may be; -1 is any distance
+        int range = -1;
+        // Runs without a target, and drops the target if there is one
         bool allow_no_target = false;
+        // Runs without a target, and uses the target (as npc) if there is one in range
+        bool target_optional = false;
+        // Not used against an adjacent target
+        bool no_adjacent = false;
+        int move_cost = 0;
         std::vector<effect_on_condition_id> eoc;
 
         mon_eoc_actor() = default;
@@ -174,6 +186,8 @@ class melee_actor : public mattack_actor
         bool spread_damage = false;
 
         std::vector<effect_on_condition_id> eoc;
+        // Run when the target dodges the attack
+        std::vector<effect_on_condition_id> eoc_on_miss;
 
         /**
          * If empty, regular melee roll body part selection is used.
@@ -274,6 +288,9 @@ class gun_actor : public mattack_actor
         /** Number of moves required for each attack */
         int move_cost = 150;
 
+        // Run after each attack that fires, with the creature shot at (if any) as npc
+        std::vector<effect_on_condition_id> eoc;
+
         /** Should moving vehicles be targeted */
         bool target_moving_vehicles = false;
         /*@{*/
@@ -317,6 +334,8 @@ class polymorph_special : public mattack_actor
         bool keep_speed = true;
         bool keep_hp = true;
         bool keep_anger = true;
+        // False: only used with a hostile target, which the condition sees as npc
+        bool allow_no_target = true;
 
         polymorph_special() = default;
         ~polymorph_special() override = default;

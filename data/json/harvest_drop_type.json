@@ -2,31 +2,88 @@
   {
     "type": "harvest_drop_type",
     "id": "flesh",
-    "msg_dissect_fail": "harvest_drop_tissue_dissect_failed"
+    "msg_dissect_fail": "harvest_drop_tissue_dissect_failed",
+    "action_yield": { "FULL": 1, "QUICK": 0.25, "DISMEMBER": 0, "DISSECT": 1 },
+    "//": "Damage levels 0 to 5; a corpse at the most damage (5) has always given full yield.",
+    "corpse_damage_yield": [ 1, 1, 0.9, 0.75, 0.5, 1 ],
+    "gib_yield": 0.5,
+    "survives_splatter": true,
+    "corpse_flag_yield": [ { "flags": [ "FIELD_DRESS_FAILED" ], "actions": [ "FULL", "QUICK" ], "yield": { "mult": 0, "random": [ 0, 1 ] } } ],
+    "proficiency_penalties": [ { "proficiency": "prof_butchering_basic", "penalty": 0.15 } ],
+    "trains_proficiencies": [
+      {
+        "proficiencies": [ "prof_butchering_basic", "prof_butchering_adv" ],
+        "time_fraction": { "FULL": 0.4, "QUICK": 0.7, "FIELD_DRESS": 1 }
+      }
+    ]
   },
   {
     "type": "harvest_drop_type",
     "id": "bone",
-    "msg_dissect_fail": "harvest_drop_bone_dissect_failed"
+    "msg_dissect_fail": "harvest_drop_bone_dissect_failed",
+    "action_yield": { "FULL": 1, "QUICK": 0.5, "FIELD_DRESS": { "mult": 0, "random": [ 0, 0.5 ] }, "DISMEMBER": 0, "DISSECT": 1 },
+    "corpse_damage_yield": [ 1, 1, 1, 0.9, 0.75, 1 ],
+    "gib_yield": 0.5,
+    "survives_splatter": true,
+    "//": "Field dressing takes 0 to half of the bones, so a dressed corpse has half to all of them left: on average both together give what butchering the whole corpse does.",
+    "corpse_flag_yield": [
+      { "flags": [ "FIELD_DRESS" ], "actions": [ "FULL", "QUICK" ], "yield": { "mult": 0, "random": [ 0.5, 1 ] } },
+      {
+        "flags": [ "FIELD_DRESS_FAILED" ],
+        "actions": [ "FULL", "QUICK" ],
+        "yield": { "mult": 0, "random": [ 0.5, 1 ] }
+      }
+    ]
   },
   {
     "type": "harvest_drop_type",
     "id": "skin",
-    "msg_dissect_fail": "harvest_drop_tissue_dissect_failed"
+    "msg_dissect_fail": "harvest_drop_tissue_dissect_failed",
+    "action_yield": { "FULL": 1, "QUICK": { "mult": 0.5, "min_size": "MEDIUM" }, "SKIN": 1, "DISMEMBER": 0, "DISSECT": 1 },
+    "corpse_damage_yield": [ 1, 1, 0.75, 0.5, 0, 1 ],
+    "enables_action": [ "SKIN" ],
+    "corpse_flag_yield": [
+      { "flags": [ "SKINNED", "QUARTERED" ], "skip": true },
+      {
+        "flags": [ "FIELD_DRESS_FAILED" ],
+        "actions": [ "FULL", "QUICK", "SKIN" ],
+        "yield": { "mult": 0, "random": [ 0, 1 ] }
+      }
+    ],
+    "proficiency_penalties": [ { "proficiency": "prof_skinning_basic", "penalty": 2 }, { "proficiency": "prof_skinning_adv", "penalty": 0.15 } ],
+    "trains_proficiencies": [
+      {
+        "proficiencies": [ "prof_skinning_basic", "prof_skinning_adv" ],
+        "time_fraction": { "FULL": 0.4, "QUICK": 0.15, "SKIN": 1 }
+      }
+    ]
   },
   {
     "type": "harvest_drop_type",
-    "id": "blood"
+    "id": "blood",
+    "action_yield": { "FULL": 1, "FIELD_DRESS": 1, "BLEED": 1, "DISMEMBER": 0, "DISSECT": 1 },
+    "enables_action": [ "BLEED" ]
   },
   {
     "type": "harvest_drop_type",
     "id": "offal",
-    "msg_dissect_fail": "harvest_drop_tissue_dissect_failed"
+    "msg_dissect_fail": "harvest_drop_tissue_dissect_failed",
+    "action_yield": { "FULL": 1, "QUICK": 0.2, "FIELD_DRESS": 1, "DISMEMBER": 0, "DISSECT": 1 },
+    "corpse_damage_yield": [ 1, 1, 0.75, 0, 0, 1 ],
+    "enables_action": [ "FIELD_DRESS" ],
+    "corpse_flag_yield": [ { "flags": [ "FIELD_DRESS", "FIELD_DRESS_FAILED" ], "actions": [ "FULL", "QUICK" ], "skip": true } ],
+    "proficiency_penalties": [ { "proficiency": "prof_butchering_basic", "penalty": 0.15 } ],
+    "trains_proficiencies": [
+      {
+        "proficiencies": [ "prof_butchering_basic", "prof_butchering_adv" ],
+        "time_fraction": { "FULL": 0.4, "QUICK": 0.7, "FIELD_DRESS": 1 }
+      }
+    ]
   },
   {
     "type": "harvest_drop_type",
     "id": "mutagen",
-    "dissect_only": true,
+    "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "chemistry", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_mutagen_field_dress",
     "msg_butcher_fail": "harvest_drop_mutagen_butcher",
@@ -36,7 +93,7 @@
     "type": "harvest_drop_type",
     "id": "mutagen_group",
     "group": true,
-    "dissect_only": true,
+    "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "chemistry", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_mutagen_field_dress",
     "msg_butcher_fail": "harvest_drop_mutagen_butcher",
@@ -45,7 +102,7 @@
   {
     "type": "harvest_drop_type",
     "id": "bionic",
-    "dissect_only": true,
+    "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "electronics", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_bionic_field_dress",
     "msg_butcher_fail": "harvest_drop_bionic_butcher"
@@ -54,7 +111,7 @@
     "type": "harvest_drop_type",
     "id": "bionic_group",
     "group": true,
-    "dissect_only": true,
+    "action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 },
     "harvest_skills": [ "electronics", "firstaid" ],
     "msg_fielddress_fail": "harvest_drop_bionic_field_dress",
     "msg_butcher_fail": "harvest_drop_bionic_butcher"

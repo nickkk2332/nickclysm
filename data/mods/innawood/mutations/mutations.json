@@ -7,7 +7,8 @@
     "description": "You never learned to read!  Books and computers are off-limits to you.",
     "starting_trait": false,
     "valid": false,
-    "cancels": [ "FASTREADER", "SLOWREADER", "PROF_DICEMASTER", "LOVES_BOOKS", "HATES_BOOKS" ]
+    "cancels": [ "FASTREADER", "SLOWREADER", "PROF_DICEMASTER", "LOVES_BOOKS", "HATES_BOOKS" ],
+    "flags": [ "ILLITERATE" ]
   },
   {
     "type": "mutation",
@@ -16,6 +17,7 @@
     "points": 0,
     "description": "Reading is for nerds!  Boring books are more boring, and you can't have fun by reading books.",
     "valid": false,
-    "cancels": [ "ILLITERATE", "LOVES_BOOKS" ]
+    "cancels": [ "ILLITERATE", "LOVES_BOOKS" ],
+    "flags": [ "HATES_BOOKS" ]
   }
 ]

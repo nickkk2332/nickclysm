@@ -2247,7 +2247,7 @@
     "id": "hand_slime_complete_wrist_r",
     "copy-from": "hand_wrist_r",
     "parent": "hand_slime_complete_r",
-    "opposite": "hand_slime_wrist_complete_l",
+    "opposite": "hand_slime_complete_wrist_l",
     "similar_bodypart": "hand_wrist_r"
   },
   {
@@ -3342,7 +3342,7 @@
     "max_coverage": 20,
     "parent": "avian_talon_l",
     "side": "left",
-    "opposite": "avian_talon_r",
+    "opposite": "avian_talon_top_r",
     "name_multiple": "talon top",
     "name": "left talon top"
   },
@@ -3392,7 +3392,7 @@
     "max_coverage": 20,
     "parent": "avian_talon_r",
     "side": "right",
-    "opposite": "avian_talon_l",
+    "opposite": "avian_talon_top_l",
     "name_multiple": "talon top",
     "name": "right talon top"
   },

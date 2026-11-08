@@ -74,12 +74,12 @@
     "damage_type": "electric",
     "min_damage": {
       "math": [
-        "( (u_spell_level('electrokinesis_zap_enemies') / 4 ) + 1) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
+        "( (u_spell_level('electrokinetic_zap_enemies') / 4 ) + 1) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
       ]
     },
     "max_damage": {
       "math": [
-        "( (u_spell_level('electrokinesis_zap_enemies') / 2 ) + 5) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
+        "( (u_spell_level('electrokinetic_zap_enemies') / 2 ) + 5) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
       ]
     },
     "min_range": 1,
@@ -90,7 +90,7 @@
     "id": "enchant_electrokin_electric_strikes",
     "condition": "ALWAYS",
     "has": "HELD",
-    "hit_you_effect": [ { "id": "electrokin_zap_attack", "hit_self": false, "once_in": 2 } ],
+    "hit_you_effect": [ { "id": "electrokin_zap_attack", "hit_types": [ "melee" ], "hit_self": false, "once_in": 2 } ],
     "incoming_damage_mod": [ { "type": "electric", "add": { "math": [ "u_spell_level('electrokinetic_melee_attacks') * -1" ] } } ]
   },
   {
@@ -212,7 +212,7 @@
     "id": "enchant_pyrokinetic_aura",
     "condition": "ALWAYS",
     "has": "HELD",
-    "hit_you_effect": [ { "id": "pyro_aura_attack", "hit_self": false } ],
+    "hit_you_effect": [ { "id": "pyro_aura_attack", "hit_types": [ "melee" ], "hit_self": false } ],
     "hit_me_effect": [ { "id": "pyro_aura_attacked", "hit_self": false } ],
     "emitter": "emit_pyrokin_fever",
     "values": [ { "value": "LUMINATION", "add": 50 }, { "value": "CLIMATE_CONTROL_CHILL", "add": 40 } ]

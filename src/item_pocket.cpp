@@ -213,6 +213,24 @@ void pocket_data::load( const JsonObject &jo )
 void sealable_data::load( const JsonObject &jo )
 {
     optional( jo, was_loaded, "spoil_multiplier", spoil_multiplier, 1.0f );
+    if( jo.has_member( "watertight" ) ) {
+        watertight = jo.get_bool( "watertight" );
+    }
+    if( jo.has_member( "airtight" ) ) {
+        airtight = jo.get_bool( "airtight" );
+    }
+    if( jo.has_member( "transparent" ) ) {
+        transparent = jo.get_bool( "transparent" );
+    }
+    if( jo.has_member( "insulation" ) ) {
+        insulation = static_cast<float>( jo.get_float( "insulation" ) );
+    }
+    if( jo.has_member( "moves" ) ) {
+        moves = jo.get_int( "moves" );
+        if( *moves < 1 ) {
+            jo.throw_error_at( "moves", "sealed_data moves must be at least 1" );
+        }
+    }
 }
 
 void pocket_noise::load( const JsonObject &jo )
@@ -716,12 +734,18 @@ float item_pocket::spoil_multiplier() const
 
 float item_pocket::insulation() const
 {
+    if( sealed() && data->sealed_data->insulation ) {
+        return *data->sealed_data->insulation;
+    }
     return data->insulation;
 }
 
 int item_pocket::moves() const
 {
     if( data ) {
+        if( sealed() && data->sealed_data->moves ) {
+            return *data->sealed_data->moves;
+        }
         return data->moves;
     } else {
         return -1;
@@ -2068,6 +2092,9 @@ void item_pocket::process( map &here, Character *carrier, const tripoint_bub_ms 
                            temperature_flag flag, float spoil_multiplier_parent, bool watertight_container )
 {
     for( auto iter = contents.begin(); iter != contents.end(); ) {
+        // a stack counted by charges that processing converts into a type that isn't (a countdown
+        // into a solid) stands for one item per charge it had
+        const int stack_size = iter->count_by_charges() ? iter->charges : 0;
         if( iter->process( here, carrier, pos, insulation, flag,
                            // spoil multipliers on pockets are not additive or multiplicative: the
                            // best one below 1 counts, or else the worst one above 1
@@ -2076,7 +2103,14 @@ void item_pocket::process( map &here, Character *carrier, const tripoint_bub_ms 
             iter->spill_contents( pos );
             iter = contents.erase( iter );
         } else {
+            const bool split = stack_size > 1 && !iter->count_by_charges();
+            const item &converted = *iter;
             ++iter;
+            if( split ) {
+                // the copies go right after it, so this loop doesn't process them again this turn
+                // (and nothing restacks here: that could erase the item iter points to)
+                contents.insert( iter, stack_size - 1, converted );
+            }
         }
     }
 }
@@ -2174,11 +2208,17 @@ bool item_pocket::rigid() const
 
 bool item_pocket::watertight() const
 {
+    if( sealed() && data->sealed_data->watertight ) {
+        return *data->sealed_data->watertight;
+    }
     return data->watertight;
 }
 
 bool item_pocket::transparent() const
 {
+    if( sealed() && data->sealed_data->transparent ) {
+        return *data->sealed_data->transparent;
+    }
     return data->transparent || ( data->open_container && !sealed() );
 }
 
@@ -2201,6 +2241,9 @@ bool item_pocket::is_forbidden() const
 
 bool item_pocket::airtight() const
 {
+    if( sealed() && data->sealed_data->airtight ) {
+        return *data->sealed_data->airtight;
+    }
     return data->airtight;
 }
 
@@ -2400,9 +2443,9 @@ bool item_pocket::is_type( pocket_type ptype ) const
     return ptype == data->type;
 }
 
-bool item_pocket::is_type( const std::set<pocket_type> &ptype ) const
+bool item_pocket::is_type( pocket_type_set ptype ) const
 {
-    return ptype.count( data->type ) == 1;
+    return ptype.contains( data->type );
 }
 
 bool item_pocket::is_ablative() const

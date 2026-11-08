@@ -1167,16 +1167,23 @@ action_id input_context::display_menu( bool permit_execute_action )
             // We don't want to completely delete a global context entry.
             // Only attempt removal for a local context, or when there's
             // bindings for the default context.
+            // An edit that is declined changes nothing, but must not forget earlier edits
             if( kb_menu.status == kb_menu_status::remove && ( is_local || !is_empty ) ) {
-                changed = action_remove( name, action_id, is_local, is_empty );
+                if( action_remove( name, action_id, is_local, is_empty ) ) {
+                    changed = true;
+                }
             } else if( kb_menu.status == kb_menu_status::reset ) {
-                changed = action_reset( action_id );
+                if( action_reset( action_id ) ) {
+                    changed = true;
+                }
             } else if( kb_menu.status == kb_menu_status::add_global && is_local ) {
                 // Disallow adding global actions to an action that already has a local defined.
                 popup( _( "There are already local keybindings defined for this action, please remove them first." ) );
             } else if( kb_menu.status == kb_menu_status::add ||
                        kb_menu.status == kb_menu_status::add_global ) {
-                changed = action_add( name, action_id, is_local, kb_menu.status );
+                if( action_add( name, action_id, is_local, kb_menu.status ) ) {
+                    changed = true;
+                }
             } else if( kb_menu.status == kb_menu_status::execute && permit_execute_action ) {
                 action_to_execute = look_up_action( action_id );
                 break;

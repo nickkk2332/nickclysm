@@ -16,6 +16,8 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "memory_fast.h"
+#include "point.h"
+#include "overmap_noise.h"
 #include "type_id.h"
 #include "weighted_list.h"
 
@@ -67,9 +69,48 @@ struct region_settings_city {
 
     std::string name_snippet = "<city_name>";
 
+    // City layout (OMAP-J04).  The defaults are the values that used to be hardcoded.
+    // One in this many building lots along a street is left empty
+    int empty_lot_chance = 4;
+    // Random city sizes stay within these bounds
+    int min_size = 2;
+    int max_size = 55;
+    // A random city's size is multiplied by multiply / divide of one of these, picked by weight
+    struct size_variation {
+        int weight = 1;
+        int multiply = 1;
+        int divide = 1;
+        void deserialize( const JsonObject &jo );
+    };
+    std::vector<size_variation> size_variations = {
+        { 2, 1, 3 }, { 2, 2, 3 }, { 1, 3, 2 }, { 1, 2, 1 }
+    };
+    // The city spacing (after urbanity and forests) is capped at this
+    int max_spacing = 10;
+    // Width of the wide blocks between side streets, [ min, max ] (the narrow ones are 2)
+    std::array<int, 2> block_width = { 3, 5 };
+    // How much shorter than its street a side street is, [ min, max ]
+    std::array<int, 2> street_shrink = { 1, 3 };
+    // One in this many streets that turn at the edge of town also branch the other way
+    int extra_branch_chance = 5;
+    // A megacity region puts a city of this size at each of these points of every overmap
+    int megacity_size = 40;
+    std::vector<point> megacity_seeds = {
+        { OMAPX / 4, OMAPY / 4 }, { OMAPX / 4, OMAPY / 4 * 3 }, { OMAPX / 4 * 2, OMAPY / 4 * 2 },
+        { OMAPX / 4 * 3, OMAPY / 4 }, { OMAPX / 4 * 3, OMAPY / 4 * 3 }
+    };
+    // OMAP-J13: one in manhole_chance four-way road crossings of a city street becomes
+    // manhole_terrain (0: none).
+    int manhole_chance = 2;
+    oter_str_id manhole_terrain;
+
     building_bin houses;
     building_bin shops;
     building_bin parks;
+
+    // MGEN-J05: the post-process generators a road in a city gets (a road's own
+    // "post_process_generators" don't apply); riot_damage_road unless the region says
+    std::vector<pp_generator_id> road_post_process;
 
     overmap_special_id pick_house() const {
         return houses.pick();
@@ -100,6 +141,7 @@ struct region_settings_city {
     static void load_region_settings_city( const JsonObject &jo, const std::string &src );
     static void reset();
     void finalize();
+    void check() const;
 };
 
 /*
@@ -156,6 +198,8 @@ struct forest_biome_mapgen {
 
     std::set<oter_type_str_id> terrains;
     std::set<forest_biome_component_id> biome_components;
+    // biome_components ordered by (sequence, id), the order pick() rolls them in (OMAP-J03)
+    std::vector<forest_biome_component_id> components_in_sequence;
     weighted_int_list<ter_id> groundcover;
     std::map<ter_id, forest_biome_terrain_dependent_furniture_new> terrain_dependent_furniture;
 
@@ -168,6 +212,7 @@ struct forest_biome_mapgen {
     ter_furn_id pick() const;
     bool was_loaded = false;
     void finalize();
+    void check() const;
     void load( const JsonObject &jo, std::string_view );
     static void load_forest_biome_mapgen( const JsonObject &jo, const std::string &src );
     static void reset();
@@ -184,6 +229,7 @@ struct region_settings_forest_mapgen {
 
     bool was_loaded = false;
     void finalize();
+    void check() const;
     void load( const JsonObject &jo, std::string_view );
     static void load_region_settings_forest_mapgen( const JsonObject &jo, const std::string &src );
     static void reset();
@@ -234,13 +280,22 @@ struct region_settings_forest {
     // increase nesw
     std::array<float, 4> forest_increase;
 
+    // OMAP-J10: the terrain placed for forests, thick forests and swamps. Trails are laid through
+    // these three, and swamps grow in the first two.
+    oter_str_id forest_ter;
+    oter_str_id forest_thick_ter;
+    oter_str_id swamp_ter;
+    om_noise::om_noise_params forest_noise = om_noise::om_noise_params::forest();
+    om_noise::om_noise_params forest_detail_noise = om_noise::om_noise_params::forest_detail();
+    om_noise::om_noise_params floodplain_noise = om_noise::om_noise_params::floodplain();
+
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     void finalize();
 
     static void load_region_settings_forest( const JsonObject &jo, const std::string &src );
     static void reset();
-    region_settings_forest() = default;
+    region_settings_forest();
 };
 
 struct shore_extendable_overmap_terrain_alias {
@@ -258,6 +313,11 @@ struct region_settings_river {
     double river_branch_chance = 64;
     double river_branch_remerge_chance = 4;
     double river_branch_scale_decrease = 1;
+    // The terrain the built-in river mapgen draws; empty: vanilla's (MGEN-J04)
+    ter_str_id mapgen_deep_water;
+    ter_str_id mapgen_shallow_water;
+    weighted_int_list<ter_id> mapgen_bank;
+    weighted_int_list<ter_id> mapgen_bank_detail;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
@@ -281,10 +341,14 @@ struct region_settings_lake {
     std::vector<oter_str_id> shore_extendable_overmap_terrain;
     std::vector<shore_extendable_overmap_terrain_alias> shore_extendable_overmap_terrain_aliases;
     bool invert_lakes = false;
+    // The terrain the built-in lake shore mapgen draws; empty: vanilla's (MGEN-J04)
+    ter_str_id mapgen_deep_water;
+    ter_str_id mapgen_shallow_water;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     void finalize();
+    void check() const;
 
     static void load_region_settings_lake( const JsonObject &jo, const std::string &src );
     static void reset();
@@ -302,6 +366,16 @@ struct region_settings_ocean {
     std::optional<int> ocean_start_west;
     std::optional<int> ocean_start_south;
     int sandy_beach_width = 2;
+    // The terrain the built-in ocean shore mapgen draws; empty: vanilla's (MGEN-J04)
+    ter_str_id mapgen_deep_water;
+    ter_str_id mapgen_shallow_water;
+    ter_str_id mapgen_surf;
+    ter_str_id mapgen_beach;
+    // OMAP-J10: as for lakes.
+    oter_str_id surface;
+    oter_str_id shore;
+    oter_str_id interior;
+    oter_str_id bed;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
@@ -309,7 +383,7 @@ struct region_settings_ocean {
 
     static void load_region_settings_ocean( const JsonObject &jo, const std::string &src );
     static void reset();
-    region_settings_ocean() = default;
+    region_settings_ocean();
 };
 
 struct region_settings_ravine {
@@ -320,14 +394,20 @@ struct region_settings_ravine {
     int ravine_width = 1;
     int ravine_depth = -3;
     oter_str_id ravine_bottom_terrain_str_id = oter_ravine_floor;
+    // OMAP-J10: the terrain of the ravine's inner tiles and edge tiles above the bottom, and of
+    // the bottom's edge tiles.
+    oter_str_id ravine_terrain;
+    oter_str_id ravine_edge_terrain;
+    oter_str_id ravine_floor_edge_terrain;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     void finalize();
+    void check() const;
 
     static void load_region_settings_ravine( const JsonObject &jo, const std::string &src );
     static void reset();
-    region_settings_ravine() = default;
+    region_settings_ravine();
 };
 
 struct region_settings_overmap_connection {
@@ -379,6 +459,7 @@ struct region_settings_highway {
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     void finalize();
+    void check() const;
 
     static void load_region_settings_highway( const JsonObject &jo, const std::string &src );
     static void reset();
@@ -397,6 +478,7 @@ struct map_extra_collection {
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
+    void check() const;
     static void load_map_extra_collection( const JsonObject &jo, const std::string &src );
     static void reset();
 };
@@ -410,6 +492,7 @@ struct region_settings_map_extras {
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
+    void check() const;
     static void load_region_settings_map_extras( const JsonObject &jo, const std::string &src );
     static void reset();
 };
@@ -424,6 +507,7 @@ struct region_settings_terrain_furniture {
     furn_id resolve( const furn_id & ) const;
 
     void finalize();
+    void check() const;
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     region_settings_terrain_furniture() = default;
@@ -451,6 +535,61 @@ struct region_terrain_furniture {
     region_terrain_furniture() = default;
     static void load_region_terrain_furniture( const JsonObject &jo, const std::string &src );
     static void reset();
+};
+
+/** How random NPCs appear in a region (game::perhaps_add_random_npc) */
+struct region_settings_random_npcs {
+    // Overmap tiles around the avatar they appear within, and are counted within
+    int radius = 90;
+    // Each NPC already within the radius multiplies the hourly chance by this
+    float crowding_factor = 0.8f;
+    // npc classes to pick from, by weight; empty: a randomly made character, as before
+    weighted_int_list<npc_class_id> classes;
+    // With no classes: pick from the npc classes' "common" and "common_spawn_weight"
+    bool common_classes = false;
+    // Run with the new NPC as alpha (u_) and the avatar as beta (npc_)
+    std::vector<effect_on_condition_id> spawn_eocs;
+
+    void deserialize( const JsonObject &jo );
+    void check( const std::string &region ) const;
+};
+
+/**
+ * The monster groups worldgen places on a region's overmaps, and how many (OMAP-J09).  The
+ * defaults are the groups and numbers that used to be hardcoded.  GROUP_NULL places none.
+ */
+struct region_settings_worldgen_monsters {
+    // The groups as the region sets them; empty means the default.  Use the getters below, which
+    // give the default group then.  (The defaults aren't stored here, as a region_settings can be
+    // made before the default ids are.)
+    mongroup_id city_horde_group;
+    mongroup_id swamp_group;
+    mongroup_id river_group;
+    mongroup_id ocean_deep_group;
+    mongroup_id ocean_shore_group;
+    mongroup_id subway_city_group;
+
+    // Hordes along the roads of a city
+    const mongroup_id &city_horde() const;
+    // In 7x7 tile windows of the surface that are mostly swamp, river or lake, or ocean
+    const mongroup_id &swamp() const;
+    const mongroup_id &river() const;
+    const mongroup_id &ocean_deep() const;
+    const mongroup_id &ocean_shore() const;
+    // Under each city, on subway_z
+    const mongroup_id &subway_city() const;
+
+    // City hordes are split into groups of at most this many
+    int city_horde_pack_size = 10;
+    // A window gets a group when it has at least this many such tiles (a swamp tile counts twice)
+    int water_min_tiles = 25;
+    // Its population is this many monsters per such tile, [ min, max ], scaled by the group
+    std::array<int, 2> water_population_per_tile = { 8, 25 };
+    // Ocean counts as deep when its noise is above the ocean threshold times this
+    float deep_ocean_threshold = 1.25f;
+    int subway_z = -2;
+
+    void deserialize( const JsonObject &jo );
 };
 
 /*
@@ -484,7 +623,15 @@ struct region_settings {
     bool place_specials;
     bool neighbor_connections;
 
+    // Specials are placed in squares of this many tiles a side, trying this many spots in each
+    // (OMAP-J04).  Defaults: OMSPEC_FREQ (15) and 10.
+    int special_sector_size = 15;
+    int special_attempts_per_sector = 10;
+
+    region_settings_worldgen_monsters worldgen_monsters;
+
     double npc_spawn_time;
+    region_settings_random_npcs random_npcs;
 
     float max_urban;
     // increase nesw
@@ -577,7 +724,10 @@ struct region_settings {
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     void finalize();
+    void check() const;
     static void finalize_all();
+    // Checks every region setting type for unknown ids and bad values (OMAP-J05)
+    static void check_consistency();
     static void load_region_settings( const JsonObject &jo, const std::string &src );
     static void reset();
 };

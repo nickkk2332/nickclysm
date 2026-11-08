@@ -27,6 +27,7 @@
 #include "construction_category.h"
 #include "construction_group.h"
 #include "coordinates.h"
+#include "craft_command.h"
 #include "craft_reservation.h"
 #include "crafting.h"
 #include "creature.h"
@@ -95,16 +96,10 @@
 static const activity_id ACT_MULTIPLE_CONSTRUCTION( "ACT_MULTIPLE_CONSTRUCTION" );
 
 static const construction_category_id construction_category_ALL( "ALL" );
-static const construction_category_id construction_category_APPLIANCE( "APPLIANCE" );
 static const construction_category_id construction_category_DECONSTRUCT( "DECONSTRUCT" );
 static const construction_category_id construction_category_FILTER( "FILTER" );
 static const construction_category_id construction_category_OTHER( "OTHER" );
 static const construction_category_id construction_category_REPAIR( "REPAIR" );
-
-static const construction_group_str_id
-construction_group_deconstruct_simple_furniture( "deconstruct_simple_furniture" );
-
-static const construction_str_id construction_constr_veh( "constr_veh" );
 
 
 static const flag_id json_flag_FILTHY( "FILTHY" );
@@ -125,7 +120,9 @@ static const itype_id itype_stick( "stick" );
 static const itype_id itype_string_36( "string_36" );
 static const itype_id itype_wall_wiring( "wall_wiring" );
 
+static const json_character_flag json_flag_EATDEAD_DIET( "EATDEAD_DIET" );
 static const json_character_flag json_flag_PSYCHOPATH( "PSYCHOPATH" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 
 static const morale_type morale_funeral( "morale_funeral" );
 static const morale_type morale_gravedigger( "morale_gravedigger" );
@@ -155,10 +152,8 @@ static const ter_str_id ter_t_stairs_up( "t_stairs_up" );
 static const ter_str_id ter_t_wood_stairs_down( "t_wood_stairs_down" );
 
 static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
-static const trait_id trait_EATDEAD( "EATDEAD" );
 static const trait_id trait_NUMB( "NUMB" );
 static const trait_id trait_PAINRESIST_TROGLO( "PAINRESIST_TROGLO" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 static const trait_id trait_STOCKY_TROGLO( "STOCKY_TROGLO" );
 
@@ -1128,8 +1123,8 @@ construction_id construction_menu( const bool blueprint )
             }
             if( !blueprint ) {
                 if( player_can_build( player_character, total_inv, constructs[select] ) ) {
-                    if( constructs[select] != construction_group_deconstruct_simple_furniture &&
-                        !player_can_see_to_build( player_character, constructs[select] ) ) {
+                    // a group with a "dark_craftable" construction can be built in the dark
+                    if( !player_can_see_to_build( player_character, constructs[select] ) ) {
                         add_msg( m_info, _( "It is too dark to construct right now." ) );
                     } else if( !g->warn_player_maybe_anger_local_faction( true ) ) {
                         continue; // player declined to mess with faction's stuff
@@ -1482,14 +1477,22 @@ void place_construction( std::vector<construction_group_str_id> const &groups )
             used.emplace_back( it.front().type );
         }
     } else {
-        // Use up the components
+        // Choose every group's component before using any up: cancelling a later choice must
+        // not leave the earlier groups consumed (TERR-B06)
+        temp_crafting_inventory map_inv;
+        map_inv.form_from_map( player_character.pos_bub(), PICKUP_RANGE, &player_character );
+        std::vector<comp_selection<item_comp>> selections;
         for( const std::vector<item_comp> &it : con.requirements->get_components() ) {
-            std::list<item> tmp = player_character.consume_items( it, 1, is_crafting_component,
-                                  return_false<itype_id>, true );
-            if( tmp.empty() ) {
+            const comp_selection<item_comp> sel = player_character.select_item_component( it, 1, map_inv,
+                                                  true, is_crafting_component );
+            if( sel.use_from == usage_from::cancel || sel.use_from == usage_from::none ) {
                 return;
             }
-            used.splice( used.end(), tmp );
+            selections.push_back( sel );
+        }
+        // Use up the components
+        for( const comp_selection<item_comp> &sel : selections ) {
+            used.splice( used.end(), player_character.consume_items( sel, 1, is_crafting_component ) );
         }
     }
     pc.components = used;
@@ -1544,9 +1547,8 @@ void build_construction_activity_actor::complete_construction( player_activity &
     }
 
     // partial_con contains components for vehicle and appliance construction
-    // it's removal is handled in done_appliance() / done_vehicle
-    if( pc->id->category != construction_category_APPLIANCE &&
-        pc->id->id != construction_constr_veh ) {
+    // it's removal is handled in done_appliance() / done_vehicle, whatever the category or id
+    if( !built.uses_components_after_completion() ) {
         here.partial_con_remove( terp );
     }
 
@@ -1587,6 +1589,10 @@ void build_construction_activity_actor::complete_construction( player_activity &
 
     add_msg( m_info, _( "%s finished construction: %s." ), you.disp_name( true ),
              built.group->name() );
+    // The construction is done, not canceled: the activity's completion hooks (completion_eoc,
+    // character_finished_activity) run once it is built. They are taken first, since the
+    // activity ends here and never runs out of moves.
+    activity_end_hooks ended = act.take_end_hooks();
     // clear the activity
     act.set_to_null();
     you.recoil = MAX_RECOIL;
@@ -1595,14 +1601,19 @@ void build_construction_activity_actor::complete_construction( player_activity &
     const tripoint_abs_ms site_abs = construction_location;
     // This comes after clearing the activity, in case the function interrupts
     // activities
+    if( built.place_appliance ) {
+        construct::done_appliance( terp, you );
+    }
     for( const auto &special : built.post_specials ) {
         special( terp, you );
     }
     built.run_eocs( built.post_eocs, you, site_abs );
     get_event_bus().send<event_type::character_finishes_construction>( you.getID(),
             built.id.str(), site_abs.raw() );
-    // Players will not automatically resume backlog, other Characters will.
-    if( you.is_avatar() && !you.backlog.empty() &&
+    ended.run( you, false );
+    // Players will not automatically resume backlog, other Characters will.  Work a post_special
+    // or EOC started (cutting a trunk into planks) is done first: replacing it lost it (TERR-B07)
+    if( you.is_avatar() && !you.activity && !you.backlog.empty() &&
         you.backlog.front().id() == ACT_MULTIPLE_CONSTRUCTION ) {
         you.backlog.clear();
         you.assign_activity( multi_build_construction_activity_actor() );
@@ -1812,13 +1823,12 @@ bool construct::check_matching_down_above( const tripoint_bub_ms &p )
            ter_here.substr( 0, separation + 1 ) + "down" == ter_above;
 }
 
-void construct::done_trunk_plank( const tripoint_bub_ms &/*p*/, Character &/*who*/ )
+void construct::done_trunk_plank( const tripoint_bub_ms &/*p*/, Character &who )
 {
-    int num_logs = rng( 2, 3 );
-    Character &player_character = get_player_character();
-    for( int i = 0; i < num_logs; ++i ) {
-        iuse::cut_log_into_planks( player_character );
-    }
+    // The builder cuts all the trunk's logs in one go: one activity per log replaced the one
+    // before, so only one log was ever cut, and always by the avatar (TERR-B07)
+    const int num_logs = rng( 2, 3 );
+    iuse::cut_log_into_planks( who, num_logs );
 }
 
 void construct::done_grave( const tripoint_bub_ms &p, Character &player_character )
@@ -2076,7 +2086,8 @@ void construct::done_digormine_stair( const tripoint_bub_ms &p, bool dig,
     bool dig_muts = player_character.has_trait( trait_PAINRESIST_TROGLO ) ||
                     player_character.has_trait( trait_STOCKY_TROGLO );
 
-    int no_mut_penalty = dig_muts ? 10 : 0;
+    // the penalty is for characters without the underground traits (TERR-B03)
+    int no_mut_penalty = dig_muts ? 0 : 10;
     int mine_penalty = dig ? 0 : 10;
     player_character.mod_stored_kcal( -43 - 9 * mine_penalty - 9 * no_mut_penalty );
     player_character.mod_thirst( 5 + mine_penalty + no_mut_penalty );
@@ -2176,7 +2187,8 @@ void construct::done_mine_upstair( const tripoint_bub_ms &p, Character &player_c
     bool dig_muts = player_character.has_trait( trait_PAINRESIST_TROGLO ) ||
                     player_character.has_trait( trait_STOCKY_TROGLO );
 
-    int no_mut_penalty = dig_muts ? 15 : 0;
+    // the penalty is for characters without the underground traits (TERR-B03)
+    int no_mut_penalty = dig_muts ? 0 : 15;
     player_character.mod_stored_kcal( -174 - 9 * no_mut_penalty );
     player_character.mod_thirst( 20 + no_mut_penalty );
     player_character.mod_sleepiness( 25 + no_mut_penalty );
@@ -2338,7 +2350,8 @@ void construct::do_turn_exhume( const tripoint_bub_ms &p, Character &who )
         } else if( who.has_trait( trait_NUMB ) ) {
             who.add_msg_if_player( m_bad, _( "You wonder if you dig up anything useful." ) );
             who.add_morale( morale_gravedigger, -25, -50, 2_hours, 1_hours );
-        } else if( !who.has_trait( trait_EATDEAD ) && !who.has_trait( trait_SAPROVORE ) ) {
+        } else if( !who.has_flag( json_flag_EATDEAD_DIET ) &&
+                   !who.has_flag( json_flag_SAPROVORE_DIET ) ) {
             who.add_msg_if_player( m_bad, _( "Exhuming this grave is utterly disgusting!" ) );
             who.add_morale( morale_gravedigger, -25, -50, 2_hours, 1_hours );
             if( one_in( 5 ) ) {
@@ -2404,13 +2417,21 @@ void construction::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "category", category, construction_category_OTHER );
     optional( jo, was_loaded, "time", time, time_duration_as_moves_reader{} );
 
+    // A copy starts from its parent's components, tools and qualities, which "extend" and
+    // "delete" change as for recipes; they were dropped, so a copy was free to build (TERR-B12)
+    requirement_data inherited_reqs;
+    if( was_loaded && requirements.is_valid() ) {
+        inherited_reqs = requirements.obj();
+    }
     const requirement_id req_id( "inline_construction_" + id.str() );
-    requirement_data::load_requirement( jo, req_id );
+    requirement_data::load_inline_requirement( jo, req_id, inherited_reqs, was_loaded );
     requirements = req_id;
 
     if( jo.has_string( "using" ) ) {
         reqs_using = { { requirement_id( jo.get_string( "using" ) ), 1} };
     } else if( jo.has_array( "using" ) ) {
+        // replaces what copy-from inherited, as the string form does
+        reqs_using.clear();
         for( JsonArray cur : jo.get_array( "using" ) ) {
             reqs_using.emplace_back( requirement_id( cur.get_string( 0 ) ), cur.get_int( 1 ) );
         }
@@ -2522,6 +2543,7 @@ void construction::load( const JsonObject &jo, const std::string_view src )
               fallback_deconstruct ? construct::failure_deconstruct : construct::failure_standard );
 
     optional( jo, was_loaded, "vehicle_start", vehicle_start, false );
+    optional( jo, was_loaded, "place_appliance", place_appliance, false );
     optional( jo, was_loaded, "on_display", on_display, true );
     optional( jo, was_loaded, "dark_craftable", dark_craftable, false );
     optional( jo, was_loaded, "strict", strict, false );
@@ -2614,6 +2636,11 @@ void construction::check() const
         } else if( !ter_str_id( post_terrain ).is_valid() ) {
             debugmsg( "Unknown post_terrain (terrain) %s in %s", post_terrain, display_name );
         }
+    }
+    if( place_appliance && std::find( post_specials.begin(), post_specials.end(),
+                                      construct::done_appliance ) != post_specials.end() ) {
+        debugmsg( "%s has place_appliance and the post_special done_appliance, which would place "
+                  "the appliance twice", display_name );
     }
     const auto check_eocs = [&display_name]( std::string_view member,
     const std::vector<effect_on_condition_id> &eocs ) {
@@ -2780,6 +2807,14 @@ void construction::finalize()
     requirement_data::save_requirement( requirements_, requirements );
     reqs_using.clear();
     inp_mngr.pump_events();
+}
+
+bool construction::uses_components_after_completion() const
+{
+    return place_appliance || std::any_of( post_specials.begin(), post_specials.end(),
+    []( void ( *special )( const tripoint_bub_ms &, Character & ) ) {
+        return special == construct::done_appliance || special == construct::done_vehicle;
+    } );
 }
 
 bool construction::is_blacklisted() const

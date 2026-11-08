@@ -459,7 +459,7 @@
     "id": "hyde_formula",
     "name": { "str_sp": "Hyde Formula" },
     "description": "This is a transmutation potion that will bring your best attributes to the forefront.",
-    "consumption_effect_on_conditions": [ "hyde_formula" ],
+    "extend": { "consumption_effect_on_conditions": [ "hyde_formula" ] },
     "type": "ITEM",
     "subtypes": [ "COMESTIBLE" ],
     "color": "green_yellow",

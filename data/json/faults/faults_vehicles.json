@@ -133,7 +133,20 @@
     "contact_area_mod": 0.75,
     "rolling_resistance_mod": 10.0,
     "vehicle_move_penalty_mod": 2,
+    "steering_mult": 0.5,
     "item_suffix": "deflating",
+    "runover": {
+      "weight": 100,
+      "message": "You hear a loud pop from below, and your vehicle suddenly start to wobble like crazy!",
+      "escalates_to": [ { "fault": "fault_flat_tire_riding_on_rims", "weight": 100 } ]
+    },
+    "while_moving": {
+      "//": "Most tire leaks are actually silent or nearly silent, but there is no range of possibilities.",
+      "sound": { "str": "hissssssss!", "//~": "Sound of a vehicle's tire rapidly losing air." },
+      "sound_volume": 5,
+      "sound_type": "sensory",
+      "escalates_to": "fault_flat_tire_riding_on_rims"
+    },
     "flags": [ "FLAT_TIRE" ]
   },
   {
@@ -148,9 +161,21 @@
     "contact_area_mod": 0.5,
     "rolling_resistance_mod": 30.0,
     "vehicle_move_penalty_mod": 5,
+    "steering_mult": 0.1,
     "block_faults": [ "fault_tire_treads", "fault_punctured_tires" ],
     "//COMMENT3": "No rubber left to be worn/punctured. This blocks those faults",
     "item_suffix": "rim",
+    "runover": { "message": "With a jolt, hitting something has blown out your tire!" },
+    "while_moving": {
+      "sound": {
+        "str": "sccchrrrrrk!",
+        "//~": "Sound of a vehicle's wheel rim grinding against the ground after the rubber tire has gone entirely flat."
+      },
+      "sound_volume": 40,
+      "sound_type": "destructive_activity",
+      "damages_part": true,
+      "message": "The %s is damaged by driving with a flat!"
+    },
     "flags": [ "FLAT_TIRE" ]
   },
   {
@@ -162,6 +187,7 @@
     "price_modifier": 0.0,
     "contact_area_mod": 0.85,
     "rolling_resistance_mod": 1.05,
+    "steering_mult": 0.9,
     "item_suffix": "worn"
   },
   {
@@ -183,7 +209,8 @@
     "instant_damage": 4000,
     "degradation_mod": 4000,
     "price_modifier": 0.0,
-    "item_suffix": "broken axle"
+    "item_suffix": "broken axle",
+    "runover": { "weight": 10, "message": "Your vehicle lurches as one of the wheels gives out!" }
   },
   {
     "id": "fault_cracked_rim",
@@ -195,6 +222,12 @@
     "price_modifier": 0.1,
     "contact_area_mod": 0.7,
     "rolling_resistance_mod": 1.5,
-    "item_suffix": "cracked"
+    "item_suffix": "cracked",
+    "runover": {
+      "//": "Wagon wheels are notorious for going straight to a broken axle.",
+      "weight": 90,
+      "message": "You hear a crunch as you run something over!",
+      "escalates_to": [ { "fault": "fault_axle_broken", "weight": 100 } ]
+    }
   }
 ]

@@ -20,6 +20,7 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "game.h"
@@ -33,6 +34,7 @@
 #include "mapdata.h"
 #include "math_defines.h"
 #include "messages.h"
+#include "npc.h"
 #include "omdata.h"
 #include "options.h"
 #include "overmap.h"
@@ -46,6 +48,7 @@
 #include "rng.h"
 #include "sounds.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "translations.h"
 #include "trap.h"
 #include "uistate.h"
@@ -55,9 +58,7 @@
 
 static const activity_id ACT_WAIT_WEATHER( "ACT_WAIT_WEATHER" );
 
-static const efftype_id effect_glare( "glare" );
 static const efftype_id effect_sleep( "sleep" );
-static const efftype_id effect_snow_glare( "snow_glare" );
 
 static const flag_id json_flag_RAINPROOF( "RAINPROOF" );
 static const flag_id json_flag_RAIN_PROTECT( "RAIN_PROTECT" );
@@ -68,9 +69,6 @@ static const itype_id itype_water( "water" );
 static const json_character_flag json_flag_GLARE_RESIST( "GLARE_RESIST" );
 static const json_character_flag json_flag_HIGH_GLARE( "HIGH_GLARE" );
 static const json_character_flag json_flag_RAIN_IMMUNE( "RAIN_IMMUNE" );
-
-static const oter_type_str_id oter_type_forest( "forest" );
-static const oter_type_str_id oter_type_forest_water( "forest_water" );
 
 static const ter_str_id ter_t_greenhouse_tilled( "t_greenhouse_tilled" );
 
@@ -103,44 +101,55 @@ weather_type_id get_bad_weather()
 
 /**
  * Glare.
- * Causes glare effect to player's eyes if they are not wearing applicable eye protection.
- * @param intensity Level of sun brightness
+ * Causes the weather's glare effect in a character's eyes if they are out in the sun without
+ * eye protection. The first entry of the weather's glare list that the sun and its condition
+ * allow is applied.
  */
-void glare( const weather_type_id &w )
+void glare( Character &target, const weather_type_id &w )
 {
-    Character &player_character = get_player_character();//todo npcs, also
     //General prerequisites for glare
-    if( g->is_sheltered( player_character.pos_bub() ) ||
-        player_character.in_sleep_state() ||
-        player_character.worn_with_flag( json_flag_SUN_GLASSES ) ||
-        player_character.has_flag( json_flag_GLARE_RESIST ) ||
-        player_character.is_blind() ) {
+    if( g->is_sheltered( target.pos_bub() ) ||
+        target.in_sleep_state() ||
+        target.worn_with_flag( json_flag_SUN_GLASSES ) ||
+        target.has_flag( json_flag_GLARE_RESIST ) ||
+        target.is_blind() ) {
         return;
     }
 
-    time_duration dur = 0_turns;
-    const efftype_id *effect = nullptr;
-    season_type season = season_of_year( calendar::turn );
-    if( season == WINTER &&
-        incident_sun_irradiance( w, calendar::turn ) > irradiance::moderate ) {
-        // Winter snow glare happens at lower irradiance
-        effect = &effect_snow_glare;
-        dur = player_character.has_effect( *effect ) ? 10_turns : 20_turns;
-    } else if( incident_sun_irradiance( w, calendar::turn ) > irradiance::high ) {
-        effect = &effect_glare;
-        dur = player_character.has_effect( *effect ) ? 10_turns : 20_turns;
+    const std::vector<weather_glare> &glares = w->get_glare();
+    if( glares.empty() ) {
+        return;
     }
+    const float irradiance = incident_sun_irradiance( w, calendar::turn );
+    const weather_glare *chosen = nullptr;
+    for( const weather_glare &entry : glares ) {
+        if( irradiance <= entry.min_irradiance ) {
+            continue;
+        }
+        if( entry.condition ) {
+            const const_dialogue d( get_const_talker_for( target ), nullptr );
+            if( !entry.condition( d ) ) {
+                continue;
+            }
+        }
+        chosen = &entry;
+        break;
+    }
+    if( chosen == nullptr ) {
+        return;
+    }
+    time_duration dur = target.has_effect( chosen->effect ) ? chosen->repeat_duration :
+                        chosen->duration;
 
     //apply final glare effect
-    if( dur > 0_turns && effect != nullptr ) {
+    if( dur > 0_turns ) {
         //enhance/reduce by some traits
-        if( player_character.has_flag( json_flag_HIGH_GLARE ) ) {
+        if( target.has_flag( json_flag_HIGH_GLARE ) ) {
             dur = dur * 2;
         }
         // Glare in all your eyes
-        for( bodypart_id &bp : player_character.get_all_body_parts_of_type(
-                 bp_type::sensor ) ) {
-            player_character.add_effect( *effect, dur, bp );
+        for( const bodypart_id &bp : target.get_all_body_parts_of_type( bp_type::sensor ) ) {
+            target.add_effect( chosen->effect, dur, bp );
         }
     }
 }
@@ -171,7 +180,7 @@ static void proc_weather_sum( const weather_type_id &wtype, weather_sum &data,
                               const time_duration &tick_size )
 {
     if( wtype->rains ) {
-        rain_rate_turns += precip_mm_per_hour( wtype->precip ) * to_turns<int>( tick_size );
+        rain_rate_turns += wtype->get_precip_rate() * to_turns<int>( tick_size );
     }
 
     // TODO: Change this sunlight "sampling" here into a proper interpolation
@@ -464,40 +473,50 @@ double precip_mm_per_hour( precip_class const p )
         0;
 }
 
+double snow_mm_per_hour( const weather_type &w, const snow_settings &snow )
+{
+    if( w.snow_rate ) {
+        return *w.snow_rate;
+    }
+    // LOOP-J05: the weather type's own precipitation rate (from precip unless it sets one)
+    const bool is_snowing = !w.rains && w.get_precip_rate() > 0;
+    return is_snowing ? w.get_precip_rate() * snow.water_ratio : 0.0;
+}
+
 void handle_weather_effects( const weather_type_id &w )
 {
-    //Possible TODO, make npc/monsters affected
     map &here = get_map();
-    Character &target = get_player_character();
-    // Runs wherever the avatar is. Only the avatar's own share (getting wet, glare) waits for it
+    // Runs wherever the avatar is. Each character's own share (getting wet, glare) waits for it
     // to be out of the water; underground, the roof check and is_sheltered() keep it dry and
-    // out of the sun unless it is open to the sky.
-    const bool avatar_above_water = !target.is_underwater();
-    if( w->rains && w->precip != precip_class::none ) {
-        fill_water_collectors( precip_mm_per_hour( w->precip ) );
-        int wetness = 0;
-        time_duration decay_time = 60_turns;
-        if( w->precip == precip_class::very_light ) {
-            wetness = 5;
-            decay_time = 5_turns;
-        } else if( w->precip == precip_class::light ) {
-            wetness = 30;
-            decay_time = 15_turns;
-        } else if( w->precip == precip_class::heavy ) {
-            decay_time = 45_turns;
-            wetness = 60;
+    // out of the sun unless it is open to the sky. Every character in the bubble gets it, the
+    // avatar first.
+    std::vector<Character *> characters;
+    characters.push_back( &get_player_character() );
+    for( npc &guy : g->all_npcs() ) {
+        characters.push_back( &guy );
+    }
+    if( w->rains && w->get_precip_rate() > 0 ) {
+        fill_water_collectors( w->get_precip_rate() );
+        const time_duration decay_time = w->get_field_decay();
+        if( decay_time > 0_turns ) {
+            here.decay_fields_and_scent( decay_time );
         }
-        here.decay_fields_and_scent( decay_time );
         // Coarse correction to get us back to previously intended soaking rate.
         // Precipitation is vertical - only roofs/floors block it, not walls.
         // is_roofed() walks upward through all z-levels for a complete check.
-        if( avatar_above_water && calendar::once_every( 6_seconds ) &&
-            !here.is_roofed( target.pos_bub() ) ) {
-            wet_character( target, wetness );
+        const int wetness = w->get_wetness();
+        if( wetness > 0 && calendar::once_every( 6_seconds ) ) {
+            for( Character *target : characters ) {
+                if( !target->is_underwater() && !here.is_roofed( target->pos_bub( here ) ) ) {
+                    wet_character( *target, wetness );
+                }
+            }
         }
     }
-    if( avatar_above_water ) {
-        glare( w );
+    for( Character *target : characters ) {
+        if( !target->is_underwater() ) {
+            glare( *target, w );
+        }
     }
 
     for( Creature &c : g->all_creatures() ) {
@@ -838,10 +857,10 @@ int get_local_windpower( int windpower, const oter_id &omter, const tripoint_abs
     rl_vec2d windvec = convert_wind_to_coord( winddirection );
     const tripoint_bub_ms triblocker( get_map().get_bub( location ) + point( windvec.x,
                                       windvec.y ) );
-    // Over map terrain may modify the effect of wind.
-    if( ( omter->get_type_id() == oter_type_forest ) ||
-        ( omter->get_type_id() == oter_type_forest_water ) ) {
-        windpower = windpower / 2;
+    // Over map terrain may modify the effect of wind (forests halve it).
+    const float wind_factor = omter->get_wind_factor();
+    if( wind_factor != 1.0f ) {
+        windpower = static_cast<int>( windpower * wind_factor );
     }
     if( location.z() > 0 ) {
         windpower = windpower + ( location.z() * std::min( 5, windpower ) );
@@ -1205,14 +1224,9 @@ void weather_manager::update_weather()
 // Maximum time delta to apply in a single catch-up update (1 hour).
 // Beyond this, weather has certainly changed and the approximation is too coarse.
 static constexpr time_duration max_snow_catchup = 1_hours;
-// Snow-water equivalent ratio: 1mm liquid precipitation = 12mm snow depth
-static constexpr double snow_water_ratio = 12.0;
-// Melt rate in mm snow per degree-C above freezing per hour.
-// Derived from degree-day factor ~4 mm SWE/C/day at 12:1 ratio:
-// 4/24 * 12 = 2.0.  Real-world range is 1.5-3.0 for open ground.
-static constexpr double melt_rate_per_deg_per_hour = 2.0;
-// Maximum snow depth in mm
-static constexpr double max_snow_depth = 800.0;
+// The snow-to-water ratio (12:1), melt rate (2 mm per degree C per hour: a degree-day factor
+// of about 4 mm water per degree C per day at 12:1, 4/24 * 12; 1.5-3.0 for open ground in
+// reality) and maximum depth (800 mm) are the region's, in weather_generator::snow.
 
 // Snow depth is tracked at z=0 only; weather is uniform across z-levels.
 static tripoint_abs_omt ground_level_omt( const tripoint_abs_omt &omt )
@@ -1256,12 +1270,10 @@ void weather_manager::update_snow_depth()
         snow_depth_map[player_omt] = seeded;
     }
 
-    const bool is_snowing = weather_id->precip != precip_class::none && !weather_id->rains;
-    const double accum_rate = is_snowing ?
-                              precip_mm_per_hour( weather_id->precip ) * snow_water_ratio : 0.0;
+    const snow_settings &snow = get_cur_weather_gen().snow;
+    const double accum_rate = snow_mm_per_hour( *weather_id, snow );
     const bool is_melting = temperature > 0_C;
-    const double melt_rate = is_melting ?
-                             melt_rate_per_deg_per_hour * units::to_celsius( temperature ) : 0.0;
+    const double melt_rate = is_melting ? snow.melt_rate * units::to_celsius( temperature ) : 0.0;
 
     for( auto &pair : snow_depth_map ) {
         omt_snow_state &state = pair.second;
@@ -1284,9 +1296,21 @@ void weather_manager::update_snow_depth()
             state.depth_mm -= melt_rate * hours;
         }
 
-        state.depth_mm = std::clamp( state.depth_mm, 0.0, max_snow_depth );
+        state.depth_mm = std::clamp( state.depth_mm, 0.0, snow.max_depth );
         state.last_update = calendar::turn;
     }
+}
+
+void weather_manager::set_snow_depth_mm( const tripoint_abs_omt &omt_pos, const double depth_mm )
+{
+    omt_snow_state &state = snow_depth_map[ground_level_omt( omt_pos )];
+    state.depth_mm = std::clamp( depth_mm, 0.0, get_cur_weather_gen().snow.max_depth );
+    state.last_update = calendar::turn;
+}
+
+double weather_manager::snow_rate_mm_per_hour() const
+{
+    return snow_mm_per_hour( *weather_id, get_cur_weather_gen().snow );
 }
 
 double weather_manager::get_snow_depth_mm( const tripoint_abs_omt &omt_pos ) const
@@ -1326,9 +1350,10 @@ units::temperature weather_manager::get_temperature( const tripoint_bub_ms &loca
         return cached->second;
     }
 
-    //underground temperature = average New England temperature = 43F/6C
-    units::temperature temp = location.z() < 0 ? units::from_celsius(
-                                  get_cur_weather_gen().base_temperature ) : temperature;
+    // Underground: the region's underground_temperature, by default its base temperature
+    // (New England's average, 43F/6C)
+    units::temperature temp = location.z() < 0 ?
+                              get_cur_weather_gen().get_underground_temperature() : temperature;
 
     if( !g->new_game && !g->swapping_dimensions ) {
         units::temperature_delta temp_mod;
@@ -1349,8 +1374,8 @@ units::temperature weather_manager::get_temperature( const tripoint_bub_ms &loca
 
 units::temperature weather_manager::get_area_temperature( const tripoint_abs_omt &location ) const
 {
-    return location.z() < 0 ? units::from_celsius(
-               get_weather().get_cur_weather_gen().base_temperature ) : temperature;
+    return location.z() < 0 ?
+           get_weather().get_cur_weather_gen().get_underground_temperature() : temperature;
 }
 
 void weather_manager::clear_temp_cache()

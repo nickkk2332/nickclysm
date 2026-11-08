@@ -79,6 +79,7 @@
 #include "units_utility.h"
 #include "value_ptr.h"
 #include "vitamin.h"
+#include "widget.h"
 
 static const bionic_id bio_painkiller( "bio_painkiller" );
 
@@ -89,6 +90,8 @@ static const itype_id itype_water_clean( "water_clean" );
 
 static const json_character_flag json_flag_MANUAL_CBM_INSTALLATION( "MANUAL_CBM_INSTALLATION" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 
 static const quality_id qual_ANESTHESIA( "ANESTHESIA" );
 
@@ -97,8 +100,8 @@ static const requirement_id requirement_data_anesthetic( "anesthetic" );
 static const skill_id skill_computer( "computer" );
 
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
+
+static const widget_id widget_consume_menu_needs( "consume_menu_needs" );
 
 using item_filter = std::function<bool ( const item & )>;
 using item_location_filter = std::function<bool ( const item_location & )>;
@@ -353,6 +356,20 @@ drop_locations game_menus::inv::titled_multi_filter_menu( const item_location_fi
         Character &you, const std::string &title, int radius, const std::string &none_message )
 {
     return inv_internal_multi( you, inventory_filter_preset( filter ), title, radius, none_message );
+}
+
+item_location game_menus::inv::titled_preset_menu( const inventory_selector_preset &preset,
+        Character &you, const std::string &title, int radius, const std::string &none_message,
+        const std::string &hint )
+{
+    return inv_internal( you, preset, title, radius, none_message, hint );
+}
+
+drop_locations game_menus::inv::titled_multi_preset_menu( const inventory_selector_preset &preset,
+        Character &you, const std::string &title, int radius, const std::string &none_message,
+        const std::string &hint )
+{
+    return inv_internal_multi( you, preset, title, radius, none_message, hint );
 }
 
 item_location game_menus::inv::titled_menu( Character &you, const std::string &title,
@@ -871,7 +888,8 @@ class comestible_inventory_preset : public inventory_selector_preset
             if( loc->typeId() == itype_water_clean ) {
                 return 0;
             } else if( loc->rotten() ) {
-                if( you.has_trait( trait_SAPROPHAGE ) || you.has_trait( trait_SAPROVORE ) ) {
+                if( you.has_flag( json_flag_SAPROPHAGE_DIET ) ||
+                    you.has_flag( json_flag_SAPROVORE_DIET ) ) {
                     return 1;
                 } else {
                     return 5;
@@ -967,6 +985,12 @@ static std::string get_consume_needs_hint( Character &you )
     hint.append( string_format( " %s ", LINE_XOXO_S ) );
     hint.append( string_format( "%s %s", _( "Weight:" ), display::weight_string( you ) ) );
     hint.append( string_format( " %s ", LINE_XOXO_S ) );
+    // A mod's "consume_menu_needs" widget adds its lines here (doc/WIDGETS.md, UI slots)
+    for( const std::string &line : widget::slot_lines( widget_consume_menu_needs, you,
+            FULL_SCREEN_WIDTH ) ) {
+        hint.append( line );
+        hint.append( string_format( " %s ", LINE_XOXO_S ) );
+    }
 
     int kcal_ingested_today = you.as_avatar()->get_daily_ingested_kcal( false );
     int kcal_ingested_yesterday = you.as_avatar()->get_daily_ingested_kcal( true );
@@ -1165,8 +1189,10 @@ class activatable_inventory_preset : public pickup_inventory_preset
                 }
             }
 
-            const use_function *smoking = it.type->get_use( "SMOKING" );
-            if( smoking != nullptr ) {
+            // a smokable: the SMOKING function or a smoke action
+            const bool smoking = it.type->get_use( "SMOKING" ) != nullptr ||
+                                 it.type->get_use( "smoke" ) != nullptr;
+            if( smoking ) {
                 std::optional<std::string> litcig = iuse::can_smoke( you );
                 if( litcig.has_value() ) {
                     return _( litcig.value_or( "" ) );
@@ -1339,10 +1365,7 @@ class gunmod_remove_inventory_preset : public inventory_selector_preset
         // represent the mod that has the other mod attached to its added sight mod location.
         std::string get_denial( const item_location &loc ) const override {
             item mod = *loc.get_item();
-            if( ( mod.type->gunmod->location.str() == "magazine" ||
-                  mod.type->gunmod->location.str() == "mechanism" ||
-                  mod.type->gunmod->location.str() == "loading port" ||
-                  mod.type->gunmod->location.str() == "bore" ) &&
+            if( mod.type->gunmod->needs_unloaded() &&
                 ( gun.ammo_remaining( ) > 0 || gun.magazine_current() ) ) {
                 return _( "must be unloaded before removing this mod" );
             }

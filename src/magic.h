@@ -138,6 +138,38 @@ struct enum_traits<spell_flag> {
     static constexpr spell_flag last = spell_flag::LAST;
 };
 
+// The kinds of hit that cast an enchantment's hit_you_effect.
+enum class hit_type : int {
+    melee,
+    // guns, bows and other fired weapons
+    ranged,
+    thrown,
+    last
+};
+
+template<>
+struct enum_traits<hit_type> {
+    static constexpr hit_type last = hit_type::last;
+};
+
+// How the NPC AI casts a spell in a fight (JSON "npc_use", NPC-J06)
+enum class spell_npc_role : int {
+    // rated by the damage it deals to the creatures it hits, as before
+    attack,
+    // cast on the caster itself (a ground-targeted spell next to it): buffs, self-heals, summons
+    self,
+    // cast on the caster or a friend in range: heals, buffs
+    ally,
+    // never cast by the NPC AI
+    never,
+    last
+};
+
+template<>
+struct enum_traits<spell_npc_role> {
+    static constexpr spell_npc_role last = spell_npc_role::last;
+};
+
 struct fake_spell {
     spell_id id;
 
@@ -162,6 +194,13 @@ struct fake_spell {
     // a message when the enchantment is triggered and is on npc
     translation npc_trigger_message; // NOLINT(cata-serialize)
 
+    // every kind of hit
+    static constexpr enum_bitset<hit_type> hit_types_default{ ~0ULL };
+    // the hits that cast it, as an enchantment's hit_you_effect or hit_me_effect
+    enum_bitset<hit_type> hit_types = hit_types_default;
+    // hit_types was written out: a character's hit_me_effect is cast on ranged hits only then
+    bool hit_types_given = false;
+
     fake_spell() = default;
     explicit fake_spell( const spell_id &sp_id, bool hit_self = false,
                          const std::optional<int> &max_level = std::nullopt ) : id( sp_id ),
@@ -174,7 +213,9 @@ struct fake_spell {
                self == rhs.self &&
                trigger_once_in == rhs.trigger_once_in &&
                trigger_message == rhs.trigger_message &&
-               npc_trigger_message == rhs.npc_trigger_message;
+               npc_trigger_message == rhs.npc_trigger_message &&
+               hit_types == rhs.hit_types &&
+               hit_types_given == rhs.hit_types_given;
     }
 
     // gets the spell with an additional override for minimum level (default 0)
@@ -220,6 +261,8 @@ class spell_type
         skill_id skill;
 
         std::optional<magic_type_id> magic_type;
+        // MAGIC-J10: run when a cast of this spell fails, after its magic_type's failure_eocs
+        std::vector<effect_on_condition_id> failure_eocs;
 
         requirement_id spell_components;
 
@@ -230,6 +273,10 @@ class spell_type
         // spell effect string. used to look up spell function
         std::string effect_name;
         bool teachable;
+        // How long an NPC lesson takes and what it costs, when JSON says (u is the student, npc
+        // the teacher); otherwise the built-in formulas
+        std::optional<duration_or_var> training_time;
+        std::optional<dbl_or_var> training_cost;
         // NOLINTNEXTLINE(cata-serialize)
         std::function<void( const spell &, Creature &, const tripoint_bub_ms & )> effect;
         std::function<std::set<tripoint_bub_ms>( const spell_effect::override_parameters &params,
@@ -386,6 +433,14 @@ class spell_type
         bool has_target_condition = false; // NOLINT(cata-serialize)
 
         translation target_condition_fail_message_; // NOLINT(cata-serialize)
+
+        // NPC-J06: "npc_use": how NPCs cast it in a fight, the condition they cast it on (u is
+        // the caster, npc the creature it is cast on or fights) and, for the self and ally
+        // roles, its rating against the attacks
+        spell_npc_role npc_role = spell_npc_role::attack;
+        std::function<bool( const_dialogue const & )> npc_condition; // NOLINT(cata-serialize)
+        bool has_npc_condition = false; // NOLINT(cata-serialize)
+        dbl_or_var npc_priority; // NOLINT(cata-serialize)
 
         std::set<mtype_id> targeted_monster_ids;
 
@@ -600,6 +655,8 @@ class spell
         // how often does the spell fail
         // based on difficulty, level of spell, spellcraft skill, intelligence
         float spell_fail( const Character &guy ) const;
+        // spell_fail before the caster's FAIL enchantments
+        float spell_fail_unenchanted( const Character &guy ) const;
         std::string colorized_fail_percent( const Character &guy ) const;
         // how long does it take to cast the spell
         int casting_time( const Character &guy, bool ignore_encumb = false ) const;
@@ -703,17 +760,27 @@ class spell
         int heal( const tripoint_bub_ms &target, Creature &caster ) const;
 
         // casts the spell effect from an item.  less functionality compared to creature casting.
+        // The casts without a caster below build one fake caster at the target, which the spell
+        // and every spell it casts in turn share.
         void cast_spell_effect( const tripoint_bub_ms &target ) const;
         // casts the spell effect. returns true if successful
         void cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_all_effects( const tripoint_bub_ms &target ) const;
-        // goes through the spell effect and all of its internal spells
+        // goes through the spell effect and all of its internal spells. A RANDOM_TARGET or
+        // RANDOM_CRITTER spell cast at @source's own tile first picks a random valid target in
+        // range (see RANDOM_TARGET in doc/JSON/MAGIC.md).
         void cast_all_effects( Creature &source, const tripoint_bub_ms &target ) const;
+        // cast_all_effects() at a target select_target() returned: it has already picked a
+        // RANDOM_TARGET spell's target, so this doesn't pick again.
+        void cast_all_effects_at_selected_target( Creature &source,
+                const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_extra_spell_effects( const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_extra_spell_effects( Creature &source, const tripoint_bub_ms &target ) const;
+        // how many fake casters the casts without a caster have built so far (for tests)
+        static int casterless_casters_built();
         // uses up the components in @guy's inventory
         void use_components( Character &guy ) const;
         // checks if the spell's component is in the @guy's hand
@@ -755,6 +822,13 @@ class known_magic
         int mana_base = 0; // NOLINT(cata-serialize)
         // current mana
         int mana = 0;
+        // regeneration short of a whole point, carried to the next update_mana(); losing it
+        // on save costs less than a point
+        double mana_regen_remainder = 0.0; // NOLINT(cata-serialize)
+        // the spell channel_magic() and break_channeling() follow, and its effective level
+        // when cast; set when a cast starts channeling (start_channeling())
+        spell_id channeled_spell = spell_id::NULL_ID();
+        int channeled_level = 0;
 
     public:
         // ignores all distractions when casting a spell when true
@@ -767,6 +841,8 @@ class known_magic
         void learn_spell( const spell_type *sp, Character &guy, bool force = false );
         void forget_spell( const std::string &sp );
         void forget_spell( const spell_id &sp );
+        // @guy, whose spells these are, forgets @sp: the message and event are about @guy
+        void forget_spell( const spell_id &sp, Character &guy );
         void set_spell_level( const spell_id &, int, const Character * );
         void set_spell_exp( const spell_id &, int, const Character * );
         // time for the Character to memorize the spell
@@ -807,8 +883,10 @@ class known_magic
         bool has_enough_energy( const Character &guy, const spell &sp ) const;
         // Clears old data written by EoC triggered by the events player_opens_spellbook or npc_opens_spellbook
         void clear_opens_spellbook_data();
-        // uses data received from EoC
-        void evaluate_opens_spellbook_data();
+        // uses data received from EoC; levels are capped at what the caster can reach
+        void evaluate_opens_spellbook_data( const Character &caster );
+        // a finished cast of the channeling spell @sp starts channeling it, at its level
+        void start_channeling( const spell &sp );
         void channel_magic( Character &guy );
         void break_channeling( Character &guy );
 

@@ -35,14 +35,18 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "name": "Debug Mastery",               // In-game name displayed
   "description": "A secret martial art used only by developers and cheaters.",    // In-game description
   "initiate": [ "You stand ready.", "%s stands ready." ],    // Message shown when player or NPC selects this MA
-  "autolearn": [ [ "unarmed", "2" ] ],   // A list of skill requirements that if met, automatically teach the player the MA
+  "autolearn": [ [ "unarmed", 2 ] ],     // A list of skill requirements that if met, automatically teach the player the MA: [ skill, level ] pairs
   "teachable": true,                     // Whether it's possible to teach this style between characters
+  "training_time": "1 h",                // How long an NPC lesson in this style takes: a duration, a variable object or math in seconds (u is the student, npc the teacher, context value `style`). Default 30 minutes
+  "training_cost": 2000,                 // What that lesson costs, in cents: a number, variable object or math as for training_time. A follower teaches for free. Default 800
   "allow_all_weapons": true,             // This MA always works, no matter what weapon is equipped (including no weapon)
   "force_unarmed": true,                 // You never use the equipped item to make attacks with this MA, and will use only your fist, legs or another limbs you have
   "prevent_weapon_blocking": true,       // You never block using weapon with this MA
   "strictly_melee": true,                // This style can only be used with weapons, it can't be used with bare hands
-  "arm_block_with_bio_armor_arms": true, // Enables blocking damage using the Arms Alloy Plating CBM
-  "leg_block_with_bio_armor_legs": true, // Enables blocking damage using the Legs Alloy Plating CBM
+  "arm_block_char_flags": [ "ARMORED_ARMS" ], // A character with any of these character flags can arm block at any unarmed skill (the "arm_block" level isn't needed)
+  "leg_block_char_flags": [ "ARMORED_LEGS" ], // The same for leg blocks
+  "arm_block_with_bio_armor_arms": true, // Shorthand for adding ARMORED_ARMS to arm_block_char_flags: blocking with the Subcutaneous Protective Mesh - Arms CBM
+  "leg_block_with_bio_armor_legs": true, // Shorthand for adding ARMORED_LEGS to leg_block_char_flags: the Legs CBM
   "autolearn": [ [ "melee", 1 ] ],       // The style is autolearned once you reach this level in specific skill or skills
   "primary_skill": "bashing",            // The difficulty and effectiveness of this MA scales from this skill (Default is "unarmed")
   "learn_difficulty": 5,                 // Difficulty to learn the style from a book based on "primary_skill". Total chance to learn a style from a single read of the book is equal to one in (10 + learn_difficulty - primary_skill)
@@ -65,7 +69,7 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "static_eocs": [                       // List of eocs that are automatically triggered every turn
     "EOC_ID",                            // Syntax allows either eoc IDs or as inline blocks
     { "id": "INLINE_EOC_ID" }
-  ],
+  ],                                     // A style made with copy-from keeps its parent's lists; giving a list replaces it, and "extend" / "delete" (by id) change it, for every "_buffs" and "_eocs" list and for "autolearn"
   "onmove_eocs": [  ],                   // List of eocs that are automatically triggered on movement. The event EOCs below also get the opponent and context values, see Martial art event EOCs
   "onpause_eocs": [  ],                  // List of eocs that are automatically triggered when passing a turn
   "onattack_eocs": [  ],                 // List of eocs that are automatically triggered after any attack, hit or miss
@@ -92,6 +96,7 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
 }
 ```
 
+An unknown EOC in a style's `_eocs` lists, or an unknown skill in `autolearn`, is reported at load.
 
 ### Martial art event EOCs
 
@@ -104,7 +109,7 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
 | `oncrit_eocs` | target | same as `onhit_eocs` |
 | `onkill_eocs` | target (now dead) | same as `onhit_eocs`, plus `killed` |
 | `onmiss_eocs` | target | `weapon`, `hit` |
-| `ongethit_eocs` | attacker, if there is one | `bp`, `damage` |
+| `ongethit_eocs` | attacker, if there is one | `bp`, `damage`, `hit_by` |
 | `onblock_eocs` | attacker | `bp`, `damage` |
 | `ondodge_eocs` | attacker, if there is one | none |
 | `ongrab_eocs` | the creature you got a hold on | `grab_strength`, `grab_part` |
@@ -122,7 +127,9 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
 
 `ongrab_eocs` and `ongrabbed_eocs` run when a hold is established: your grab or an EOC's (anything that goes through the grappling code), and a monster's grab attack once the attack is over.  They run for every hold, also one you go along with (a friend's grab) or while you are asleep; a grab counter (see [Grab counters](#grab-counters)) comes after `ongrabbed_eocs`, so an `ongrabbed_buffs` buff can be what a counter requires.
 
-`onhit_eocs` run after the hit is dealt, so they see the damage; they still run when the hit deals no damage (check `_damage`). `ongethit_eocs` run for every melee hit you take, also while you are asleep, winded or driving and can't block. The beta talker can be missing (for example a hit with no attacker), so check `has_beta` before using `npc_` effects.
+`onhit_eocs` run after the hit is dealt, so they see the damage; they still run when the hit deals no damage (check `_damage`). `ongethit_eocs` run for every melee hit you take, also while you are asleep, winded or driving and can't block, and for every projectile, fragment of shrapnel and explosion that hits you. `hit_by` says which: `melee`, `projectile`, `shrapnel` or `explosion`. An explosion runs them once, with no `bp` and the blast's force as `damage`; the beta talker is whoever set it off, if anyone. The beta talker can be missing (for example a hit with no attacker), so check `has_beta` before using `npc_` effects.
+
+These hooks belong to the selected style.  For a mutation, item, effect or global EOC that reacts to the same moments whatever the style, use the EVENT EOCs `character_dodges`, `character_blocks`, `character_melee_hits`, `character_fires_gun` and `monster_melee_attacks_character` (see the event table in [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).
 
 ```jsonc
 "onkill_eocs": [
@@ -166,11 +173,15 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
     "free_dodges": 1,                    // Dodges per turn that won't consume stamina. Can be higher than actual amount of dodges, but won't add more dodges.
     "flat_bonuses": [  ],                // Flat bonuses, see Bonuses below
     "mult_bonuses": [  ],                // Multiplicative bonuses, see Bonuses below
+    "condition": { "not": "is_day" },    // Dialogue condition the buff also needs, to be gained and to stay (u is the martial artist; there is no npc). Optional, checked with the other requirements
+    "condition_desc": "* Only works at <info>night</info>"    // Line the buff's description shows for its condition
   }
 ...
 ```
 
-Martial art buffs (`static_buffs`, `onmove_buffs`, etc.) are inlined in their parent `martial_art` as seen in the [previous example](MARTIALART_JSON.md#martial-arts), and thus lack their own `type`.
+Martial art buffs (`static_buffs`, `onmove_buffs`, etc.) are inlined in their parent `martial_art` as seen in the [previous example](MARTIALART_JSON.md#martial-arts), and thus lack their own `type`.  An inline buff belongs to its style's mod.
+
+A buff's `condition` is checked whenever its other requirements are: when an event would add it, and each turn while it is active (a buff whose requirements fail is removed).  A buff gated on the night, a target-free variable or a stat is written this way; the buff has no target, so `npc_` conditions are always false.
 
 Additionally, when read externally (such as, by EOCs), their syntax is `mabuff:ID`:
 
@@ -266,7 +277,6 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "unarmed_allowed": true,               // Can an unarmed character use this technique
   "weapon_categories_allowed": [ "BLADES", "KNIVES" ],    // Restrict technique to only these categories of weapons. If omitted, all weapon categories are allowed
   "melee_allowed": true,                 // Means that ANY melee weapon can be used, NOT just the MAs weapons
-  "powerful_knockback": true,            // Currently not hooked up to code
   "skill_requirements": [ { "name": "melee", "level": 3 } ],    // Skills and their minimum levels required to use this technique. Can be any skill
   "weapon_damage_requirements": [ { "type": "bash", "min": 5 } ],    // Minimum weapon damage required to use this technique. Can be any damage type
   "required_buffs_any": [ "eskrima_hit_buff" ],    // This technique requires any of the named buffs to be active
@@ -297,7 +307,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "disarms": true,                       // This technique can disarm the opponent, triggers only against armed NPCs or monsters with the "WIELDED_WEAPON" flag.  A weapon that can't leave the hands (NO_UNWIELD or INTEGRATED: a bionic weapon, handcuffs) is never taken, even by a forced technique
   "take_weapon": true,                   // Technique will disarm and equip target's weapon if hands are free (same exceptions as "disarms")
   "grab_break": true,                    // This technique may break a grab against the user
-  "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `aoe` (attacks adjacent nearby enemies), `impale` (hits target and one enemy behind it: on the tile straight behind, or one of the two beside that tile), and `wide` (hits enemies in an arc near the target).  Enemies are the attacker's: monsters not on its side, and people hostile to it (an NPC's sweep hits the player and the player's allies, not its own friends).  The attacker is told how many extra enemies it hit
+  "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `spin` (attacks adjacent nearby enemies, only when there are at least two), `impale` (hits target and one enemy behind it: on the tile straight behind, or one of the two beside that tile), and `wide` (hits enemies in an arc near the target).  Enemies are the attacker's: monsters not on its side, and people hostile to it (an NPC's sweep hits the player and the player's allies, not its own friends).  The attacker is told how many extra enemies it hit.  Any other value is a load error
   "block_counter": true,                 // This technique may automatically counterattack on a successful block
   "dodge_counter": true,                 // This technique may automatically counterattack on a successful dodge
   "grab_counter": true,                  // This technique may automatically counterattack when something gets a hold on you. See Grab counters
@@ -310,7 +320,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
     "You phase-strike %s",
     "<npcname> phase-strikes %s"
   ],
-  "eocs": [ "EOC_ID", { "id": "INLINE_EOC_ID" } ],    // EOCs that trigger each time this technique does, with the attacker as the speaker and the target as the listener. Syntax allows either eoc IDs or as inline blocks. They run before the hit is dealt, once per repeat
+  "eocs": [ "EOC_ID", { "id": "INLINE_EOC_ID" } ],    // EOCs that trigger each time this technique does, with the attacker as the speaker and the target as the listener. Syntax allows either eoc IDs or as inline blocks. They run before the hit is dealt, once per repeat, with the attack's context values: `weapon`, `style`, `technique` and `bp` (the target's body part), `crit` and `hit` (1 or 0), and `damage`, the damage the hit will deal before armor, with the technique's bonuses
   "post_hit_eocs": [ "EOC_ID" ],          // EOCs that run once after the hit is dealt, with the attacker as alpha and the target as beta. They get the same context values as a martial art's onkill_eocs (see Martial art event EOCs): `weapon`, `hit`, `technique`, `bp`, `crit`, `damage` (damage dealt after armor; 0 if the target died before the hit landed) and `killed` (1 if the target is dead)
   "flat_bonuses": <array>,               // Any bonuses, see Bonuses below
   "mult_bonuses": <array>,
@@ -320,7 +330,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
 
 All fields, except for the ID, type and name are optional.
 
-Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique, and `controlled_knockback` without a `knockback_dist`.
+Load-time checks report an unknown `eocs` or `post_hit_eocs` entry, an unknown `attack_vectors` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique, and `controlled_knockback` without a `knockback_dist`.
 
 A technique's knockback breaks the target's holds on both sides: a monster lets go of every grab it had, and every character hold the target is part of, holding or held, ends.
 
@@ -393,10 +403,10 @@ A technique with `"controlled_knockback": true` (from Cataclysm-BN) lets you aim
       "id": "eff_expl",                  // Unique ID. Must be one continuous word
       "chance": 100,                     // Percent chance to apply the effect on this attack
       "permanent": false,                // If true the effect won't decay (default: false)
-      "duration": 15,                    // Duration of the effect in turns
+      "duration": "15 s",                // Duration of the effect: a duration string, or a number of turns (default: 0)
       "intensity": 2,                    // Intensity to set the effect to, capped at its max_intensity (default: 0, the effect's normal starting intensity)
       "target": "target",                // Who gets the effect: "target" (default) or "self", the martial artist. "hit_self": true is accepted as "target": "self"
-      "on_damage": true,                 // If true the effect will only be applied if the attack succeeded in doing damage (default: true)
+      "on_damage": true,                 // If true the effect will only be applied if the attack succeeded in doing damage (after armor and blocks) (default: true)
       "condition": "ANY",                // conditions necessary for the technique to apply the effect. `u` is the martial artist, `npc` is the target, whoever gets the effect
       "message": "Example"               // The message to print if you successfully apply the effect, %s is replaced by the name of whoever gets it
     }
@@ -414,7 +424,7 @@ A self effect is how a technique costs the user something.  Zui Quan's Drunken F
 ]
 ```
 
-An unknown `target` value, a `hit_self` that contradicts `target`, or a negative `intensity` is a load error.
+An unknown `target` value, a `hit_self` that contradicts `target`, or a negative `intensity` is a load error.  So is an unknown member of a tech effect.
 
 `tech_effects` are inlined in their parent `technique` as seen in the [previous example](MARTIALART_JSON.md#techniques), and thus lack their own `type`.
 
@@ -437,7 +447,7 @@ Field            | Description
 `stat`           | Affected statistic.  Can be any of: `hit`, `dodge`, `block`, `speed`, `movecost`, `damage`, `armor`, `arpen`, `crit_chance`, `block_effectiveness`.
 `type`           | Damage type for the affected statistic (`bash`, `cut`, `heat`, etc.).   Only needed if the affected statistic is either `damage`, `armor`, or `arpen`.
 `scale`          | Value of the bonus.
-`scaling-stat`   | (Optional) Stat used for scaling.  Can be any of the four classic stats (`str`, `dex`, `int`, `per`) or any skill (`bashing`, `dodge`, `unarmed`, `rifles`, `spellcraft`, etc.).  If the scaling stat is specified, the value of the bonus is multiplied by the corresponding user stat/skill.
+`scaling-stat`   | (Optional) Stat used for scaling.  Can be any of the four classic stats (`str`, `dex`, `int`, `per`) or the id of any skill, a mod's skills included (`bashing`, `dodge`, `unarmed`, `rifle`, `spellcraft`, etc.).  The old short names `bash`, `cut`, `stab`, `athletics` (the `swimming` skill), `marksmanship` (`gun`) and `drive` (`driving`) still work.  A name that is neither a stat nor a skill is a load error.  If the scaling stat is specified, the value of the bonus is multiplied by the corresponding user stat/skill.
 
 * Bonuses must be written in the correct order.
 * Tokens of "useless" type will not cause an error, but will not have any effect.  For example, `speed` in a technique will have no effect (`movecost` should be used for techniques).

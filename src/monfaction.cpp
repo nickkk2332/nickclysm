@@ -7,10 +7,41 @@
 
 #include "debug.h"
 #include "debug_menu.h"
+#include "enum_conversions.h"
+#include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "json.h"
+#include "options.h"
 
 // for legacy reasons "monfaction::id" is called "name" in json
 static generic_factory<monfaction> faction_factory( "MONSTER_FACTION", "name" );
+
+namespace
+{
+// MONDT-J12: (from, to) -> attitude, set by set_monfaction_attitude and saved with the game
+std::map<std::pair<mfaction_str_id, mfaction_str_id>, mf_attitude> attitude_overrides;
+} // namespace
+
+namespace io
+{
+template<>
+std::string enum_to_string<mf_attitude>( mf_attitude data )
+{
+    switch( data ) {
+        case MFA_BY_MOOD:
+            return "BY_MOOD";
+        case MFA_NEUTRAL:
+            return "NEUTRAL";
+        case MFA_FRIENDLY:
+            return "FRIENDLY";
+        case MFA_HATE:
+            return "HATE";
+        case MFA_SIZE:
+            break;
+    }
+    cata_fatal( "Invalid mf_attitude" );
+}
+} // namespace io
 
 /** @relates int_id */
 template<>
@@ -155,41 +186,16 @@ void monfaction::finalize()
         // break the cycle
         base_faction = mfaction_str_id::NULL_ID();
     }
-}
-
-void monfactions::finalize()
-{
-    if( faction_factory.get_all().empty() ) {
-        debugmsg( "No monster factions found." );
-        return;
-    }
-    if( !mfaction_str_id::NULL_ID().is_valid() ) {
-        debugmsg( "MONSTER_FACTION \"sentinel\" (entry with empty name) is not found in json." );
-    }
-    faction_factory.finalize();
-
-
-    // adds attitudes_map collected from all `base_faction`
-    std::set<mfaction_str_id> processed;
-    for( const monfaction &f : faction_factory.get_all() ) {
-        std::map<mfaction_str_id, mf_attitude> accum;
-        f.inherit_parent_attitude_rec( processed, accum );
-    }
-
-    // at this point all factions are loaded, populate the final attitude cache
-    for( const monfaction &f : faction_factory.get_all() ) {
-        f.populate_attitude_vec();
+    if( !ignores_npcs_if_option.empty() && ( !get_options().has_option( ignores_npcs_if_option ) ||
+            get_options().get_option( ignores_npcs_if_option ).getType() != "bool" ) ) {
+        debugmsg( "MONSTER_FACTION %s: ignores_npcs_if_option \"%s\" is not a boolean option.",
+                  id.c_str(), ignores_npcs_if_option );
+        ignores_npcs_if_option.clear();
     }
 }
 
-void monfaction::load( const JsonObject &jo, std::string_view )
+void monfaction::reset_attitude_map() const
 {
-    optional( jo, was_loaded, "base_faction", base_faction, mfaction_str_id() );
-    optional( jo, was_loaded, "by_mood", _att_by_mood, string_id_reader<monfaction>() );
-    optional( jo, was_loaded, "neutral", _att_neutral, string_id_reader<monfaction>() );
-    optional( jo, was_loaded, "friendly", _att_friendly, string_id_reader<monfaction>() );
-    optional( jo, was_loaded, "hate", _att_hate, string_id_reader<monfaction>() );
-
     attitude_map.clear();
     for( const mfaction_str_id &mfac : _att_by_mood ) {
         attitude_map[mfac] = MFA_BY_MOOD;
@@ -203,9 +209,142 @@ void monfaction::load( const JsonObject &jo, std::string_view )
     for( const mfaction_str_id &mfac : _att_hate ) {
         attitude_map[mfac] = MFA_HATE;
     }
+    // MONDT-J12: set_monfaction_attitude, as if this faction's JSON listed it
+    for( const auto &ov : attitude_overrides ) {
+        if( ov.first.first == id ) {
+            attitude_map[ov.first.second] = ov.second;
+        }
+    }
 
     // by default faction is friendly to itself (don't overwrite if explicitly specified)
     attitude_map.emplace( id, MFA_FRIENDLY );
+}
+
+void monfaction::rebuild_attitudes()
+{
+    const std::vector<monfaction> &all = faction_factory.get_all();
+    for( const monfaction &f : all ) {
+        f.reset_attitude_map();
+    }
+
+    // adds attitudes_map collected from all `base_faction`
+    std::set<mfaction_str_id> processed;
+    for( const monfaction &f : all ) {
+        std::map<mfaction_str_id, mf_attitude> accum;
+        f.inherit_parent_attitude_rec( processed, accum );
+    }
+
+    // at this point all factions are loaded, populate the final attitude cache
+    for( const monfaction &f : all ) {
+        f.populate_attitude_vec();
+    }
+}
+
+void monfactions::finalize()
+{
+    if( faction_factory.get_all().empty() ) {
+        debugmsg( "No monster factions found." );
+        return;
+    }
+    if( !mfaction_str_id::NULL_ID().is_valid() ) {
+        debugmsg( "MONSTER_FACTION \"sentinel\" (entry with empty name) is not found in json." );
+    }
+    faction_factory.finalize();
+
+    monfaction::rebuild_attitudes();
+}
+
+void monfactions::set_attitude_override( const mfaction_str_id &from, const mfaction_str_id &to,
+        const std::optional<mf_attitude> &att )
+{
+    const std::pair<mfaction_str_id, mfaction_str_id> key( from, to );
+    if( att ) {
+        attitude_overrides[key] = *att;
+    } else if( attitude_overrides.erase( key ) == 0 ) {
+        return;
+    }
+    if( !faction_factory.get_all().empty() ) {
+        monfaction::rebuild_attitudes();
+    }
+}
+
+void monfactions::clear_attitude_overrides()
+{
+    if( attitude_overrides.empty() ) {
+        return;
+    }
+    attitude_overrides.clear();
+    if( !faction_factory.get_all().empty() ) {
+        monfaction::rebuild_attitudes();
+    }
+}
+
+std::optional<mf_attitude> monfactions::get_attitude_override( const mfaction_str_id &from,
+        const mfaction_str_id &to )
+{
+    const auto found = attitude_overrides.find( std::make_pair( from, to ) );
+    if( found == attitude_overrides.end() ) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
+bool monfactions::parse_attitude( std::string_view name, std::optional<mf_attitude> &att )
+{
+    if( name == "DEFAULT" ) {
+        att = std::nullopt;
+        return true;
+    }
+    const std::optional<mf_attitude> parsed =
+        io::string_to_enum_optional<mf_attitude>( std::string( name ) );
+    if( !parsed ) {
+        return false;
+    }
+    att = parsed;
+    return true;
+}
+
+void monfactions::serialize_attitude_overrides( JsonOut &jsout )
+{
+    jsout.start_array();
+    for( const auto &ov : attitude_overrides ) {
+        jsout.start_object();
+        jsout.member( "from", ov.first.first );
+        jsout.member( "to", ov.first.second );
+        jsout.member( "attitude", io::enum_to_string( ov.second ) );
+        jsout.end_object();
+    }
+    jsout.end_array();
+}
+
+void monfactions::deserialize_attitude_overrides( const JsonValue &jv )
+{
+    attitude_overrides.clear();
+    for( JsonObject jo : jv.get_array() ) {
+        const mfaction_str_id from( jo.get_string( "from" ) );
+        const mfaction_str_id to( jo.get_string( "to" ) );
+        const std::string attitude = jo.get_string( "attitude" );
+        std::optional<mf_attitude> att;
+        // a faction from a mod that is no longer loaded drops its change
+        if( from.is_valid() && to.is_valid() && parse_attitude( attitude, att ) && att ) {
+            attitude_overrides[std::make_pair( from, to )] = *att;
+        }
+    }
+    if( !faction_factory.get_all().empty() ) {
+        monfaction::rebuild_attitudes();
+    }
+}
+
+void monfaction::load( const JsonObject &jo, std::string_view )
+{
+    optional( jo, was_loaded, "base_faction", base_faction, mfaction_str_id() );
+    optional( jo, was_loaded, "by_mood", _att_by_mood, string_id_reader<monfaction>() );
+    optional( jo, was_loaded, "neutral", _att_neutral, string_id_reader<monfaction>() );
+    optional( jo, was_loaded, "friendly", _att_friendly, string_id_reader<monfaction>() );
+    optional( jo, was_loaded, "hate", _att_hate, string_id_reader<monfaction>() );
+    optional( jo, was_loaded, "ignores_npcs_if_option", ignores_npcs_if_option );
+
+    reset_attitude_map();
 }
 
 const std::vector<monfaction> &monfactions::get_all()

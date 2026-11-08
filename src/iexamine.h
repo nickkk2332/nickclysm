@@ -41,7 +41,22 @@ struct iexamine_actor {
                                     const map_data_common_t & ) const {
         call( you, pos );
     }
+    // Whether examining with this action does something for `who` at `pos` now: it runs, or it
+    // says why it can't. One that doesn't is greyed out in the examine menu, and a tile whose
+    // actions all don't can't be examined. `owner` is the terrain or furniture it belongs to.
+    virtual bool can_examine( const Character &/*who*/, const tripoint_bub_ms &/*pos*/,
+                              const map_data_common_t &/*owner*/ ) const {
+        return true;
+    }
+    // Whether an NPC that examines the tile may use this action now: an NPC takes the first
+    // action that it may use.
+    virtual bool npc_can_use( const Character &who, const tripoint_bub_ms &pos,
+                              const map_data_common_t &owner ) const {
+        return can_examine( who, pos, owner );
+    }
     virtual void finalize() const = 0;
+    // Load-time checks of the actor of terrain or furniture `owner`, once all data is loaded.
+    virtual void check( const std::string &/*owner*/ ) const {}
 
     virtual std::unique_ptr<iexamine_actor> clone() const = 0;
 
@@ -77,6 +92,9 @@ bool harvestable_now( const tripoint_bub_ms &examp );
 void gaspump( Character &you, const tripoint_bub_ms &examp );
 void atm( Character &you, const tripoint_bub_ms &examp );
 void vending( Character &you, const tripoint_bub_ms &examp );
+/** Takes price from you's cash cards and, with use_bank, what they can't cover from you's bank
+ * account.  Returns false, taking nothing, if that isn't enough. */
+bool vending_pay( Character &you, int price, bool use_bank );
 void iso_recycler( Character &you, const tripoint_bub_ms &examp );
 void elevator( Character &you, const tripoint_bub_ms &examp );
 void genemill( Character &you, const tripoint_bub_ms &examp );
@@ -129,6 +147,8 @@ void shrub_wildveggies( Character &you, const tripoint_bub_ms &examp );
 void part_con( Character &you, const tripoint_bub_ms &examp );
 void water_source( Character &, const tripoint_bub_ms &examp );
 void finite_water_source( Character &, const tripoint_bub_ms &examp );
+// Lights the process_start furniture at examp with a firestarter the character picks.
+void fire_process( Character &you, const tripoint_bub_ms &examp );
 void kiln_empty( Character &you, const tripoint_bub_ms &examp );
 bool kiln_prep( Character &you, const tripoint_bub_ms &examp );
 bool kiln_fire( Character &you, const tripoint_bub_ms &examp );
@@ -168,6 +188,8 @@ void workout( Character &you, const tripoint_bub_ms &examp );
 void invalid( Character &you, const tripoint_bub_ms &examp );
 
 bool pour_into_keg( const tripoint_bub_ms &pos, item &liquid, bool silent );
+/** The liquid stored in the keg at pos, not counting liquid in containers lying in it; or nullptr. */
+item *keg_liquid( const tripoint_bub_ms &pos );
 std::optional<tripoint_bub_ms> getGasPumpByNumber( const tripoint_bub_ms &p, int number );
 bool toPumpFuel( const tripoint_bub_ms &src, const tripoint_bub_ms &dst, int units );
 std::optional<tripoint_bub_ms> getNearFilledGasTank( const tripoint_bub_ms &center, int &fuel_units,
@@ -182,6 +204,12 @@ std::list<item> get_harvest_items( const itype &type, int plant_count,
 std::vector<seed_tuple> get_seed_entries( const std::vector<item_location> &seed_inv );
 int query_seed( const std::vector<seed_tuple> &seed_entries );
 void plant_seed( Character &you, const tripoint_bub_ms &examp, const itype_id &seed_id );
+/**
+ * Turns @p examp's terrain and furniture into a crop just sown with @p seed_id: plantable
+ * furniture becomes its plant_data transform, plantable terrain dirt (or a greenhouse) with a
+ * seed, anything else gets a seed. The seed item itself is the caller's to put there.
+ */
+void set_seeded_terrain( map &here, const tripoint_bub_ms &examp, const itype_id &seed_id );
 void clear_overgrown( Character &you, const tripoint_bub_ms &examp );
 void harvest_plant_ex( Character &you, const tripoint_bub_ms &examp );
 void harvest_plant( Character &you, const tripoint_bub_ms &examp, bool from_activity );

@@ -96,10 +96,7 @@ static const efftype_id effect_foodpoison( "foodpoison" );
 static const efftype_id effect_fungus( "fungus" );
 static const efftype_id effect_hallu( "hallu" );
 static const efftype_id effect_hunger_engorged( "hunger_engorged" );
-static const efftype_id effect_hunger_famished( "hunger_famished" );
 static const efftype_id effect_hunger_full( "hunger_full" );
-static const efftype_id effect_hunger_near_starving( "hunger_near_starving" );
-static const efftype_id effect_hunger_starving( "hunger_starving" );
 static const efftype_id effect_nausea( "nausea" );
 static const efftype_id effect_paincysts( "paincysts" );
 static const efftype_id effect_poison( "poison" );
@@ -109,11 +106,6 @@ static const efftype_id effect_visuals( "visuals" );
 static const flag_id json_flag_ALCOHOL( "ALCOHOL" );
 static const flag_id json_flag_ALCOHOL_STRONG( "ALCOHOL_STRONG" );
 static const flag_id json_flag_ALCOHOL_WEAK( "ALCOHOL_WEAK" );
-static const flag_id json_flag_ALLERGEN_CHEESE( "ALLERGEN_CHEESE" );
-static const flag_id json_flag_ALLERGEN_EGG( "ALLERGEN_EGG" );
-static const flag_id json_flag_ALLERGEN_MEAT( "ALLERGEN_MEAT" );
-static const flag_id json_flag_ALLERGEN_MILK( "ALLERGEN_MILK" );
-static const flag_id json_flag_ANIMAL_PRODUCT( "ANIMAL_PRODUCT" );
 static const flag_id json_flag_MARLOSS( "MARLOSS" );
 
 static const item_category_id item_category_chems( "chems" );
@@ -126,6 +118,7 @@ static const json_character_flag json_flag_BLOODFEEDER( "BLOODFEEDER" );
 static const json_character_flag json_flag_CANNIBAL( "CANNIBAL" );
 static const json_character_flag json_flag_CANNOT_CONSUME_DRUGS( "CANNOT_CONSUME_DRUGS" );
 static const json_character_flag json_flag_CARNIVORE_DIET( "CARNIVORE_DIET" );
+static const json_character_flag json_flag_EATDEAD_DIET( "EATDEAD_DIET" );
 static const json_character_flag json_flag_HEMOVORE( "HEMOVORE" );
 static const json_character_flag json_flag_HERBIVORE_DIET( "HERBIVORE_DIET" );
 static const json_character_flag json_flag_IMMUNE_SPOIL( "IMMUNE_SPOIL" );
@@ -137,6 +130,8 @@ static const json_character_flag json_flag_PRED3( "PRED3" );
 static const json_character_flag json_flag_PRED4( "PRED4" );
 static const json_character_flag json_flag_PSYCHOPATH( "PSYCHOPATH" );
 static const json_character_flag json_flag_SAPIOVORE( "SAPIOVORE" );
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 static const json_character_flag json_flag_SKIP_HEALTH( "SKIP_HEALTH" );
 static const json_character_flag json_flag_SPIRITUAL( "SPIRITUAL" );
 static const json_character_flag json_flag_STRICT_HUMANITARIAN( "STRICT_HUMANITARIAN" );
@@ -154,7 +149,6 @@ static const morale_type morale_food_hot( "morale_food_hot" );
 static const morale_type morale_honey( "morale_honey" );
 static const morale_type morale_meatarian( "morale_meatarian" );
 static const morale_type morale_no_digest( "morale_no_digest" );
-static const morale_type morale_sweettooth( "morale_sweettooth" );
 
 static const mtype_id mon_player_blob( "mon_player_blob" );
 
@@ -169,31 +163,18 @@ static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
 static const trait_id trait_ALCMET( "ALCMET" );
 static const trait_id trait_AMORPHOUS( "AMORPHOUS" );
 static const trait_id trait_BLOOD_DRINKER( "BLOOD_DRINKER" );
-static const trait_id trait_EATDEAD( "EATDEAD" );
 static const trait_id trait_EATHEALTH( "EATHEALTH" );
-static const trait_id trait_GOURMAND( "GOURMAND" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
 static const trait_id trait_LIGHTWEIGHT( "LIGHTWEIGHT" );
-static const trait_id trait_MARLOSS_AVOID( "MARLOSS_AVOID" );
-static const trait_id trait_M_DEPENDENT( "M_DEPENDENT" );
 static const trait_id trait_M_IMMUNE( "M_IMMUNE" );
-static const trait_id trait_PICKYEATER( "PICKYEATER" );
-static const trait_id trait_PROBOSCIS( "PROBOSCIS" );
-static const trait_id trait_PROJUNK( "PROJUNK" );
-static const trait_id trait_PROJUNK2( "PROJUNK2" );
-static const trait_id trait_RUMINANT( "RUMINANT" );
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
 static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 static const trait_id trait_STIMBOOST( "STIMBOOST" );
 static const trait_id trait_TABLEMANNERS( "TABLEMANNERS" );
-static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
 static const trait_id trait_THRESH_PLANT( "THRESH_PLANT" );
 static const trait_id trait_THRESH_URSINE( "THRESH_URSINE" );
 static const trait_id trait_TOLERANCE( "TOLERANCE" );
 static const trait_id trait_UNDINE_SLEEP_WATER( "UNDINE_SLEEP_WATER" );
-static const trait_id trait_VEGAN( "VEGAN" );
 static const trait_id trait_WATERSLEEP( "WATERSLEEP" );
 
 static const vitamin_id vitamin_bread_allergen( "bread_allergen" );
@@ -258,7 +239,7 @@ static int compute_default_effective_kcal( const item &comest, const Character &
 
     const float relative_rot = comest.get_relative_rot();
     // Saprophages get full nutrition from rotting food
-    if( relative_rot > 1.0f && !you.has_trait( trait_SAPROPHAGE ) ) {
+    if( relative_rot > 1.0f && !you.has_flag( json_flag_SAPROPHAGE_DIET ) ) {
         // everyone else only gets a portion of the nutrition
         // Scaling linearly from 100% at just-rotten to 0 at halfway-rotten-away
         const float rottedness = clamp( 2 * relative_rot - 2.0f, 0.1f, 1.0f );
@@ -508,7 +489,8 @@ std::pair<int, int> Character::fun_for( const item &comest, bool ignore_already_
     }
     // Rotten food should be pretty disgusting
     const float relative_rot = comest.get_relative_rot();
-    if( relative_rot > 1.0f && !has_trait( trait_SAPROPHAGE ) && !has_trait( trait_SAPROVORE ) ) {
+    if( relative_rot > 1.0f && !has_flag( json_flag_SAPROPHAGE_DIET ) &&
+        !has_flag( json_flag_SAPROVORE_DIET ) ) {
         const float rottedness = clamp( 2 * relative_rot - 2.0f, 0.1f, 1.0f );
         // Three effects:
         // penalty for rot goes from -2 to -20
@@ -608,13 +590,20 @@ std::pair<int, int> Character::fun_for( const item &comest, bool ignore_already_
         fun *= 0.5;
     }
 
-    if( has_trait( trait_GOURMAND ) ) {
+    // A mutation's food_fun (GOURMAND) changes how good or bad the food tastes
+    for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
+        const std::optional<mutation_food_fun> &mod = tid->food_fun;
+        if( !mod || !has_trait( tid ) ) {
+            continue;
+        }
         if( fun < -1 ) {
-            fun_max = fun;
-            fun /= 2;
+            if( mod->negative_max ) {
+                fun_max = fun * *mod->negative_max;
+            }
+            fun *= mod->negative;
         } else if( fun > 0 ) {
-            fun_max *= 3;
-            fun = fun * 3 / 2;
+            fun_max *= mod->positive_max;
+            fun *= mod->positive;
         }
     }
 
@@ -865,26 +854,51 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
         return ret_val<edible_rating>::make_failure( _( "You can't do that while underwater." ) );
     }
 
-    if( edible || drinkable ) {
-        // Consumption EOCs run too late to refuse the food without ingesting it.
-        if( food.has_flag( json_flag_MARLOSS ) ) {
-            if( is_npc() ) {
-                return ret_val<edible_rating>::make_failure( _( "That doesn't look edible to you." ) );
-            }
-            if( has_trait( trait_MARLOSS_AVOID ) ) {
-                return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                        _( "After what happened that last time?  Nuh-uh.  You're not eating that alien poison." ) );
-            }
-            if( has_trait( trait_THRESH_MYCUS ) ) {
-                return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                        _( "we no longer require this scaffolding.  we reserve it for other uses." ) );
+    // A mutation's eat_conditions, run with the eater as u_ and the food as npc_, can veto it.
+    // Each is checked at its stage, where the hardcoded check it replaced was (HLTH-J03), so the
+    // same message wins when several checks refuse the food.
+    // The eat_conditions of the character's mutations, in load order, found on first use
+    std::optional<std::vector<const mutation_eat_condition *>> eat_conds;
+    // The dialogue's food talker points at food_loc, so food_loc must outlive it
+    item_location food_loc;
+    std::optional<const_dialogue> eat_d;
+    const auto mutation_refusal = [&]( eat_check_stage stage ) -> const translation * {
+        if( !eat_conds )
+        {
+            eat_conds.emplace();
+            for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
+                if( tid->eat_conditions.empty() || !has_trait( tid ) ) {
+                    continue;
+                }
+                for( const mutation_eat_condition &cond : tid->eat_conditions ) {
+                    eat_conds->push_back( &cond );
+                }
             }
         }
-        // For all those folks who loved eating Marloss berries.  D:< mwuhahaha
-        if( has_trait( trait_M_DEPENDENT ) && !food.has_flag( flag_MYCUS_OK ) ) {
-            return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                    _( "We can't eat that.  It's not right for us." ) );
+        for( const mutation_eat_condition *cond : *eat_conds )
+        {
+            if( cond->stage != stage ) {
+                continue;
+            }
+            if( !eat_d ) {
+                food_loc = item_location( const_cast<Character &>( *this ),
+                                          const_cast<item *>( &food ) );
+                eat_d.emplace( get_const_talker_for( *this ), get_const_talker_for( food_loc ) );
+            }
+            if( !cond->condition( *eat_d ) ) {
+                return &cond->fail_message;
+            }
         }
+        return nullptr;
+    };
+
+    // NPCs leave Marloss alone
+    if( ( edible || drinkable ) && food.has_flag( json_flag_MARLOSS ) && is_npc() ) {
+        return ret_val<edible_rating>::make_failure( _( "That doesn't look edible to you." ) );
+    }
+    // The Mycus traits refuse Marloss, or anything that isn't Mycus, here
+    if( const translation *refusal = mutation_refusal( eat_check_stage::first ) ) {
+        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, refusal->translated() );
     }
     if( food.has_own_flag( flag_FROZEN ) && !food.has_flag( flag_EDIBLE_FROZEN ) &&
         !food.has_flag( flag_MELTS ) ) {
@@ -920,8 +934,10 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
         }
     }
 
-    const use_function *smoking = food.type->get_use( "SMOKING" );
-    if( smoking != nullptr ) {
+    // a smokable: the SMOKING function or a smoke action
+    const bool smoking = food.type->get_use( "SMOKING" ) != nullptr ||
+                         food.type->get_use( "smoke" ) != nullptr;
+    if( smoking ) {
         std::optional<std::string> litcig = iuse::can_smoke( *this );
         if( litcig.has_value() ) {
             return ret_val<edible_rating>::make_failure( NO_TOOL, _( litcig.value_or( "" ) ) );
@@ -939,9 +955,9 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
         }
     }
 
-    // Here's why PROBOSCIS is such a negative trait.
-    if( has_trait( trait_PROBOSCIS ) && !( drinkable || food.is_medication() ) ) {
-        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, _( "Ugh, you can't drink that!" ) );
+    // PROBOSCIS refuses anything it can't drink here
+    if( const translation *refusal = mutation_refusal( eat_check_stage::before_diet ) ) {
+        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, refusal->translated() );
     }
 
     if( has_flag( json_flag_CARNIVORE_DIET ) && compute_effective_nutrients( food ).kcal() > 0 &&
@@ -950,21 +966,15 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
                 _( "Eww.  Inedible plant stuff!" ) );
     }
 
-    if( ( has_flag( json_flag_HERBIVORE_DIET ) || has_trait( trait_RUMINANT ) ) &&
+    if( has_flag( json_flag_HERBIVORE_DIET ) &&
         food.has_any_vitamin( herbivore_blacklist ) ) {
         // Like non-cannibal, but more strict!
         return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
                 _( "The thought of eating that makes you feel sick." ) );
     }
-    const std::array<flag_id, 6> vegan_blacklist {{
-            json_flag_ALLERGEN_MEAT, json_flag_ALLERGEN_EGG,
-            json_flag_ALLERGEN_MILK, json_flag_ANIMAL_PRODUCT,
-            json_flag_ALLERGEN_CHEESE, flag_URSINE_HONEY
-        }};
-    if( has_trait( trait_VEGAN ) &&
-        food.has_any_flag( vegan_blacklist ) ) {
-        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                _( "You're still not going to eat animal products." ) );
+    // Checked where VEGAN's hardcoded check was (VEGAN is one now), so the same message wins.
+    if( const translation *refusal = mutation_refusal( eat_check_stage::after_diet ) ) {
+        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, refusal->translated() );
     }
 
     for( const trait_id &mut : get_functioning_mutations() ) {
@@ -973,36 +983,9 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
         }
     }
 
-    // A mutation's eat_condition, run with the eater as u_ and the food as npc_, can veto it
-    // The dialogue's food talker points at food_loc, so food_loc must outlive it
-    item_location food_loc;
-    std::optional<const_dialogue> eat_d;
-    for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
-        if( !tid->has_eat_condition || !has_trait( tid ) ) {
-            continue;
-        }
-        if( !eat_d ) {
-            food_loc = item_location( const_cast<Character &>( *this ),
-                                      const_cast<item *>( &food ) );
-            eat_d.emplace( get_const_talker_for( *this ), get_const_talker_for( food_loc ) );
-        }
-        if( !tid->eat_condition( *eat_d ) ) {
-            return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                    tid->eat_fail_message.translated() );
-        }
-    }
-
-    if( has_trait( trait_PICKYEATER ) && !( drinkable || food.is_medication() ) &&
-        fun_for( food ).first < 0 && !has_effect( effect_hunger_near_starving ) &&
-        !has_effect( effect_hunger_starving ) && !has_effect( effect_hunger_famished ) ) {
-        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                _( "You deserve better food than this." ) );
-    }
-
-    if( has_trait( trait_PICKYEATER ) && drinkable && !food.is_medication() &&
-        fun_for( food ).first < 0 && get_thirst() < 240 ) {
-        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                _( "You are not going to drink this." ) );
+    // PICKYEATER refuses food that tastes bad here
+    if( const translation *refusal = mutation_refusal( eat_check_stage::last ) ) {
+        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, refusal->translated() );
     }
 
     return ret_val<edible_rating>::make_success();
@@ -1028,7 +1011,7 @@ ret_val<edible_rating> Character::will_eat( const item &food, bool interactive )
         consequences.emplace_back( ret_val<edible_rating>::make_failure( code, msg ) );
     };
 
-    const bool saprophage = has_trait( trait_SAPROPHAGE );
+    const bool saprophage = has_flag( json_flag_SAPROPHAGE_DIET );
     const auto &comest = food.get_comestible();
 
     // To avoid hardcoding a check for mutant_toxin we instead iterate all vitamin types.
@@ -1043,7 +1026,7 @@ ret_val<edible_rating> Character::will_eat( const item &food, bool interactive )
     }
 
     if( food.rotten() ) {
-        const bool saprovore = has_trait( trait_SAPROVORE );
+        const bool saprovore = has_flag( json_flag_SAPROVORE_DIET );
         if( !saprophage && !saprovore ) {
             add_consequence( _( "This is rotten and smells awful!" ), ROTTEN );
         }
@@ -1059,7 +1042,7 @@ ret_val<edible_rating> Character::will_eat( const item &food, bool interactive )
     }
 
     if( food.get_comestible()->parasites > 0 && !food.has_flag( flag_NO_PARASITES ) &&
-        !has_flag( json_flag_PARAIMMUNE ) && !saprophage && !has_trait( trait_SAPROVORE ) &&
+        !has_flag( json_flag_PARAIMMUNE ) && !saprophage && !has_flag( json_flag_SAPROVORE_DIET ) &&
         ( !food.has_flag( flag_HEMOVORE_FUN ) ||
           ( !has_flag( json_flag_HEMOVORE ) && !has_flag( json_flag_BLOODFEEDER ) ) ) ) {
         add_consequence( string_format( _( "Consuming this %s probably isn't very healthy." ),
@@ -1206,7 +1189,7 @@ static bool eat( item &food, Character &you, bool force )
                             rng( units::to_milliliter( you.stomach.capacity( you ) ) / 2,
                                  units::to_milliliter( you.stomach.contains() ) ) > units::to_milliliter(
                                 you.stomach.capacity( you ) );
-    const bool saprophage = you.has_trait( trait_SAPROPHAGE );
+    const bool saprophage = you.has_flag( json_flag_SAPROPHAGE_DIET );
     if( spoiled && !saprophage ) {
         you.add_msg_if_player( m_bad, _( "Ick, this %s doesn't taste so good…" ), food.tname() );
         if( !you.has_flag( json_flag_IMMUNE_SPOIL ) ) {
@@ -1227,7 +1210,7 @@ static bool eat( item &food, Character &you, bool force )
     // If it's poisonous... poison us.
     // TODO: Move this to a flag
     if( food.poison > 0 &&
-        !you.has_trait( trait_EATDEAD ) ) {
+        !you.has_flag( json_flag_EATDEAD_DIET ) ) {
         if( food.poison >= rng( 2, 4 ) ) {
             you.add_effect( effect_poison, food.poison * 10_minutes );
         }
@@ -1277,7 +1260,7 @@ static bool eat( item &food, Character &you, bool force )
                                    food.tname() );
     } else if( drinkable ) {
         if( you.is_avatar() && you.schizo_symptoms( 50 ) && !spoiled && food.goes_bad() &&
-            !you.has_trait( trait_SAPROVORE ) ) {
+            !you.has_flag( json_flag_SAPROVORE_DIET ) ) {
             const std::string tname = food.tname( 1,
                                                   tname::segment_bitset( tname::default_tname_bits & ~( 1ULL << static_cast<size_t>
                                                           ( tname::segments::FOOD_STATUS ) ) ) );
@@ -1297,7 +1280,7 @@ static bool eat( item &food, Character &you, bool force )
         }
     } else if( chew ) {
         if( you.is_avatar() && you.schizo_symptoms( 50 ) && !spoiled && food.goes_bad() &&
-            !you.has_trait( trait_SAPROVORE ) ) {
+            !you.has_flag( json_flag_SAPROVORE_DIET ) ) {
             const std::string tname = food.tname( 1,
                                                   tname::segment_bitset( tname::default_tname_bits & ~( 1ULL << static_cast<size_t>
                                                           ( tname::segments::FOOD_STATUS ) ) ) );
@@ -1377,7 +1360,14 @@ static bool eat( item &food, Character &you, bool force )
         }
     }
 
-    get_event_bus().send<event_type::character_eats_item>( you.getID(), food.typeId() );
+    {
+        // The item is the beta talker; it may be anywhere (the ground, a vehicle), but its EOCs
+        // read only the item
+        item_location eaten( you, &food );
+        const cata::event e = cata::event::make<event_type::character_eats_item>( you.getID(),
+                              food.typeId() );
+        get_event_bus().send_with_talker( &you, &eaten, e );
+    }
 
     if( will_vomit ) {
         you.vomit();
@@ -1595,19 +1585,22 @@ void Character::modify_morale( item &food, const int nutr )
             add_msg_if_player( m_bad, _( "Your stomach begins gurgling and you feel bloated and ill." ) );
             add_morale( allergy, -75, -400, 30_minutes, 24_minutes );
         }
+        // The mutations' eat_eocs (PROJUNK's sweet tooth), with the eater as u_ and the food as
+        // npc_, in load order
+        std::optional<item_location> food_loc;
+        for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
+            if( tid->eat_eocs.empty() || !has_trait( tid ) ) {
+                continue;
+            }
+            if( !food_loc ) {
+                food_loc.emplace( *this, &food );
+            }
+            for( const effect_on_condition_id &eoc : tid->eat_eocs ) {
+                dialogue d( get_talker_for( *this ), get_talker_for( *food_loc ) );
+                eoc->activate( d );
+            }
+        }
         if( food.has_flag( flag_ALLERGEN_JUNK ) ) {
-            if( has_trait( trait_PROJUNK ) ) {
-                add_msg_if_player( m_good, _( "Mmm, junk food." ) );
-                add_morale( morale_sweettooth, 5, 30, 30_minutes, 24_minutes );
-            }
-            if( has_trait( trait_PROJUNK2 ) ) {
-                if( !one_in( 100 ) ) {
-                    add_msg_if_player( m_good, _( "When life's got you down, there's always sugar." ) );
-                } else {
-                    add_msg_if_player( m_good, _( "They may do what they must… you've already won." ) );
-                }
-                add_morale( morale_sweettooth, 10, 50, 1_hours, 50_minutes );
-            }
             // Carnivores CAN eat junk food, but they won't like it much.
             // Pizza-scraping happens in consume_effects.
             if( has_flag( json_flag_CARNIVORE_DIET ) && !food.has_flag( flag_CARNIVORE_OK ) ) {
@@ -1618,7 +1611,7 @@ void Character::modify_morale( item &food, const int nutr )
     }
     const bool chew = food.get_comestible()->comesttype == comesttype_FOOD ||
                       food.has_flag( flag_USE_EAT_VERB );
-    if( !food.rotten() && chew && has_trait( trait_SAPROPHAGE ) ) {
+    if( !food.rotten() && chew && has_flag( json_flag_SAPROPHAGE_DIET ) ) {
         // It's OK to *drink* things that haven't rotted.  Alternative is to ban water.  D:
         add_msg_if_player( m_bad, _( "Your stomach begins gurgling and you feel bloated and ill." ) );
         add_morale( morale_no_digest, -75, -400, 30_minutes, 24_minutes );
@@ -1741,7 +1734,7 @@ bool Character::consume_effects( item &food )
         // Was used to cap nutrition and thirst, but no longer does this
         return false;
     }
-    if( ( has_flag( json_flag_HERBIVORE_DIET ) || has_trait( trait_RUMINANT ) ) &&
+    if( has_flag( json_flag_HERBIVORE_DIET ) &&
         food.has_any_vitamin( herbivore_blacklist ) ) {
         // No good can come of this.
         return false;
@@ -1940,13 +1933,18 @@ time_duration Character::get_consume_time( const item &it ) const
                                           ( fun->get_actor_ptr() )->move_cost );
     } else if( it.is_medication() ) {
         const use_function *consume_drug = it.type->get_use( "consume_drug" );
-        const use_function *smoking = it.type->get_use( "SMOKING" );
+        // a smokable: the SMOKING function or a smoke action
+        const bool smoking = it.type->get_use( "SMOKING" ) != nullptr ||
+                             it.type->get_use( "smoke" ) != nullptr;
         const use_function *adrenaline_injector = it.type->get_use( "ADRENALINE_INJECTOR" );
         if( consume_drug != nullptr ) { //its a drug
             const consume_drug_iuse *consume_drug_use = dynamic_cast<const consume_drug_iuse *>
                     ( consume_drug->get_actor_ptr() );
-            if( consume_drug_use->tools_needed.find( itype_syringe ) != consume_drug_use->tools_needed.end() &&
-                has_bionic( bio_syringe ) ) {
+            if( consume_drug_use->consume_time ) {
+                // the drug's own consume_time, over the default from its tools (USE-J05)
+                time = *consume_drug_use->consume_time;
+            } else if( consume_drug_use->tools_needed.find( itype_syringe ) !=
+                       consume_drug_use->tools_needed.end() && has_bionic( bio_syringe ) ) {
                 time = time_duration::from_seconds(
                            15 );//injections with the intradermal needle CBM are much quicker than with a normal syringe
             } else if( consume_drug_use->tools_needed.find( itype_syringe ) !=
@@ -1959,7 +1957,7 @@ time_duration Character::get_consume_time( const item &it ) const
             } else {
                 time = time_duration::from_seconds( 5 );//popping a pill is quick
             }
-        } else if( smoking != nullptr ) {
+        } else if( smoking ) {
             time = time_duration::from_minutes( 1 );//about five minutes for a cig or joint so 1 minute a charge
         } else if( adrenaline_injector != nullptr ) {
             //epi-pens, and disinfectant are fairly quick
@@ -2089,7 +2087,11 @@ trinary Character::consume( item &target, bool force )
 
     if( consume_med( target, *this ) || eat( target, *this, force ) ) {
 
-        get_event_bus().send<event_type::character_consumes_item>( getID(), target.typeId() );
+        // as for character_eats_item, the item is the beta talker
+        item_location consumed( *this, &target );
+        const cata::event e = cata::event::make<event_type::character_consumes_item>( getID(),
+                              target.typeId() );
+        get_event_bus().send_with_talker( this, &consumed, e );
 
         invalidate_weight_carried_cache();
         target.on_contents_changed();

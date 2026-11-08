@@ -10,9 +10,12 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <string_view>
+#include <utility>
 
 #include "avatar.h"
 #include "cata_utility.h"
+#include "debug.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
@@ -32,21 +35,11 @@
 namespace
 {
 constexpr double tau = 2 * M_PI;
-constexpr double coldest_hour = 5;
-// Out of 24 hours
-constexpr double daily_magnitude_K = 5;
-// Greatest absolute change from a day's average temperature, in kelvins
+// The shape of the climate (coldest hour, daily and seasonal swings, noise) is per weather
+// generator; see weather_gen.h. The defaults are New England's:
 // Daily variation on temperatures averages from 12.9-16.6F (7.16-9.22) with a stdev. of 5-7F depending on the day of the year.
-constexpr double daily_seasonal_range_K = 2.0;
-// Increases daily temperature variation by this much at the coldest time of the year, decreases it this much at the warmest time of the year, In kelvins.
-constexpr double seasonality_magnitude_K = 12;
-// Greatest absolute change from the year's average temperature, in kelvins
 // Mean normal monthly temperatures over the year is 30.47-73.86F (-0.85-23.25C)
 // Annual recorded minimum to maximum temperatures range from ~10-90F (-17.78-37.78C), lows of 0F & highs of 100F happen every few years. Any and all noise should stay bound within this range.
-constexpr double noise_magnitude_K = 6;
-// Greatest absolute change from a day's average through noise, in kelvins
-constexpr double seasonal_noise_magnitude = 0.5;
-// Multiplier for noise magnitude that varies with the season, 0.5 means noise is 1.5x as strong in midwinter and 1.0x as strong in midsummer.
 } //namespace
 
 weather_generator::weather_generator() = default;
@@ -87,6 +80,18 @@ void weather_generator::reset()
 }
 void weather_generator::finalize()
 {
+    // Typos in the lists were silently ignored
+    const auto check_list = [this]( const std::vector<weather_type_id> &list,
+    const std::string_view list_name ) {
+        for( const weather_type_id &wt : list ) {
+            if( !wt.is_valid() ) {
+                debugmsg( "weather_generator %s: weather type \"%s\" in %s does not exist", id.str(),
+                          wt.str(), list_name );
+            }
+        }
+    };
+    check_list( weather_black_list, "weather_black_list" );
+    check_list( weather_white_list, "weather_white_list" );
     sort_weather();
 }
 void weather_generator::finalize_all()
@@ -137,28 +142,22 @@ class wind_draws
         uint64_t state = 0;
 };
 
-// How often the wind blows from each of the 16 compass points, by season
-std::array<int, 16> wind_direction_weights( const season_type season )
+// How often the wind blows from each of the 16 compass points, by season (the generator's
+// wind_direction_weights)
+std::array<int, 16> wind_direction_weights_for( const weather_generator &wg,
+        const season_type season )
 {
-    //TODO: Unhardcode?
-    switch( season ) {
-        case SPRING:
-            return { { 3, 3, 5, 8, 11, 10, 5, 2, 5, 6, 6, 5, 8, 10, 8, 6 } };
-        case SUMMER:
-            return { { 3, 4, 4, 8, 8, 9, 8, 3, 7, 8, 10, 7, 7, 7, 5, 3 } };
-        case AUTUMN:
-            return { { 4, 6, 6, 7, 6, 5, 4, 3, 5, 6, 8, 8, 10, 10, 8, 5 } };
-        case WINTER:
-            return { { 5, 3, 2, 3, 2, 2, 2, 2, 4, 6, 10, 8, 12, 19, 13, 9 } };
-        default:
-            return { { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+    if( season >= SPRING && season < NUM_SEASONS ) {
+        return wg.wind_direction_weights[season];
     }
+    return { { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 }
 
 // The compass point (0 to 15) a draw in [0, 1) picks, with the season's chances
-int wind_direction_from_draw( const season_type season, const double draw )
+int wind_direction_from_draw( const weather_generator &wg, const season_type season,
+                              const double draw )
 {
-    const std::array<int, 16> weights = wind_direction_weights( season );
+    const std::array<int, 16> weights = wind_direction_weights_for( wg, season );
     int total = 0;
     for( const int w : weights ) {
         total += w;
@@ -224,6 +223,7 @@ namespace
 struct weather_temperature_terms {
     double baseline = 0;
     double noise_scale = 0;
+    double noise_magnitude = 0;
 };
 } // namespace
 
@@ -234,7 +234,7 @@ static weather_temperature_terms weather_temperature_terms_from_common_data(
     // -1 in midwinter, +1 in midsummer
     const season_type season = common.season;
     const double dayFraction = time_past_midnight( t.t ) / 1_days;
-    const double dayv = std::cos( tau * ( dayFraction + .5 - coldest_hour / 24 ) );
+    const double dayv = std::cos( tau * ( dayFraction + .5 - wg.coldest_hour / 24 ) );
     // -1 at coldest_hour, +1 twelve hours later
 
     // manually specified seasonal temp variation from region_settings.json
@@ -246,9 +246,10 @@ static weather_temperature_terms weather_temperature_terms_from_common_data(
     terms.baseline =
         wg.base_temperature +
         seasonal_temp_mod[season] +
-        dayv * ( daily_magnitude_K + daily_seasonal_range_K * ( -seasonality + 1 ) / 2 ) +
-        seasonality * seasonality_magnitude_K;
-    terms.noise_scale = 1 + ( 1 + -seasonality ) * seasonal_noise_magnitude / 2;
+        dayv * ( wg.daily_amplitude_K + wg.daily_seasonal_range_K * ( -seasonality + 1 ) / 2 ) +
+        seasonality * wg.seasonal_amplitude_K;
+    terms.noise_scale = 1 + ( 1 + -seasonality ) * wg.seasonal_noise_magnitude / 2;
+    terms.noise_magnitude = wg.temperature_noise_K;
     return terms;
 }
 
@@ -256,7 +257,7 @@ static units::temperature weather_temperature_from_terms( const weather_temperat
         const weather_gen_common &common )
 {
     const double T = terms.baseline + raw_noise_4d( common.x, common.y, common.z, common.modSEED ) *
-                     terms.noise_scale * noise_magnitude_K;
+                     terms.noise_scale * terms.noise_magnitude;
 
     return units::from_celsius( T );
 }
@@ -278,6 +279,7 @@ weather_temperature_sampler::weather_temperature_sampler( const weather_generato
         const weather_temperature_terms terms = weather_temperature_terms_from_common_data( wgen, common,
                                                 season_effective_time( t ) );
         samples.push_back( { common.z, terms.baseline, terms.noise_scale } );
+        noise_magnitude = terms.noise_magnitude;
     }
 }
 
@@ -290,6 +292,7 @@ units::temperature weather_temperature_sampler::temperature( size_t i,
     weather_temperature_terms terms;
     terms.baseline = samples[i].baseline;
     terms.noise_scale = samples[i].noise_scale;
+    terms.noise_magnitude = noise_magnitude;
     return weather_temperature_from_terms( terms, common );
 }
 
@@ -364,7 +367,7 @@ w_point weather_generator::get_weather( const tripoint_abs_ms &location, const t
 
     // The direction this time and place brings. The live wind keeps its own direction and only
     // takes this one now and then, in weather_manager::update_weather().
-    const int winddir = convert_winddir( wind_direction_from_draw( season, direction_draw ) );
+    const int winddir = convert_winddir( wind_direction_from_draw( *this, season, direction_draw ) );
     std::string wind_desc = get_wind_desc( W );
     return w_point{ T, H, P, W, wind_desc, winddir, t, location };
 }
@@ -414,7 +417,7 @@ weather_type_id weather_generator::get_weather_conditions( const w_point &w ) co
 
 int weather_generator::get_wind_direction( const season_type season ) const
 {
-    return wind_direction_from_draw( season, rng_float( 0, 1 ) );
+    return wind_direction_from_draw( *this, season, rng_float( 0, 1 ) );
 }
 
 int weather_generator::convert_winddir( const int inputdir ) const
@@ -445,15 +448,24 @@ units::temperature weather_generator::get_water_temperature() const
         season_length = 1;
     }
 
-    // Temperature varies between 33.8F and 75.2F depending on the time of year. Day = 0 corresponds to the start of spring.
-    float annual_mean_water_temperature = 54.5 + 20.7 * std::sin( tau * ( day - season_length * 0.5 ) /
-                                          ( season_length * 4.0 ) );
-    // Temperature varies between +2F and -2F depending on the time of day. Hour = 0 corresponds to midnight.
-    float daily_water_temperature_variation = 2.0 + 2.0 * std::sin( tau * ( hour - 6.0 ) / 24.0 );
+    // By default the temperature varies between 33.8F and 75.2F depending on the time of year.
+    // Day = 0 corresponds to the start of spring.
+    float annual_mean_water_temperature = water_yearly_mean_F + water_seasonal_amplitude_F * std::sin(
+            tau * ( day - season_length * 0.5 ) / ( season_length * 4.0 ) );
+    // By default it varies between +4F and 0F depending on the time of day. Hour = 0 corresponds to
+    // midnight.
+    float daily_water_temperature_variation = water_daily_amplitude_F + water_daily_amplitude_F *
+            std::sin( tau * ( hour - 6.0 ) / 24.0 );
 
     water_temperature = annual_mean_water_temperature + daily_water_temperature_variation;
 
     return units::from_fahrenheit( water_temperature );
+}
+
+units::temperature weather_generator::get_underground_temperature() const
+{
+    return units::from_celsius( underground_temperature_C ? *underground_temperature_C :
+                                base_temperature );
 }
 
 void weather_generator::test_weather( unsigned seed ) const
@@ -500,11 +512,11 @@ void weather_generator::sort_weather()
         // if we have a white list, only add those, if we have a black list, add all but those
         if( weather_white_list.empty() ) {
             if( std::find( weather_black_list.begin(), weather_black_list.end(),
-                           wt.id.c_str() ) == weather_black_list.end() ) {
+                           wt.id ) == weather_black_list.end() ) {
                 sorted_weather.push_back( wt.id );
             }
         } else if( std::find( weather_white_list.begin(), weather_white_list.end(),
-                              wt.id.c_str() ) != weather_white_list.end() || wt.id == WEATHER_CLEAR ) {
+                              wt.id ) != weather_white_list.end() || wt.id == WEATHER_CLEAR ) {
             sorted_weather.push_back( wt.id );
         }
     }
@@ -514,9 +526,84 @@ void weather_generator::sort_weather()
     } );
 }
 
+void snow_move_cost::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "depth", depth );
+    optional( jo, false, "character", character, 0 );
+    optional( jo, false, "monster", monster, 0 );
+    if( depth <= 0.0 ) {
+        jo.throw_error_at( "depth", "snow move_cost depth must be more than 0" );
+    }
+    if( character < 0 || monster < 0 ) {
+        jo.throw_error( "snow move_cost character and monster costs can't be negative" );
+    }
+}
+
+void snow_settings::deserialize( const JsonObject &jo )
+{
+    jo.read( "water_ratio", water_ratio );
+    jo.read( "melt_rate", melt_rate );
+    jo.read( "max_depth", max_depth );
+    if( water_ratio < 0.0 || melt_rate < 0.0 || max_depth < 0.0 ) {
+        jo.throw_error( "snow water_ratio, melt_rate and max_depth can't be negative" );
+    }
+    if( jo.has_array( "move_cost" ) ) {
+        move_cost.clear();
+        for( JsonObject row : jo.get_array( "move_cost" ) ) {
+            snow_move_cost step;
+            step.deserialize( row );
+            if( !move_cost.empty() && step.depth <= move_cost.back().depth ) {
+                row.throw_error_at( "depth", "snow move_cost rows must be sorted by depth" );
+            }
+            move_cost.push_back( step );
+        }
+    }
+}
+
+const snow_move_cost *snow_settings::move_cost_at( const double depth_mm ) const
+{
+    const snow_move_cost *found = nullptr;
+    for( const snow_move_cost &step : move_cost ) {
+        if( depth_mm < step.depth ) {
+            break;
+        }
+        found = &step;
+    }
+    return found;
+}
+
+// A plain number is degrees Celsius (a difference in kelvins); a string has units, e.g. "12 C".
+// Absent, the member keeps its value (the default, or what copy-from gave).
+static void read_temperature_C( const JsonObject &jo, const std::string_view name, double &member )
+{
+    if( jo.has_string( name ) ) {
+        units::temperature t = 0_K;
+        mandatory( jo, false, name, t );
+        member = units::to_celsius( t );
+    } else if( jo.has_member( name ) ) {
+        member = jo.get_float( name );
+    }
+}
+
+static void read_temperature_delta_K( const JsonObject &jo, const std::string_view name,
+                                      double &member )
+{
+    if( jo.has_string( name ) ) {
+        units::temperature_delta t = 0_K_delta;
+        mandatory( jo, false, name, t );
+        member = units::to_kelvin_delta( t );
+    } else if( jo.has_member( name ) ) {
+        member = jo.get_float( name );
+    }
+}
+
 void weather_generator::load( const JsonObject &jo, std::string_view )
 {
-    mandatory( jo, was_loaded, "base_temperature", base_temperature );
+    if( jo.has_string( "base_temperature" ) ) {
+        read_temperature_C( jo, "base_temperature", base_temperature );
+    } else {
+        mandatory( jo, was_loaded, "base_temperature", base_temperature );
+    }
     mandatory( jo, was_loaded, "base_humidity", base_humidity );
     mandatory( jo, was_loaded, "base_pressure", base_pressure );
     mandatory( jo, was_loaded, "base_wind", base_wind );
@@ -532,7 +619,72 @@ void weather_generator::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "winter_humidity_manual_mod", winter_humidity_manual_mod, 0 );
     optional( jo, was_loaded, "weather_black_list", weather_black_list );
     optional( jo, was_loaded, "weather_white_list", weather_white_list );
+    optional( jo, was_loaded, "snow", snow );
     if( !weather_black_list.empty() && !weather_white_list.empty() ) {
         jo.throw_error( "weather_black_list and weather_white_list are mutually exclusive" );
+    }
+
+    read_temperature_delta_K( jo, "seasonal_amplitude", seasonal_amplitude_K );
+    read_temperature_delta_K( jo, "daily_amplitude", daily_amplitude_K );
+    read_temperature_delta_K( jo, "daily_seasonal_range", daily_seasonal_range_K );
+    read_temperature_delta_K( jo, "temperature_noise", temperature_noise_K );
+    if( jo.has_member( "seasonal_noise" ) ) {
+        seasonal_noise_magnitude = jo.get_float( "seasonal_noise" );
+    }
+    if( jo.has_member( "coldest_hour" ) ) {
+        coldest_hour = jo.get_float( "coldest_hour" );
+        if( coldest_hour < 0 || coldest_hour > 24 ) {
+            jo.throw_error_at( "coldest_hour", "coldest_hour must be between 0 and 24" );
+        }
+    }
+    if( jo.has_member( "underground_temperature" ) ) {
+        double underground = 0;
+        read_temperature_C( jo, "underground_temperature", underground );
+        underground_temperature_C = underground;
+    }
+    if( jo.has_object( "water_temperature" ) ) {
+        const JsonObject jw = jo.get_object( "water_temperature" );
+        // In JSON, mean is the year's average including the daily swing, in units
+        double daily_K = water_daily_amplitude_F / 1.8;
+        read_temperature_delta_K( jw, "daily_amplitude", daily_K );
+        double seasonal_K = water_seasonal_amplitude_F / 1.8;
+        read_temperature_delta_K( jw, "seasonal_amplitude", seasonal_K );
+        double mean_C = ( water_yearly_mean_F + water_daily_amplitude_F - 32 ) / 1.8;
+        read_temperature_C( jw, "mean", mean_C );
+        if( daily_K < 0 || seasonal_K < 0 ) {
+            jw.throw_error( "water_temperature amplitudes must not be negative" );
+        }
+        water_daily_amplitude_F = daily_K * 1.8;
+        water_seasonal_amplitude_F = seasonal_K * 1.8;
+        water_yearly_mean_F = mean_C * 1.8 + 32 - water_daily_amplitude_F;
+    }
+    if( jo.has_object( "wind_direction_weights" ) ) {
+        const JsonObject jw = jo.get_object( "wind_direction_weights" );
+        static const std::array<std::pair<const char *, season_type>, 4> season_names = { {
+                { "spring", SPRING }, { "summer", SUMMER }, { "autumn", AUTUMN }, { "winter", WINTER }
+            }
+        };
+        for( const std::pair<const char *, season_type> &season : season_names ) {
+            if( !jw.has_member( season.first ) ) {
+                continue;
+            }
+            const JsonArray weights = jw.get_array( season.first );
+            if( weights.size() != 16 ) {
+                weights.throw_error( "wind_direction_weights need 16 numbers, N to NNW clockwise" );
+            }
+            std::array<int, 16> read_weights{};
+            int total = 0;
+            for( size_t i = 0; i < 16; ++i ) {
+                read_weights[i] = weights.get_int( i );
+                if( read_weights[i] < 0 ) {
+                    weights.throw_error( "wind_direction_weights must not be negative" );
+                }
+                total += read_weights[i];
+            }
+            if( total <= 0 ) {
+                weights.throw_error( "wind_direction_weights need at least one weight above 0" );
+            }
+            wind_direction_weights[season.second] = read_weights;
+        }
     }
 }

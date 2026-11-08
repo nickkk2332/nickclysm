@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <initializer_list>
 #include <locale>
 #include <optional>
 #include <set>
@@ -234,6 +235,61 @@ void input_manager::init()
 
 static constexpr int current_keybinding_version = 2;
 
+std::vector<input_event> input_manager::read_binding( const JsonObject &keybinding ) const
+{
+    std::string input_method = keybinding.get_string( "input_method" );
+    std::vector<input_event> new_events( 1 );
+    if( input_method == "keyboard_any" ) {
+        new_events.resize( 2 );
+        new_events[0].type = input_event_t::keyboard_char;
+        new_events[1].type = input_event_t::keyboard_code;
+    } else if( input_method == "keyboard_char" || input_method == "keyboard" ) {
+        new_events[0].type = input_event_t::keyboard_char;
+    } else if( input_method == "keyboard_code" ) {
+        new_events[0].type = input_event_t::keyboard_code;
+    } else if( input_method == "gamepad" ) {
+        new_events[0].type = input_event_t::gamepad;
+    } else if( input_method == "mouse" ) {
+        new_events[0].type = input_event_t::mouse;
+    } else {
+        keybinding.throw_error_at( "input_method", "unknown input_method" );
+    }
+
+    if( keybinding.has_member( "mod" ) ) {
+        for( const JsonValue val : keybinding.get_array( "mod" ) ) {
+            const std::string str = val;
+            keymod_t mod = keymod_t::ctrl;
+            if( str == "ctrl" ) {
+                mod = keymod_t::ctrl;
+            } else if( str == "alt" ) {
+                mod = keymod_t::alt;
+            } else if( str == "shift" ) {
+                mod = keymod_t::shift;
+            } else {
+                val.throw_error( "unknown modifier name" );
+            }
+            for( input_event &new_event : new_events ) {
+                new_event.modifiers.emplace( mod );
+            }
+        }
+    }
+
+    if( keybinding.has_array( "key" ) ) {
+        for( const std::string line : keybinding.get_array( "key" ) ) {
+            for( input_event &new_event : new_events ) {
+                new_event.sequence.push_back( get_keycode( new_event.type, line ) );
+            }
+        }
+    } else { // assume string if not array, and throw if not string
+        for( input_event &new_event : new_events ) {
+            new_event.sequence.push_back(
+                get_keycode( new_event.type, keybinding.get_string( "key" ) )
+            );
+        }
+    }
+    return new_events;
+}
+
 void input_manager::load( const cata_path &file_name, bool is_user_preferences )
 {
     std::optional<JsonValue> jsin_opt = json_loader::from_path_opt( file_name );
@@ -276,56 +332,7 @@ void input_manager::load( const cata_path &file_name, bool is_user_preferences )
 
         t_input_event_list events;
         for( const JsonObject keybinding : action.get_array( "bindings" ) ) {
-            std::string input_method = keybinding.get_string( "input_method" );
-            std::vector<input_event> new_events( 1 );
-            if( input_method == "keyboard_any" ) {
-                new_events.resize( 2 );
-                new_events[0].type = input_event_t::keyboard_char;
-                new_events[1].type = input_event_t::keyboard_code;
-            } else if( input_method == "keyboard_char" || input_method == "keyboard" ) {
-                new_events[0].type = input_event_t::keyboard_char;
-            } else if( input_method == "keyboard_code" ) {
-                new_events[0].type = input_event_t::keyboard_code;
-            } else if( input_method == "gamepad" ) {
-                new_events[0].type = input_event_t::gamepad;
-            } else if( input_method == "mouse" ) {
-                new_events[0].type = input_event_t::mouse;
-            } else {
-                keybinding.throw_error_at( "input_method", "unknown input_method" );
-            }
-
-            if( keybinding.has_member( "mod" ) ) {
-                for( const JsonValue val : keybinding.get_array( "mod" ) ) {
-                    const std::string str = val;
-                    keymod_t mod = keymod_t::ctrl;
-                    if( str == "ctrl" ) {
-                        mod = keymod_t::ctrl;
-                    } else if( str == "alt" ) {
-                        mod = keymod_t::alt;
-                    } else if( str == "shift" ) {
-                        mod = keymod_t::shift;
-                    } else {
-                        val.throw_error( "unknown modifier name" );
-                    }
-                    for( input_event &new_event : new_events ) {
-                        new_event.modifiers.emplace( mod );
-                    }
-                }
-            }
-
-            if( keybinding.has_array( "key" ) ) {
-                for( const std::string line : keybinding.get_array( "key" ) ) {
-                    for( input_event &new_event : new_events ) {
-                        new_event.sequence.push_back( get_keycode( new_event.type, line ) );
-                    }
-                }
-            } else { // assume string if not array, and throw if not string
-                for( input_event &new_event : new_events ) {
-                    new_event.sequence.push_back(
-                        get_keycode( new_event.type, keybinding.get_string( "key" ) )
-                    );
-                }
-            }
+            const std::vector<input_event> new_events = read_binding( keybinding );
 
             for( const input_event &evt : new_events ) {
                 if( std::find( events.begin(), events.end(), evt ) == events.end() ) {
@@ -380,12 +387,31 @@ void input_manager::save()
 {
     write_to_file( PATH_INFO::user_keybindings(), [&]( std::ostream & data_file ) {
         JsonOut jsout( data_file, true );
+        serialize_changed_bindings( jsout, action_contexts, basic_action_contexts );
+    }, _( "key bindings configuration" ) );
+}
 
+void input_manager::serialize_changed_bindings( JsonOut &jsout, const t_action_contexts &current,
+        const t_action_contexts &defaults ) const
+{
+    {
         jsout.start_array();
-        for( const auto &a : action_contexts ) {
+        for( const auto &a : current ) {
             const t_actions &actions = a.second;
+            const auto default_actions = defaults.find( a.first );
             for( const auto &action : actions ) {
                 const t_input_event_list &events = action.second.input_events;
+                // Untouched defaults stay out of the user's file: written there, they would
+                // replace the defaults for good, hiding keys added to the defaults later.
+                // An action the user unbound differs (no events), so it is written.
+                if( default_actions != defaults.end() ) {
+                    const auto default_action = default_actions->second.find( action.first );
+                    if( default_action != default_actions->second.end() &&
+                        default_action->second.input_events == events &&
+                        default_action->second.is_user_created == action.second.is_user_created ) {
+                        continue;
+                    }
+                }
                 jsout.start_object();
 
                 jsout.member( "id", action.first );
@@ -456,7 +482,7 @@ void input_manager::save()
             }
         }
         jsout.end_array();
-    }, _( "key bindings configuration" ) );
+    }
 }
 
 void input_manager::add_keyboard_char_keycode_pair( int ch, const std::string &name )
@@ -972,6 +998,83 @@ bool input_manager::remove_input_for_action(
         return true;
     }
     action->second.input_events.clear();
+    return false;
+}
+
+void input_manager::add_mod_action( const std::string &action_id, const std::string &context,
+                                    const translation &name, const std::vector<input_event> &keys )
+{
+    // A key another action of the context, or a global one, already uses would never reach this one
+    const auto key_used = [&]( const input_event & key ) {
+        for( const std::string &ctx_id : {
+                 context, default_context_id
+             } ) {
+            const auto ctx = action_contexts.find( ctx_id );
+            if( ctx == action_contexts.end() ) {
+                continue;
+            }
+            for( const std::pair<const std::string, action_attributes> &action : ctx->second ) {
+                if( action.first != action_id &&
+                    std::find( action.second.input_events.begin(), action.second.input_events.end(),
+                               key ) != action.second.input_events.end() ) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    action_attributes &defaults = basic_action_contexts[context][action_id];
+    defaults.name = name;
+    defaults.input_events.clear();
+    for( const input_event &key : keys ) {
+        if( !key_used( key ) && std::find( defaults.input_events.begin(), defaults.input_events.end(),
+                                           key ) == defaults.input_events.end() ) {
+            defaults.input_events.push_back( key );
+        }
+    }
+    t_actions &actions = action_contexts[context];
+    const auto live = actions.find( action_id );
+    if( live == actions.end() ) {
+        actions.emplace( action_id, defaults );
+    } else if( live->second.name.empty() ) {
+        // Bound in the player's keybindings file: their keys stay
+        live->second.name = name;
+    }
+}
+
+void input_manager::remove_mod_action( const std::string &action_id, const std::string &context )
+{
+    const auto basic_ctx = basic_action_contexts.find( context );
+    if( basic_ctx == basic_action_contexts.end() ) {
+        return;
+    }
+    const auto defaults = basic_ctx->second.find( action_id );
+    if( defaults == basic_ctx->second.end() ) {
+        return;
+    }
+    const auto ctx = action_contexts.find( context );
+    if( ctx != action_contexts.end() ) {
+        const auto live = ctx->second.find( action_id );
+        // Keys the player changed stay, so the keybindings file keeps them
+        if( live != ctx->second.end() &&
+            live->second.input_events == defaults->second.input_events ) {
+            ctx->second.erase( live );
+        }
+    }
+    basic_ctx->second.erase( defaults );
+}
+
+bool input_manager::has_basic_action( const std::string &action_id,
+                                      const std::string &context ) const
+{
+    for( const std::string &ctx_id : {
+             context, default_context_id
+         } ) {
+        const auto ctx = basic_action_contexts.find( ctx_id );
+        if( ctx != basic_action_contexts.end() && ctx->second.count( action_id ) > 0 ) {
+            return true;
+        }
+    }
     return false;
 }
 

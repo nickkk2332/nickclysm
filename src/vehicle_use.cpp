@@ -7,8 +7,10 @@
 #include <initializer_list>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "action.h"
@@ -16,6 +18,7 @@
 #include "activity_handlers.h"
 #include "avatar.h"
 #include "character.h"
+#include "character_id.h"
 #include "clzones.h"
 #include "color.h"
 #include "craft_reservation.h"
@@ -25,6 +28,7 @@
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "event.h"
 #include "flag.h"
 #include "flat_set.h"
 #include "game.h"
@@ -33,6 +37,7 @@
 #include "handle_liquid.h"
 #include "iexamine.h"
 #include "item.h"
+#include "item_location.h"
 #include "item_pocket.h"
 #include "itype.h"
 #include "iuse.h"
@@ -86,12 +91,10 @@ static const fault_id fault_engine_starter( "fault_engine_starter" );
 static const flag_id json_flag_DETERGENT( "DETERGENT" );
 static const flag_id json_flag_FILTHY( "FILTHY" );
 static const flag_id json_flag_IRREMOVABLE( "IRREMOVABLE" );
+static const flag_id json_flag_NO_MACHINE_HARVEST( "NO_MACHINE_HARVEST" );
 static const flag_id json_flag_NO_PACKED( "NO_PACKED" );
 static const flag_id json_flag_PSEUDO( "PSEUDO" );
 
-static const furn_str_id furn_f_plant_harvest( "f_plant_harvest" );
-static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
-static const furn_str_id furn_f_plant_unharvested_overgrown( "f_plant_unharvested_overgrown" );
 
 static const gun_mode_id gun_mode_DEFAULT( "DEFAULT" );
 
@@ -101,29 +104,19 @@ static const itype_id fuel_type_none( "null" );
 static const itype_id fuel_type_wind( "wind" );
 static const itype_id itype_battery( "battery" );
 static const itype_id itype_detergent( "detergent" );
-static const itype_id itype_fungal_seeds( "fungal_seeds" );
-static const itype_id itype_large_repairkit( "large_repairkit" );
-static const itype_id itype_marloss_seed( "marloss_seed" );
 static const itype_id itype_mws_weather_data_incomplete( "mws_weather_data_incomplete" );
 static const itype_id itype_power_cord( "power_cord" );
 static const itype_id itype_pseudo_magazine( "pseudo_magazine" );
 static const itype_id itype_pseudo_magazine_mod( "pseudo_magazine_mod" );
-static const itype_id itype_small_repairkit( "small_repairkit" );
-static const itype_id itype_soldering_iron( "soldering_iron" );
 static const itype_id itype_water( "water" );
 static const itype_id itype_water_clean( "water_clean" );
 static const itype_id itype_water_faucet( "water_faucet" );
 static const itype_id itype_water_purifier( "water_purifier" );
-static const itype_id itype_welder( "welder" );
-static const itype_id itype_welder_crude( "welder_crude" );
-static const itype_id itype_welding_kit( "welding_kit" );
 
 static const quality_id qual_SCREW( "SCREW" );
 
 static const skill_id skill_mechanics( "mechanics" );
 
-static const ter_str_id ter_t_dirt( "t_dirt" );
-static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 
 static const vpart_id vpart_horn_bicycle( "horn_bicycle" );
 
@@ -297,13 +290,15 @@ static void add_electronic_toggle( map &here, vehicle &veh, veh_menu &menu, cons
     }
     item.enable( allow )
     .keep_menu_open()
-    .on_submit( [found, state] {
+    .on_submit( [found, state, &veh] {
+        std::vector<vpart_id> toggled;
         for( const vpart_reference &vp : found )
         {
             vehicle_part &e = vp.part();
             if( e.enabled != state ) {
                 add_msg( state ? _( "Turned on %s." ) : _( "Turned off %s." ), e.name() );
                 e.enabled = state;
+                toggled.push_back( e.info().id );
             }
         }
         map &here = get_map();
@@ -311,6 +306,13 @@ static void add_electronic_toggle( map &here, vehicle &veh, veh_menu &menu, cons
         {
             here.set_lightmap_cache_dirty( vp.pos_bub( here ).z() );
             break;
+        }
+        // VINT-J06: once every part is switched, so an EOC sees them all switched
+        const character_id who = get_player_character().getID();
+        for( const vpart_id &id : toggled )
+        {
+            veh_utils::send_vehicle_event( veh, cata::event::make<event_type::vehicle_part_toggled>( who,
+                                           id.str(), veh.name, state ) );
         }
     } );
 }
@@ -519,13 +521,7 @@ void vehicle::toggle_autopilot( map &here )
     .hotkey( "CONTROL_AUTOPILOT_FOLLOW" )
     .desc( _( "Program the autopilot to follow you.  It might be a good idea to have a remote control available to tell it to stop, too." ) )
     .on_submit( [this, &here] {
-        autopilot_on = true;
-        is_following = true;
-        is_patrolling = false;
-        if( !engine_on )
-        {
-            start_engines( here );
-        }
+        enable_follow( here );
     } );
 
     menu.add( _( "Stop…" ) )
@@ -771,6 +767,7 @@ bool vehicle::start_engine( map &here, vehicle_part &vp )
 
 void vehicle::stop_engines( map &here )
 {
+    const bool was_on = engine_on;
     vehicle_noise = 0;
     engine_on = false;
     for( const int p : engines ) {
@@ -800,6 +797,11 @@ void vehicle::stop_engines( map &here )
     }
     sfx::do_vehicle_engine_sfx();
     refresh( );
+    // VINT-J06: switched off, by anyone or the smart controller (a stall is
+    // vehicle_engine_stalls); the vehicle is alpha, as for a stall
+    if( was_on ) {
+        send_event( cata::event::make<event_type::vehicle_engine_stopped>() );
+    }
 }
 
 void vehicle::start_engines( map &here, Character *driver, const bool take_control,
@@ -858,7 +860,21 @@ void vehicle::enable_patrol( map &here )
     autopilot_on = true;
     autodrive_local_target = tripoint_abs_ms::zero;
     if( !engine_on ) {
-        start_engines( here );
+        // Without a driver start_engines() queues no start activity, so the engines never
+        // started and the autopilot did nothing. The menu is offered at the controls (or by
+        // remote control), so the player starts them, with the usual checks and messages.
+        start_engines( here, &get_player_character() );
+    }
+}
+
+void vehicle::enable_follow( map &here )
+{
+    autopilot_on = true;
+    is_following = true;
+    is_patrolling = false;
+    if( !engine_on ) {
+        // as enable_patrol()
+        start_engines( here, &get_player_character() );
     }
 }
 
@@ -1004,6 +1020,7 @@ void vehicle::crash_terrain_around( map &here )
         if( crush_target.z() != -OVERMAP_LAYERS ) {
             velocity = 0;
             cruise_velocity = 0;
+            const bash_cause_scope crushing( "vehicle" );
             here.destroy( crush_target );
             if( &here == &reality_bubble() ) { // TODO: Make sound handling map aware
                 sounds::sound( crush_target, 500, sounds::sound_t::combat, _( "Clanggggg!" ), false,
@@ -1050,14 +1067,14 @@ void vehicle::transform_terrain( map &here )
 void vehicle::operate_reaper( map &here )
 {
     for( const vpart_reference &vp : get_enabled_parts( "REAPER" ) ) {
+        const vpart_info &vpi = vp.info();
         const tripoint_bub_ms reaper_pos = vp.pos_bub( here );
-        int plant_produced = rng( 1, vp.info().bonus );
-        int seed_produced = rng( 1, 3 );
-        const units::volume max_pickup_volume = vp.info().size / 20;
-        if( here.furn( reaper_pos ) == furn_f_plant_unharvested_overgrown ) {
-            plant_produced = 0;
-            seed_produced = 0;
-        } else if( here.furn( reaper_pos ) != furn_f_plant_harvest ) {
+        const units::volume max_pickup_volume = vpi.size / 20;
+        // VINT-J05: any crop ready to harvest, by its flag as harvesting by hand, in a field or
+        // a planter; an overgrown one is cleared away
+        const bool overgrown = here.has_flag_furn( ter_furn_flag::TFLAG_GROWTH_OVERGROWN,
+                               reaper_pos );
+        if( !overgrown && !here.has_flag_furn( ter_furn_flag::TFLAG_GROWTH_HARVEST, reaper_pos ) ) {
             continue;
         }
         // Can't use item_stack::only_item() since there might be fertilizer
@@ -1065,12 +1082,18 @@ void vehicle::operate_reaper( map &here )
         map_stack::iterator seed = std::find_if( items.begin(), items.end(), []( const item & it ) {
             return it.is_seed();
         } );
-        if( seed == items.end() || seed->typeId() == itype_fungal_seeds ||
-            seed->typeId() == itype_marloss_seed ) {
-            // Otherworldly plants, the earth-made reaper can not handle those.
+        if( seed == items.end() || seed->has_flag( json_flag_NO_MACHINE_HARVEST ) ) {
+            // Otherworldly plants (fungal, Marloss), the earth-made reaper can not handle those.
             continue;
         }
-        here.furn_set( reaper_pos, furn_str_id::NULL_ID() );
+        const std::pair<int, int> plant_yield = vpi.reaper_plant_yield.value_or(
+                std::make_pair( 1, vpi.bonus ) );
+        const int plant_produced = overgrown ? 0 : rng( plant_yield.first, plant_yield.second );
+        const int seed_produced = overgrown ? 0 : rng( vpi.reaper_seed_yield.first,
+                                  vpi.reaper_seed_yield.second );
+        // what the plant grew in: nothing in a field, the planter in a planter
+        const plant_data *grown_in = here.furn( reaper_pos )->plant.get();
+        here.furn_set( reaper_pos, grown_in != nullptr ? grown_in->base : furn_str_id::NULL_ID() );
         // Secure the seed type before i_clear destroys the item.
         const itype &seed_type = *seed->type;
         here.i_clear( reaper_pos );
@@ -1095,42 +1118,66 @@ void vehicle::operate_reaper( map &here )
     }
 }
 
+// VINT-J05: whether a planter can sow @p seed at @p p: on the terrain (with no furniture) or
+// in the furniture (with plant_data, such as a planter box) the seed asks for, as by hand
+static bool planter_can_sow( const map &here, const tripoint_bub_ms &p, const itype &seed )
+{
+    const ter_furn_flag needed = seed.seed->required_terrain_flag;
+    if( here.has_furn( p ) ) {
+        return here.has_flag_furn( needed, p ) && here.furn( p )->plant != nullptr;
+    }
+    return here.has_flag_ter( needed, p );
+}
+
 void vehicle::operate_planter( map &here )
 {
     for( const vpart_reference &vp : get_enabled_parts( "PLANTER" ) ) {
         const size_t planter_id = vp.part_index();
         const tripoint_bub_ms loc = vp.pos_bub( here );
         vehicle_stack v = get_items( vp.part() );
-        for( auto i = v.begin(); i != v.end(); i++ ) {
-            if( i->is_seed() ) {
-                const ter_id &t = here.ter( loc );
-                // If it is an "advanced model" then it will avoid damaging itself or becoming damaged. It's a real feature.
-                if( t != ter_t_dirtmound && vp.has_feature( "ADVANCED_PLANTER" ) ) {
-                    //then don't put the item there.
-                    break;
-                } else if( t == ter_t_dirtmound ) {
-                    here.set( loc, ter_t_dirt, furn_f_plant_seed );
-                } else if( !here.has_flag( ter_furn_flag::TFLAG_PLOWABLE, loc ) ) {
-                    //If it isn't plowable terrain, then it will most likely be damaged.
-                    damage( here, planter_id, rng( 1, 10 ), damage_bash, false );
-                    if( &here == &reality_bubble() ) { // TODO: Make sound handling map aware
-                        sounds::sound( loc, rng( 10, 20 ), sounds::sound_t::combat, _( "Clink" ), false, "smash_success",
-                                       "hit_vehicle" );
-                    }
-                }
-                if( !i->count_by_charges() || i->charges == 1 ) {
-                    i->set_age( 0_turns );
-                    here.add_item( loc, *i );
-                    v.erase( i );
-                } else {
-                    item tmp = *i;
-                    tmp.charges = 1;
-                    tmp.set_age( 0_turns );
-                    here.add_item( loc, tmp );
-                    i->charges--;
-                }
+        // VINT-J05: the first seed it carries that can be sown here (its required_terrain_flag,
+        // as by hand: upturned dirt, a tilled greenhouse, a planter box...), not only on
+        // upturned dirt; a seed is only let go where it is sown
+        bool has_seed = false;
+        vehicle_stack::iterator i = v.end();
+        for( vehicle_stack::iterator it = v.begin(); it != v.end(); ++it ) {
+            if( !it->is_seed() ) {
+                continue;
+            }
+            has_seed = true;
+            if( planter_can_sow( here, loc, *it->type ) ) {
+                i = it;
                 break;
             }
+        }
+        if( !has_seed ) {
+            continue;
+        }
+        if( i == v.end() ) {
+            // If it is an "advanced model" then it will avoid damaging itself or becoming damaged. It's a real feature.
+            // A simple one digs in, and ground that is neither plowable nor plantable damages it.
+            if( !vp.has_feature( "ADVANCED_PLANTER" ) &&
+                !here.has_flag( ter_furn_flag::TFLAG_PLOWABLE, loc ) &&
+                !here.has_flag( ter_furn_flag::TFLAG_PLANTABLE, loc ) ) {
+                damage( here, planter_id, rng( 1, 10 ), damage_bash, false );
+                if( &here == &reality_bubble() ) { // TODO: Make sound handling map aware
+                    sounds::sound( loc, rng( 10, 20 ), sounds::sound_t::combat, _( "Clink" ), false, "smash_success",
+                                   "hit_vehicle" );
+                }
+            }
+            continue;
+        }
+        iexamine::set_seeded_terrain( here, loc, i->typeId() );
+        if( !i->count_by_charges() || i->charges == 1 ) {
+            i->set_age( 0_turns );
+            here.add_item( loc, *i );
+            v.erase( i );
+        } else {
+            item tmp = *i;
+            tmp.charges = 1;
+            tmp.set_age( 0_turns );
+            here.add_item( loc, tmp );
+            i->charges--;
         }
     }
 }
@@ -1610,6 +1657,150 @@ void vehicle::use_mws( map &here, int p )
     }
 }
 
+// MAP-J03: processing cycles
+namespace
+{
+// the part's base item variable holding the turn its processing cycle started
+const std::string processing_cycle_start_var = "processing_cycle_start";
+
+std::optional<time_point> processing_cycle_start( const vehicle_part &vp )
+{
+    const double started = vp.get_base().get_var( processing_cycle_start_var, -1.0 );
+    if( started < 0.0 ) {
+        return std::nullopt;
+    }
+    return calendar::turn_zero + time_duration::from_turns( started );
+}
+
+void set_processing_cycle_start( vehicle_part &vp, const std::optional<time_point> &started )
+{
+    item base = vp.get_base();
+    if( started ) {
+        base.set_var( processing_cycle_start_var, to_turns<double>( *started - calendar::turn_zero ) );
+    } else {
+        base.remove_var( processing_cycle_start_var );
+    }
+    vp.set_base( std::move( base ) );
+}
+
+// Whether the EOC's condition held
+bool run_processing_cycle_eoc( vehicle &veh, int part, const effect_on_condition_id &eoc )
+{
+    const vehicle_part &vp = veh.part( part );
+    dialogue d( get_talker_for( get_player_character() ), get_talker_for( veh ) );
+    d.set_value( "vpart_id", vp.info().id.str() );
+    d.set_value( "vpart_variant", vp.variant );
+    d.set_value( "vpart_pos", veh.abs_part_pos( part ) );
+    return eoc->activate( d );
+}
+} // namespace
+
+bool processing_cycles::items_meet_condition( vehicle &veh, int part )
+{
+    vehicle_part &vp = veh.part( part );
+    const vpslot_processing_cycle *cycle = vp.info().processing_cycle ?
+                                           &*vp.info().processing_cycle : nullptr;
+    if( cycle == nullptr || !cycle->item_condition ) {
+        return true;
+    }
+    const vehicle &const_veh = veh;
+    for( item &it : veh.get_items( vp ) ) {
+        const item_location loc( vehicle_cursor( veh, part ), &it );
+        const const_dialogue d( get_const_talker_for( loc ), get_talker_for( const_veh ) );
+        if( !cycle->item_condition( d ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool processing_cycles::running( const vehicle_part &vp )
+{
+    return vp.enabled && vp.info().processing_cycle && processing_cycle_start( vp ).has_value();
+}
+
+void processing_cycles::toggle( vehicle &veh, int part )
+{
+    vehicle_part &vp = veh.part( part );
+    if( !vp.info().processing_cycle ) {
+        return;
+    }
+    const vpslot_processing_cycle &cycle = *vp.info().processing_cycle;
+    if( running( vp ) ) {
+        vp.enabled = false;
+        set_processing_cycle_start( vp, std::nullopt );
+        add_msg( m_bad, _( "You stop the %s before it has finished." ), vp.name( false ) );
+        return;
+    }
+    if( veh.get_items( vp ).empty() ) {
+        add_msg( m_bad, _( "The %s is empty; there's no point in starting it." ), vp.name( false ) );
+        return;
+    }
+    // VINT-J08: what the vanilla washer, dishwasher and autoclave check in C++ (all filthy,
+    // no CBMs...), for any cycle: every item must meet the condition
+    if( cycle.item_condition && !processing_cycles::items_meet_condition( veh, part ) ) {
+        if( cycle.item_condition_message.empty() ) {
+            add_msg( m_bad, _( "The %s can't process what it holds." ), vp.name( false ) );
+        } else {
+            add_msg( m_bad, cycle.item_condition_message.translated() );
+        }
+        return;
+    }
+    if( cycle.eoc_on_start && !run_processing_cycle_eoc( veh, part, *cycle.eoc_on_start ) ) {
+        // its false_effect can say why
+        return;
+    }
+    // the EOC may have changed the vehicle
+    if( part < 0 || part >= veh.part_count() ) {
+        return;
+    }
+    vehicle_part &started = veh.part( part );
+    started.enabled = true;
+    set_processing_cycle_start( started, calendar::turn );
+    if( cycle.start_message.empty() ) {
+        add_msg( m_good, _( "You start the %s." ), started.name( false ) );
+    } else {
+        add_msg( m_good, cycle.start_message.translated() );
+    }
+}
+
+void processing_cycles::process( vehicle &veh, int part )
+{
+    vehicle_part &vp = veh.part( part );
+    if( !running( vp ) ) {
+        return;
+    }
+    const vpslot_processing_cycle &cycle = *vp.info().processing_cycle;
+    if( calendar::turn - *processing_cycle_start( vp ) < cycle.duration ) {
+        if( !cycle.progress_message.empty() && calendar::once_every( 15_minutes ) ) {
+            add_msg( cycle.progress_message.translated() );
+        }
+        return;
+    }
+    vp.enabled = false;
+    set_processing_cycle_start( vp, std::nullopt );
+    for( item &it : veh.get_items( vp ) ) {
+        for( const flag_id &flag : cycle.unset_item_flags ) {
+            it.unset_flag( flag );
+        }
+        for( const flag_id &flag : cycle.set_item_flags ) {
+            it.set_flag( flag );
+        }
+        for( const std::pair<itype_id, itype_id> &transform : cycle.transform_items ) {
+            if( it.typeId() == transform.first ) {
+                it.convert( transform.second );
+                break;
+            }
+        }
+    }
+    if( !cycle.finish_message.empty() ) {
+        add_msg( cycle.finish_message.translated() );
+    }
+    if( cycle.eoc_on_finish ) {
+        run_processing_cycle_eoc( veh, part, *cycle.eoc_on_finish );
+    }
+}
+
 void vehicle::use_nl_boiler( map &here, int p )
 {
     if( g->get_dimension_prefix() == dimension_world_netherum_labyrinth_safehouse ) {
@@ -1617,9 +1808,11 @@ void vehicle::use_nl_boiler( map &here, int p )
         vehicle_stack items = get_items( vp );
 
         units::mass total_weight = 0_gram;
-        for( item &it : items ) {
-            total_weight += it.weight();
-            remove_item( vp, &it );
+        // erase through the iterator: erasing the item a range-for stands on left it reading
+        // a freed colony group (VINT-B04)
+        for( vehicle_stack::iterator it = items.begin(); it != items.end(); ) {
+            total_weight += it->weight();
+            it = items.erase( it );
         }
 
         charge_battery( here, total_weight / 10_gram, false );
@@ -2273,18 +2466,18 @@ bool vehicle::use_vehicle_tool( vehicle &veh, map *here, const tripoint_bub_ms &
     }
 
     // HACK: Evil hack incoming
+    // A repair the tool started finds the tool on the vehicle (activity_handlers' weldrig_hack):
+    // any repair_item tool a vehicle provides, not only six listed ids, whose repairs started
+    // on this temporary item and failed or read it after it was gone (VINT-J09)
     player_activity &act = get_player_character().activity;
-    if( act.id() == ACT_REPAIR_ITEM &&
-        ( tool_type == itype_welder ||
-          tool_type == itype_welder_crude ||
-          tool_type == itype_welding_kit ||
-          tool_type == itype_soldering_iron ||
-          tool_type == itype_small_repairkit ||
-          tool_type == itype_large_repairkit
-        ) ) {
+    if( act.id() == ACT_REPAIR_ITEM && act.coords.empty() ) {
         act.index = INT_MIN; // tell activity the item doesn't really exist
         act.coords.push_back( here->get_abs( vp_pos ) ); // tell it to search for the tool on `pos`
         act.str_values.push_back( tool_type.str() ); // specific tool on the rig
+        if( !act.targets.empty() ) {
+            // it pointed at `tool`, gone once this returns
+            act.targets[0] = item_location();
+        }
     }
 
     //Hack for heat_activity_actor.
@@ -2370,6 +2563,16 @@ void vehicle::build_interact_menu( veh_menu &menu, map *here, const tripoint_bub
         .skip_theft_check()
         .skip_locked_check()
         .on_submit( [this] { display_effects(); } );
+    }
+
+    // VINT-J01: a vehicle with chat topics (from its prototype or an EOC) can be talked to
+    if( !chat_topics.empty() ) {
+        //~ %s is the vehicle's name
+        menu.add( string_format( _( "Talk to the %s" ), name ) )
+        .skip_theft_check()
+        .skip_locked_check()
+        .hotkey_auto()
+        .on_submit( [this] { get_avatar().talk_to( get_talker_for( this ) ); } );
     }
 
     bool has_immobilizer = false;
@@ -2750,6 +2953,20 @@ void vehicle::build_interact_menu( veh_menu &menu, map *here, const tripoint_bub
         .hotkey( "TOGGLE_MWS" )
         .on_submit( [this, dw_idx, here] { use_mws( *here, dw_idx ); } );
     }
+    // MAP-J03: parts with a JSON processing_cycle
+    for( vehicle_part *cycle_part : vp_parts ) {
+        if( !cycle_part->info().processing_cycle ) {
+            continue;
+        }
+        const int cycle_idx = index_of_part( cycle_part );
+        const time_duration cycle_time = cycle_part->info().processing_cycle->duration;
+        menu.add( processing_cycles::running( *cycle_part )
+                  ? string_format( _( "Stop the %s" ), cycle_part->name( false ) )
+                  : string_format( _( "Start the %1$s (%2$s)" ), cycle_part->name( false ),
+                                   to_string( cycle_time ) ) )
+        .on_submit( [this, cycle_idx] { processing_cycles::toggle( *this, cycle_idx ); } );
+    }
+
     const std::optional<vpart_reference> vp_nl_boiler = vp.avail_part_with_feature( "NL_BOILER" );
     if( vp_nl_boiler ) {
         const size_t dw_idx = vp_nl_boiler->part_index();

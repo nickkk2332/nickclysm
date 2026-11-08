@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "bodypart.h"
 #include "calendar.h"
@@ -68,7 +69,6 @@ static const efftype_id effect_tetanus( "tetanus" );
 static const flag_id json_flag_PROXIMITY( "PROXIMITY" );
 static const flag_id json_flag_UNCONSUMED( "UNCONSUMED" );
 
-static const itype_id itype_beartrap( "beartrap" );
 static const itype_id itype_bolt_steel( "bolt_steel" );
 static const itype_id itype_bullwhip( "bullwhip" );
 static const itype_id itype_crossbow( "crossbow" );
@@ -145,13 +145,23 @@ static bool cleanup_after_pit( map &here, const tripoint_bub_ms &p, Creature *c 
     return false;
 }
 
+// The character riding z, if any: NPCs ride too, so it isn't always the avatar (TERR-B09)
+static Character *rider_of( const monster &z )
+{
+    return z.has_effect( effect_ridden ) ? z.mounted_player : nullptr;
+}
+
 static void pit_try_dismount( monster *z )
 {
-    // Note that it's possible for NPCs to ride horses or other mounts.
-    // FIXME: Only checks for/ejects player, need some way to match the rider and the mount
-    if( z->has_effect( effect_ridden ) && z->pos_abs() == get_player_character().pos_abs() ) {
-        add_msg( m_bad, _( "Your %s falls into a pit!" ), z->get_name() );
-        get_player_character().forced_dismount();
+    if( Character *rider = rider_of( *z ) ) {
+        if( rider->is_avatar() ) {
+            add_msg( m_bad, _( "Your %s falls into a pit!" ), z->get_name() );
+        } else {
+            //~ An NPC's mount falls into a pit, e.g. "Jane's horse falls into a pit!"
+            add_msg_if_player_sees( z->pos_bub(), m_bad, _( "%1$s's %2$s falls into a pit!" ),
+                                    rider->disp_name( true ), z->get_name() );
+        }
+        rider->forced_dismount();
     }
 }
 
@@ -297,6 +307,23 @@ bool trapfunc::cot( const tripoint_bub_ms &, Creature *c, item * )
     return false;
 }
 
+// The damage a built-in action deals: the trap's "trigger_damage", or the action's own.
+static damage_instance trap_trigger_damage( const trap &tr,
+        const std::vector<trap_damage_roll> &action_damage )
+{
+    const std::vector<trap_damage_roll> &rolls = tr.tuning.damage.empty() ? action_damage :
+            tr.tuning.damage;
+    damage_instance d;
+    for( const trap_damage_roll &roll : rolls ) {
+        // no random draw for a fixed amount
+        d.add_damage( roll.type, roll.min == roll.max ? roll.min : rng( roll.min, roll.max ) );
+    }
+    return d;
+}
+
+static void try_apply_tetanus( const trap &tr, Character *you, int total_cut_dmg,
+                               int action_chance, int action_chance_resistant );
+
 bool trapfunc::beartrap( const tripoint_bub_ms &p, Creature *c, item * )
 {
     // tiny animals don't trigger bear traps
@@ -305,6 +332,8 @@ bool trapfunc::beartrap( const tripoint_bub_ms &p, Creature *c, item * )
     }
     sounds::sound( p, 8, sounds::sound_t::combat, _( "SNAP!" ), false, "trap", "bear_trap" );
     map &here = get_map();
+    // the trap type, which outlives its removal from the map
+    const trap &tr = here.tr_at( p );
     here.remove_trap( p );
     if( c != nullptr ) {
         // What got hit?
@@ -320,22 +349,18 @@ bool trapfunc::beartrap( const tripoint_bub_ms &p, Creature *c, item * )
         }
         // Actual effects
         c->add_effect( effect_beartrap, 1_turns, hit, true );
-        damage_instance d;
-        d.add_damage( damage_bash, 12 );
-        d.add_damage( damage_cut, 18 );
-        dealt_damage_instance dealt_dmg = c->deal_damage( nullptr, hit, d );
+        static const std::vector<trap_damage_roll> beartrap_damage = {
+            { damage_bash, 12, 12 }, { damage_cut, 18, 18 }
+        };
+        dealt_damage_instance dealt_dmg = c->deal_damage( nullptr, hit,
+                                          trap_trigger_damage( tr, beartrap_damage ) );
 
-        Character *you = dynamic_cast<Character *>( c );
-        if( you != nullptr && !you->has_flag( json_flag_INFECTION_IMMUNE ) &&
-            dealt_dmg.type_damage( damage_cut ) > 0 ) {
-            const int chance_in = you->has_trait( trait_INFRESIST ) ? 512 : 128;
-            if( one_in( chance_in ) ) {
-                you->add_effect( effect_tetanus, 1_turns, true );
-            }
-        }
+        try_apply_tetanus( tr, dynamic_cast<Character *>( c ), dealt_dmg.type_damage( damage_cut ),
+                           128, 512 );
         c->check_dead_state( &here );
     } else {
-        here.spawn_item( p, itype_beartrap );
+        // set off by an item: what disarming it would give back ("drops")
+        tr.spawn_drops( here, p );
     }
 
     return true;
@@ -369,14 +394,28 @@ static void mount_step_on_trap_make_slow_give_msg( monster *z, const tripoint_bu
     rider->mod_moves( -z->get_speed() * 0.8 );
 }
 
-static void try_apply_tetanus( Character *you, int total_cut_dmg )
+// One in the trap's "tetanus_chance" ("tetanus_chance_resistant" with infection resistance), or
+// else the action's own, cutting hits gives tetanus. 0 never does.
+static void try_apply_tetanus( const trap &tr, Character *you, int total_cut_dmg,
+                               int action_chance, int action_chance_resistant )
 {
     if( you != nullptr && !you->has_flag( json_flag_INFECTION_IMMUNE ) && total_cut_dmg > 0 ) {
-        const int chance_in = you->has_trait( trait_INFRESIST ) ? 256 : 35;
-        if( one_in( chance_in ) ) {
+        const int chance_in = you->has_trait( trait_INFRESIST ) ?
+                              tr.tuning.tetanus_chance_resistant.value_or( action_chance_resistant ) :
+                              tr.tuning.tetanus_chance.value_or( action_chance );
+        if( chance_in > 0 && one_in( chance_in ) ) {
             you->add_effect( effect_tetanus, 1_turns, true );
         }
     }
+}
+
+// Whether a creature of this weight breaks the trap: always from its "break_weight" (or the
+// action's own) up, with a linear chance below.
+static bool trap_breaks_under( const trap &tr, const Creature &c, double action_break_kg )
+{
+    const double break_kg = tr.tuning.break_weight ?
+                            units::to_kilogram( *tr.tuning.break_weight ) : action_break_kg;
+    return x_in_y( c.get_weight() / 1_kilogram, break_kg );
 }
 
 bool trapfunc::board( const tripoint_bub_ms &p, Creature *c, item * )
@@ -385,6 +424,7 @@ bool trapfunc::board( const tripoint_bub_ms &p, Creature *c, item * )
         return false;
     }
     map &here = get_map();
+    const trap &tr = here.tr_at( p );
     const std::string trap_name = here.tr_at( p ).name();
     // Only a chance to step on the board, dependent on size
     if( !x_in_y( occupied_tile_fraction( c->get_size() ), 1.0f ) ) {
@@ -398,13 +438,14 @@ bool trapfunc::board( const tripoint_bub_ms &p, Creature *c, item * )
     } else {
         c->mod_moves( -c->get_speed() * 0.8 );
     }
+    static const std::vector<trap_damage_roll> board_damage = { { damage_cut, 3, 5 } };
     dealt_damage_instance dd = c->deal_damage( nullptr,
                                random_entry( c->get_ground_contact_bodyparts() ),
-                               damage_instance( damage_cut, rng( 3, 5 ) ) );
-    try_apply_tetanus( c->as_character(), dd.type_damage( damage_cut ) );
+                               trap_trigger_damage( tr, board_damage ) );
+    try_apply_tetanus( tr, c->as_character(), dd.type_damage( damage_cut ), 35, 256 );
     c->check_dead_state( &here );
     // Weight of 100kg+ is guaranteed to break the trap, linear chance as weight increases
-    if( x_in_y( c->get_weight() / 1_kilogram, 100 ) ) {
+    if( trap_breaks_under( tr, *c, 100 ) ) {
         // destroy trap
         here.remove_trap( p );
         if( !c->is_avatar() ) {
@@ -413,7 +454,7 @@ bool trapfunc::board( const tripoint_bub_ms &p, Creature *c, item * )
         } else {
             add_msg( _( "You destroy the %s as you step on it!" ), trap_name );
         }
-    } else if( x_in_y( 40, 100 ) ) {
+    } else if( x_in_y( tr.tuning.self_disarm_chance.value_or( 40 ), 100 ) ) {
         // 40% chance disarm trap
         here.tr_at( p ).on_disarmed( here, p );
     }
@@ -426,6 +467,7 @@ bool trapfunc::caltrops( const tripoint_bub_ms &p, Creature *c, item * )
         return false;
     }
     map &here = get_map();
+    const trap &tr = here.tr_at( p );
     const std::string trap_name = here.tr_at( p ).name();
     // Only a chance to step on the caltrop, dependent on size
     if( !x_in_y( occupied_tile_fraction( c->get_size() ), 1.0f ) ) {
@@ -439,13 +481,14 @@ bool trapfunc::caltrops( const tripoint_bub_ms &p, Creature *c, item * )
     } else {
         c->mod_moves( -c->get_speed() * 0.8 );
     }
+    static const std::vector<trap_damage_roll> caltrops_damage = { { damage_cut, 9, 15 } };
     dealt_damage_instance dd = c->deal_damage( nullptr,
                                random_entry( c->get_ground_contact_bodyparts() ),
-                               damage_instance( damage_cut, rng( 9, 15 ) ) );
-    try_apply_tetanus( c->as_character(), dd.type_damage( damage_cut ) );
+                               trap_trigger_damage( tr, caltrops_damage ) );
+    try_apply_tetanus( tr, c->as_character(), dd.type_damage( damage_cut ), 35, 256 );
     // Weight of 200kg+ is guaranteed to break the trap, linear chance as weight increases
     // Arbitrary value, picked from hulk's weight value.
-    if( x_in_y( c->get_weight() / 1_kilogram, 200 ) ) {
+    if( trap_breaks_under( tr, *c, 200 ) ) {
         // destroy trap
         here.remove_trap( p );
         if( !c->is_avatar() ) {
@@ -454,7 +497,7 @@ bool trapfunc::caltrops( const tripoint_bub_ms &p, Creature *c, item * )
         } else {
             add_msg( _( "You destroy the %s as you step on it!" ), trap_name );
         }
-    } else if( x_in_y( 20, 100 ) ) {
+    } else if( x_in_y( tr.tuning.self_disarm_chance.value_or( 20 ), 100 ) ) {
         // 20% chance disarm trap
         here.tr_at( p ).on_disarmed( here, p );
     }
@@ -481,8 +524,9 @@ bool trapfunc::caltrops_glass( const tripoint_bub_ms &p, Creature *c, item * )
     } else {
         c->mod_moves( -c->get_speed() * 0.8 );
     }
+    static const std::vector<trap_damage_roll> glass_damage = { { damage_cut, 3, 10 } };
     c->deal_damage( nullptr, random_entry( c->get_ground_contact_bodyparts() ),
-                    damage_instance( damage_cut, rng( 3, 10 ) ) );
+                    trap_trigger_damage( here.tr_at( p ), glass_damage ) );
     c->check_dead_state( &here );
     add_msg_if_player_sees( p, _( "The shards shatter!" ) );
     sounds::sound( p, 8, sounds::sound_t::combat, _( "glass cracking!" ), false, "trap",
@@ -498,14 +542,19 @@ bool trapfunc::eocs( const tripoint_bub_ms &p, Creature *critter, item * )
         return false;
     }
     map &here = get_map();
-    trap tr = here.tr_at( p );
+    // trap types are never unloaded, so this stays valid once the trap is removed
+    const trap &tr = here.tr_at( p );
     const tripoint_abs_ms trap_location = here.get_abs( p );
+    // Removed first, as cast_spell does: a trap the EOCs set there stays, and a teleport can't
+    // make the removal hit another tile.  UNCONSUMED keeps it (TERR-B08)
+    if( !tr.has_flag( json_flag_UNCONSUMED ) ) {
+        here.remove_trap( p );
+    }
     for( const effect_on_condition_id &eoc : tr.eocs ) {
         dialogue d( get_talker_for( critter ), nullptr );
         write_var_value( var_type::context, "trap_location", &d, trap_location );
         eoc->activate_activation_only( d, "activation", "item's involvement", "item" );
     }
-    here.remove_trap( p );
     return true;
 }
 
@@ -527,8 +576,14 @@ bool trapfunc::tripwire( const tripoint_bub_ms &p, Creature *c, item * )
     Character &player_character = get_player_character();
     map &here = get_map();
     if( z != nullptr ) {
-        if( z->has_effect( effect_ridden ) ) {
-            add_msg( m_bad, _( "Your %s trips over a tripwire!" ), z->get_name() );
+        if( Character *rider = rider_of( *z ) ) {
+            if( rider->is_avatar() ) {
+                add_msg( m_bad, _( "Your %s trips over a tripwire!" ), z->get_name() );
+            } else {
+                //~ An NPC's mount trips, e.g. "Jane's horse trips over a tripwire!"
+                add_msg_if_player_sees( p, m_bad, _( "%1$s's %2$s trips over a tripwire!" ),
+                                        rider->disp_name( true ), z->get_name() );
+            }
             std::vector<tripoint_bub_ms> valid;
             for( const tripoint_bub_ms &jk : here.points_in_radius( p, 1 ) ) {
                 if( g->is_empty( jk ) ) {
@@ -536,11 +591,13 @@ bool trapfunc::tripwire( const tripoint_bub_ms &p, Creature *c, item * )
                 }
             }
             if( !valid.empty() ) {
-                player_character.setpos( here, random_entry( valid ) );
-                z->setpos( player_character.pos_abs() );
+                rider->setpos( here, random_entry( valid ) );
+                z->setpos( rider->pos_abs() );
             }
-            player_character.mod_moves( -z->get_speed() * 1.5 );
-            g->update_map( player_character );
+            rider->mod_moves( -z->get_speed() * 1.5 );
+            if( rider->is_avatar() ) {
+                g->update_map( *rider );
+            }
         } else {
             z->stumble_involuntary();
         }
@@ -986,8 +1043,8 @@ bool trapfunc::goo( const tripoint_bub_ms &p, Creature *c, item * )
         }
         return true;
     } else if( z != nullptr ) {
-        if( z->has_effect( effect_ridden ) ) {
-            get_player_character().forced_dismount();
+        if( Character *rider = rider_of( *z ) ) {
+            rider->forced_dismount();
         }
         //All monsters except for blobs get a speed decrease
         if( z->type->id != mon_blob ) {
@@ -1407,9 +1464,15 @@ bool trapfunc::sinkhole( const tripoint_bub_ms &p, Creature *c, item *i )
     Character *you = dynamic_cast<Character *>( c );
     map &here = get_map();
     if( z != nullptr ) {
-        if( z->has_effect( effect_ridden ) ) {
-            add_msg( m_bad, _( "Your %s falls into a sinkhole!" ), z->get_name() );
-            get_player_character().forced_dismount();
+        if( Character *rider = rider_of( *z ) ) {
+            if( rider->is_avatar() ) {
+                add_msg( m_bad, _( "Your %s falls into a sinkhole!" ), z->get_name() );
+            } else {
+                //~ An NPC's mount falls, e.g. "Jane's horse falls into a sinkhole!"
+                add_msg_if_player_sees( p, m_bad, _( "%1$s's %2$s falls into a sinkhole!" ),
+                                        rider->disp_name( true ), z->get_name() );
+            }
+            rider->forced_dismount();
         }
     } else if( you != nullptr ) {
         bool success = false;
@@ -1554,15 +1617,15 @@ bool trapfunc::glow( const tripoint_bub_ms &p, Creature *c, item * )
                             10 ) ) );
             z->set_speed_base( z->get_speed_base() * 0.9 );
         }
-        if( z->has_effect( effect_ridden ) ) {
+        if( Character *rider = rider_of( *z ) ) {
             if( one_in( 3 ) ) {
-                add_msg( m_bad, _( "You're bathed in radiation!" ) );
-                get_player_character().irradiate( rng( 10, 30 ) );
+                rider->add_msg_if_player( m_bad, _( "You're bathed in radiation!" ) );
+                rider->irradiate( rng( 10, 30 ) );
             } else if( one_in( 4 ) ) {
-                add_msg( m_bad, _( "A blinding flash strikes you!" ) );
+                rider->add_msg_if_player( m_bad, _( "A blinding flash strikes you!" ) );
                 explosion_handler::flashbang( p );
             } else {
-                add_msg( _( "Small flashes surround you." ) );
+                rider->add_msg_if_player( _( "Small flashes surround you." ) );
             }
         }
     }

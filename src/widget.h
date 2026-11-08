@@ -4,6 +4,7 @@
 
 #include <climits>
 #include <functional>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -17,7 +18,7 @@
 #include "translation.h"
 #include "type_id.h"
 
-class avatar;
+class Character;
 
 namespace catacurses
 {
@@ -165,6 +166,23 @@ struct enum_traits<widget_alignment> {
     static constexpr widget_alignment last = widget_alignment::num_widget_alignments;
 };
 
+// What a widget's "beta" field gives its clause conditions and custom vars as beta (npc_ in JSON).
+// A widget without the field (inherit) uses its parent's; at the top that is none.
+enum class widget_beta : int {
+    inherit,
+    none,
+    driven_vehicle, // the vehicle you remotely control, or the one you are in
+    wielded_item,
+    aim_target,     // the creature you last aimed at, while it is alive and in sight
+    mount,          // the monster you ride
+    num_widget_betas
+};
+
+template<>
+struct enum_traits<widget_beta> {
+    static constexpr widget_beta last = widget_beta::num_widget_betas;
+};
+
 // Use generic_factory for loading JSON data.
 class JsonObject;
 class widget;
@@ -190,6 +208,9 @@ struct widget_clause {
         std::function<bool( const_dialogue const & )> condition;
         bool meets_condition( const std::string &opt_var = "" ) const;
         bool meets_condition( const std::set<bodypart_id> &bps ) const;
+        // If parse_tags is set, expands the tags in txt (text or sym) with the dialogue the
+        // condition sees: context var "widget" is the first of bps the condition holds for
+        void parse_text( std::string &txt, const std::set<bodypart_id> &bps ) const;
 
         static const widget_clause *get_clause_for_id( const std::string &clause_id, const widget_id &wgt,
                 int thresh_val = INT_MIN, bool skip_condition = false );
@@ -224,6 +245,16 @@ struct widget_clause {
                                           const widget_id &wgt, bool skip_condition = false );
 };
 
+// "sidebar_section": puts a widget into sidebars as a section of its own, after one of theirs
+struct widget_sidebar_section {
+    // Sidebars to add the section to; empty for every sidebar ("*")
+    std::vector<widget_id> sidebars;
+    // The sidebar's section to put it after; at the end when null or not in that sidebar
+    widget_id after = widget_id::NULL_ID();
+
+    bool applies_to( const widget_id &sidebar ) const;
+};
+
 // A specified variable object or math expression for use with "var": "custom".
 struct widget_custom_var {
     dbl_or_var::part_t value;
@@ -232,8 +263,8 @@ struct widget_custom_var {
     std::pair<dbl_or_var::part_t, dbl_or_var::part_t> norm;
 
     void deserialize( const JsonObject &jo );
-    void set_widget_var_range( const avatar &ava, widget &wgt ) const;
-    int get_var_value( const avatar &ava ) const;
+    void set_widget_var_range( const Character &ava, widget &wgt ) const;
+    int get_var_value( const Character &ava ) const;
 };
 
 // A widget is a UI element displaying information from the underlying value of a widget_var.
@@ -249,6 +280,8 @@ class widget
         bool was_loaded = false;
         const widget_clause *get_clause( const std::string &clause_id = "" ) const;
         std::vector<const widget_clause *> get_clauses() const;
+        // Child widgets of a layout, from "widgets" and every clause
+        std::vector<widget_id> child_widgets() const;
 
     public:
         widget() = default;
@@ -299,6 +332,15 @@ class widget
         std::string _fill;
         // String values mapped to numeric values or ranges
         translation _string;
+        // Whether to expand the tags in _string (as clauses' "parse_tags" does)
+        bool _parse_tags = false;
+        // Which true clauses are shown: "all", "first" or "threshold" (the one with the
+        // largest value not above the var's)
+        std::string _clause_mode = "all";
+        // Var value the "threshold" clause_mode compares the clause values with
+        int _clause_value = INT_MIN;
+        // Sidebars this widget adds itself to as a section
+        std::optional<widget_sidebar_section> _sidebar_section;
         // Colors mapped to values or ranges
         std::vector<nc_color> _colors;
         // Optional color breaks in percent of the value's range; length = length(colors) - 1
@@ -321,6 +363,8 @@ class widget
         widget_alignment _text_align;
         // Alignment of the widget label, if any (Default = LEFT)
         widget_alignment _label_align;
+        // Target given to clause conditions and custom vars as beta (inherited from the parent)
+        widget_beta _beta = widget_beta::inherit;
 
         // Load JSON data for a widget (uses generic factory widget_factory)
         static void load_widget( const JsonObject &jo, const std::string &src );
@@ -328,6 +372,15 @@ class widget
         // Finalize anything that must wait until all widgets are loaded
         static void finalize_all();
         void finalize();
+        // Report widgets that would draw wrong or crash (unknown style, missing children...)
+        static void check_consistency();
+        // Adds the widgets whose "sidebar_section" applies to this sidebar to its sections
+        // (rows), each after its "after" section, in load order; ones already there are kept
+        static void add_sidebar_sections( const widget_id &sidebar, std::vector<widget_id> &rows );
+        // A sidebar's sections: its "widgets" and the sections added to it; else "widgets"
+        std::vector<widget_id> sidebar_sections() const;
+        // Load-time checks of this widget; drawn: it is reachable from a sidebar
+        void check( bool drawn ) const;
         // Recursively derive _label_width for nested layouts in this widget
         static int finalize_label_width_recursive( const widget_id &id );
         // Recursively derive _separator for nested layouts in this widget
@@ -343,27 +396,35 @@ class widget
         // Layout this widget within max_width, including child widgets. Calling layout on a regular
         // (non-layout style) widget is the same as show(), but will pad with spaces inside the
         // label area, so the returned string is equal to max_width.
-        std::string layout( const avatar &ava, unsigned int max_width = 0, int label_width = 0,
+        // The character it is shown for is alpha in clause conditions and custom vars: the avatar
+        // on the sidebar, a follower in the follower panel. Text vars that only exist for the
+        // avatar (overmap, mood face, move counter...) show nothing for anyone else.
+        std::string layout( const Character &ava, unsigned int max_width = 0, int label_width = 0,
                             bool skip_pad = false );
-        // Display labeled widget, with value (number, graph, or string) from an avatar
-        std::string show( const avatar &ava, unsigned int max_width );
+        // Display labeled widget, with value (number, graph, or string) from a character
+        std::string show( const Character &ava, unsigned int max_width );
+        // The lines a UI slot (a widget a mod defines under an id another UI looks for, such as
+        // "follower_needs") shows for a character, unpadded, empty lines left out; none while
+        // no mod defines the widget
+        static std::vector<std::string> slot_lines( const widget_id &slot, const Character &who,
+                unsigned int max_width );
         // Return a window_panel for rendering this widget at given width (and possibly height)
         window_panel get_window_panel( int width, int req_height = 1 );
         // Return a colorized string for a _var associated with a description function
-        std::string color_text_function_string( const avatar &ava, unsigned int max_width );
+        std::string color_text_function_string( const Character &ava, unsigned int max_width );
         // Return true if the current _var is one which uses a description function
         bool uses_text_function() const;
 
-        // Evaluate and return the bound "var" associated value for an avatar
-        int get_var_value( const avatar &ava ) const;
+        // Evaluate and return the bound "var" associated value for a character
+        int get_var_value( const Character &ava ) const;
         // True if this widget has the given flag. Used to specify certain behaviors.
         bool has_flag( const flag_id &flag ) const;
         bool has_flag( const std::string &flag ) const;
         // Assuming there's only one bodypart in _bps, return it (or bp_null if none exist)
         const bodypart_id &only_bp() const;
 
-        // Set _var_min, _var_norm, and _var_max to values from the avatar
-        void set_default_var_range( const avatar &ava );
+        // Set _var_min, _var_norm, and _var_max to values from the character
+        void set_default_var_range( const Character &ava );
 
         // Return a color-enhanced value_string
         std::string color_value_string( int value, int width_max = 0 );

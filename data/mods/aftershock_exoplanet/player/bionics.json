@@ -58,7 +58,22 @@
     "flags": [ "BIONIC_TOGGLED", "BIONIC_SLEEP_FRIENDLY" ],
     "act_cost": "5 J",
     "react_cost": "5 J",
-    "time": "200 s"
+    "time": "200 s",
+    "processed_eocs": [
+      {
+        "id": "EOC_afs_bio_dopamine_stimulators",
+        "effect": [
+          {
+            "u_add_morale": "morale_feeling_good",
+            "bonus": 20,
+            "max_bonus": 20,
+            "duration": "30 minutes",
+            "decay_start": "20 minutes",
+            "capped": true
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "afs_bio_melee_counteraction",
@@ -365,6 +380,7 @@
     "name": { "str": "Emergency Insulation" },
     "description": "Described in design documents as emergency insulation to protect against exposure to hard vacuum, this CBM is also useful in any encounter that causes instant frostbite.",
     "occupied_bodyparts": [ [ "torso", 5 ], [ "head", 1 ], [ "arm_l", 1 ], [ "arm_r", 1 ], [ "leg_l", 1 ], [ "leg_r", 1 ] ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [ "protect_cold" ],
     "act_cost": "1 kJ",
@@ -382,6 +398,7 @@
     "react_cost": "250 J",
     "activated_eocs": [ "eoc_bio_superheater_on" ],
     "deactivated_eocs": [ "eoc_bio_superheater_off" ],
+    "npc_use": "melee",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [
       {
@@ -408,6 +425,7 @@
     "react_cost": "1000 J",
     "activated_eocs": [ "eoc_bio_blade_electric_on" ],
     "deactivated_eocs": [ "eoc_bio_blade_electric_off" ],
+    "npc_use": "melee",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [
       {
@@ -419,7 +437,7 @@
             { "u_has_wielded_with_flag": "BIONIC_WEAPON_MELEE" }
           ]
         },
-        "hit_you_effect": [ { "id": "bio_blade_electric_arc" } ],
+        "hit_you_effect": [ { "id": "bio_blade_electric_arc", "hit_types": [ "melee" ] } ],
         "melee_damage_bonus": [ { "type": "electric", "add": 10 } ]
       }
     ]

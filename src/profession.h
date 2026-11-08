@@ -86,7 +86,12 @@ class profession
         // the int is what level the spell starts at
         std::map<spell_id, int> _starting_spells;
         std::vector<effect_on_condition_id> effect_on_conditions;
+        // Whether effect_on_conditions also run for NPCs with this profession (PROG-J04)
+        bool _run_eocs_for_npcs = false;
         std::set<std::string> flags; // flags for some special properties of the profession
+        // The profession group of hobbies a new character with this profession starts with:
+        // unset, the scenario's; an empty id, none (PROG-J01)
+        std::optional<profession_group_id> _default_backgrounds;
         StartingSkillList  _starting_skills;
         std::vector<mission_type_id> _missions; // starting missions for profession
 
@@ -122,7 +127,10 @@ class profession
         std::string description( bool male ) const;
         signed int point_cost() const;
         std::optional<signed int> starting_cash() const;
-        std::list<item> items( bool male, const std::vector<trait_id> &traits ) const;
+        // bonus_items: whether to add the items traits give (an inhaler for ASTHMA...); the
+        // profession's NO_BONUS_ITEMS flag leaves them out either way
+        std::list<item> items( bool male, const std::vector<trait_id> &traits,
+                               bool bonus_items = true ) const;
         std::vector<addiction> addictions() const;
         vproto_id vehicle() const;
         std::vector<mtype_id> pets() const;
@@ -149,6 +157,8 @@ class profession
         std::map<spell_id, int> spells() const;
         void learn_spells( Character &you ) const;
         std::vector<effect_on_condition_id> get_eocs() const;
+        /** Whether get_eocs() run for an NPC with this profession or hobby, not only the avatar */
+        bool eocs_run_for_npcs() const;
         //returns the profession id
         profession_id get_profession_id() const;
         bool has_hard_requirement() const;
@@ -159,6 +169,8 @@ class profession
          * Current flags: none
          */
         bool has_flag( const std::string &flag ) const;
+        /** The JSON's "default_backgrounds", if it has one (PROG-J01) */
+        const std::optional<profession_group_id> &default_backgrounds() const;
 
         /**
          * Check if the given player can pick this job with the given amount
@@ -183,14 +195,21 @@ class profession
         bool is_blacklisted() const;
 };
 
+// profession_blacklist: every "blacklist" adds its professions to the hidden ones, and the
+// last "whitelist" hides every profession it doesn't list, whatever a blacklist says
 struct profession_blacklist {
+    // Every blacklist's professions, or the last whitelist's when one is in force
     std::set<string_id<profession>> professions;
     bool whitelist = false;
+    // Every blacklist's professions
+    std::set<string_id<profession>> blacklisted;
 
     static void load_profession_blacklist( const JsonObject &jo, std::string_view src );
     static void reset();
     void load( const JsonObject &jo, std::string_view );
     void check_consistency() const;
+    // Whether the lists hide @p prof
+    bool hides( const string_id<profession> &prof ) const;
 };
 
 

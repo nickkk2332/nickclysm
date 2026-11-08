@@ -100,6 +100,37 @@ struct field_effect {
     void deserialize( const JsonObject &jo );
 };
 
+// Which body parts a field's contact_damage hits on a character
+enum class field_contact_body_parts : int {
+    // The parts touching the ground: feet (hands and feet on all fours), or all of them lying down
+    ground_contact,
+    // Every main body part
+    all,
+    // The listed parts
+    list,
+    last
+};
+
+template<>
+struct enum_traits<field_contact_body_parts> {
+    static constexpr field_contact_body_parts last = field_contact_body_parts::last;
+};
+
+// Damage a field intensity deals each time a creature is on it ("contact_damage")
+struct field_contact_damage {
+    damage_type_id type;
+    int min_amount = 0;
+    int max_amount = 0;
+    field_contact_body_parts body_parts = field_contact_body_parts::ground_contact;
+    std::vector<bodypart_str_id> parts;
+    // A monster takes the amount times this, once, on its torso
+    float monster_mult = 1.0f;
+    translation message;
+    translation message_npc;
+
+    void deserialize( const JsonObject &jo );
+};
+
 struct field_intensity_level {
     translation name;
     uint32_t symbol = PERCENT_SIGN_UNICODE;
@@ -125,7 +156,34 @@ struct field_intensity_level {
     int concentration = 0;
     int convection_temperature_mod = 0;
     int scent_neutralization = 0;
+    // Volume a sound loses passing through a tile with this field
+    int sound_attenuation = 0;
+    // Heat it radiates, as a terrain's heat_radiation does: a fire's intensity
+    int heat_radiation = 0;
+    // The hot air the fire, vent_cycle and incendiary processors spread around it
+    field_type_str_id hot_air_field;
+    // hot_air_field resolved in finalize(), fd_null for none
+    field_type_id hot_air_field_id;
     std::vector<field_effect> field_effects;
+    std::vector<field_contact_damage> contact_damage;
+    // Run with the creature on it as u, and the context values loc, field and intensity
+    effect_on_condition_id eoc_on_contact;
+};
+
+// How a field loses intensity as it ages
+enum class field_decay_mode : int {
+    // One intensity after a random time, two half lives on average
+    exponential,
+    // One intensity every half life
+    linear,
+    // fd_fire's curve: one intensity once half_life (in turns) is less than 2d(age in turns)
+    fire,
+    last
+};
+
+template<>
+struct enum_traits<field_decay_mode> {
+    static constexpr field_decay_mode last = field_decay_mode::last;
 };
 
 // NOLINTNEXTLINE(cata-static-int_id-constants)
@@ -204,10 +262,14 @@ struct field_type {
         time_duration outdoor_age_speedup = 0_turns;
         int decay_amount_factor = 0;
         int percent_spread = 0;
+        // How far from the field scent_neutralization reaches, in tiles
+        int scent_neutralization_radius = 1;
         int apply_slime_factor = 0;
         time_duration gas_absorption_factor = 0_turns;
         bool is_splattering = false;
         bool dirty_transparency_cache = false;
+        // set in finalize: some intensity level has a sound_attenuation
+        bool muffles_sound = false;
         bool has_fire = false;
         bool has_acid = false;
         bool has_elec = false;
@@ -230,7 +292,7 @@ struct field_type {
         bool display_items = true;
         bool display_field = false;
         bool legacy_make_rubble = false;
-        bool linear_half_life = false;
+        field_decay_mode decay_mode = field_decay_mode::exponential;
         bool indestructible = false;
         field_type_str_id wandering_field;
         std::string looks_like;
@@ -239,13 +301,31 @@ struct field_type {
 
         bool decrease_intensity_on_contact = false;
 
+        // On a tile that isn't transparent this field is placed as opaque_variant, which turns
+        // back into this field on a transparent one (fd_electricity and fd_electricity_unlit)
+        field_type_str_id opaque_variant;
+
+        // The per-turn behaviours picked in JSON ("processors"), resolved in finalize()
+        std::vector<field_processor_def> processor_defs;
+        // What it does to creatures on it ("contact_processors")
+        std::vector<field_contact_type> contact_processors;
+
     private:
         // any_of( intensity_levels::dangerous )
         bool dangerous = false;
         // all_of( intensity_levels::transparent )
         bool transparent = false;
 
-        std::vector<map_field_processing::FieldProcessorPtr> processors;
+        std::vector<map_field_processing::field_processor> processors;
+        // A bit for each field_contact_type in contact_processors
+        uint32_t contact_mask = 0;
+        // any_of( intensity_levels::heat_radiation > 0 )
+        bool radiates_heat = false;
+        // The fields placed instead of this one on transparent and opaque tiles (this one when
+        // it has no opaque_variant and isn't one)
+        field_type_id transparent_variant_id;
+        field_type_id opaque_variant_id;
+        bool has_variants = false;
 
     public:
         const field_intensity_level &get_intensity_level( int level = 0 ) const;
@@ -269,8 +349,27 @@ struct field_type {
         bool gas_can_spread() const {
             return phase == phase_id::GAS && percent_spread > 0;
         }
-        const std::vector<map_field_processing::FieldProcessorPtr> &get_processors() const {
+        const std::vector<map_field_processing::field_processor> &get_processors() const {
             return processors;
+        }
+        bool has_contact( field_contact_type type ) const {
+            return ( contact_mask & ( static_cast<uint32_t>( 1 ) << static_cast<int>( type ) ) ) != 0;
+        }
+        // Heat this field radiates at an intensity (from 1), or 0
+        int heat_radiation( int intensity ) const {
+            return radiates_heat ? get_intensity_level( intensity - 1 ).heat_radiation : 0;
+        }
+        // A fire that can be used to cook and craft: has_fire, and radiates heat at this intensity
+        bool is_usable_fire( int intensity ) const {
+            return has_fire && heat_radiation( intensity ) > 0;
+        }
+        // Whether this field turns into another one on a tile of the other transparency
+        bool has_transparency_variants() const {
+            return has_variants;
+        }
+        // The field placed instead of this one on a tile of the given transparency
+        field_type_id variant_for( bool transparent_tile ) const {
+            return transparent_tile ? transparent_variant_id : opaque_variant_id;
         }
 
         static size_t count();

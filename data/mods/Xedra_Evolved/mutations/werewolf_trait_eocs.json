@@ -176,7 +176,7 @@
           ]
         },
         "then": {
-          "foreach": "array",
+          "foreach": "ids",
           "target": "bodypart",
           "var": { "context_val": "id" },
           "effect": [

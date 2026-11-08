@@ -1,0 +1,122 @@
+[
+  {
+    "id": "audit_m30b_beta_kind",
+    "type": "widget",
+    "//": "UIHUD-J06: no beta of its own, so it uses its parent's",
+    "style": "text",
+    "clauses": [ { "text": "item", "condition": "npc_is_item" }, { "text": "vehicle", "condition": "npc_is_vehicle" } ]
+  },
+  {
+    "id": "audit_m30b_beta_none",
+    "type": "widget",
+    "//": "UIHUD-J06: \"none\" drops the parent's beta",
+    "style": "text",
+    "beta": "none",
+    "clauses": [ { "text": "yes", "condition": "has_beta" } ],
+    "default_clause": { "text": "no" }
+  },
+  {
+    "id": "audit_m30b_wielded_layout",
+    "type": "widget",
+    "//": "UIHUD-J06",
+    "style": "layout",
+    "arrange": "rows",
+    "beta": "wielded_item",
+    "widgets": [ "audit_m30b_beta_kind" ]
+  },
+  {
+    "id": "audit_m30b_wielded_none_layout",
+    "type": "widget",
+    "//": "UIHUD-J06",
+    "style": "layout",
+    "arrange": "rows",
+    "beta": "wielded_item",
+    "widgets": [ "audit_m30b_beta_none" ]
+  },
+  {
+    "id": "audit_m30b_vehicle_layout",
+    "type": "widget",
+    "//": "UIHUD-J06",
+    "style": "layout",
+    "arrange": "rows",
+    "beta": "driven_vehicle",
+    "widgets": [ "audit_m30b_beta_kind" ]
+  },
+  {
+    "id": "audit_m30b_wielded_charge",
+    "type": "widget",
+    "//": "UIHUD-J06: a var of the wielded item",
+    "label": "Charge",
+    "style": "number",
+    "beta": "wielded_item",
+    "var": "custom",
+    "custom_var": { "value": { "math": [ "n_audit_m30b_charge" ] }, "range": [ 0, 100 ] }
+  },
+  {
+    "id": "audit_m30b_wielded_charge_hidden",
+    "type": "widget",
+    "copy-from": "audit_m30b_wielded_charge",
+    "//": "UIHUD-J06",
+    "flags": [ "W_DISABLED_WHEN_EMPTY" ]
+  },
+  {
+    "id": "audit_m30b_aim_text",
+    "type": "widget",
+    "//": "UIHUD-J06",
+    "label": "Target",
+    "style": "text",
+    "beta": "aim_target",
+    "clauses": [ { "text": "monster", "condition": "npc_is_monster" } ],
+    "flags": [ "W_DISABLED_WHEN_EMPTY" ]
+  },
+  {
+    "id": "audit_m30b_who_text",
+    "type": "widget",
+    "//": "UIHUD-J09: alpha is the character the widget is shown for",
+    "label": "Who",
+    "style": "text",
+    "clauses": [ { "text": "npc", "condition": "u_is_npc" }, { "text": "avatar", "condition": "u_is_avatar" } ]
+  },
+  {
+    "id": "audit_m30b_num",
+    "type": "widget",
+    "//": "UIHUD-J09",
+    "label": "Num",
+    "style": "number",
+    "var": "custom",
+    "custom_var": { "value": { "math": [ "u_audit_m30b_num" ] }, "range": [ 0, 100 ] }
+  },
+  {
+    "id": "audit_m30b_slot",
+    "type": "widget",
+    "//": "UIHUD-J09: stands in for a UI slot such as follower_needs",
+    "style": "layout",
+    "arrange": "rows",
+    "widgets": [ "audit_m30b_who_text", "audit_m30b_num" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m30b_ignored",
+    "copy-from": "mon_zombie",
+    "name": { "str": "audit m30b unnoticed zombie" },
+    "description": "A zombie safe mode never stops for, for UIHUD-J07 tests.",
+    "safemode": "ignore"
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m30b_always",
+    "copy-from": "mon_chicken",
+    "name": { "str": "audit m30b alarming chicken" },
+    "description": "A chicken safe mode always stops for, for UIHUD-J07 tests.",
+    "safemode": "always"
+  },
+  {
+    "type": "keybinding",
+    "id": "AUDIT_M30B_HOTKEY",
+    "//": "UIHUD-J10",
+    "name": "Audit hotkey",
+    "bindings": [ { "input_method": "keyboard_any", "key": "F12", "mod": [ "ctrl", "alt" ] } ],
+    "effect_on_condition": { "id": "EOC_audit_m30b_hotkey", "effect": [ { "math": [ "audit_m30b_hotkey_ran = audit_m30b_hotkey_ran + 1" ] } ] },
+    "condition": { "math": [ "audit_m30b_hotkey_blocked == 0" ] }
+  }
+]

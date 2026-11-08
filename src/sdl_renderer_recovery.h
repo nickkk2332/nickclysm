@@ -5,6 +5,7 @@
 #if defined(TILES)
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -596,7 +597,12 @@ struct renderer_recovery_test_support {
     // record every sprite `tiles` draws, with its light policy and anchor,
     // into `log`; null stops
     static void log_draw_light( cata_tiles &tiles, std::vector<drawn_sprite_record> *log );
-    // install_synthetic_bundle with `tiles` as its tile types
+    // how many sprite lookups `tiles` remembers, and whether its memo is on (the
+    // TILE_LOOKUP_CACHE option, as its last draw saw it)
+    static size_t lookup_memo_size( const cata_tiles &tiles );
+    static bool lookup_memo_enabled( const cata_tiles &tiles );
+    // install_synthetic_bundle with `tiles` as its tile types, multitile subtiles linked
+    // as the loader links them
     static std::shared_ptr<const tileset> install_tiles_bundle( const std::string &tileset_id,
             const std::string &memory_map_mode, uint64_t renderer_instance_generation,
             uint64_t gpu_textures_generation, const atlas_bake_plan &plan, bool with_highlight,

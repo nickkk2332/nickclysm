@@ -5,6 +5,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -14,6 +15,10 @@
 
 class map;
 class mapgendata;
+namespace cata
+{
+class event;
+} // namespace cata
 class mission;
 class tinymap;
 struct mapgen_arguments;
@@ -55,7 +60,25 @@ ret_val<void> run_mapgen_update_func(
 // Return contains the name of a colliding "vehicle" on failure.
 ret_val<void> run_mapgen_update_func( const update_mapgen_id &, mapgendata &dat,
                                       bool cancel_on_collision = true );
+// As above; with @p anchor, the update's ( 0, 0 ) is placed on that tile of the OMT and the
+// update is rotated and mirrored around it (MGEN-J02).
+ret_val<void> run_mapgen_update_func(
+    const update_mapgen_id &, const tripoint_abs_omt &omt_pos, const mapgen_arguments &,
+    const std::optional<point_omt_ms> &anchor, mission *miss, bool cancel_on_collision,
+    bool mirror_horizontal, bool mirror_vertical, int rotation );
+// The arguments for the parameters of an update mapgen given as text, typed as its
+// parameters are. A name it has no parameter for is a debugmsg.
+mapgen_arguments update_mapgen_arguments( const update_mapgen_id &,
+        const std::map<std::string, std::string> &values );
+// Sets the global variables "place_variables" queued, and queues the EOCs "place_eocs" queued
 void set_queued_points();
+// Map generation can't run EOCs (they might change the map being made): its events
+// (omt_generated, map_extra_spawned) wait here for send_queued_mapgen_events(), at the start of
+// the next turn (MGEN-J01)
+void queue_mapgen_event( const cata::event & );
+void send_queued_mapgen_events();
+// A new or loaded game drops what the last one queued
+void clear_queued_mapgen_events();
 bool run_mapgen_func( const std::string &mapgen_id, mapgendata &dat );
 bool apply_construction_marker( const update_mapgen_id &update_mapgen_id,
                                 const tripoint_abs_omt &omt_pos,

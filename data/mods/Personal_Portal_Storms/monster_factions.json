@@ -7,7 +7,8 @@
     "base_faction": "nether",
     "friendly": [ "zombie" ],
     "neutral": [ "animal", "human" ],
-    "hate": [ "player" ]
+    "hate": [ "player" ],
+    "ignores_npcs_if_option": "PORTAL_STORM_IGNORE_NPC"
   },
   {
     "type": "MONSTER_FACTION",

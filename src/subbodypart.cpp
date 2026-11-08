@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "damage.h"
+#include "debug.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "type_id.h"
@@ -120,6 +122,36 @@ void sub_body_part_type::finalize()
         add_similar( combined_similar_sub_bodyparts[similar_bodypart.value()], id );
         // `head_dragonfly` is similar to `head`
         add_similar( combined_similar_sub_bodyparts[id], similar_bodypart.value() );
+    }
+}
+
+void sub_body_part_type::check_consistency()
+{
+    sub_body_part_factory.check();
+}
+
+void sub_body_part_type::check() const
+{
+    if( !parent.is_valid() ) {
+        debugmsg( "Sub body part %s has invalid parent %s", id.c_str(), parent.c_str() );
+    }
+    if( !opposite.is_valid() ) {
+        debugmsg( "Sub body part %s has invalid opposite %s", id.c_str(), opposite.c_str() );
+    }
+    for( const sub_bodypart_str_id &under : locations_under ) {
+        if( !under.is_valid() ) {
+            debugmsg( "Sub body part %s has invalid locations_under %s", id.c_str(), under.c_str() );
+        }
+    }
+    if( similar_bodypart.has_value() && !similar_bodypart->is_valid() ) {
+        debugmsg( "Sub body part %s has invalid similar_bodypart %s", id.c_str(),
+                  similar_bodypart->c_str() );
+    }
+    for( const damage_unit &du : unarmed_damage.damage_units ) {
+        if( !du.type.is_valid() ) {
+            debugmsg( "Sub body part %s has invalid unarmed_damage type %s", id.c_str(),
+                      du.type.c_str() );
+        }
     }
 }
 

@@ -11,11 +11,13 @@
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_chatbin.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item_group.h"
-#include "mutation.h"
 #include "npc.h"
+#include "npc_ai_ids.h"
+#include "npctalk.h"
 #include "rng.h"
 #include "shop_cons_rate.h"
 #include "skill.h"
@@ -124,6 +126,32 @@ void npc_class::check_consistency()
 
         if( !cl.traits.is_valid() ) {
             debugmsg( "Trait group %s is undefined", cl.traits.c_str() );
+        }
+
+        // NPC-B11: what the class gives an NPC must exist
+        for( const auto &mr : cl.mutation_rounds ) {
+            if( !mr.first.is_valid() ) {
+                debugmsg( "npc class %s: unrecognized mutation category %s", cl.id.str(),
+                          mr.first.str() );
+            }
+        }
+        for( const auto &sp : cl._starting_spells ) {
+            if( !sp.first.is_valid() ) {
+                debugmsg( "npc class %s: invalid spell %s", cl.id.str(), sp.first.str() );
+            }
+        }
+        for( const auto &bio : cl.bionic_list ) {
+            if( !bio.first.is_valid() ) {
+                debugmsg( "npc class %s: invalid bionic %s", cl.id.str(), bio.first.str() );
+            }
+        }
+        for( const proficiency_id &prof : cl._starting_proficiencies ) {
+            if( !prof.is_valid() ) {
+                debugmsg( "npc class %s: invalid proficiency %s", cl.id.str(), prof.str() );
+            }
+        }
+        for( const faction_price_rule &rule : cl.shop_price_rules ) {
+            rule.check( string_format( "npc_class %s shopkeeper_price_rules", cl.id.str() ) );
         }
     }
 }
@@ -242,15 +270,21 @@ void npc_class::load( const JsonObject &jo, std::string_view )
         jo.throw_error_at( "common_spawn_weight",
                            string_format( "npc class %s defines a spawn weighting, but cannot spawn randomly", name ) );
     }
-    bonus_str = load_distribution( jo, "bonus_str" );
-    bonus_dex = load_distribution( jo, "bonus_dex" );
-    bonus_int = load_distribution( jo, "bonus_int" );
-    bonus_per = load_distribution( jo, "bonus_per" );
+    // NPC-B11: a bonus not given keeps what copy-from copied (0 without copy-from)
+    const auto load_bonus = [&jo]( std::string_view name, distribution & bonus ) {
+        if( jo.has_member( name ) ) {
+            bonus = load_distribution( jo, name );
+        }
+    };
+    load_bonus( "bonus_str", bonus_str );
+    load_bonus( "bonus_dex", bonus_dex );
+    load_bonus( "bonus_int", bonus_int );
+    load_bonus( "bonus_per", bonus_per );
 
-    bonus_aggression = load_distribution( jo, "bonus_aggression" );
-    bonus_bravery = load_distribution( jo, "bonus_bravery" );
-    bonus_collector = load_distribution( jo, "bonus_collector" );
-    bonus_altruism = load_distribution( jo, "bonus_altruism" );
+    load_bonus( "bonus_aggression", bonus_aggression );
+    load_bonus( "bonus_bravery", bonus_bravery );
+    load_bonus( "bonus_collector", bonus_collector );
+    load_bonus( "bonus_altruism", bonus_altruism );
 
     if( jo.has_member( "shopkeeper_item_group" ) ) {
         if( jo.has_array( "shopkeeper_item_group" ) &&
@@ -274,6 +308,10 @@ void npc_class::load( const JsonObject &jo, std::string_view )
     if( jo.has_array( "work_hours" ) ) {
         JsonArray arr = jo.get_array( "work_hours" );
         work_hours_ = { arr.get_int( 0 ), arr.get_int( 1 ) };
+        if( work_hours_.first < 0 || work_hours_.first > 24 || work_hours_.second < 0 ||
+            work_hours_.second > 24 ) {
+            jo.throw_error_at( "work_hours", "work hours must be from 0 to 24" );
+        }
     }
     optional( jo, was_loaded, "worn_override", worn_override );
     optional( jo, was_loaded, "carry_override", carry_override );
@@ -287,7 +325,8 @@ void npc_class::load( const JsonObject &jo, std::string_view )
         for( JsonObject subobj : jo.get_array( "spells" ) ) {
             const int level = subobj.get_int( "level" );
             const spell_id sp = spell_id( subobj.get_string( "id" ) );
-            _starting_spells.emplace( sp, level );
+            // a spell copy-from copied gets the level given here
+            _starting_spells.insert_or_assign( sp, level );
         }
     }
 
@@ -297,6 +336,30 @@ void npc_class::load( const JsonObject &jo, std::string_view )
     if( jo.has_object( "ai_tuning" ) ) {
         ai_tuning.load( jo.get_object( "ai_tuning" ) );
     }
+    // a list given replaces the copied one
+    if( jo.has_array( "stranger_topics" ) ) {
+        stranger_topics.clear();
+        for( JsonObject rule_jo : jo.get_array( "stranger_topics" ) ) {
+            npc_stranger_topic rule;
+            if( rule_jo.has_member( "condition" ) ) {
+                read_condition( rule_jo, "condition", rule.condition, true );
+            }
+            rule.topic = rule_jo.get_string( "topic" );
+            dialogue_chatbin probe;
+            if( chatbin_topic( probe, rule.topic ) == nullptr ) {
+                rule_jo.throw_error_at( "topic", string_format( "no chatbin topic \"%s\"", rule.topic ) );
+            }
+            if( rule_jo.has_member( "attitude" ) ) {
+                const std::string attitude = rule_jo.get_string( "attitude" );
+                rule.attitude = npc_attitude_from_id( attitude );
+                if( !rule.attitude ) {
+                    rule_jo.throw_error_at( "attitude", string_format( "%s isn't an NPC attitude",
+                                            attitude ) );
+                }
+            }
+            stranger_topics.push_back( std::move( rule ) );
+        }
+    }
     /* Mutation rounds can be specified as follows:
      *   "mutation_rounds": {
      *     "ANY" : { "constant": 1 },
@@ -304,20 +367,10 @@ void npc_class::load( const JsonObject &jo, std::string_view )
      *   }
      */
     if( jo.has_object( "mutation_rounds" ) ) {
-        const std::map<mutation_category_id, mutation_category_trait> &mutation_categories =
-            mutation_category_trait::get_all();
+        // NPC-B11: the category is checked in check_consistency(), once every category is
+        // loaded; checking it here dropped a category a later file defines
         for( const JsonMember member : jo.get_object( "mutation_rounds" ) ) {
             const mutation_category_id mutation( member.name() );
-            const auto category_match = [&mutation]( const
-                                        std::pair<const mutation_category_id, mutation_category_trait>
-            &p ) {
-                return p.second.id == mutation;
-            };
-            if( std::find_if( mutation_categories.begin(), mutation_categories.end(),
-                              category_match ) == mutation_categories.end() ) {
-                debugmsg( "Unrecognized mutation category %s", mutation.str() );
-                continue;
-            }
             JsonObject distrib = member.get_object();
             mutation_rounds[mutation] = load_distribution( distrib );
         }
@@ -344,8 +397,40 @@ void npc_class::load( const JsonObject &jo, std::string_view )
         for( JsonObject bionic_obj : jo.get_array( "bionics" ) ) {
             auto bionic_ids = bionic_obj.get_tags( "id" );
             int chance = bionic_obj.get_int( "chance" );
+            if( chance < 0 || chance > 100 ) {
+                bionic_obj.throw_error_at( "chance", "chance must be from 0 to 100" );
+            }
             for( const auto &bid : bionic_ids ) {
                 bionic_list[ bionic_id( bid )] = chance;
+            }
+        }
+    }
+
+    // NPC-B11: the lists above add to what copy-from copied, or change it; "delete" takes
+    // copied entries away
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        // other members of "delete" belong to the generic readers above
+        del.allow_omitted_members();
+        if( del.has_array( "spells" ) ) {
+            for( const std::string &sp : del.get_string_array( "spells" ) ) {
+                _starting_spells.erase( spell_id( sp ) );
+            }
+        }
+        if( del.has_array( "bionics" ) ) {
+            for( const std::string &bio : del.get_string_array( "bionics" ) ) {
+                bionic_list.erase( bionic_id( bio ) );
+            }
+        }
+        if( del.has_array( "skills" ) ) {
+            for( const std::string &sk : del.get_string_array( "skills" ) ) {
+                skills.erase( skill_id( sk ) );
+                bonus_skills.erase( skill_id( sk ) );
+            }
+        }
+        if( del.has_array( "mutation_rounds" ) ) {
+            for( const std::string &cat : del.get_string_array( "mutation_rounds" ) ) {
+                mutation_rounds.erase( mutation_category_id( cat ) );
             }
         }
     }
@@ -365,13 +450,13 @@ const npc_class_id &npc_class::random_common()
         }
     }
 
-    const npc_class_id *chosen_class = *weighted_classes.pick();
-
-    if( !chosen_class ) {
+    // No common classes at all leaves nothing to pick
+    const npc_class_id *const *picked = weighted_classes.pick();
+    if( picked == nullptr || *picked == nullptr ) {
         return npc_class_id::NULL_ID();
     }
 
-    return *chosen_class;
+    return **picked;
 }
 
 std::string npc_class::get_name() const

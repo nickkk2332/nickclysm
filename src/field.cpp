@@ -11,8 +11,6 @@
 
 class Creature;
 
-static const field_type_str_id field_fd_fire( "fd_fire" );
-
 std::string field_entry::symbol() const
 {
     return get_field_type()->get_symbol( get_field_intensity() - 1 );
@@ -99,7 +97,7 @@ time_duration field_entry::set_field_age( const time_duration &new_age )
 
 void field_entry::initialize_decay()
 {
-    if( type.obj().linear_half_life ) {
+    if( type.obj().decay_mode == field_decay_mode::linear ) {
         decay_time = calendar::turn - age + type.obj().half_life;
     } else {
         std::exponential_distribution<> d( 1.0f / ( M_LOG2E * to_turns<float>
@@ -112,10 +110,11 @@ void field_entry::do_decay()
 {
     // Bypass set_field_age() so we don't reset decay_time;
     age += 1_turns;
-    if( type.obj().half_life > 0_turns && get_field_age() > 0_turns ) {
-        // Legacy handling for fire because it's weird and complicated.
-        if( type == field_fd_fire ) {
-            if( to_turns<int>( type->half_life ) < dice( 2, to_turns<int>( age ) ) ) {
+    const field_type &ft = type.obj();
+    if( ft.half_life > 0_turns && get_field_age() > 0_turns ) {
+        // fd_fire's curve, because it's weird and complicated.
+        if( ft.decay_mode == field_decay_mode::fire ) {
+            if( to_turns<int>( ft.half_life ) < dice( 2, to_turns<int>( age ) ) ) {
                 set_field_age( 0_turns );
                 set_field_intensity( get_field_intensity() - 1 );
             }

@@ -207,8 +207,6 @@
         "valid_furniture": [
           "f_null",
           "f_cattails",
-          "t_grass_tall",
-          "t_grass_long",
           "f_burdock",
           "f_lotus",
           "f_japanese_knotweed",
@@ -225,7 +223,8 @@
   {
     "type": "ter_furn_transform",
     "id": "ter_arvore_fungicide",
-    "terrain": [ { "result": "t_dirt_barren", "valid_flags": [ "FUNGUS" ], "message": "The fungus withers and dies!" } ],
+    "//": "With Magiclysm the dirt is its barren dirt (mod_interactions/magiclysm/ter_transforms.json).",
+    "terrain": [ { "result": "t_dirt", "valid_flags": [ "FUNGUS" ], "message": "The fungus withers and dies!" } ],
     "furniture": [ { "result": "f_null", "valid_flags": [ "FUNGUS" ], "message": "The fungus withers and dies!" } ]
   },
   {

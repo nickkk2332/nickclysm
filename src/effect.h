@@ -3,6 +3,7 @@
 #define CATA_SRC_EFFECT_H
 
 #include <array>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -23,6 +24,7 @@
 #include "flat_set.h"
 #include "translation.h"
 #include "type_id.h"
+#include "units.h"
 
 class Character;
 class JsonObject;
@@ -94,12 +96,35 @@ struct limb_score_effect {
     void deserialize( const JsonObject &jo );
 };
 
+// A shift of the body temperature an effect gives while a character has it (CHAR-J06)
+struct effect_body_temperature {
+    // The part whose temperature moves; unset: the part the effect is on, or every part for a
+    // whole-body effect
+    std::optional<bodypart_str_id> body_part;
+    units::temperature_delta add = units::from_celsius_delta( 0 );
+
+    void load( const JsonObject &jo );
+    void deserialize( const JsonObject &jo );
+};
+
 struct effect_dur_mod {
     efftype_id effect_id;
     float modifier;
     bool same_bp;
 
     void load( const JsonObject &jo );
+    void deserialize( const JsonObject &jo );
+};
+
+// HLTH-J13: a flavour message an effect shows now and then, one turn in `chance`, while its
+// intensity is between `min_intensity` and `max_intensity`.
+struct effect_periodic_message {
+    translation text;
+    game_message_type type = game_message_type::m_neutral;
+    int chance = 1;
+    int min_intensity = 1;
+    int max_intensity = INT_MAX;
+
     void deserialize( const JsonObject &jo );
 };
 
@@ -149,6 +174,9 @@ class effect_type
 
         double get_mod_value( const std::string &type, mod_action action, uint8_t reduction_level,
                               int intensity ) const;
+        /** Whether base_mods or scaling_mods gives the value at all (get_mod_value is 0 if not). */
+        bool has_mod_value( const std::string &type, mod_action action,
+                            uint8_t reduction_level ) const;
 
         bool is_show_in_info() const;
 
@@ -171,9 +199,26 @@ class effect_type
         const time_duration &intensity_duration() const {
             return int_dur_factor;
         }
+        /** Shifts of the body temperature while a character has the effect (CHAR-J06) */
+        const std::vector<effect_body_temperature> &get_body_temperature() const {
+            return body_temperature;
+        }
+        /** Clothing warmth per intensity the effect adds to the part it is on (CHAR-J06) */
+        int get_warmth_per_intensity() const {
+            return warmth_per_intensity;
+        }
         std::vector<enchantment_id> enchantments;
         cata::flat_set<json_character_flag> immune_flags;
         cata::flat_set<json_character_flag> immune_bp_flags;
+        /** EOCs run, with the creature as u and the creature that caused the effect (if it can
+            be found) as npc, when a creature gains this effect, when the effect's intensity
+            changes, and when the creature loses it.  See Creature::run_effect_eocs. */
+        std::vector<effect_on_condition_id> apply_eocs;
+        std::vector<effect_on_condition_id> intensity_change_eocs;
+        std::vector<effect_on_condition_id> remove_eocs;
+        /** Run every tick_eocs_interval while a creature has the effect (HLTH-J07) */
+        std::vector<effect_on_condition_id> tick_eocs;
+        time_duration tick_eocs_interval = 1_turns;
     protected:
         uint32_t get_effect_modifier_key( mod_action action, uint8_t reduction_level ) const {
             return static_cast<uint8_t>( action ) << 0 |
@@ -213,13 +258,16 @@ class effect_type
         std::vector<efftype_id> blocks_effects;
 
         std::vector<std::pair<translation, int>> miss_msgs;
+        std::vector<effect_periodic_message> periodic_msgs;
 
         bool pain_sizing = false;
         bool hurt_sizing = false;
         bool harmful_cough = false;
-        // TODO: Once addictions are JSON-ized it should be trivial to convert this to a
-        // "generic" addiction reduces value
+        // An addiction that makes the painkiller work less, by 1 / ( intensity * scale )
+        // (HLTH-J11: true means opiate and 2)
         bool pkill_addict_reduces = false;
+        addiction_id pkill_addiction;
+        double pkill_addict_scale = 2.0;
         // This flag is hard-coded for specific IDs now
         // It needs to be set for monster::move_effects
         bool impairs_movement = false;
@@ -246,6 +294,8 @@ class effect_type
         std::unordered_map<std::string, std::unordered_map<uint32_t, modifier_value_arr>> mod_data;
         std::vector<vitamin_rate_effect> vitamin_data;
         std::vector<limb_score_effect> limb_score_data;
+        std::vector<effect_body_temperature> body_temperature;
+        int warmth_per_intensity = 0;
         std::vector<effect_dur_mod> effect_dur_scaling;
         std::vector<std::pair<int, int>> kill_chance;
         std::vector<std::pair<int, int>> red_kill_chance;
@@ -434,6 +484,10 @@ class effect
 
         /** Returns the modifier caused by addictions. Currently only handles painkiller addictions. */
         double get_addict_mod( const std::string &arg, int addict_level ) const;
+        /** The addiction whose intensity get_addict_mod( "PKILL" ) wants; null if none. */
+        const addiction_id &get_pkill_addiction() const;
+        /** Flavour messages this effect shows now and then (HLTH-J13). */
+        const std::vector<effect_periodic_message> &get_periodic_msgs() const;
         /** Returns true if the coughs caused by an effect can harm the player directly. */
         bool get_harmful_cough() const;
         /** Returns the percentage value by further applications of existing effects' duration is multiplied by. */

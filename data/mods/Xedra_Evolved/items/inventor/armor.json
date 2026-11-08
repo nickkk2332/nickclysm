@@ -616,7 +616,11 @@
     "armor": [ { "encumbrance": 4, "coverage": 45, "covers": [ "arm_l", "arm_r" ] } ],
     "tool_ammo": [ "battery" ],
     "passive_effects": [
-      { "has": "WORN", "condition": "ACTIVE", "hit_you_effect": [ { "id": "inventor_electric_fist_spell", "once_in": 6 } ] }
+      {
+        "has": "WORN",
+        "condition": "ACTIVE",
+        "hit_you_effect": [ { "id": "inventor_electric_fist_spell", "hit_types": [ "melee" ], "once_in": 6 } ]
+      }
     ]
   },
   {

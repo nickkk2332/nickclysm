@@ -862,5 +862,18 @@
     "type": "requirement",
     "//": "when it doesn't matter if it's a steel, plastic, aluminum pipe or whatever",
     "components": [ [ [ "pipe", 1 ], [ "pipe_cpvc", 1 ], [ "cu_pipe", 1 ] ] ]
+  },
+  {
+    "id": "wash_water",
+    "type": "requirement",
+    "//": "One unit of the water washing filthy items uses, by default 125 ml of items' volume (the WASH_* and wash use actions).  Mods can add alternatives with \"extend\".",
+    "components": [ [ [ "water", 1 ], [ "water_clean", 1 ] ] ]
+  },
+  {
+    "id": "wash_cleanser",
+    "type": "requirement",
+    "name": "cleansing agent",
+    "//": "One unit of the cleanser washing filthy items uses, by default 1 L of items' volume (the WASH_* and wash use actions).  Mods can add alternatives with \"extend\".",
+    "components": [ [ [ "soap", 1 ], [ "detergent", 1 ], [ "liquid_soap", 1 ] ] ]
   }
 ]

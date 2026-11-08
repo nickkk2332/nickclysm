@@ -212,17 +212,43 @@
   {
     "type": "enchantment",
     "id": "ench_mana_siphon_1",
-    "hit_you_effect": [ { "id": "sp_mana_siphon", "hit_self": true, "once_in": 5, "message": "You recover some mana." } ]
+    "hit_you_effect": [
+      {
+        "id": "sp_mana_siphon",
+        "hit_types": [ "melee" ],
+        "hit_self": true,
+        "once_in": 5,
+        "message": "You recover some mana."
+      }
+    ]
   },
   {
     "type": "enchantment",
     "id": "ench_mana_siphon_2",
-    "hit_you_effect": [ { "id": "sp_mana_siphon", "hit_self": true, "min_level": 3, "once_in": 5, "message": "You recover some mana." } ]
+    "hit_you_effect": [
+      {
+        "id": "sp_mana_siphon",
+        "hit_types": [ "melee" ],
+        "hit_self": true,
+        "min_level": 3,
+        "once_in": 5,
+        "message": "You recover some mana."
+      }
+    ]
   },
   {
     "type": "enchantment",
     "id": "ench_mana_siphon_3",
-    "hit_you_effect": [ { "id": "sp_mana_siphon", "hit_self": true, "min_level": 6, "once_in": 5, "message": "You recover some mana." } ]
+    "hit_you_effect": [
+      {
+        "id": "sp_mana_siphon",
+        "hit_types": [ "melee" ],
+        "hit_self": true,
+        "min_level": 6,
+        "once_in": 5,
+        "message": "You recover some mana."
+      }
+    ]
   },
   {
     "type": "mutation",

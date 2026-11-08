@@ -19,7 +19,7 @@
       { "skill": "firstaid", "bonus": { "rng": [ 4, 6 ] } },
       { "skill": "pistol", "bonus": { "rng": [ 2, 4 ] } }
     ],
-    "shopkeeper_price_rules": [ { "group": "BEM_DRUGRUNNER_STOCK", "markup": 4.5 } ]
+    "shopkeeper_price_rules": [ { "group": "BEM_DRUGRUNNER_stock", "markup": 4.5 } ]
   },
   {
     "type": "item_group",

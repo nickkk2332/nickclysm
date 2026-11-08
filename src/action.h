@@ -12,6 +12,7 @@
 
 #include "coords_fwd.h"
 
+class Character;
 class input_context;
 class map;
 struct input_event;
@@ -452,6 +453,13 @@ action_id look_up_action( const std::string &ident );
  * @returns The string identifier for the specified action ID.
  */
 std::string action_ident( action_id act );
+
+/**
+ * Whether one of the character's json_flags with "blocked_actions" (from traits, bionics, effects,
+ * body parts or martial arts buffs) blocks this action.
+ * @returns The message of the first entry that blocks it, or nothing if the action is allowed.
+ */
+std::optional<std::string> action_blocked_by_flags( const Character &you, action_id act );
 
 /**
  * Lookup whether an action can affect the state of the game world.

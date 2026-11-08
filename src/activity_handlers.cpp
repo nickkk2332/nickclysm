@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iterator>
+#include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -36,9 +38,7 @@
 #include "overmap_ui.h"
 #include "pathfinding.h"
 #include "player_activity.h"
-#include "pocket_type.h"
 #include "point.h"
-#include "ret_val.h"
 #include "skill.h"
 #include "string_formatter.h"
 #include "temp_crafting_inventory.h"
@@ -46,6 +46,7 @@
 #include "type_id.h"
 #include "uilist.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "weather.h"
@@ -56,7 +57,6 @@ static const activity_id ACT_TRAVELLING( "ACT_TRAVELLING" );
 
 static const ammotype ammo_battery( "battery" );
 
-static const flag_id json_flag_IRREMOVABLE( "IRREMOVABLE" );
 static const flag_id json_flag_PSEUDO( "PSEUDO" );
 
 static const furn_str_id furn_f_compost_empty( "f_compost_empty" );
@@ -65,9 +65,6 @@ static const furn_str_id furn_f_fvat_empty( "f_fvat_empty" );
 static const furn_str_id furn_f_fvat_wood_empty( "f_fvat_wood_empty" );
 static const furn_str_id furn_f_fvat_wood_full( "f_fvat_wood_full" );
 
-static const itype_id itype_battery( "battery" );
-static const itype_id itype_pseudo_magazine( "pseudo_magazine" );
-static const itype_id itype_pseudo_magazine_mod( "pseudo_magazine_mod" );
 
 using namespace activity_handlers;
 
@@ -363,6 +360,13 @@ namespace
 struct weldrig_hack {
     std::optional<vpart_reference> part;
     item pseudo;
+    // What the vehicle lent the pseudo tool, to take back what the repair used. Filled as
+    // vehicle::use_vehicle_tool fills it: with whatever the tool uses (a welder's battery
+    // charge, gasoline...), and multi-magazine tools; it only lent battery charge (VINT-J09).
+    bool prepared = false;
+    bool multimag = false;
+    std::map<std::string, multimag_pocket_state> mm_bindings;
+    int lent = 0;
 
     weldrig_hack() : part( std::nullopt ) { }
 
@@ -390,41 +394,43 @@ struct weldrig_hack {
             // null item should be handled just fine
             return null_item_reference();
         }
-        pseudo.set_flag( json_flag_PSEUDO );
-        item mag_mod( itype_pseudo_magazine_mod );
-        mag_mod.set_flag( json_flag_IRREMOVABLE );
-        if( !pseudo.put_in( mag_mod, pocket_type::MOD ).success() ) {
-            debugmsg( "tool %s has no space for a %s, this is likely a bug",
-                      pseudo.typeId().str(), mag_mod.type->nname( 1 ) );
+        if( prepared ) {
+            return pseudo;
         }
-        itype_id mag_type;
-        if( pseudo.can_link_up() ) {
-            mag_type = itype_pseudo_magazine;
+        vehicle &veh = part->vehicle();
+        multimag = !pseudo.type->firing_requirements.empty();
+        if( multimag ) {
+            pseudo.set_flag( json_flag_PSEUDO );
+            mm_bindings = vehicle::prepare_multimag_pockets( veh, here, pseudo );
         } else {
-            mag_type = pseudo.magazine_default();
+            lent = veh.prepare_tool( here, pseudo );
         }
-        item mag( mag_type );
-        mag.clear_items(); // no initial ammo
-        if( !pseudo.put_in( mag, pocket_type::MAGAZINE_WELL ).success() ) {
-            debugmsg( "inserting %s into %s's MAGAZINE_WELL pocket failed",
-                      mag.typeId().str(), pseudo.typeId().str() );
-            return null_item_reference();
-        }
-        pseudo.ammo_set( itype_battery, part->vehicle().drain( here,  itype_battery,
-                         pseudo.ammo_capacity( ammo_battery ),
-                         return_true< vehicle_part &>, false ) ); // no cable loss since all of this is virtual
+        prepared = true;
         return pseudo;
     }
 
     void clean_up() {
-        if( !part ) {
+        if( !part || !prepared ) {
             return;
         }
 
         map &here = get_map();
-
-        part->vehicle().charge_battery( here, pseudo.ammo_remaining( ),
-                                        false ); // return unused charges without cable loss
+        vehicle &veh = part->vehicle();
+        if( multimag ) {
+            vehicle::drain_back_multimag( veh, here, pseudo, mm_bindings );
+            return;
+        }
+        // take what was used from where it was lent (no cable loss since all of this is virtual)
+        const int used = lent - pseudo.ammo_remaining_linked( here, nullptr );
+        if( used <= 0 ) {
+            return;
+        }
+        const itype_id &ammo = veh.tool_ammo_available( here, pseudo.typeId() ).first;
+        if( !ammo.is_null() && ammo->ammo && ammo->ammo->type == ammo_battery ) {
+            veh.discharge_battery( here, used, false );
+        } else if( !ammo.is_null() ) {
+            veh.drain( here, ammo, used, return_true< vehicle_part &>, false );
+        }
     }
 
     ~weldrig_hack() {
@@ -450,10 +456,10 @@ void repair_item_finish( player_activity *act, Character *you, bool no_menu )
     if( !act->targets.empty() ) {
         ploc = act->targets.data();
     }
-    item *main_tool = &( !w_hack.init( *act ) ?
-                         ploc ?
-                         **ploc : you->i_at( act->index ) : w_hack.get_item() );
-    if( main_tool == nullptr ) {
+    // a vehicle's tool leaves no location to read (VINT-J09): get_item() is null for it then
+    item *main_tool = w_hack.init( *act ) ? &w_hack.get_item() :
+                      ploc ? ploc->get_item() : &you->i_at( act->index );
+    if( main_tool == nullptr || main_tool->is_null() ) {
         debugmsg( "Empty main tool for repair" );
         act->set_to_null();
         return;

@@ -83,7 +83,7 @@ The mutation system works in several steps. All time references are in game time
 
 The odds of a mutation being good or bad is directly determined by Instability, which is a hidden value derived on a per-tree basis (it is possible for the chances of a bad mutation to be different across multiple mutation trees simultaneously).  This value is determined by counting all mutations you have that aren't negative, and counting double any mutations that don't belong as double.  For example, for the Feline mutation tree, "Feline Ears" is worth a single point of instability, while "Hooves" would count as two points. "Sleepy" counts as no points of instability, since it is a negative mutation.  Only traits you have gained as mutations count; ones you started with don't matter. Traits which cannot be gained as mutations, such as the Exodii's "Standard Neurobionic Matrix" mutation, also do not count.  Currently, the Robust Genetics trait negates the double penalty for out-of-tree mutations.  All mutations are counted as "in tree" that way.  Lastly, mutations count their prior forms.  "Very Strong" is worth two instability raw, since it counts "Strong" too which you had to mutate in order to obtain it even though it only shows one mutation in your character's list.  So if neither "Very Strong" nor "Strong" are in the tree, having "Very Strong" gives four instability; if Strong is in the tree but Very Strong isn't, 3 instability.
 
-This value is added up and then compared to the number of mutations that are non negative in the given tree. For example, Alpha has 21 non negative mutations, while Troglobite has 28, and Chimera has even more.  Half of your instability for that tree divided by the prior tally is your chance of rolling a bad mutation. For example if your Alpha instability was 7 you'd have a 1/3 chance of getting a bad mutation instead of a good one, and if for Trog your instability was also 7 you would have a 1/4 chance of getting a bad mutation.
+This value is added up and then compared to the number of mutations that are non negative in the given tree. For example, Alpha has 21 non negative mutations, while Troglobite has 28, and Chimera has even more.  Half of your instability for that tree divided by the prior tally is your chance of rolling a bad mutation (a category's `bad_mutation_chance_scale` changes the half, and its `bad_mutation_chance_cap`, 0.67 by default, is the most it gets; the `MUT_OUT_OF_TREE_INSTABILITY_MULT` enchantment value changes the 2 an out-of-tree mutation counts for, and `MUT_INSTABILITY_MOD` the total). For example if your Alpha instability was 7 you'd have a 1/3 chance of getting a bad mutation instead of a good one, and if for Trog your instability was also 7 you would have a 1/4 chance of getting a bad mutation.
 
 Instability cannot decrease over time.  It is a static value that can only be lowered by lowering your number of mutations by using Purifier.  If you purify back to baseline after becoming heavily mutated, it like getting a reset on your instability value, but it cannot otherwise be lowered without giving up your mutations.
 
@@ -123,6 +123,8 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "ugliness": 0,                              // Ugliness of the trait for purposes of NPC interaction (default: 0).
   "provided_qualities": { "BUTCHER": 4, "HAMMER": 1 }, // Tool qualities that are granted by this mutation, at these levels; each mutation counts as one tool with them
   "bodytemp_modifiers": [ 100, 150 ],           // Range of additional bodytemp units (these units are described in 'weather.h'.  First value is used if the person is already overheated, second one if it's not.
+  "drying_time_mult": 2.0,                    // Multiplies the time the character's wet body takes to dry, as fur and slime hold water.  The largest among the character's traits applies (default: 1.0, at least 0.01).
+  "night_vision_range": 4.5,                 // Tiles of night vision while the trait is active (always, for a trait that can't be activated).  Only the best among the character's traits counts, so Night Vision (2), High Night Vision (4.5) and Full Night Vision (10) don't add up; NIGHT_VIS enchantments add to it (default: 0).
   "initial_ma_styles": [ "style_crane" ],     // (optional) A list of IDs of martial art styles of which the player can choose one when starting a game.
   "mixed_effect": false,                      // Whether the trait has both positive and negative effects.  This is purely declarative and is only used for the user interface (default: false).
   "description": "Nothing gets you down!",    // In-game description. Supports snippets and u/global variables
@@ -218,6 +220,9 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "active_flags": [ "BLIND" ],                // while the mutation is active, the character who has it (avatar or NPC) gets this flag
   "inactive_flags": [ "DEAF" ],               // while the mutation is inactive, the character who has it (avatar or NPC) gets this flag
   "allowed_items": [ "ALLOWS_TAIL" ],         // you can wear items with this flag with this mutation, bypassing restricts_gear restriction
+  "unwearable_materials": [ "wool" ],         // the character can't wear items made, even in part, of any of these materials (Wool Allergy, Vegan).  allowed_items and OVERSIZE don't lift this
+  "unwearable_flags": [ "wooled" ],           // the character can't wear items with any of these flags, on the item or its type (FILTHY for Squeamish, ANIMAL_PRODUCT for Vegan)
+  "unwearable_message": "Can't wear that, it's made of wool!", // shown when unwearable_materials or unwearable_flags refuse an item (default: "Your <mutation> mutation prevents you from wearing your <item>.")
   "integrated_armor": [ "integrated_fur" ],   // this item is worn on your character forever, until you get rid of this mutation
   "ranged_mutation": {                        // activation of the mutation allow you to shoot a fake gun
     "type": "pseudo_shotgun",                 // fake gun that is used to shoot
@@ -227,14 +232,21 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
     "type": "water_clean",                    // item to spawn
     "message": "You spawn a bottle of water." // message, that would be shown upon activation
   },
+  "builtin_activation": "web",                // a built-in effect of activating it, see Built-in activations below (default: "none")
+  "blood_type": "Acid",                       // gaining it changes the character's blood type: "O", "A", "B", "AB" or "Acid"; losing it gives another trait's blood type, or a random one (default: none)
+  "bodypart_hp_multiplier": [ [ "head", 0.8 ] ], // the maximum HP of these body parts is multiplied by the number; several traits multiply together (default: empty)
   "scent_intensity": 800,                     // int affecting the target scent toward which you current smell gravitates (default: 500).
   "scent_type": "sc_flower",                  // The scent_types you emit, as defined in scent_types.json (default: empty).
   "ignored_by": [ "ZOMBIE" ],                 // List of species ignoring you (default: empty).
-  "anger_relations": [ [ "MARSHMALLOW", 20 ], [ "GUMMY", 5 ], [ "CHEWGUM", 20 ] ], // List of species angered by you and how much, negative values calm instead  (default: empty).
+  "anger_relations": [ [ "MARSHMALLOW", 20 ], [ "GUMMY", 5 ], [ "CHEWGUM", 20 ] ], // List of species angered by you and how much, negative values calm instead  (default: empty).  Only a positive value makes a monster that ignores characters see you.
+  "monster_relations": [ { "species": "MAMMAL", "min_anger": 10, "anger": -20 } ], // How monsters of a species, faction or flag see you: anger, morale or attitude.  See Monster relations (default: empty).
   "can_only_eat": [ "junk" ],                 // List of comestible materials (default: empty).
   "edible_food_flags": [ "CATTLE" ],          // Food with any of these flags is edible even if INEDIBLE, and doesn't taste bad.  See Diet rules (default: empty).
   "food_allergies": [ { "vitamin": "meat_allergen", "morale": "morale_antimeat" } ], // Food containing the vitamin is an allergen: eating it gives the morale penalty.  See Diet rules (default: empty).
-  "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "You only eat cooked food." }, // Food can only be eaten while the condition is true.  See Diet rules (default: none).
+  "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "You only eat cooked food." }, // Food can only be eaten while the condition is true; an object or an array of them.  See Diet rules (default: none).
+  "food_fun": { "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }, // Changes how good or bad food tastes.  See Diet rules (default: none).
+  "eat_eocs": [ "EOC_ATE_SOMETHING" ],        // EOCs run when food is swallowed.  See Diet rules (default: empty).
+  "retaliation": [ { "damage_type": "stab", "damage": [ 1, 20 ], "message": "Your quills puncture %s in mid-attack!" } ], // Harm done to melee attackers.  See Retaliation (default: none).
   "can_only_heal_with": [ "bandage" ],        // List of `MED` you are restricted to, includes mutagen, serum, aspirin, bandages etc. (default: empty).
   "can_heal_with": [ "caramel_ointement" ],   // List of `MED` that will work for you but not for anyone else.  See `CANT_HEAL_EVERYONE` flag for items (default: empty).
   "allowed_category": [ "ALPHA" ],            // List of categories you can mutate into (default: empty).
@@ -326,7 +338,7 @@ These fields are optional, but are very frequently used in mutations and their c
 | `types`           | Nothing | A list of types that this mutation can be classified under. Each mutation with a certain type is mutually exclusive with other mutations that also have that type; if a trait has the `EXAMPLE` type defined, then no other trait with that type can exist on a character, and mutating towards such a trait would remove the existing one if it could.  An exception is made for same-typed prerequisite traits, these will not get removed.|
 | `prereqs`         | Nothing | An array of mutation IDs that are possible requirements for this trait to be obtained. Only a single option from this list needs to be present.             |
 | `prereqs2`        | Nothing | Identical to `prereqs`, and will throw errors if `prereqs` isn't defined. This is used to have multiple traits required to obtain another trait; one option must be present on the character from both `prereqs` and `prereqs2` for a trait to be obtainable. |
-| `threshreq`       | Nothing | This is a dedicated prerequisite slot for threshold mutations, and functions identically to `prereq` and `prereq2`.                                         |
+| `threshreq`       | Nothing | This is a dedicated prerequisite slot for threshold mutations, and functions identically to `prereq` and `prereq2`.  A random mutation doesn't pick a trait whose threshold the character lacks (unless it is still missing a prerequisite, which it then mutates towards); instead the attempt does nothing ("You feel something straining deep inside you…") as often as it used to when such traits could be picked, so a character near a threshold mutates no faster than before. |
 | `cancels`         | Nothing | Trait IDs defined in this array will be forcibly removed from the character when trait is mutated.                                                          |
 | `changes_to`      | Nothing | Used for defining mutation lines with defined steps. This trait can further mutate into any other trait defined in this list.                               |
 | `leads_to`        | Nothing | Mutations that add onto this one without removing it. Effectively a reverse of the `prereqs` tag.  Also prevents type conflicts with this trait!            |
@@ -348,11 +360,77 @@ These fields are optional, but are very frequently used in mutations and their c
 | `thirst`          | false   | If true, this active mutation will consume `cost` thirst during activation or upkeep.                                                                       |
 | `sleepiness`      | false   | If true, this active mutation will consume `cost` sleepiness during activation or upkeep.                                                                   |
 | `mana`            | false   | If true, this active mutation will consume `cost` mana during activation or upkeep. Can used by magic mods.                                                 |
+| `costs`           | Nothing | An object giving each resource its own amount, instead of `cost` and the flags above (it can't be used with them): `"costs": { "kcal": 50, "mana": 10, "stamina": 200, "thirst": 5, "sleepiness": 5, "power": "5 kJ" }`.  The trait uses only the resources it names, and none can be negative; `power` is bionic power.  See "Activation costs" below. |
 | `enchantments`    | Nothing | A list of enchantments granted by this mutation. Can either be string IDs of a defined enchantment, or an inline definition.                                |
 
 ### Optional Fields
 
 There are many, many optional fields present for mutations to let them do all sorts of things. You can see them documented above.
+
+### Activation costs
+
+An active trait pays its costs when it is switched on, and again every `time` while it runs.  `cost` with `kcal`, `thirst`, `sleepiness`, `mana` or `stamina` set to true takes the same amount of each resource it flags; `costs` names each resource with its own amount, and is the only way to make a trait run on bionic power (`power`, an energy such as `"5 kJ"`).  In a `copy-from`, `costs` replaces the parent's costs as a whole, and `cost` or a resource flag recomputes the amounts from `cost`.
+
+One check decides whether a trait can be switched on, wherever that comes from (the mutations menu, reflex `triggers`, `u_activate_trait`): stored kcal at least half of healthy, thirst below 260, sleepiness below Exhausted, more mana or stamina than the cost, and at least the power cost.  Keeping it running is a little looser: it switches off when the character becomes underweight, reaches 260 thirst or Exhausted, or has less mana, stamina or bionic power than the cost.
+
+```jsonc
+{
+  "type": "mutation",
+  "id": "EXAMPLE_POWERED_GLAND",
+  "name": { "str": "Powered Gland" },
+  "description": "Runs on food and a trickle of bionic power.",
+  "points": 1,
+  "active": true,
+  "time": "1 m",
+  "costs": { "kcal": 5, "power": "2 kJ" }
+}
+```
+
+### copy-from, extend and delete
+
+A trait that copies another (`copy-from`, also a mod copying a trait under its own id) keeps every member it doesn't name.  A list or map it names replaces the parent's, so restating a parent's `enchantments` no longer applies them twice.  To add to or take from the parent's instead, use `extend` and `delete`:
+
+- `activated_eocs`, `processed_eocs`, `deactivated_eocs` and `integrated_armor`: `extend` adds entries; `delete` takes ids out.
+- `enchantments`: `extend` adds enchantment ids or inline enchantments; `delete` takes enchantment ids.  An inline enchantment is named `INLINE_ENCH_<trait id>_<n>`, where `n` counts that trait id's inline enchantments in load order across all its definitions, so a trait's own are `_0`, `_1`, ... and those of a later override of the same id go on from there.
+- `vitamin_rates`, `spells_learned`, `craft_skill_bonus`, `lumination`, `anger_relations` and `moncams` (lists of `[ key, value ]` pairs): `extend` adds pairs, replacing the value of a key already there; `delete` takes keys (`"delete": { "lumination": [ "head" ] }`).
+- `armor` and `attacks`: `extend` adds to the parent's (the armor values are added together); there is no `delete`, restate the member instead (`"attacks": []` removes them all).
+
+```jsonc
+{
+  "type": "mutation",
+  "id": "EXAMPLE_TRAIT_VARIANT",
+  "copy-from": "EXAMPLE_TRAIT",
+  "name": { "str": "Example Trait Variant" },
+  "extend": { "enchantments": [ { "values": [ { "value": "SPEED", "add": 5 } ] } ] },
+  "delete": { "processed_eocs": [ "EOC_EXAMPLE_TRAIT_TICK" ], "lumination": [ "head" ] }
+}
+```
+
+The other lists (`restricts_gear`, `encumbrance_always`, `wet_protection`, `no_cbm_on_bp`, ...) still add to the parent's when restated.
+
+### Monster relations
+
+`monster_relations` changes how monsters see a character with the mutation.  Each entry is an object:
+
+| Identifier     | Type                     | Description
+|----------------|--------------------------|-------------
+| `species`      | string or array          | The entry is about monsters of any of these species.
+| `faction`      | string or array          | ... and of any of these monster factions (their current faction).
+| `monster_flag` | string or array          | ... and with any of these monster flags.  An entry with none of the three is about every monster.
+| `min_anger`, `max_anger` | integer        | Only while the monster's anger toward the character is at least / at most this (with the entries before it applied).
+| `anger`        | integer                  | Added to the monster's anger toward the character; negative calms it.
+| `morale`       | integer                  | Added to its morale toward the character; negative scares it.
+| `attitude`     | `"FRIEND"` or `"IGNORE"` | The monster is friendly to the character, or ignores it, whatever its anger (`anger` and `morale` are then not used).
+
+```jsonc
+"monster_relations": [
+  { "faction": "bee", "attitude": "FRIEND" },
+  { "species": [ "REPTILE" ], "min_anger": 10, "anger": -20 },
+  { "monster_flag": "ANIMAL", "anger": -10, "morale": 5 }
+]
+```
+
+Vanilla's bee, mycus, pheromone, flower and terrifying traits use it.  The character's mutations are taken in order of their ids, and each one's entries in order.  An entry with an `attitude` that applies decides first; then the others add their anger and morale, each seeing the anger the ones before it left (so a pheromone's `min_anger` sees the anger after a flower's calming).  They apply before the animal empathy and discord flags, `anger_relations` and `ignored_by`, and only after the monster's own reasons to ignore the character: a monster that only attacks characters that annoyed it (`aggro_character` false) still ignores the character unless an entry with a positive `anger` (or a positive `anger_relations` value) is about it.  Like other mutation members, the list is inherited by `copy-from` and replaced whole when given.
 
 ### Comfort Conditions
 
@@ -364,11 +442,12 @@ Conditions have the following fields. `type` is mandatory and determines which o
 
 | Identifier  | Type    | Description
 |-------------|---------|-------------
-| `type`      | string  | One of `"terrain"`, `"furniture"`, `"trap"`, `"field"`, `"vehicle"`, `"character"`, or `"trait"`. Always mandatory.
+| `type`      | string  | One of `"terrain"`, `"furniture"`, `"trap"`, `"field"`, `"vehicle"`, `"character"`, `"trait"`, or `"condition"`. Always mandatory.
 | `id`        | string  | The ID of a terrain, furniture, trap, field, or trait.
 | `flag`      | string  | A terrain, furniture, vehicle part, or character flag.
 | `intensity` | integer | A field's intensity.
 | `active`    | boolean | If a trait must be active.
+| `condition` | object  | A [dialogue condition](NPCs.md#dialogue-conditions).
 | `invert`    | boolean | If a condition should pass when it would fail and fail when it would pass. Always optional.
 
 #### Types
@@ -384,6 +463,7 @@ A condition's `type` determines what it checks for in a location. A condition pa
 | `vehicle`   |                | `flag`      | Passes if in/on a part of a vehicle. If `flag` is defined, the part must have the given `flag` and cannot be broken.
 | `character` | `flag`         |             | Passes if the character has the given `flag`.
 | `trait`     | `id`           | `active`    | Passes if the character has a trait with the given `id`. If `active` is defined, the trait must be active.
+| `condition` | `condition`    |             | Passes if the dialogue condition is true, with the sleeper as `u` and the spot rated in the context variable `loc` (NPCs rate spots around them, not only their own), e.g. `{ "type": "condition", "condition": { "math": [ "u_val('pain') < 20" ] } }`.
 | all types   |                | `invert`    | Passes if the condition would fail. Fails if the condition would pass.
 
 ### EOC details
@@ -395,7 +475,7 @@ Mutations support EOC on activate, deactivate and for processing. As well for ea
 There are two ways for JSON to stop an activation:
 
 - `activation_condition` is a veto checked **before** anything happens: when it is false the mutation is not turned on, no cost (kcal, thirst, sleepiness, mana, stamina) is paid, the cooldown does not start, no `activated_eocs` run, and `activation_fail_message` (if any) is shown.  The condition sees the character as `u` and the context variable `this` (the mutation id), so one condition can be shared between traits.  It applies to every way of activating the mutation: the mutation menu, `u_activate_trait` and reflex `triggers`.  Keep it free of randomness: it is meant to answer "can this be used right now?".
-- An `activated_eocs` EOC may turn the mutation off itself with `u_deactivate_trait` (usually on `{ "context_val": "this" }`).  The engine respects that: the mutation stays off (its `deactivated_eocs` run), the rest of the activation (`transform`, `spawn_item`, `ranged_mutation`, hardcoded effects) is skipped, and `activated_is_setup` is not applied.  The cost already paid is kept, so use `activation_condition` for checks that should be free.
+- An `activated_eocs` EOC may turn the mutation off itself with `u_deactivate_trait` (usually on `{ "context_val": "this" }`).  The engine respects that: the mutation stays off (its `deactivated_eocs` run), the rest of the activation (`transform`, `spawn_item`, `ranged_mutation`, hardcoded effects) is skipped, and `activated_is_setup` is not applied.  This cancels the activation, so its cost is refunded: the kcal, thirst, sleepiness, mana or stamina it paid are given back, and the cooldown (`charge`) is as it was before.  Only the cost: whatever else the EOC did before turning the mutation off stays done.  An EOC that removes the mutation (`u_lose_trait`) instead of turning it off doesn't cancel the activation, and nothing is refunded.  `activation_condition` is still the better place for checks that don't need the EOC to run: with it, the mutation never turns on, so its `deactivated_eocs` don't run either.
 
 ```jsonc
   {
@@ -420,15 +500,44 @@ There are two ways for JSON to stop an activation:
   }
 ```
 
+#### Built-in activations
+
+`builtin_activation` gives an `active` mutation one of the game's built-in activation effects.  It runs after the `activated_eocs` (and only if they didn't cancel the activation), unless the mutation has a `transform`; a mutation with one doesn't also give its `spawn_item` or fire its `ranged_mutation`.
+
+| Value | Effect | Shipped trait |
+| --- | --- | --- |
+| `none` | nothing (the default) | |
+| `web` | spins a web where the character stands, and keeps leaving web wherever they walk (not in a vehicle) while the mutation is on | `WEB_WEAVER` |
+| `sludge_trail` | the same with sludge | `SNAIL_TRAIL` |
+| `long_pull` | turns off, and after a second pulls a creature the character picks (an NPC: its last target) towards them, as the tongue or tentacle named by the mutation | `LONG_TONGUE2`, `GASTROPOD_EXTREMITY2` |
+| `burrow` | turns off and digs, as the `fake_burrowing` tool | `BURROW`, `BURROWLARGE` |
+| `slime_split` | turns off and splits off a friendly slime microbian next to the character; with no room for it, nothing happens and the cost is given back | `SLIMESPAWNER` |
+| `vomit` | turns off and throws up | `NAUSEA`, `VOMITOUS` |
+| `spores` | turns off and releases spores | `M_FERTILE` |
+| `blossoms` | turns off and releases blossoms | `M_BLOOM` |
+| `spores_and_blossoms` | both | `M_PROVENANCE` |
+| `echolocation` | sends one echolocation pulse, then turns off | `ECHOLOCATION` |
+| `tree_communion` | turns off and, next to a tree in a wooded area, starts communing with the forest: the startup time is shorter with the `TREE_COMMUNION_PLUS`, `ROOTS2`, `ROOTS3` or `CHLOROMORPH` flags.  Elsewhere nothing happens and the cost is given back | `TREE_COMMUNION`, Xedra Evolved's `ARVORE_FOREST_MAPPING` |
+
 ### Diet rules
 
-Three fields let a mutation change what its owner can eat, without C++. They apply while the character has the trait.
+These fields let a mutation change what its owner can eat, how it tastes and what eating it does, without C++. They apply while the character has the trait.
 
 - `edible_food_flags`: array of item flag ids. Food that has any of them can be eaten even with the `INEDIBLE` flag, and its taste is adjusted like a threshold animal's: negative fun is turned positive and halved, and zero fun becomes 2. The animal thresholds use it: `THRESH_CATTLE` lists `CATTLE`, `THRESH_LUPINE` lists `LUPINE`, and so on.
 - `food_allergies`: array of `{ "vitamin": <vitamin id>, "morale": <morale type id> }`. Food that contains the vitamin is an allergen: the eat menu warns about it, eating it gives the morale (-75, down to -400). When several allergies match, the first one in load order wins. `VEGETARIAN`, `MEATARIAN`, `LACTOSE`, `ANTIFRUIT`, `ANTIJUNK` and `ANTIWHEAT` use it.
-- `eat_condition`: object with a mandatory `condition` and an optional `fail_message` (default "You can't eat that."). The condition runs with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker, every time the game checks whether the food can be eaten (eat menu, NPC food choice, forced eating), for every comestible including drinks and medicine. When it is false, the food can't be eaten and `fail_message` is shown. Unlike `consumption_effect_on_conditions` on the food, it runs before anything is eaten.
+- `eat_condition`: an object, or an array of objects that are each checked on their own, with a mandatory `condition`, an optional `fail_message` (default "You can't eat that.") and an optional `checked` (default `"after_diet"`). The condition runs with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker, every time the game checks whether the food can be eaten (eat menu, NPC food choice, forced eating), for every comestible including drinks and medicine. When it is false, the food can't be eaten and `fail_message` is shown. Unlike `consumption_effect_on_conditions` on the food, it runs before anything is eaten. `checked` says when, among the game's own checks, so you choose which message wins when several checks refuse the same food:
+  - `"first"`: before the frozen, drug and tool checks (after the inedible, dirt and underwater ones). The Mycus traits use it.
+  - `"before_diet"`: after those, before the `CARNIVORE_DIET` and `HERBIVORE_DIET` refusals. `PROBOSCIS` uses it.
+  - `"after_diet"`: after those, before `can_only_eat`. `VEGAN` uses it.
+  - `"last"`: after `can_only_eat`, the last check. `PICKYEATER` uses it.
 
-Unknown flag, vitamin and morale ids are reported at load.
+  Within one stage, the mutations go in load order and each one's conditions in the order written. Useful conditions on the food: `npc_has_flag`, `npc_comestible_type` (`"FOOD"`, `"DRINK"` or `"MED"`; a drink with the `USE_EAT_VERB` flag is eaten, not drunk) and the math function `n_food_fun()`, how the food tastes to the eater (after rot, monotony and the eater's traits, like the eat menu's taste).
+- `food_fun`: object that changes how good or bad food tastes to the eater, after every other taste adjustment of the food and the eater's mutations, except the taste-related bionics. Taste above 0 is multiplied by `positive` and the most morale it can give by `positive_max`; taste below -1 is multiplied by `negative`, and if `negative_max` is given, the most (negative) morale it can give becomes the taste before `negative` was applied times `negative_max`. All default to 1 (no change). `GOURMAND` uses `{ "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }`.
+- `eat_eocs`: array of EOC ids or inline EOCs, run whenever the character swallows something they consume (food, drink or medicine taken by mouth; not `NO_INGEST` items such as chewing gum or injections), while the food's morale is applied: after the taste and allergy morale, before the carnivore's junk food penalty. They run with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker. `PROJUNK` and `PROJUNK2` use them for their sweet tooth.
+
+Unknown flag, vitamin, morale and EOC ids are reported at load.
+
+Vanilla uses them: `VEGETARIAN`, `MEATARIAN`, `ANTIFRUIT`, `LACTOSE`, `ANTIJUNK` and `ANTIWHEAT` are `food_allergies`; the animal thresholds are `edible_food_flags`; `VEGAN`, `PICKYEATER`, `PROBOSCIS`, `M_DEPENDENT`, `MARLOSS_AVOID` and `THRESH_MYCUS` are `eat_condition`s; `GOURMAND` is a `food_fun`; and `PROJUNK` and `PROJUNK2` are `eat_eocs`. The rest of the diet rules are character flags, which any mutation, bionic or effect can give: `RUMINANT` gets its herbivore diet from `HERBIVORE_DIET`, and `SAPROPHAGE`, `SAPROVORE` and `EATDEAD` get theirs from `SAPROPHAGE_DIET`, `SAPROVORE_DIET` and `EATDEAD_DIET` (see [JSON_FLAGS.md](JSON_FLAGS.md)).
 
 ```jsonc
   {
@@ -445,6 +554,32 @@ Unknown flag, vitamin and morale ids are reported at load.
     }
   }
 ```
+
+### Retaliation
+
+`retaliation` is a list of what a creature that hits the mutant in melee suffers; ranged and thrown hits don't trigger it.  Vanilla `SPINES`, `QUILLS`, `THORNS` and `CF_HAIR` use it.  Each object can have:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `damage_type` | none | The damage type dealt to the attacker's torso.  Needed when `damage` is more than 0 |
+| `damage` | 0 | A number, or `[ min, max ]` rolled each time |
+| `requires_uncovered` | true | Only when the body part hit has nothing worn on it |
+| `unarmed_attacker_only` | false | Only when the attacker wields nothing |
+| `effects` | none | Effects given to the attacker: `[ { "id": "stunned", "duration": "2 turns", "one_in": 3 } ]`; `duration` defaults to 1 turn and `one_in` (the chance, one in this) to 1 |
+| `message` | none | Shown when it is the avatar's; `%s` is the attacker |
+| `npc_message` | none | Shown when it is another character's and the avatar sees it; `%1$s` is the mutant, `%2$s` the attacker |
+
+```jsonc
+"retaliation": [
+  {
+    "effects": [ { "id": "stunned", "duration": "2 turns" }, { "id": "blind", "duration": "2 turns", "one_in": 3 } ],
+    "message": "Your hairs detach into %s!",
+    "npc_message": "%2$s gets a load of %1$s's hair stuck in!"
+  }
+]
+```
+
+For anything else (a condition, a spell, an EOC), use an enchantment's [`hit_me_effect`](MAGIC.md), whose EOCs get the body part hit as `hit_bodypart`.
 
 ### Sample trait: Example Sleep
 
@@ -477,8 +612,18 @@ A Mutation Category identifies a set of interrelated mutations that as a whole e
 | `vitamin`               | The vitamin id of the primer of this category. The character's vitamin level will act as the weight of this category when selecting which category to try and mutate towards, and gets decreased on successful mutation by the trait's mutagen cost.
 | `base_removal_chance`   | Int, percent chance for a mutation of this category removing a conflicting base (starting) trait, rolled per `Character::mutate_towards` attempts.  Default 100%.  Removed base traits will **NOT** be considered base traits from here on, even if you regain them later.
 | `base_removal_cost_mul` | Float, multiplier on the primer cost of the trait that removed a canceled starting trait, down to 0.0 for free mutations as long as a starting trait was given up.  Default 3.0, used for human-like categories and lower as categories become more inhuman.
+| `bad_mutation_chance_scale` | Float, the chance that a mutation in this category is a bad one is this times the character's instability for the category divided by the number of good traits in it (see [Instability](#instability-and-the-odds-of-a-good-mutation)).  Default 0.5.
+| `bad_mutation_chance_cap` | Float from 0 to 1, the highest that chance gets, however unstable the character is.  Default 0.67.
+| `threshold_breach_min_level` | Int, how far the character must have mutated into this category (their category level, the one that also picks their dreams) before they can try to cross its threshold.  Default 30.
+| `threshold_message`     | Message shown when the character crosses this category's threshold.  Default "Something strains mightily for a moment… and then… you're… FREE!".
 | `wip`                   | A flag indicating that a mutation category is unfinished and shouldn't have consistency tests run on it. See tests/mutation_test.cpp.
 | `skip_test`             | If true, this mutation category will be skipped in consistency tests; this should only be used if you know what you're doing. See tests/mutation_test.cpp.
+
+A category can `copy-from` another category (or an `abstract` one), and a later mod changes a category by copying it under the same id: it keeps every member it doesn't name, and the numbers take `relative` and `proportional`.  A second definition of an id without `copy-from` replaces the first one entirely.
+
+```jsonc
+{ "type": "mutation_category", "id": "LIZARD", "copy-from": "LIZARD", "relative": { "threshold_min": 400 } }
+```
 
 ## Trait Migrations
 

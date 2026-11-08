@@ -4,6 +4,9 @@
 
 #include <map>
 #include <optional>
+#include <set>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "coords_fwd.h"
@@ -23,6 +26,11 @@ class ter_furn_data
         weighted_int_list<T> list;
         translation message;
         bool message_good = false;
+        // MAGIC-J06: percent chance this entry changes a tile it matches; one that fails leaves
+        // the tile as if the entry didn't match it
+        int chance = 100;
+        // MAGIC-J06: for fields, the intensity of the new field instead of the old one's
+        std::optional<int> intensity;
         ter_furn_data() = default;
         ter_furn_data( const weighted_int_list<T> &list, const translation &message,
                        const bool message_good ) :
@@ -83,7 +91,11 @@ class ter_furn_transform
         static void reset();
         static void load_transform( const JsonObject &jo, const std::string &src );
         static void finalize_all();
+        // Reports every unknown id, and terrain or furniture flags nothing has (MAGIC-J06)
+        static void check_all();
         void load( const JsonObject &jo, std::string_view );
+        void check( const std::set<std::string> &terrain_flags,
+                    const std::set<std::string> &furniture_flags ) const;
 
         static const std::vector<ter_furn_transform> &get_all();
         static void reset_all();

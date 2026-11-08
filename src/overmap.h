@@ -615,7 +615,19 @@ class overmap
         // Returns 0 if within the bounds of any city.
         std::optional<int> approx_distance_to_city( const tripoint_om_omt &p,
                 int max_dist_to_check = OMAPX ) const;
+        /**
+         * The city nearest to p (by city::get_distance_from) on this overmap or on one of the eight
+         * neighbouring overmaps that exist, or nullptr if there is none; distance is set to its
+         * distance.  A city of a neighbour is a copy with its position relative to this overmap
+         * (OMAP-B08).
+         */
+        const city *nearest_city_across_borders( const tripoint_om_omt &p, int &distance ) const;
     private:
+        // The cities of the existing neighbouring overmaps, positioned relative to this one, as
+        // of when the overmap buffer held border_cities_overmap_count overmaps (OMAP-B08).
+        const std::vector<city> &border_cities() const;
+        mutable std::vector<city> border_cities_cache; // NOLINT(cata-serialize)
+        mutable int border_cities_overmap_count = -1; // NOLINT(cata-serialize)
         // Any point that is part of or surrounded by a city
         std::unordered_set<point_om_omt> city_tiles;
         // Fill in any gaps in city_tiles that don't connect to the map edge
@@ -757,7 +769,11 @@ class overmap
         const city &get_nearest_city( const tripoint_om_omt &p ) const;
         const city &get_invalid_city() const;
 
-        void signal_hordes( const tripoint_abs_ms &p, int sig_power );
+        /**
+         * Alerts the hordes within sig_power submaps of p.
+         * @return how many zone groups were looked at; only those in reach of the signal are.
+         */
+        int signal_hordes( const tripoint_abs_ms &p, int sig_power );
         void alert_entity( const tripoint_om_ms &location, const tripoint_abs_ms &destination,
                            int intensity );
         void process_mongroups();
@@ -922,6 +938,14 @@ class overmap
         void build_connection( const point_om_omt &source, const point_om_omt &dest, int z,
                                const overmap_connection &connection, bool must_be_unexplored,
                                cube_direction initial_dir = cube_direction::last );
+        // OMAP-J11: builds an overmap special's connection to dest, from the source its route
+        // picks. special_omts (the special's own tiles) are never a nearest_existing source.
+        void build_special_connection( const overmap_connection &connection,
+                                       const special_connection_route &route,
+                                       const tripoint_om_omt &dest, cube_direction initial_dir,
+                                       const city &cit,
+                                       const std::vector<tripoint_om_omt> &special_omts,
+                                       bool must_be_unexplored );
         void connect_closest_points( const std::vector<point_om_omt> &points, int z,
                                      const overmap_connection &connection );
         // Polishing
@@ -945,14 +969,17 @@ class overmap
         void river_meander( const point_om_omt &river_end, tripoint_om_omt &current_point,
                             int river_scale );
 
+        // check_eoc: whether to test the special's "eoc" condition for each rotation.  Batch
+        // placement tests it once per overmap instead (OMAP-J07).
         om_direction::type random_special_rotation( const overmap_special &special,
-                const tripoint_om_omt &p, bool must_be_unexplored ) const;
+                const tripoint_om_omt &p, bool must_be_unexplored, bool check_eoc = true ) const;
 
         static bool is_amongst_locations( const oter_id &oter,
                                           const cata::flat_set<string_id<overmap_location>> &locations );
 
         bool can_place_special( const overmap_special &special, const tripoint_om_omt &p,
-                                om_direction::type dir, bool must_be_unexplored ) const;
+                                om_direction::type dir, bool must_be_unexplored,
+                                bool check_eoc = true ) const;
 
         std::vector<tripoint_om_omt> place_special(
             const overmap_special &special, const tripoint_om_omt &p, om_direction::type dir,

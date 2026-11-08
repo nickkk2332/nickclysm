@@ -1,5 +1,7 @@
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <regex>
 #include <set>
@@ -11,7 +13,6 @@
 #include "avatar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "cata_variant.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "debug.h"
@@ -25,7 +26,6 @@
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -42,6 +42,8 @@
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+
+enum class cata_variant_type : int;
 
 static const fault_id fault_audit_j01_goo( "fault_audit_j01_goo" );
 static const fault_id fault_audit_j01_slime( "fault_audit_j01_slime" );

@@ -34,6 +34,7 @@
   - [Spawn an entire group of monsters with "place_monsters"](#spawn-an-entire-group-of-monsters-with-place_monsters)
   - [Spawn npcs with "place_npcs"](#spawn-npcs-with-place_npcs)
   - [Set variables with "place_variables"](#set-variables-with-place_variables)
+  - [Run EOCs with "place_eocs"](#run-eocs-with-place_eocs)
   - [Spawn specific items with a "place_item" array](#spawn-specific-items-with-a-place_item-array)
   - [Place loot](#place-loot)
   - [Set the owner of items in a given area with "faction_owner"](#set-the-owner-of-items-in-a-given-area-with-faction_owner)
@@ -48,6 +49,7 @@
     - [Place monsters from a monster group with "monsters"](#place-monsters-from-a-monster-group-with-monsters)
     - [Place a vehicle by type or group with "vehicles"](#place-a-vehicle-by-type-or-group-with-vehicles)
     - [Remove vehicles by type](#remove-vehicles-by-type)
+    - [Remove NPCs with "remove_npcs"](#remove-npcs-with-remove_npcs)
     - [Place a specific item with "item"](#place-a-specific-item-with-item)
     - [Place a specific monster with "monster"](#place-a-specific-monster-with-monster)
     - [Place a trap with "traps"](#place-a-trap-with-traps)
@@ -656,11 +658,15 @@ This places "mon_secubot" at random coordinate (7-18, 7-18). The monster is plac
 repeated by random number of times `[1-3]`. The monster will spawn with 20-30 5.56x45mm rounds.
 
 ### "spawn_data" for monsters
-This optional object can have two fields:
+This optional object can have these fields. The same object works on a monster group entry (see JSON_INFO.md); a `place_monster` with a group adds its own spawn_data on top of the entry's: its ammo and variables win, its effects add to the entry's, and its patrol and faction replace the entry's. Spawn data is kept, in saves too, until the monster is placed.
 | Field       | Description
 | ---         | ---
+| effects     | A list of objects, each with an effect `"id"`, a `"duration"` in turns (a number or a range, default 1), an `"intensity"` (a number or a range, default 1) and `"permanent"` (default false). The monster spawns with them.
+| variables   | An object of variable names and values, text or numbers. The monster spawns with them, as `mon_variables` gives `u_spawn_monster`'s monsters.
+| faction     | A monster faction id. The monster spawns in that faction instead of its type's.
 | ammo        | A list of objects, each of which has an `"ammo_id"` field and a `"qty"` list of two integers. The monster will spawn with items of "ammo_id", with at least the first number in the "qty" and no more than the second.
-| patrol      | A list of objects, each of which has an `"x"` field and a `"y"` field. Either value can be a range or a single number. The x,y co-ordinates define a patrol point as a relative mapsquare point offset from the (0, 0) local mapsquare of the overmap terrain tile that the monster spawns in. Patrol points are converted to absolute mapsquare tripoints inside the monster generator.
+| patrol      | A list of objects, each of which has an `"x"` field and a `"y"` field. Either value can be a range or a single number; a range is rolled for each monster as it is placed. The x,y co-ordinates define a patrol point as a relative mapsquare point offset from the (0, 0) local mapsquare of the overmap terrain tile that the monster spawns in. Patrol points are converted to absolute mapsquare tripoints inside the monster generator.
+| eocs        | A list of effect_on_condition ids. They run once the monster is placed (when its map is first loaded around the avatar), after everything else here, with the monster as `u`, no `npc`, and its location as the context value `loc`. They add to a group entry's.
 
 Monsters with a patrol point list will move to each patrol point, in order, whenever they have no more pressing action to take on their turn. Upon reaching the last point in the patrol point list, the monster will continue on to the first point in the list.
 
@@ -703,15 +709,44 @@ Using `place_npcs` to spawn a group of npcs.
 | class       | The class of the npc that you wish to spawn |
 | add_trait   | A string of array of strings for traits the npc starts with.
 | unique_id   | A string for the unique_id the npc has.
+| variables   | (optional) An object of variable names and values, text or numbers, that the npc starts with.
+| eocs        | (optional) A list of effect_on_condition ids, run on the npc (`u`, no `npc`, context value `loc` its location) right after it is placed, while its map is still being generated: use them to set up the npc itself. An npc not placed (its `unique_id` already exists) runs nothing.
 
 ## Set variables with "place_variables"
 Using `place_variables` to set a group of variables.
 
 |Field|Description  |
 |--|--|
-| x, y        | Coordinates. Value: 0-23. A range `[ a, b ]` is not rolled: the variable is set to `a`.
+| x, y        | Coordinates. Value: 0-23, or a range `[ a, b ]` for a random value in it, as for other pieces.
 | z           | (optional) Relative Z coordinate for placement at a different Z level than the nominal one. Value from `-20 to 20`. Also note that range is not supported.
 | name        | The name of the global variable to set with the absolute coordinates of x and y.
+
+## Run EOCs with "place_eocs"
+`place_eocs` queues an effect_on_condition at a point of the map. It runs once the map is made,
+with the next queued EOCs (at the latest at the start of the next turn), not during map
+generation: an EOC can then change the map it was placed in, spawn things there or record the
+place. The avatar is alpha. Its context variables:
+
+| Context variable | Value
+| --               | --
+| `loc`            | The point, an absolute location. Turned and mirrored with the map, as for `place_variables`.
+| `oter_id`        | The overmap terrain the mapgen made, such as `house_04_north`.
+
+```jsonc
+"place_eocs": [ { "eoc": "EOC_REGISTER_SHRINE", "x": 12, "y": 12 } ]
+```
+
+|Field|Description  |
+|--|--|
+| eoc         | An EOC id, or an inline EOC (with an `id`). It must be global or of type `ACTIVATION` (the default), so that it can be queued.
+| x, y        | Coordinates. Value: 0-23, or a range `[ a, b ]` for a random value in it.
+| z           | (optional) Relative Z coordinate, as for `place_variables`.
+| repeat      | (optional) As for other pieces.
+
+In a palette or a mapgen's own mappings the key is `"eocs"`: `"eocs": { "S": { "eoc": "EOC_REGISTER_SHRINE" } }`.
+
+The `omt_generated` and `map_extra_spawned` events (see EFFECT_ON_CONDITION.md) tell global
+EOCs about every overmap tile made and every map extra placed, also once map generation is over.
 
 ## Spawn specific items with a "place_item" array
 **optional** A list of *specific* things to add. WIP: Monsters and vehicles will be here too
@@ -832,6 +867,39 @@ Defining specials through their specific location:
 
 `<x>` and `<y>` define where the special is placed (x is horizontal, y vertical). Valid value are in the range 0..23,
 min-max values are also supported: `"x": [ 0, 23 ], "y": [ 0, 23 ]` places the special anyway on the map.
+
+#### Conditions and placement filters
+
+Every `place_<type-of-special>` entry (including `place_nested`, `place_monster`, `place_npcs`, `place_loot`...)
+can also have these two fields. They don't apply to the mappings, nor to the `set` array.
+
+| Field     | Description
+| ---       | ---
+| condition | (optional) A [dialogue condition](NPCs.md#dialogue-conditions), checked for each `repeat`; when it fails, that repeat places nothing. `u` is the avatar and there is no `npc`. Its context values are `loc`, where the entry goes (the tile `place_on` picked, or else the lowest corner of the x/y range: no random number is used), and `oter_id`, the id of the overmap terrain being generated. Global variables are the usual way to make a map depend on the state of the game.
+| place_on  | (optional) An object: which tiles the entry may go on. For each `repeat`, x and y are rolled until a tile passes, up to `attempts` times; when none does, that repeat places nothing. The entry then goes on that one tile, even if it is a piece that otherwise covers its whole x/y range (such as `faction_owner`). It sees the map as it is when the entry is placed: terrain, furniture and region terrain (`t_region_*`, resolved first) are there for monsters, items, npcs and nested chunks.
+
+`place_on` fields, all optional:
+
+| Field         | Description
+| ---           | ---
+| ter           | A list of terrain ids: the tile's terrain is one of them.
+| ter_flags     | A list of flags the tile's terrain has, all of them.
+| not_ter_flags | A list of flags the tile's terrain has none of.
+| no_furniture  | `true`: the tile has no furniture.
+| passable      | `true`: a creature can stand on the tile (no wall, no vehicle in the way...).
+| near          | An object with `ter`, `ter_flags` (as above) and `radius` (default 1): another tile at most `radius` away matches them.
+| attempts      | How many tiles to try, default 20. A single fixed tile is checked once.
+
+Example: a 50% chance of a corpse on a free, diggable tile next to water, only after the avatar met the cult:
+```jsonc
+"place_items": [
+  {
+    "item": "everyday_corpse", "x": [ 0, 23 ], "y": [ 0, 23 ], "chance": 50,
+    "place_on": { "ter_flags": [ "DIGGABLE" ], "no_furniture": true, "near": { "ter_flags": [ "LIQUID" ] } },
+    "condition": { "compare_string": [ "yes", { "global_val": "met_the_cult" } ] }
+  }
+]
+```
 
 Example with mapping (the characters `"O"` and `";"` should appear in the rows array where the specials should appear):
 
@@ -1002,6 +1070,23 @@ Note that vehicles cannot be placed over overmap boundaries. So it needs to be 2
 ]
 ```
 
+### Remove NPCs with "remove_npcs"
+
+Removes the living NPCs on the overmap terrain the mapgen runs on (the coordinates only pick the z-level, through `z`).
+
+| Field          | Description
+| ---            | ---
+| class          | (optional, string) only remove NPCs made from this NPC template (`"type": "npc"`). Checked at load: an unknown template is an error.
+| unique_id      | (optional, string) only remove the unique NPC with this id; it may then spawn again.
+| obsolete_class | (optional, boolean) `class` names an NPC template that no longer exists, to remove NPCs left in older saves. Skips the load check, and is an error when the template does exist. Default false.
+
+```jsonc
+"remove_npcs": [
+    { "class": "BEM_anchor_seller", "x": 0, "y": 0 },
+    { "class": "NC_BOUNTY_HUNTER", "obsolete_class": true, "x": 0, "y": 0 }
+]
+```
+
 ### Place a specific item with "item"
 
 | Field  | Description
@@ -1168,6 +1253,28 @@ NPCs in the faction will use the zone to influence the AI.
 | faction | (required, string) the faction id of the NPC faction that will use the zone.
 | name    | (optional, string) the name of the zone.
 | filter  | (optional, string) used as filter for `LOOT_CUSTOM`, or as group id for `LOOT_ITEM_GROUP`
+| options | (optional, object) the zone's options, as the zone manager would set them; see below
+
+`options` takes the members that fit the zone's type, all optional. The others are an error when the data loads.
+
+| Zone type | Member | Description
+| ---       | ---    | ---
+| `FARM_PLOT` | seed | (string) the seed item to plant; the plot is marked with what it grows. Without it the plot is tilled and harvested but not planted.
+| `FARM_PLOT` | fertilizer | (string) an item with the `FERTILIZER` flag to fertilize the plants with
+| `CONSTRUCTION_BLUEPRINT` | construction | (string) the construction id to build. As when it is picked in the zone manager, the zone builds up to the last construction of its group that follows from it (a half-built wall is finished into a wall). Without it the blueprint has no useful construction.
+| `AUTO_EAT`, `AUTO_DRINK`, `DISASSEMBLE`, `SOURCE_FIREWOOD` | ignore_contents | (bool) items in the zone are left alone when sorting. Default false.
+| `UNLOAD_ALL` | mods | (bool) detach mods from weapons. Default false.
+| `UNLOAD_ALL` | molle | (bool) detach MOLLE pouches. Default false.
+| `UNLOAD_ALL` | sparse_only | (bool) leave stacks bigger than `sparse_threshold` packed. Default false.
+| `UNLOAD_ALL` | sparse_threshold | (int) at least 1. Default 20.
+| `UNLOAD_ALL` | always_unload | (bool) unload even containers that have a sorting destination. Default false.
+
+```jsonc
+"zones": {
+  "f": { "type": "FARM_PLOT", "faction": "your_followers", "options": { "seed": "seed_corn", "fertilizer": "fertilizer_commercial" } },
+  "b": { "type": "CONSTRUCTION_BLUEPRINT", "faction": "your_followers", "options": { "construction": "constr_wall_log" } }
+}
+```
 
 The `type` field values affect NPC behavior. NPCs will:
 
@@ -1220,6 +1327,8 @@ Place_nested allows for conditional spawning of chunks based on the `"id"`s and/
 | predecessors       | (optional) Any of the maps' predecessors that should be checked before placing the chunk. Only useful if using fallback_predecessor_mapgen.
 | check_z            | (optional, array of ints ) Any number of z-levels that should be checked before placing the chunk.
 
+
+The weight of a chunk in `chunks` or `else_chunks` (`[ "nest1", 50 ]`) can be a [variable object](NPCs.md#variable-object), such as `{ "global_val": "my_weight" }` or `{ "math": [ "..." ] }`, evaluated each time the chunk is picked, with the avatar as `u`. A chunk whose weight comes to 0 is never picked, and when all of them do, nothing is placed: that makes a chunk depend on the state of the game. These weights don't know where they are placed; for that, give the entry a `condition` (see [Conditions and placement filters](#conditions-and-placement-filters)).
 
 The adjacent overmaps which can be checked in this manner are:
 * the direct cardinal neighbors ( `"north"`, `"east"`, `"south"`, `"west"` ),
@@ -1283,11 +1392,12 @@ Creates a `f_console` furniture. Despite the only required field is `name`, you 
 | Field  | Description
 | ---    | ---
 | name          | (required, string) a name for a computer
-| options       | (optional, array of objects) set of options available for player. `name` (string) - displayed name for an option. `action` - id of a hardcoded action from `computer_session.cpp`
-| failures      | (optional, array of objects) set of failures that could happen in case of unsuccessful hacking attempt. `action` - id of a hardcoded computer failure from `computer_session.cpp`. Only one random failure from the set could happen per one unsuccessful hacking attempt
+| options       | (optional, array of objects) set of options available for player. `name` (string) - displayed name for an option. `action` - id of a hardcoded action from `computer_session.cpp`. `security` (integer, default 0) - the hack needed to use it. `eocs` (array of EOC ids or inline EOCs) - run when the option is chosen, after its action, with the player as alpha, the computer as beta and the context value `pos` (the computer's location); an option with `eocs` needs no `action`
+| failures      | (optional, array of objects) set of failures that could happen in case of unsuccessful hacking attempt. `action` - id of a hardcoded computer failure from `computer_session.cpp`. `eocs` - run when the failure happens, after its action, as an option's; a failure with `eocs` needs no `action`. Only one random failure from the set could happen per one unsuccessful hacking attempt
 | security      | (optional, integer) value for determining the difficulty of hacking this computer. It's checked versus player's computer skill and intelligence
 | access_denied | (optional, string) message displayed to the player if `security` > 0. Defaults to `"ERROR!  Access denied!"`
-| eocs          | (optional, array of strings) a name for an `effect` that will shoot when player examines the computer
+| eocs          | (optional, array of EOC ids or inline EOCs) run when the player uses the computer, with the player as alpha and the computer as beta. See `eocs_mode`
+| eocs_mode     | (optional, string) `"replace"` (the default): the `eocs` run instead of the terminal, which then has no login, `security`, options or failures. `"on_login"`: the terminal works as usual and the `eocs` run once the player has logged in (after any hack of `security`), before the options, with the context value `pos`
 | chat_topics   | (optional, array of strings) conversation topics if dialog is opened with the computer
 
 
@@ -1298,8 +1408,11 @@ Example for placing computer console (either by using a character in the rows ar
   "a": {
     "name": "Test computer 1",
     "security": 3,
-    "options": [ { "name": "Test unlock action", "action": "unlock" } ],
-    "failures": [ { "action": "shutdown" }, { "action": "alarm" } ],
+    "options": [
+      { "name": "Test unlock action", "action": "unlock" },
+      { "name": "Vent reactor", "security": 3, "eocs": [ "EOC_VENT" ] }
+    ],
+    "failures": [ { "action": "shutdown" }, { "action": "alarm" }, { "eocs": [ "EOC_LOCKDOWN" ] } ],
     "access_denied": "ERROR!  Access denied!  Unauthorized access will be met with lethal force!"
   }
 },
@@ -1315,6 +1428,10 @@ Example for placing computer console (either by using a character in the rows ar
 ```
 
 ## Mapgen parameters
+
+The parameters a nested chunk declares (with `omt` or `overmap_special` scope) reach the mapgen
+that places it, however deep the chunk is nested: a chunk placed by a chunk placed by the
+mapgen counts too, and so does every possible choice of a `chunks` list, `"null"` included.
 
 Parameters consist of a key identifier and a value that can be of various types.  They are used to roll one value out of several possible but then to use that result multiple times at a chosen scope without the value being rerolled.
 The value will be determined when it's needed the first time.
@@ -1361,6 +1478,14 @@ If using `"overmap_special"`, or `"omt_stack"` scope, a `"fallback"` must also b
   "x": { "param": "my_parameter_key", "fallback": "t_dirt" }
 }
 ```
+
+A mapgen value can also read an [EOC variable](NPCs.md#variable-object), each time the value is needed: `"var"` is the variable and `"fallback"` (required) the value used when it is unset or isn't a valid id. For example, walls of the style a global variable names:
+```json
+"terrain": {
+  "#": { "var": { "global_val": "town_wall_style" }, "fallback": "t_wall" }
+}
+```
+The variable is read with the avatar as `u` and the context values `oter_id` (the overmap terrain being generated) and `loc` (the north-west corner of the map being generated). As the default of a parameter, it is read once, when the parameter is chosen. Load-time checks only know the fallback: a `switch` on a variable must still have a case for each value it can hold, and a variable can't choose a palette (the fallback's palette is used).
 
 If your parameter's type doesn't match the field or you want to determine another value based on one parameter's result you can instead use a switch statement:
 ```json
@@ -1491,6 +1616,15 @@ Rotates the generated map after all the other mapgen stuff has been done. The va
 
 Values are 90° steps.
 
+A nested chunk turns by its `"rotation"` only if it also sets `"allow_rotation": true`. Many
+chunks ask for a rotation (often `[ 0, 3 ]`) but were drawn for one orientation, such as a shop
+front facing the street, so without `allow_rotation` the rotation is ignored and the chunk is
+placed as drawn. A turned chunk turns everything it places: its rows, `set` points, lines and
+squares, the pieces of its `place_*` lists (vehicles turn their facing too), and the chunks it
+places, which turn with it on top of their own rotation. Nested chunks are square, so a turned
+chunk covers the same square. Terrain and furniture ids are not changed: a door or a window that
+only looks right one way keeps its id.
+
 
 ## Pre-load a base mapgen with `"predecessor_mapgen"`
 
@@ -1521,7 +1655,14 @@ However, to support savegame migration across changes to mapgen definitions,
 you must provide a fallback value which will be used in the event that the game
 doesn't know what the previous terrain was.
 
-Example: `"predecessor_mapgen": "field"`
+Every overmap terrain the mapgen is used for must have the `REQUIRES_PREDECESSOR`
+flag, or the game only remembers the previous terrain by accident; this is
+checked at load for every mapgen, including those with a variable or math
+`"weight"`.  A road that needs a predecessor (both `ROAD` and
+`REQUIRES_PREDECESSOR`) placed over another such road keeps that road's
+predecessor rather than generating the replaced road underneath it.
+
+Example: `"fallback_predecessor_mapgen": "field"`
 
 
 # Palettes
@@ -1679,6 +1820,11 @@ Map extras can be used to place environmental objects and structures that can he
 | color               | (_optional_) The color of the symbol identifying this extra on the overmap. Defaults to white.
 | autonote_visibility | (_optional_) When to automatically mark this extra on the overmap. Defaults to "none", never marking it on the overmap. Other options listed below.
 | flags               | (_optional_) List of flags that identify this extra. These flags can be listed in `overmap_feature_flag_settings` to blacklist or whitelist map extras.
+| condition           | (_optional_) A dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the extra to be picked. The avatar is alpha; the context variable `loc` is the overmap tile's north-west tile and `oter_id` its overmap terrain. Example: `{ "math": [ "time_since('cataclysm', 'unit':'days') < 30" ] }`.
+| eocs                | (_optional_) EOCs (ids or inline) queued once the extra is placed, as `place_eocs` are: they run after map generation, with the avatar as alpha and the context variables `loc` (the overmap tile's north-west tile) and `map_extra` (this extra's id). They must be global or of type `ACTIVATION`.
+
+An EOC can place an extra with `place_map_extra` and ask whether a tile has one with `map_has_extra`
+(see EFFECT_ON_CONDITION.md). Placing one also sends the `map_extra_spawned` event.
 
 The `generator` can use one of 3 methods:
 

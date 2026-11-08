@@ -14,7 +14,10 @@
 #include "character_id.h"
 #include "coordinates.h"
 #include "debug.h"
+#include "creature.h"
+#include "dialogue.h"
 #include "dialogue_chatbin.h"
+#include "dialogue_topic_override.h"
 #include "faction.h"
 #include "game.h"
 #include "game_inventory.h"
@@ -56,10 +59,11 @@ static const flag_id json_flag_NO_UNWIELD( "NO_UNWIELD" );
 static const itype_id itype_foodperson_mask( "foodperson_mask" );
 static const itype_id itype_foodperson_mask_on( "foodperson_mask_on" );
 
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
+
 static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 std::string talker_npc_const::distance_to_goal() const
 {
@@ -132,12 +136,15 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
         add_topics.emplace_back( me_npc->chatbin.talk_stole_item );
     }
     int most_difficult_mission = 0;
+    // an urgent mission of difficulty 0 is pressed too, unless a harder one is (CAMP-J04)
+    bool chose_urgent = false;
     for( mission *&mission : me_npc->chatbin.missions ) {
         const mission_type &type = mission->get_type();
-        if( type.urgent && type.difficulty > most_difficult_mission ) {
+        if( type.urgent && ( !chose_urgent || type.difficulty > most_difficult_mission ) ) {
             add_topics.emplace_back( me_npc->chatbin.talk_mission_describe_urgent );
             me_npc->chatbin.mission_selected = mission;
             most_difficult_mission = type.difficulty;
+            chose_urgent = true;
         }
     }
     most_difficult_mission = 0;
@@ -157,13 +164,23 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
         }
     }
 
+    // MATH-J10: dialogue_topic_override JSON adds topics and turns these built-in rules off
+    const dialogue_topic_overrides::applied overrides = dialogue_topic_overrides::evaluate(
+                const_dialogue( get_const_talker_for( player_character ),
+                                get_const_talker_for( *me_npc ) ) );
+    const auto rule_on = [&overrides]( const std::string & rule ) {
+        return overrides.replaced.count( rule ) == 0;
+    };
+
     // Needs
-    if( me_npc->has_effect( effect_npc_suspend ) ) {
+    if( rule_on( "reboot" ) && me_npc->has_effect( effect_npc_suspend ) ) {
         add_topics.emplace_back( "TALK_REBOOT" );
     }
     if( me_npc->has_effect( effect_sleep ) || me_npc->has_effect( effect_lying_down ) ) {
         if( me_npc->has_effect( effect_narcosis ) ) {
-            add_topics.emplace_back( "TALK_SEDATED" );
+            if( rule_on( "sedated" ) ) {
+                add_topics.emplace_back( "TALK_SEDATED" );
+            }
         } else {
             add_topics.emplace_back( me_npc->chatbin.talk_wake_up );
         }
@@ -174,7 +191,7 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
     }
     me_npc->mod_moves( -to_moves<int>( 1_seconds ) );
 
-    if( player_character.is_deaf() ) {
+    if( rule_on( "deaf" ) && player_character.is_deaf() ) {
         if( add_topics.back() == me_npc->chatbin.talk_mug ||
             add_topics.back() == me_npc->chatbin.talk_stranger_aggressive ) {
             me_npc->make_angry();
@@ -183,7 +200,7 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
             add_topics.emplace_back( "TALK_DEAF" );
         }
     }
-    if( player_character.is_mute() ) {
+    if( rule_on( "mute" ) && player_character.is_mute() ) {
         if( add_topics.back() == me_npc->chatbin.talk_mug ||
             add_topics.back() == me_npc->chatbin.talk_stranger_aggressive ) {
             me_npc->make_angry();
@@ -192,7 +209,7 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
             add_topics.emplace_back( "TALK_MUTE" );
         }
     }
-    if( player_character.has_trait( trait_PROF_CHURL ) ) {
+    if( rule_on( "churl" ) && player_character.has_trait( trait_PROF_CHURL ) ) {
         if( add_topics.back() == me_npc->chatbin.talk_mug ||
             add_topics.back() == me_npc->chatbin.talk_stranger_aggressive ) {
             me_npc->make_angry();
@@ -205,11 +222,13 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
         }
     }
 
-    if( me_npc->has_trait( trait_PROF_FOODP ) &&
+    if( rule_on( "npc_noface" ) && me_npc->has_trait( trait_PROF_FOODP ) &&
         !( me_npc->is_wearing( itype_foodperson_mask_on ) ||
            me_npc->is_wearing( itype_foodperson_mask ) ) ) {
         add_topics.emplace_back( "TALK_NPC_NOFACE" );
     }
+    // the highest priority last, to be shown first
+    add_topics.insert( add_topics.end(), overrides.topics.begin(), overrides.topics.end() );
     me_npc->decide_needs();
 
     return add_topics;
@@ -369,7 +388,7 @@ static consumption_result try_consume( npc &p, item &it, std::string &reason )
             reason = p.chat_snippets().snip_consume_cant_consume.translated();
             return REFUSED;
         } else {
-            if( to_eat.rotten() && !p.as_character()->has_trait( trait_SAPROVORE ) ) {
+            if( to_eat.rotten() && !p.as_character()->has_flag( json_flag_SAPROVORE_DIET ) ) {
                 //TODO: once npc needs are operational again check npc hunger state and allow eating if desperate
                 reason = p.chat_snippets().snip_consume_rotten.translated();
                 return REFUSED;

@@ -11,14 +11,19 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
+#include "character_id.h"
 #include "character.h"
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_chatbin.h"
 #include "enum_conversions.h"
+#include "event.h"
+#include "event_bus.h"
 #include "game.h"
 #include "item.h"
 #include "item_group.h"
@@ -44,6 +49,17 @@ static const efftype_id effect_run( "run" );
 
 static const mission_type_id mission_NULL( "NULL" );
 
+// the outermost items in @ref inv, without what they hold
+static std::vector<item *> crafting_inventory_roots( const temp_crafting_inventory &inv )
+{
+    std::vector<item *> roots;
+    inv.visit_items( [&roots]( item_location node ) {
+        roots.push_back( node.get_item() );
+        return VisitResponse::SKIP;
+    } );
+    return roots;
+}
+
 mission mission_type::create( const character_id &npc_id ) const
 {
     mission ret;
@@ -58,6 +74,7 @@ mission mission_type::create( const character_id &npc_id ) const
     ret.monster_species = monster_species;
     ret.monster_type = monster_type;
     ret.monster_kill_goal = monster_kill_goal;
+    ret.recruit_class = recruit_class;
 
     struct dialogue d( get_talker_for( get_player_character() ),
                        get_talker_for( g->find_npc( npc_id ) ) );
@@ -198,8 +215,20 @@ void mission::process_all()
             std::unordered_set<itype_id>();
     bool item_filter_valid = use_item_filter;
 
-    for( auto &e : world_missions ) {
-        mission &miss = e.second;
+    // A mission that ends or fails runs its effects and the mission_ends EOCs, which can add
+    // missions: that invalidates iterators into world_missions, so this goes through the
+    // missions there were, in the same order
+    std::vector<int> uids;
+    uids.reserve( world_missions.size() );
+    for( const std::pair<const int, mission> &e : world_missions ) {
+        uids.push_back( e.first );
+    }
+    for( const int mission_uid : uids ) {
+        const auto found = world_missions.find( mission_uid );
+        if( found == world_missions.end() ) {
+            continue;
+        }
+        mission &miss = found->second;
         const bool was_in_progress = miss.in_progress();
         const bool can_skip_item_check = item_filter_valid && was_in_progress &&
                                          !miss.get_npc_id().is_valid() &&
@@ -426,6 +455,23 @@ void mission::assign( avatar &u )
     }
 }
 
+// mission_ends, with the character it was assigned to as alpha and its giver (if loaded) as beta
+static void send_mission_ends( const character_id &assignee, const character_id &giver,
+                               const mission_type_id &type, bool success )
+{
+    const cata::event e = cata::event::make<event_type::mission_ends>( assignee, giver, type.str(),
+                          success );
+    avatar &u = get_avatar();
+    Creature *alpha = assignee == u.getID() ? static_cast<Creature *>( &u ) :
+                      g->find_npc( assignee );
+    if( alpha == nullptr ) {
+        // nobody to run the EOCs on: as for send, they don't run; the statistics count it
+        get_event_bus().send( e );
+        return;
+    }
+    get_event_bus().send_with_talker( alpha, giver.is_valid() ? g->find_npc( giver ) : nullptr, e );
+}
+
 void mission::fail()
 {
     status = mission_status::failure;
@@ -437,6 +483,7 @@ void mission::fail()
     deadline = calendar::turn;
 
     type->fail( this );
+    send_mission_ends( player_id, npc_id, type->id, false );
 }
 
 void mission::set_target_to_mission_giver()
@@ -486,8 +533,9 @@ void mission::wrap_up()
     switch( type->goal ) {
         case MGOAL_FIND_ITEM_GROUP: {
             temp_crafting_inventory tmp_inv = player_character.crafting_inventory();
-            std::vector<item *> items = std::vector<item *>();
-            tmp_inv.dump( items );
+            // the outermost items: get_all_item_group_matches looks inside them itself, and
+            // dump() also listed every nested item, counting it twice (CAMP-B12)
+            std::vector<item *> items = crafting_inventory_roots( tmp_inv );
             item_group_id grp_type = type->group_id;
             itype_id container = type->container_id;
             bool specific_container_required = !container.is_null();
@@ -499,13 +547,17 @@ void mission::wrap_up()
                 items, grp_type, matches,
                 container, itype_id::NULL_ID(), specific_container_required );
 
-            comps.reserve( matches.size() );
-            for( std::pair<const itype_id, int> &cnt : matches ) {
-                comps.emplace_back( cnt.first, cnt.second );
-
+            // Take exactly count of them, one type after another.  A single list of every
+            // match let consume_items pick one type and try to take all of it (CAMP-B12).
+            int left_to_take = type->item_count;
+            for( const std::pair<const itype_id, int> &cnt : matches ) {
+                if( left_to_take <= 0 ) {
+                    break;
+                }
+                const int take = std::min( left_to_take, cnt.second );
+                player_character.consume_items( std::vector<item_comp> { item_comp( cnt.first, take ) } );
+                left_to_take -= take;
             }
-
-            player_character.consume_items( comps );
 
             if( remove_container ) {
                 std::vector<item_comp> container_comp = std::vector<item_comp>();
@@ -567,6 +619,7 @@ void mission::wrap_up()
     deadline = calendar::turn;
 
     type->end( this );
+    send_mission_ends( player_id, npc_id, type->id, true );
 }
 
 bool mission::is_complete( const character_id &_npc_id ) const
@@ -589,8 +642,9 @@ bool mission::is_complete( const character_id &_npc_id ) const
 
         case MGOAL_FIND_ITEM_GROUP: {
             temp_crafting_inventory tmp_inv = player_character.crafting_inventory();
-            std::vector<item *> items = std::vector<item *>();
-            tmp_inv.dump( items );
+            // the outermost items: get_all_item_group_matches looks inside them itself, and
+            // dump() also listed every nested item, counting it twice (CAMP-B12)
+            std::vector<item *> items = crafting_inventory_roots( tmp_inv );
             item_group_id grp_type = type->group_id;
             itype_id container = type->container_id;
             bool specific_container_required = !container.is_null();
@@ -750,12 +804,9 @@ void mission::get_all_item_group_matches( std::vector<item *> &items,
 
         //check whether item itself is target
         if( item_in_group && correct_container ) {
-            std::map<itype_id, int>::iterator it = matches.find( itm->typeId() );
-            if( it != matches.end() ) {
-                it->second = ( it->second ) + 1;
-            } else {
-                matches.insert( std::make_pair( itm->typeId(), 1 ) );
-            }
+            // a stack counts as many as it holds; what the item holds goes with it
+            matches[itm->typeId()] += itm->count();
+            continue;
         }
 
         //recursively check item contents for target

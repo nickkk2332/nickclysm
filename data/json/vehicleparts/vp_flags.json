@@ -439,7 +439,7 @@
   {
     "id": "FUNNEL",
     "type": "json_flag",
-    "//": "When set on vehicle part the, bonus field defines the funnel radius in mm^2 and part collects rain"
+    "//": "When set on a vehicle part, the part collects rain; funnel_radius (or the bonus field) is the radius of its opening in mm"
   },
   {
     "id": "HALF_BOARD",
@@ -530,6 +530,11 @@
     "id": "NO_INSTALL_HIDDEN",
     "type": "json_flag",
     "//": "Part can't be installed by player and hidden in install menu (e.g. power cords, inflatable boat parts, summoned vehicle parts)."
+  },
+  {
+    "id": "NO_MODIFY_VEHICLE",
+    "type": "json_flag",
+    "//": "VINT-B05: a vehicle with a part of this flag can't have parts installed, replaced, repaired or removed by players, except SIMPLE_PART ones."
   },
   {
     "id": "NO_ROOF_NEEDED",

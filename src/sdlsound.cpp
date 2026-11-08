@@ -396,7 +396,8 @@ static void play_music_file( const std::string &filename, int volume )
     sound_backend::set_music_finished_cb( musicFinished );
 }
 
-/** Callback called when we finish playing music. */
+/** Callback called when we finish playing music.  REND-B06: sound_backend::poll_music() runs
+ *  it on the main thread; the mixer's audio thread only records that the track ended. */
 void musicFinished()
 {
     if( test_mode ) {
@@ -434,6 +435,8 @@ void musicFinished()
     current_playlist_at = playlist_indexes.at( absolute_playlist_at );
 
     const music_playlist::entry &next = list.entries[current_playlist_at];
+    // REND-B06: a later volume change uses this track's volume, not the first track's
+    current_music_track_volume = next.volume;
     play_music_file( next.file, next.volume );
 }
 

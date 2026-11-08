@@ -65,6 +65,10 @@ struct construction {
         requirement_id requirements;
 
         bool is_blacklisted() const;
+        // Whether finishing it places the consumed components ("place_appliance", or the
+        // post_special done_appliance or done_vehicle), which then stay in the partial
+        // construction for them
+        bool uses_components_after_completion() const;
 
         // Index in construction vector
         construction_str_id id;
@@ -78,6 +82,8 @@ struct construction {
         bool was_loaded = false;
         // If true, the requirements are generated during finalization
         bool vehicle_start = false;
+        // JSON "place_appliance": the one component is placed on the tile as an appliance
+        bool place_appliance = false;
 
         // Custom constructibility check
         std::vector<bool ( * )( const tripoint_bub_ms & )> pre_specials;

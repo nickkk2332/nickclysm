@@ -10,21 +10,20 @@
 #include <utility>
 
 #include "bodypart.h"
+#include "calendar.h"
 #include "color.h"
 #include "coordinates.h"
 #include "point.h"
 #include "type_id.h"
 
-template <typename E> struct enum_traits;
-
 class Character;
 class Creature;
 class avatar;
 class mood_face;
-class time_point;
 class translation;
 class vehicle;
 enum class cardinal_direction : int;
+template <typename E> struct enum_traits;
 
 // These are the supported data variables for coloring bodygraphs.
 enum class bodygraph_var : int {
@@ -54,25 +53,32 @@ struct disp_overmap_cache {
         tripoint_abs_omt _mission;
         std::string _om_wgt_str;
         int _width;
+        int _height;
+        // Hordes, vehicles, seen tiles and sight range change from turn to turn
+        time_point _turn;
 
     public:
         disp_overmap_cache();
 
         // Returns true if the stored overmap string can be used with the given
-        // center (player) position and mission target.
+        // center (player) position, mission target, size and turn.
         bool is_valid_for( const tripoint_abs_omt &center,
-                           const tripoint_abs_omt &mission, int width ) const {
-            return _center == center && _mission == mission && _width == width;
+                           const tripoint_abs_omt &mission, int width, int height,
+                           const time_point &turn ) const {
+            return _center == center && _mission == mission && _width == width &&
+                   _height == height && _turn == turn;
         }
 
-        // Rebuild the cache using the validation parameters "center" and "mission"
+        // Rebuild the cache using the validation parameters
         // and store the associated widget string.
         void rebuild( const tripoint_abs_omt &center, const tripoint_abs_omt &mission, int width,
-                      const std::string &om_wgt_str ) {
+                      int height, const time_point &turn, const std::string &om_wgt_str ) {
             _center = center;
             _mission = mission;
             _om_wgt_str = om_wgt_str;
             _width = width;
+            _height = height;
+            _turn = turn;
         }
 
         // Retrieve the cached widget string

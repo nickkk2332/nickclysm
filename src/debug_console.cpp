@@ -3610,6 +3610,8 @@ static const char *eoc_type_name( eoc_type type )
             return "prevent_death";
         case EVENT:
             return "event";
+        case PREVENT_MONSTER_DEATH:
+            return "prevent_monster_death";
         default:
             return "?";
     }
@@ -3760,7 +3762,7 @@ void tab_eoc_view::draw_eoc_browser( debug_console &host )
 
     static const char *const type_names[] = {
         "all", "activation", "recurring", "avatar_death",
-        "npc_death", "prevent_death", "event"
+        "npc_death", "prevent_death", "event", "prevent_monster_death"
     };
     ImGui::SetNextItemWidth( 120 );
     const char *cur_type = eoc_type_filter < 0 ? "all" : type_names[eoc_type_filter + 1];
@@ -4038,7 +4040,9 @@ void tab_eoc_view::draw_eoc_browser( debug_console &host )
                         sel->has_deactivate_condition ? "true" : "false" );
                 kv_row( "has_false_effect",
                         sel->has_false_effect ? "true" : "false" );
-                if( sel->type == eoc_type::EVENT ) {
+                if( sel->type == eoc_type::EVENT && !sel->custom_event.empty() ) {
+                    kv_row( "custom_event", sel->custom_event );
+                } else if( sel->type == eoc_type::EVENT ) {
                     kv_row( "required_event",
                             io::enum_to_string<event_type>( sel->required_event ) );
                 }

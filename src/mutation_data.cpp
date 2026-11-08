@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -27,7 +30,15 @@
 #include "trait_group.h"
 #include "translations.h"
 #include "uilist.h"
+#include "units.h"
 #include "weighted_list.h"
+
+class json_flag;
+class material_type;
+class monfaction;
+struct itype;
+struct mon_flag;
+struct species_type;
 
 static const json_character_flag json_flag_ATTUNEMENT( "ATTUNEMENT" );
 static const json_character_flag json_flag_HERITAGE( "HERITAGE" );
@@ -36,6 +47,8 @@ static const json_character_flag json_flag_PERK( "PERK" );
 static const mutation_category_id mutation_category_ANY( "ANY" );
 
 static const trait_group::Trait_group_tag Trait_group_EMPTY_GROUP( "EMPTY_GROUP" );
+
+static const vitamin_id vitamin_null( "null" );
 
 using TraitGroupMap =
     std::map<trait_group::Trait_group_tag, shared_ptr_fast<Trait_group>>;
@@ -52,13 +65,125 @@ static trait_replacement trait_migration_remove{ std::nullopt, std::nullopt, tru
 namespace
 {
 generic_factory<mutation_branch> trait_factory( "trait" );
+generic_factory<mutation_category_trait> mutation_category_factory( "mutation category" );
+generic_factory<dream> dream_factory( "dream" );
+// How many dreams without an id have loaded, to name each one
+int anonymous_dreams = 0;
+
+// Reads a list of translations, with "extend" and "delete" in a copy
+class translation_list_reader : public generic_typed_reader<translation_list_reader>
+{
+    public:
+        translation get_next( const JsonValue &jv ) const {
+            translation msg;
+            jv.read( msg, true );
+            return msg;
+        }
+};
+
+// activated_eocs, processed_eocs and deactivated_eocs: EOC ids or inline EOCs.  Given, a list
+// replaces the inherited one; in a copy, "extend" adds to it and "delete" takes EOC ids out
+// (MUT-J08).
+class mutation_eoc_reader : public generic_typed_reader<mutation_eoc_reader>
+{
+    public:
+        explicit mutation_eoc_reader( const std::string_view source ) : src( source ) {}
+        effect_on_condition_id get_next( const JsonValue &jv ) const {
+            return effect_on_conditions::load_inline_eoc( jv, src );
+        }
+        template<typename C>
+        void erase_next( const JsonValue &jv, C &container ) const {
+            const effect_on_condition_id eoc( jv.get_string() );
+            const auto found = std::find( container.begin(), container.end(), eoc );
+            if( found == container.end() ) {
+                jv.throw_error( string_format( "no effect_on_condition %s to delete", eoc.str() ) );
+            }
+            container.erase( found );
+        }
+    private:
+        std::string src;
+};
+
+// How many inline enchantments each trait id has loaded, to name the next one
+std::map<trait_id, int> inline_enchantment_counts;
+
+// A list of [ key, value ] pairs read into a map (vitamin_rates, spells_learned, ...).  Given,
+// it replaces the inherited map (the first of two equal keys wins, as it always did); in a
+// copy, "extend" adds pairs, replacing the value of a key already there, and "delete" takes
+// keys out (MUT-J08).
+template<typename K, typename V, typename ReadValue>
+void load_keyed_values( const JsonObject &jo, const bool was_loaded, const std::string_view member,
+                        std::map<K, V> &values, ReadValue read_value )
+{
+    warn_disabled_feature( jo, "relative", member, "not supported for this list" );
+    warn_disabled_feature( jo, "proportional", member, "not supported for this list" );
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", member, "no copy-from" );
+        warn_disabled_feature( jo, "delete", member, "no copy-from" );
+    }
+    if( jo.has_member( member ) ) {
+        values.clear();
+        for( JsonArray pair : jo.get_array( member ) ) {
+            const K key( pair.next_string() );
+            values.emplace( key, read_value( pair ) );
+        }
+        return;
+    }
+    if( !was_loaded ) {
+        return;
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const JsonValue jv : del.get_array( member ) ) {
+            const K key( jv.get_string() );
+            if( values.erase( key ) == 0 ) {
+                jv.throw_error( string_format( "no %s entry %s to delete", member, key.str() ) );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        for( JsonArray pair : extend.get_array( member ) ) {
+            const K key( pair.next_string() );
+            values.insert_or_assign( key, read_value( pair ) );
+        }
+    }
+}
 } // namespace
 
-std::vector<dream> dreams;
+namespace io
+{
+template<>
+std::string enum_to_string<mutation_builtin_activation>( mutation_builtin_activation data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case mutation_builtin_activation::none: return "none";
+        case mutation_builtin_activation::web: return "web";
+        case mutation_builtin_activation::sludge_trail: return "sludge_trail";
+        case mutation_builtin_activation::long_pull: return "long_pull";
+        case mutation_builtin_activation::burrow: return "burrow";
+        case mutation_builtin_activation::slime_split: return "slime_split";
+        case mutation_builtin_activation::vomit: return "vomit";
+        case mutation_builtin_activation::spores: return "spores";
+        case mutation_builtin_activation::blossoms: return "blossoms";
+        case mutation_builtin_activation::spores_and_blossoms: return "spores_and_blossoms";
+        case mutation_builtin_activation::echolocation: return "echolocation";
+        case mutation_builtin_activation::tree_communion: return "tree_communion";
+        // *INDENT-ON*
+        case mutation_builtin_activation::last:
+            break;
+    }
+    cata_fatal( "Invalid mutation_builtin_activation" );
+}
+} // namespace io
+
 std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
-// Mutations with edible_food_flags, food_allergies or an eat_condition, in load order
+// Mutations with edible_food_flags, food_allergies, an eat_condition, food_fun or eat_eocs,
+// in load order
 static std::vector<trait_id> diet_traits;
-static std::map<mutation_category_id, mutation_category_trait> mutation_category_traits;
 
 template<>
 const mutation_branch &string_id<mutation_branch>::obj() const
@@ -78,26 +203,39 @@ bool string_id<Trait_group>::is_valid() const
     return trait_groups.count( *this );
 }
 
-void mutation_category_trait::load( const JsonObject &jsobj )
+void mutation_category_trait::load_all( const JsonObject &jsobj, const std::string &src_name )
 {
-    mutation_category_trait new_category;
-    jsobj.read( "id", new_category.id, true );
-    jsobj.get_member( "name" ).read( new_category.raw_name );
-    new_category.threshold_mut = trait_id( jsobj.get_string( "threshold_mut" ) );
+    mutation_category_factory.load( jsobj, src_name );
+}
 
-    jsobj.get_member( "mutagen_message" ).read( new_category.raw_mutagen_message );
-    new_category.wip = jsobj.get_bool( "wip", false );
-    new_category.skip_test = jsobj.get_bool( "skip_test", false );
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void mutation_category_trait::load( const JsonObject &jsobj, std::string_view )
+{
+    mandatory( jsobj, was_loaded, "name", raw_name );
+    mandatory( jsobj, was_loaded, "threshold_mut", threshold_mut );
+    mandatory( jsobj, was_loaded, "mutagen_message", raw_mutagen_message );
+    optional( jsobj, was_loaded, "wip", wip, false );
+    optional( jsobj, was_loaded, "skip_test", skip_test, false );
     static_cast<void>( translate_marker_context( "memorial_male", "Crossed a threshold" ) );
     static_cast<void>( translate_marker_context( "memorial_female", "Crossed a threshold" ) );
-    optional( jsobj, false, "memorial_message", new_category.raw_memorial_message,
+    optional( jsobj, was_loaded, "memorial_message", raw_memorial_message,
               text_style_check_reader(), "Crossed a threshold" );
-    new_category.vitamin = vitamin_id( jsobj.get_string( "vitamin", "null" ) );
-    optional( jsobj, false, "threshold_min", new_category.threshold_min, 2200 );
-    optional( jsobj, false, "base_removal_chance", new_category.base_removal_chance, 100 );
-    optional( jsobj, false, "base_removal_cost_mul", new_category.base_removal_cost_mul, 3.0f );
+    optional( jsobj, was_loaded, "vitamin", vitamin, vitamin_null );
+    optional( jsobj, was_loaded, "threshold_min", threshold_min, 2200 );
+    optional( jsobj, was_loaded, "base_removal_chance", base_removal_chance, 100 );
+    optional( jsobj, was_loaded, "base_removal_cost_mul", base_removal_cost_mul, 3.0f );
+    // MUT-J10: progression tuning that was fixed in C++
+    optional( jsobj, was_loaded, "bad_mutation_chance_scale", bad_mutation_chance_scale, 0.5f );
+    optional( jsobj, was_loaded, "bad_mutation_chance_cap", bad_mutation_chance_cap, 0.67f );
+    optional( jsobj, was_loaded, "threshold_breach_min_level", threshold_breach_min_level, 30 );
+    optional( jsobj, was_loaded, "threshold_message", raw_threshold_message,
+              to_translation( "Something strains mightily for a moment… and then… you're… FREE!" ) );
+}
 
-    mutation_category_traits[new_category.id] = new_category;
+void mutation_category_trait::finalize_all()
+{
+    mutation_category_factory.finalize();
 }
 
 std::string mutation_category_trait::name() const
@@ -108,6 +246,11 @@ std::string mutation_category_trait::name() const
 std::string mutation_category_trait::mutagen_message() const
 {
     return raw_mutagen_message.translated();
+}
+
+std::string mutation_category_trait::threshold_message() const
+{
+    return raw_threshold_message.translated();
 }
 
 std::string mutation_category_trait::memorial_message_male() const
@@ -122,7 +265,18 @@ std::string mutation_category_trait::memorial_message_female() const
 
 const std::map<mutation_category_id, mutation_category_trait> &mutation_category_trait::get_all()
 {
-    return mutation_category_traits;
+    // By id, as they always were; rebuilt when the factory changes (npc classes read it while
+    // the data loads).
+    static std::map<mutation_category_id, mutation_category_trait> by_id;
+    static generic_factory<mutation_category_trait>::Version built;
+    if( !mutation_category_factory.is_valid( built ) ) {
+        by_id.clear();
+        for( const mutation_category_trait &cat : mutation_category_factory.get_all() ) {
+            by_id.emplace( cat.id, cat );
+        }
+        built = mutation_category_factory.get_version();
+    }
+    return by_id;
 }
 
 static mutation_category_trait make_null_mutation_category()
@@ -135,28 +289,37 @@ static mutation_category_trait make_null_mutation_category()
 const mutation_category_trait &mutation_category_trait::get_category(
     const mutation_category_id &category_id )
 {
-    const auto iter = mutation_category_traits.find( category_id );
-    if( iter == mutation_category_traits.end() ) {
+    if( !mutation_category_factory.is_valid( category_id ) ) {
         // Dereferencing end() here was undefined behavior.
         debugmsg( "Tried to get invalid mutation category \"%s\"", category_id.str() );
         static const mutation_category_trait null_category = make_null_mutation_category();
         return null_category;
     }
-    return iter->second;
+    return mutation_category_factory.obj( category_id );
 }
 
 void mutation_category_trait::reset()
 {
-    mutation_category_traits.clear();
+    mutation_category_factory.reset();
 }
 
 void mutation_category_trait::check_consistency()
 {
-    for( const auto &pr : mutation_category_traits ) {
-        const mutation_category_trait &cat = pr.second;
+    for( const mutation_category_trait &cat : mutation_category_factory.get_all() ) {
         if( !cat.threshold_mut.is_empty() && !cat.threshold_mut.is_valid() ) {
             debugmsg( "Mutation category %s has threshold mutation %s, which does not exist",
                       cat.id.c_str(), cat.threshold_mut.c_str() );
+        }
+        if( cat.bad_mutation_chance_scale < 0.0f || cat.bad_mutation_chance_cap < 0.0f ||
+            cat.bad_mutation_chance_cap > 1.0f ) {
+            debugmsg( "Mutation category %s needs a bad_mutation_chance_scale of 0 or more and a "
+                      "bad_mutation_chance_cap from 0 to 1", cat.id.c_str() );
+        }
+    }
+    // a dream of an undefined category is never dreamed
+    for( const dream &d : dream::get_all() ) {
+        if( !mutation_category_is_valid( d.category ) ) {
+            debugmsg( "A dream has undefined mutation category %s", d.category.c_str() );
         }
     }
 }
@@ -313,6 +476,95 @@ void mutation_variant::deserialize( const JsonObject &jo )
     load( jo );
 }
 
+void monster_relation::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "species", species, string_id_reader<species_type> {} );
+    optional( jo, false, "faction", factions, string_id_reader<monfaction> {} );
+    optional( jo, false, "monster_flag", monster_flags, string_id_reader<mon_flag> {} );
+    optional( jo, false, "min_anger", min_anger );
+    optional( jo, false, "max_anger", max_anger );
+    optional( jo, false, "anger", anger, 0 );
+    optional( jo, false, "morale", morale, 0 );
+    if( jo.has_member( "attitude" ) ) {
+        const std::string att = jo.get_string( "attitude" );
+        if( att == "FRIEND" ) {
+            attitude = attitude_t::friendly;
+        } else if( att == "IGNORE" ) {
+            attitude = attitude_t::ignore;
+        } else {
+            jo.throw_error_at( "attitude", R"(A monster relation's "attitude" is "FRIEND" or "IGNORE".)" );
+        }
+    }
+    if( attitude == attitude_t::none && anger == 0 && morale == 0 ) {
+        jo.throw_error( R"(A monster relation needs an "anger", a "morale" or an "attitude".)" );
+    }
+}
+
+// One object of a mutation's "eat_condition" (HLTH-J03)
+static mutation_eat_condition load_eat_condition( const JsonObject &eat_jo )
+{
+    if( !eat_jo.has_member( "condition" ) ) {
+        eat_jo.throw_error( "eat_condition needs a \"condition\"" );
+    }
+    mutation_eat_condition ret;
+    read_condition( eat_jo, "condition", ret.condition, true );
+    optional( eat_jo, false, "fail_message", ret.fail_message,
+              to_translation( "You can't eat that." ) );
+    static const std::map<std::string, eat_check_stage> stages = {
+        { "first", eat_check_stage::first },
+        { "before_diet", eat_check_stage::before_diet },
+        { "after_diet", eat_check_stage::after_diet },
+        { "last", eat_check_stage::last }
+    };
+    const std::string stage = eat_jo.get_string( "checked", "after_diet" );
+    const auto found = stages.find( stage );
+    if( found == stages.end() ) {
+        eat_jo.throw_error_at( "checked", "checked must be \"first\", \"before_diet\", "
+                               "\"after_diet\" or \"last\"" );
+    }
+    ret.stage = found->second;
+    return ret;
+}
+
+// One object of a mutation's "retaliation" (CHAR-J08)
+static mutation_retaliation load_retaliation( const JsonObject &rjo )
+{
+    mutation_retaliation ret;
+    optional( rjo, false, "damage_type", ret.damage_type );
+    if( rjo.has_array( "damage" ) ) {
+        JsonArray range = rjo.get_array( "damage" );
+        if( range.size() != 2 ) {
+            range.throw_error( "damage must be a number or [ min, max ]" );
+        }
+        ret.min_damage = range.get_int( 0 );
+        ret.max_damage = range.get_int( 1 );
+    } else if( rjo.has_member( "damage" ) ) {
+        ret.min_damage = rjo.get_int( "damage" );
+        ret.max_damage = ret.min_damage;
+    }
+    if( ret.min_damage < 0 || ret.max_damage < ret.min_damage ) {
+        rjo.throw_error_at( "damage", "damage must be 0 or more, and max at least min" );
+    }
+    if( ret.max_damage > 0 && ret.damage_type.is_empty() ) {
+        rjo.throw_error_at( "damage", "damage needs a damage_type" );
+    }
+    optional( rjo, false, "requires_uncovered", ret.requires_uncovered, true );
+    optional( rjo, false, "unarmed_attacker_only", ret.unarmed_attacker_only, false );
+    for( JsonObject ejo : rjo.get_array( "effects" ) ) {
+        mutation_retaliation::effect_data eff;
+        mandatory( ejo, false, "id", eff.effect );
+        optional( ejo, false, "duration", eff.duration, 1_turns );
+        optional( ejo, false, "one_in", eff.one_in, 1 );
+        if( eff.one_in < 1 ) {
+            ejo.throw_error_at( "one_in", "one_in must be 1 or more" );
+        }
+        ret.effects.push_back( eff );
+    }
+    optional( rjo, false, "message", ret.message );
+    optional( rjo, false, "npc_message", ret.npc_message );
+    return ret;
+}
+
 void mutation_branch::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "name", raw_name );
@@ -337,6 +589,42 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "sleepiness", sleepiness, false );
     optional( jo, was_loaded, "mana", mana, false );
     optional( jo, was_loaded, "stamina", stamina, false );
+    // MUT-J11: "costs" gives each resource its own amount, the legacy "cost" one amount for
+    // every resource flagged above.  Resources "costs" doesn't name are not used.
+    if( jo.has_object( "costs" ) ) {
+        for( const std::string_view legacy : {
+                 "cost", "kcal", "thirst", "sleepiness", "mana", "stamina"
+             } ) {
+            if( jo.has_member( legacy ) ) {
+                jo.throw_error_at( legacy, R"(use either "costs" or "cost" with resource flags, not both)" );
+            }
+        }
+        JsonObject costs = jo.get_object( "costs" );
+        const auto read_cost = [&costs]( const std::string_view resource, bool & used, int &amount ) {
+            used = costs.has_member( resource );
+            amount = used ? costs.get_int( resource ) : 0;
+        };
+        read_cost( "kcal", hunger, kcal_cost );
+        read_cost( "thirst", thirst, thirst_cost );
+        read_cost( "sleepiness", sleepiness, sleepiness_cost );
+        read_cost( "mana", mana, mana_cost );
+        read_cost( "stamina", stamina, stamina_cost );
+        power_cost = 0_kJ;
+        optional( costs, false, "power", power_cost, 0_kJ );
+        if( kcal_cost < 0 || thirst_cost < 0 || sleepiness_cost < 0 || mana_cost < 0 ||
+            stamina_cost < 0 || power_cost < 0_kJ ) {
+            costs.throw_error( "costs can't be negative" );
+        }
+        cost = 0;
+    } else if( !was_loaded || jo.has_member( "cost" ) || jo.has_member( "kcal" ) ||
+               jo.has_member( "thirst" ) || jo.has_member( "sleepiness" ) ||
+               jo.has_member( "mana" ) || jo.has_member( "stamina" ) ) {
+        kcal_cost = hunger ? cost : 0;
+        thirst_cost = thirst ? cost : 0;
+        sleepiness_cost = sleepiness ? cost : 0;
+        mana_cost = mana ? cost : 0;
+        stamina_cost = stamina ? cost : 0;
+    }
     optional( jo, was_loaded, "valid", valid, true );
     optional( jo, was_loaded, "purifiable", purifiable, true );
 
@@ -365,6 +653,18 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         optional( si, was_loaded, "type", ranged_mutation );
         optional( si, was_loaded, "message", raw_ranged_mutation_message );
     }
+    optional( jo, was_loaded, "builtin_activation", builtin_activation,
+              mutation_builtin_activation::none );
+    if( jo.has_member( "blood_type" ) ) {
+        sets_blood_type = jo.get_enum_value<blood_type>( "blood_type" );
+    }
+    if( jo.has_member( "bodypart_hp_multiplier" ) ) {
+        bodypart_hp_multiplier.clear();
+        for( JsonArray ja : jo.get_array( "bodypart_hp_multiplier" ) ) {
+            const bodypart_str_id bp( ja.next_string() );
+            bodypart_hp_multiplier[bp] = ja.next_float();
+        }
+    }
     if( jo.has_object( "transform" ) ) {
         transform = cata::make_value<mut_transform>();
         transform->load( jo, "transform" );
@@ -383,6 +683,9 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         bodytemp_min = units::from_legacy_bodypart_temp_delta( bodytemp_array.get_int( 0 ) );
         bodytemp_max = units::from_legacy_bodypart_temp_delta( bodytemp_array.get_int( 1 ) );
     }
+    optional( jo, was_loaded, "drying_time_mult", drying_time_mult,
+              numeric_bound_reader<float> { 0.01f }, 1.0f );
+    optional( jo, was_loaded, "night_vision_range", night_vision_range, 0.0f );
 
     optional( jo, was_loaded, "threshold", threshold, false );
     optional( jo, was_loaded, "threshold_substitutes", threshold_substitutes );
@@ -393,10 +696,9 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "vanity", vanity, false );
     optional( jo, was_loaded, "dummy", dummy, false );
 
-    for( JsonArray pair : jo.get_array( "vitamin_rates" ) ) {
-        vitamin_rates.emplace( vitamin_id( pair.get_string( 0 ) ),
-                               time_duration::from_turns( pair.get_int( 1 ) ) );
-    }
+    load_keyed_values( jo, was_loaded, "vitamin_rates", vitamin_rates, []( JsonArray & pair ) {
+        return time_duration::from_turns( pair.next_int() );
+    } );
 
     for( JsonArray pair : jo.get_array( "vitamins_absorb_multi" ) ) {
         std::map<vitamin_id, double> vit;
@@ -411,6 +713,7 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "scent_intensity", scent_intensity, std::nullopt );
     optional( jo, was_loaded, "scent_type", scent_typeid, std::nullopt );
     optional( jo, was_loaded, "ignored_by", ignored_by );
+    optional( jo, was_loaded, "monster_relations", monster_relations );
     optional( jo, was_loaded, "empathize_with", empathize_with );
     optional( jo, was_loaded, "no_empathize_with", no_empathize_with );
     optional( jo, was_loaded, "can_only_eat", can_only_eat );
@@ -422,15 +725,38 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
                                          morale_type( allergy.get_string( "morale" ) ) );
         }
     }
-    if( jo.has_object( "eat_condition" ) ) {
-        JsonObject eat_jo = jo.get_object( "eat_condition" );
-        if( !eat_jo.has_member( "condition" ) ) {
-            eat_jo.throw_error( "eat_condition needs a \"condition\"" );
+    // An object, or an array of them, each checked on its own
+    if( jo.has_array( "eat_condition" ) ) {
+        eat_conditions.clear();
+        for( JsonObject eat_jo : jo.get_array( "eat_condition" ) ) {
+            eat_conditions.push_back( load_eat_condition( eat_jo ) );
         }
-        read_condition( eat_jo, "condition", eat_condition, true );
-        optional( eat_jo, false, "fail_message", eat_fail_message,
-                  to_translation( "You can't eat that." ) );
-        has_eat_condition = true;
+    } else if( jo.has_object( "eat_condition" ) ) {
+        eat_conditions.clear();
+        eat_conditions.push_back( load_eat_condition( jo.get_object( "eat_condition" ) ) );
+    }
+    if( jo.has_array( "retaliation" ) ) {
+        retaliation.clear();
+        for( JsonObject rjo : jo.get_array( "retaliation" ) ) {
+            retaliation.push_back( load_retaliation( rjo ) );
+        }
+    }
+    if( jo.has_object( "food_fun" ) ) {
+        JsonObject fun_jo = jo.get_object( "food_fun" );
+        mutation_food_fun fun;
+        optional( fun_jo, false, "positive", fun.positive, 1.0f );
+        optional( fun_jo, false, "positive_max", fun.positive_max, 1.0f );
+        optional( fun_jo, false, "negative", fun.negative, 1.0f );
+        if( fun_jo.has_member( "negative_max" ) ) {
+            fun.negative_max = static_cast<float>( fun_jo.get_float( "negative_max" ) );
+        }
+        food_fun = fun;
+    }
+    if( jo.has_array( "eat_eocs" ) ) {
+        eat_eocs.clear();
+        for( JsonValue jv : jo.get_array( "eat_eocs" ) ) {
+            eat_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
     }
     optional( jo, was_loaded, "can_only_heal_with", can_only_heal_with );
     optional( jo, was_loaded, "can_heal_with", can_heal_with );
@@ -457,21 +783,13 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "inactive_flags", inactive_flags, flag_reader{} );
     optional( jo, was_loaded, "types", types, string_reader{} );
 
-    for( JsonArray pair : jo.get_array( "moncams" ) ) {
-        moncams.insert( std::pair<mtype_id, int>( mtype_id( pair.get_string( 0 ) ), pair.get_int( 1 ) ) );
-    }
+    load_keyed_values( jo, was_loaded, "moncams", moncams, []( JsonArray & pair ) {
+        return pair.next_int();
+    } );
 
-    for( JsonValue jv : jo.get_array( "activated_eocs" ) ) {
-        activated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    for( JsonValue jv : jo.get_array( "processed_eocs" ) ) {
-        processed_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    for( JsonValue jv : jo.get_array( "deactivated_eocs" ) ) {
-        deactivated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
+    optional( jo, was_loaded, "activated_eocs", activated_eocs, mutation_eoc_reader( src ) );
+    optional( jo, was_loaded, "processed_eocs", processed_eocs, mutation_eoc_reader( src ) );
+    optional( jo, was_loaded, "deactivated_eocs", deactivated_eocs, mutation_eoc_reader( src ) );
 
     optional( jo, was_loaded, "activated_is_setup", activated_is_setup, false );
     if( jo.has_member( "activation_condition" ) ) {
@@ -479,11 +797,8 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     }
     optional( jo, was_loaded, "activation_fail_message", activation_fail_message );
 
-    int enchant_num = 0;
-    for( JsonValue jv : jo.get_array( "enchantments" ) ) {
-        std::string enchant_name = "INLINE_ENCH_" + id.str() + "_" + std::to_string( enchant_num++ );
-        enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
-    }
+    enchantment::load_enchantment_list( jo, was_loaded, "enchantments", id.str(),
+                                        inline_enchantment_counts[id], src, enchantments );
 
     optional( jo, was_loaded, "comfort", comfort );
 
@@ -493,30 +808,26 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "category", category, string_id_reader<mutation_category_trait> {} );
 
-    for( JsonArray ja : jo.get_array( "spells_learned" ) ) {
-        const spell_id sp( ja.next_string() );
-        spells_learned.emplace( sp, ja.next_int() );
-    }
+    load_keyed_values( jo, was_loaded, "spells_learned", spells_learned, []( JsonArray & ja ) {
+        return ja.next_int();
+    } );
 
-    for( JsonArray ja : jo.get_array( "craft_skill_bonus" ) ) {
-        const skill_id skid( ja.next_string() );
-        if( skid.is_valid() ) {
-            craft_skill_bonus.emplace( skid, ja.next_int() );
-        } else {
+    load_keyed_values( jo, was_loaded, "craft_skill_bonus", craft_skill_bonus, []( JsonArray & ja ) {
+        return ja.next_int();
+    } );
+    for( const std::pair<const skill_id, int> &bonus : craft_skill_bonus ) {
+        if( !bonus.first.is_valid() ) {
             jo.throw_error( "invalid skill_id" );
         }
     }
 
-    for( JsonArray ja : jo.get_array( "lumination" ) ) {
-        const bodypart_str_id bp = bodypart_str_id( ja.next_string() );
-        lumination.emplace( bp, static_cast<float>( ja.next_float() ) );
-    }
+    load_keyed_values( jo, was_loaded, "lumination", lumination, []( JsonArray & ja ) {
+        return static_cast<float>( ja.next_float() );
+    } );
 
-    for( JsonArray ja : jo.get_array( "anger_relations" ) ) {
-        const species_id spe = species_id( ja.next_string() );
-        anger_relations.emplace( spe, ja.next_int() );
-
-    }
+    load_keyed_values( jo, was_loaded, "anger_relations", anger_relations, []( JsonArray & ja ) {
+        return ja.next_int();
+    } );
 
     for( JsonObject wp : jo.get_array( "wet_protection" ) ) {
         int ignored = wp.get_int( "ignored", 0 );
@@ -565,7 +876,27 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         allowed_items.insert( flag_id( line ) );
     }
 
-    for( JsonObject ao : jo.get_array( "armor" ) ) {
+    optional( jo, was_loaded, "unwearable_materials", unwearable_materials,
+              string_id_reader<material_type> {} );
+    optional( jo, was_loaded, "unwearable_flags", unwearable_flags, string_id_reader<json_flag> {} );
+    optional( jo, was_loaded, "unwearable_message", unwearable_message );
+
+    // Given, "armor" replaces the inherited values; in a copy, "extend" adds to them (MUT-J08).
+    warn_disabled_feature( jo, "delete", "armor", "restate \"armor\" instead" );
+    warn_disabled_feature( jo, "relative", "armor", "use \"extend\"" );
+    warn_disabled_feature( jo, "proportional", "armor", "not supported for armor" );
+    JsonArray armor_ja;
+    if( jo.has_member( "armor" ) ) {
+        armor.clear();
+        armor_ja = jo.get_array( "armor" );
+    } else if( was_loaded && jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        armor_ja = extend.get_array( "armor" );
+    } else if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "armor", "no copy-from" );
+    }
+    for( JsonObject ao : armor_ja ) {
         std::set<std::string> ignored_by_resist = { "part_types", "parts" };
         const resistances res = load_resistances_instance( ao, ignored_by_resist );
         // Set damage resistances for all body parts of the specified type(s)
@@ -584,22 +915,44 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         }
     }
 
-    for( const JsonValue jv : jo.get_array( "integrated_armor" ) ) {
-        integrated_armor.emplace_back( jv );
-    }
+    optional( jo, was_loaded, "integrated_armor", integrated_armor, string_id_reader<itype> {} );
 
     for( JsonMember member : jo.get_object( "bionic_slot_bonuses" ) ) {
         bionic_slot_bonuses[bodypart_str_id( member.name() )] = member.get_int();
     }
 
-    if( jo.has_array( "attacks" ) ) {
-        for( JsonObject ao : jo.get_array( "attacks" ) ) {
-            attacks_granted.emplace_back( load_mutation_attack( ao ) );
+    // Given, "attacks" (an object or a list of them) replaces the inherited attacks; in a copy,
+    // "extend" adds to them (MUT-J08).
+    warn_disabled_feature( jo, "delete", "attacks", "restate \"attacks\" instead" );
+    warn_disabled_feature( jo, "relative", "attacks", "not supported for attacks" );
+    warn_disabled_feature( jo, "proportional", "attacks", "not supported for attacks" );
+    const auto load_attacks = [this]( const JsonObject & from ) {
+        if( from.has_array( "attacks" ) ) {
+            for( JsonObject ao : from.get_array( "attacks" ) ) {
+                attacks_granted.emplace_back( load_mutation_attack( ao ) );
+            }
+        } else if( from.has_object( "attacks" ) ) {
+            JsonObject attack = from.get_object( "attacks" );
+            attacks_granted.emplace_back( load_mutation_attack( attack ) );
         }
-    } else if( jo.has_object( "attacks" ) ) {
-        JsonObject attack = jo.get_object( "attacks" );
-        attacks_granted.emplace_back( load_mutation_attack( attack ) );
+    };
+    if( jo.has_member( "attacks" ) ) {
+        attacks_granted.clear();
+        load_attacks( jo );
+    } else if( was_loaded && jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        load_attacks( extend );
+    } else if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "attacks", "no copy-from" );
     }
+}
+
+bool mutation_branch::has_cost() const
+{
+    return ( hunger && kcal_cost > 0 ) || ( thirst && thirst_cost > 0 ) ||
+           ( sleepiness && sleepiness_cost > 0 ) || ( mana && mana_cost > 0 ) ||
+           ( stamina && stamina_cost > 0 ) || power_cost > 0_kJ;
 }
 
 int mutation_branch::bionic_slot_bonus( const bodypart_str_id &part ) const
@@ -708,6 +1061,18 @@ void mutation_branch::check_consistency()
                 debugmsg( "mutation %s refers to undefined martial art style %s", mid.c_str(), style.c_str() );
             }
         }
+        for( const material_id &mat : mdata.unwearable_materials ) {
+            if( !mat.is_valid() ) {
+                debugmsg( "mutation %s has undefined unwearable_materials entry %s", mid.c_str(),
+                          mat.c_str() );
+            }
+        }
+        for( const flag_id &flag : mdata.unwearable_flags ) {
+            if( !flag.is_valid() ) {
+                debugmsg( "mutation %s has undefined unwearable_flags entry %s", mid.c_str(),
+                          flag.c_str() );
+            }
+        }
         for( const std::string &type : mdata.types ) {
             if( !mutation_type_exists( type ) ) {
                 debugmsg( "mutation %s refers to undefined mutation type %s", mid.c_str(), type );
@@ -724,6 +1089,26 @@ void mutation_branch::check_consistency()
                 debugmsg( "mutation %s refers to undefined species id %s", mid.c_str(), elem.first.c_str() );
             }
         }
+        for( const monster_relation &rel : mdata.monster_relations ) {
+            for( const species_id &spe : rel.species ) {
+                if( !spe.is_valid() ) {
+                    debugmsg( "mutation %s has a monster relation with undefined species %s", mid.c_str(),
+                              spe.c_str() );
+                }
+            }
+            for( const mfaction_str_id &fac : rel.factions ) {
+                if( !fac.is_valid() ) {
+                    debugmsg( "mutation %s has a monster relation with undefined monster faction %s",
+                              mid.c_str(), fac.c_str() );
+                }
+            }
+            for( const mon_flag_str_id &flag : rel.monster_flags ) {
+                if( !flag.is_valid() ) {
+                    debugmsg( "mutation %s has a monster relation with undefined monster flag %s",
+                              mid.c_str(), flag.c_str() );
+                }
+            }
+        }
         if( s_id && !s_id.value().is_valid() ) {
             debugmsg( "mutation %s refers to undefined scent type %s", mid.c_str(), s_id.value().c_str() );
         }
@@ -731,6 +1116,18 @@ void mutation_branch::check_consistency()
             if( !food_flag.is_valid() ) {
                 debugmsg( "mutation %s has undefined edible_food_flags flag %s", mid.c_str(),
                           food_flag.c_str() );
+            }
+        }
+        for( const mutation_retaliation &ret : mdata.retaliation ) {
+            if( !ret.damage_type.is_empty() && !ret.damage_type.is_valid() ) {
+                debugmsg( "mutation %s retaliation has undefined damage_type %s", mid.c_str(),
+                          ret.damage_type.c_str() );
+            }
+            for( const mutation_retaliation::effect_data &eff : ret.effects ) {
+                if( !eff.effect.is_valid() ) {
+                    debugmsg( "mutation %s retaliation has undefined effect %s", mid.c_str(),
+                              eff.effect.c_str() );
+                }
             }
         }
         for( const std::pair<vitamin_id, morale_type> &allergy : mdata.food_allergies ) {
@@ -741,6 +1138,30 @@ void mutation_branch::check_consistency()
             if( !allergy.second.is_valid() ) {
                 debugmsg( "mutation %s has a food allergy with undefined morale type %s",
                           mid.c_str(), allergy.second.c_str() );
+            }
+        }
+        for( const effect_on_condition_id &eoc : mdata.eat_eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "mutation %s has undefined eat_eocs EOC %s", mid.c_str(), eoc.c_str() );
+            }
+        }
+        // MUT-J08: an enchantment listed twice applies twice
+        std::set<enchantment_id> seen_enchantments;
+        for( const enchantment_id &ench : mdata.enchantments ) {
+            if( !seen_enchantments.insert( ench ).second ) {
+                debugmsg( "mutation %s lists enchantment %s more than once", mid.c_str(), ench.c_str() );
+            }
+        }
+        // MUT-J01: a category that isn't defined is ignored when mutating, and an undefined
+        // allowed_category stops every category mutation
+        for( const mutation_category_id &cat : mdata.category ) {
+            if( !mutation_category_is_valid( cat ) ) {
+                debugmsg( "mutation %s has undefined mutation category %s", mid.c_str(), cat.c_str() );
+            }
+        }
+        for( const mutation_category_id &cat : mdata.allowed_category ) {
+            if( !mutation_category_is_valid( cat ) ) {
+                debugmsg( "mutation %s has undefined allowed_category %s", mid.c_str(), cat.c_str() );
             }
         }
         // Suppress these onload warnings for overlapping mods
@@ -830,6 +1251,15 @@ void mutation_branch::check_consistency()
         // We need to display active mutations in the UI.
         if( mdata.activated && !mdata.player_display ) {
             debugmsg( "mutation %s is not displayed but set as active" );
+        }
+        if( mdata.builtin_activation != mutation_builtin_activation::none && !mdata.activated ) {
+            debugmsg( "mutation %s has a builtin_activation but isn't \"active\"", mid.c_str() );
+        }
+        for( const std::pair<const bodypart_str_id, double> &bp_mult : mdata.bodypart_hp_multiplier ) {
+            if( !bp_mult.first.is_valid() ) {
+                debugmsg( "mutation %s has a bodypart_hp_multiplier for undefined body part %s",
+                          mid.c_str(), bp_mult.first.c_str() );
+            }
         }
 
         check_has_cyclic_dependency( mid );
@@ -923,6 +1353,7 @@ const std::vector<mutation_branch> &mutation_branch::get_all()
 
 void mutation_branch::reset_all()
 {
+    inline_enchantment_counts.clear();
     mutations_category.clear();
     diet_traits.clear();
     trait_factory.reset();
@@ -942,15 +1373,45 @@ std::vector<std::string> dream::messages() const
     return ret;
 }
 
-void dream::load( const JsonObject &jsobj )
+void dream::load_all( const JsonObject &jsobj, const std::string &src )
 {
-    dream newdream;
+    if( jsobj.has_member( "id" ) || jsobj.has_member( "abstract" ) ) {
+        dream_factory.load( jsobj, src );
+        return;
+    }
+    if( jsobj.has_member( "copy-from" ) ) {
+        jsobj.throw_error_at( "copy-from", "a dream needs an \"id\" to copy from another" );
+    }
+    // Without an id, as dreams always were: added, and no later JSON can change it.
+    dream anonymous;
+    anonymous.id = string_id<dream>( string_format( "<dream without id %d>", anonymous_dreams++ ) );
+    anonymous.load( jsobj, src );
+    dream_factory.insert( anonymous );
+}
 
-    newdream.strength = jsobj.get_int( "strength" );
-    jsobj.read( "category", newdream.category, true );
-    jsobj.read( "messages", newdream.raw_messages );
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void dream::load( const JsonObject &jsobj, std::string_view )
+{
+    mandatory( jsobj, was_loaded, "strength", strength );
+    mandatory( jsobj, was_loaded, "category", category );
+    optional( jsobj, was_loaded, "messages", raw_messages, translation_list_reader{} );
+}
 
-    dreams.push_back( newdream );
+const std::vector<dream> &dream::get_all()
+{
+    return dream_factory.get_all();
+}
+
+void dream::finalize_all()
+{
+    dream_factory.finalize();
+}
+
+void dream::reset()
+{
+    dream_factory.reset();
+    anonymous_dreams = 0;
 }
 
 bool trait_var_display_sort( const trait_and_var &a, const trait_and_var &b ) noexcept
@@ -1047,7 +1508,7 @@ void mutation_branch::finalize_all()
             mutations_category[mutation_category_ANY].emplace_back( branch.id );
         }
         if( !branch.edible_food_flags.empty() || !branch.food_allergies.empty() ||
-            branch.has_eat_condition ) {
+            !branch.eat_conditions.empty() || branch.food_fun || !branch.eat_eocs.empty() ) {
             diet_traits.emplace_back( branch.id );
         }
     }
@@ -1123,6 +1584,11 @@ void mutation_branch::load_trait_group( const JsonObject &jsobj,
 {
     if( subtype != "distribution" && subtype != "collection" && subtype != "old" ) {
         jsobj.throw_error_at( "subtype", "unknown trait group type" );
+    }
+
+    // A later definition adds to the group; "override": true replaces it (PROG-J07)
+    if( jsobj.get_bool( "override", false ) ) {
+        trait_groups.erase( gid );
     }
 
     Trait_group &tg = make_group_or_throw( gid, subtype == "collection" || subtype == "old" );
@@ -1232,13 +1698,13 @@ std::vector<trait_group::Trait_group_tag> mutation_branch::get_all_group_names()
 
 bool mutation_category_is_valid( const mutation_category_id &cat )
 {
-    return mutation_category_traits.count( cat );
+    return mutation_category_factory.is_valid( cat );
 }
 
 template<>
 bool string_id<mutation_category_trait>::is_valid() const
 {
-    return mutation_category_traits.count( *this );
+    return mutation_category_factory.is_valid( *this );
 }
 
 bool mutation_is_in_category( const trait_id &mut, const mutation_category_id &cat )

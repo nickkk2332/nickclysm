@@ -24,6 +24,27 @@ class JsonValue;
 class item;
 class monster;
 
+// CMBT-J12: what a melee critical hit does with a damage type, each part scaled by the target's
+// critical factor (1 for most body parts)
+struct melee_crit_data {
+    // damage is multiplied by 1 + damage_mult + damage_mult_per_skill * the attack's skill
+    double damage_mult = 0.0;
+    double damage_mult_per_skill = 0.0;
+    // the share of the target's armor ignored (0 to 1)
+    double armor_ignored = 0.0;
+    // flat armor penetration added
+    double arpen = 0.0;
+};
+
+// CMBT-J12: the kind of melee attack a damage type makes, when it is the main damage of the
+// hit, for weak points and weak point skill
+enum class melee_weakpoint_kind : int {
+    none,
+    bash,
+    cut,
+    stab
+};
+
 struct damage_type {
     damage_type_id id;
     translation name;
@@ -33,7 +54,15 @@ struct damage_type {
     std::pair<damage_type_id, float> derived_from = { damage_type_id(), 0.0f };
     cata::flat_set<std::string> immune_flags;
     cata::flat_set<std::string> mon_immune_flags;
+    // Monsters made of any of these are immune.
+    std::vector<material_id> mon_immune_materials;
     double bash_conversion_factor;
+    // Pain from damage of this type is the damage divided by this.
+    double pain_divisor = 4.0;
+    // Damage may set the creature on fire, with a chance of the damage in percent.
+    bool ignites = false;
+    // Damage may zap the creature, and pains a character more with EXTRA_ELEC_PAIN.
+    bool electrocutes = false;
     nc_color magic_color;
     bool melee_only = false;
     bool physical = false;
@@ -42,6 +71,13 @@ struct damage_type {
     bool edged = false;
     bool env = false;
     bool material_required = false;
+    // CMBT-J12: "melee_crit", "weakpoint_attack" and "embed_weight"
+    melee_crit_data melee_crit;
+    melee_weakpoint_kind weakpoint_attack = melee_weakpoint_kind::none;
+    // How much each point of this damage dealt helps a projectile embed in a monster (it
+    // embeds if the weighted sum, each type's part rounded toward zero, beats the item's size
+    // and a roll); negative weights hinder it
+    double embed_weight = 0.0;
     bool was_loaded = false;
 
     // Applies damage type on-hit effects

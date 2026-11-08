@@ -29,6 +29,8 @@ class weather_temperature_sampler
             double noise_scale;
         };
         std::vector<sample> samples;
+        // The generator's temperature_noise, the same for every time
+        double noise_magnitude = 0;
 };
 
 // While one of these is alive, map::temp_based_phase_change_at works out the temperatures it

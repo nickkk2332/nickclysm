@@ -22,6 +22,7 @@
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
+#include "character_martial_arts.h"
 #include "color.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -46,6 +47,7 @@
 #include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapdata.h"
+#include "martialarts.h"
 #include "math_defines.h"
 #include "mdarray.h"
 #include "messages.h"
@@ -54,6 +56,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "options.h"
+#include "pimpl.h"
 #include "point.h"
 #include "projectile.h"
 #include "rng.h"
@@ -92,13 +95,13 @@ static const itype_id itype_e_handcuffs( "e_handcuffs" );
 
 static const json_character_flag json_flag_EMP_ENERGYDRAIN_IMMUNE( "EMP_ENERGYDRAIN_IMMUNE" );
 static const json_character_flag json_flag_EMP_IMMUNE( "EMP_IMMUNE" );
+static const json_character_flag json_flag_FLASH_RESIST_ERRATIC( "FLASH_RESIST_ERRATIC" );
+static const json_character_flag json_flag_FLASH_RESIST_RETRACTABLE( "FLASH_RESIST_RETRACTABLE" );
 static const json_character_flag json_flag_GLARE_RESIST( "GLARE_RESIST" );
 static const json_character_flag json_flag_HIGH_GLARE( "HIGH_GLARE" );
 static const json_character_flag json_flag_IMMUNE_HEARING_DAMAGE( "IMMUNE_HEARING_DAMAGE" );
 
 static const mongroup_id GROUP_NETHER( "GROUP_NETHER" );
-
-static const species_id species_ROBOT( "ROBOT" );
 
 static const ter_str_id ter_t_card_industrial( "t_card_industrial" );
 static const ter_str_id ter_t_card_military( "t_card_military" );
@@ -109,8 +112,6 @@ static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_open_air( "t_open_air" );
 
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
-static const trait_id trait_PER_SLIME( "PER_SLIME" );
-static const trait_id trait_PER_SLIME_OK( "PER_SLIME_OK" );
 
 static const trap_str_id tr_goo( "tr_goo" );
 static const trap_str_id tr_portal( "tr_portal" );
@@ -152,7 +153,11 @@ class shrapnel_reader : public generic_typed_reader<shrapnel_reader>
 void explosion_data::deserialize( const JsonObject &jo )
 {
     mandatory( jo, was_loaded, "power", power );
-    optional( jo, was_loaded, "distance_factor", distance_factor, 0.75f );
+    optional( jo, was_loaded, "distance_factor", distance_factor, EXPLOSION_DEFAULT_DISTANCE_FACTOR );
+    // CMBT-J05: was caught only when it went off (a factor of 1 or more never dies down)
+    if( distance_factor < 0.0f || distance_factor >= 1.0f ) {
+        jo.throw_error_at( "distance_factor", "distance_factor must be at least 0 and below 1" );
+    }
     optional( jo, was_loaded, "max_noise", max_noise, 90000000 );
     optional( jo, was_loaded, "fire", fire );
     optional( jo, was_loaded, "shrapnel", shrapnel, shrapnel_reader{} );
@@ -161,7 +166,10 @@ void explosion_data::deserialize( const JsonObject &jo )
 void shrapnel_data::deserialize( const JsonObject &jo )
 {
     mandatory( jo, was_loaded, "casing_mass", casing_mass );
-    optional( jo, was_loaded, "fragment_mass", fragment_mass, 0.08 ); //differs from header?
+    optional( jo, was_loaded, "fragment_mass", fragment_mass, SHRAPNEL_DEFAULT_FRAGMENT_MASS );
+    if( casing_mass > 0 && fragment_mass <= 0.0f ) {
+        jo.throw_error_at( "fragment_mass", "fragment_mass must be above 0" );
+    }
     optional( jo, was_loaded, "recovery", recovery );
     optional( jo, was_loaded, "drop", drop, itype_id::NULL_ID() );
 }
@@ -197,6 +205,7 @@ float gurney_spherical( const double charge, const double mass )
 static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, const float power,
                       const float distance_factor, const bool fire )
 {
+    const bash_cause_scope blasting( "explosion" );
     const float tile_dist = 1.0f;
     const float diag_dist = trigdist ? M_SQRT2 * tile_dist : 1.0f * tile_dist;
     const float zlev_dist = 2.0f; // Penalty for going up/down
@@ -373,13 +382,19 @@ static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, 
 
         Character *pl = critter->as_character();
         if( pl == nullptr ) {
-            const double dmg = std::max( force - critter->get_armor_type( damage_bash,
-                                         bodypart_id( "torso" ) ) / 2.0, 0.0 );
-            const int actual_dmg = rng_float( dmg * 2, dmg * 3 );
-            critter->apply_damage( mutable_source, bodypart_id( "torso" ), actual_dmg );
+            // CMBT-J05: bash damage dealt as any other hit is, so that resistances, enchantments
+            // and damage type EOCs apply.  The blast's 2 to 3 times the force, with the armor
+            // counted half, as when it was (force - armor / 2) times 2 to 3.  A blast isn't aimed:
+            // no weak point
+            const float mult = rng_float( 2.0f, 3.0f );
+            const damage_instance blast( damage_bash, force * mult, 0.0f, mult / 2.0f );
+            weakpoint_attack unaimed;
+            unaimed.accuracy = 0.0;
+            const dealt_damage_instance dealt = critter->deal_damage( mutable_source,
+                                                bodypart_id( "torso" ), blast, unaimed, weakpoint() );
             critter->check_dead_state( m );
             add_msg_debug( debugmode::DF_EXPLOSION, "Blast hits %s for %d damage", critter->disp_name(),
-                           actual_dmg );
+                           dealt.total_damage() );
             continue;
         }
 
@@ -389,23 +404,39 @@ static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, 
                                        _( "<npcname> is caught in the explosion!" ) );
         }
 
+        // The martial-art ongethit hooks, once per blast: the damage is the blast's force here,
+        // as no single part is hit
+        ma_event_context gethit_ctx;
+        gethit_ctx.opponent = mutable_source;
+        gethit_ctx.damage = force;
+        gethit_ctx.hit_by = "explosion";
+        pl->martial_arts_data->ma_ongethit_effects( *pl, gethit_ctx );
+
         struct blastable_part {
             bodypart_id bp;
             float low_mul = 0.0f;
             float high_mul = 0.0f;
             float armor_mul = 0.0f;
+            // the order parts are hit in: torso, head, legs, arms, the rest, as it always was
+            int rank = 0;
         };
 
-        static const std::array<blastable_part, 6> blast_parts = { {
-                { bodypart_id( "torso" ), 2.0f, 3.0f, 0.5f },
-                { bodypart_id( "head" ),  2.0f, 3.0f, 0.5f },
-                // Hit limbs harder so that it hurts more without being much more deadly
-                { bodypart_id( "leg_l" ), 2.0f, 3.5f, 0.4f },
-                { bodypart_id( "leg_r" ), 2.0f, 3.5f, 0.4f },
-                { bodypart_id( "arm_l" ), 2.0f, 3.5f, 0.4f },
-                { bodypart_id( "arm_r" ), 2.0f, 3.5f, 0.4f },
+        // CMBT-J05: every main part the character has (tails, wings, extra arms), not a fixed
+        // human list.  Torso and head as before; hit the rest harder, as limbs, so that it hurts
+        // more without being much more deadly
+        std::vector<blastable_part> blast_parts;
+        for( const bodypart_id &bp : pl->get_all_body_parts( get_body_part_flags::only_main ) ) {
+            const bp_type limb = bp->primary_limb_type();
+            if( limb == bp_type::torso || limb == bp_type::head ) {
+                blast_parts.push_back( { bp, 2.0f, 3.0f, 0.5f, limb == bp_type::torso ? 0 : 1 } );
+            } else {
+                blast_parts.push_back( { bp, 2.0f, 3.5f, 0.4f, limb == bp_type::leg ? 2 : limb == bp_type::arm ? 3 : 4 } );
             }
-        };
+        }
+        std::sort( blast_parts.begin(), blast_parts.end(),
+        []( const blastable_part & a, const blastable_part & b ) {
+            return a.rank != b.rank ? a.rank < b.rank : a.bp.id().str().compare( b.bp.id().str() ) < 0;
+        } );
 
         for( const blastable_part &blp : blast_parts ) {
             const int part_dam = rng( force * blp.low_mul, force * blp.high_mul );
@@ -428,6 +459,7 @@ static std::vector<tripoint_bub_ms> shrapnel( map *m, const Creature *source,
         const tripoint_bub_ms &src, int power,
         int casing_mass, float per_fragment_mass, int range = -1 )
 {
+    const bash_cause_scope fragments( "explosion" );
     // The gurney equation wants the total mass of the casing.
     const float fragment_velocity = gurney_spherical( power, casing_mass );
     fragment_mass = per_fragment_mass;
@@ -648,11 +680,12 @@ void flashbang( const tripoint_bub_ms &p, bool player_immune, const int radius )
             if( here.sees( guy.pos_bub(), p, radius, true, los_trace::physical ) ) {
                 int flash_mod = 0;
                 int dur_mod = 1;
-                if( guy.has_trait( trait_PER_SLIME ) ) {
+                // CMBT-J11: flags, given by the Sensory Disintegration and Distributed Senses traits
+                if( guy.has_flag( json_flag_FLASH_RESIST_ERRATIC ) ) {
                     if( one_in( 2 ) ) {
                         flash_mod = radius / 2.6f; // Yay, you weren't looking!
                     }
-                } else if( guy.has_trait( trait_PER_SLIME_OK ) ) {
+                } else if( guy.has_flag( json_flag_FLASH_RESIST_RETRACTABLE ) ) {
                     flash_mod = radius; // Just retract those and extrude fresh eyes
                 } else if( guy.has_flag( json_flag_GLARE_RESIST ) ) {
                     flash_mod = radius / 1.3f;
@@ -683,7 +716,8 @@ void flashbang( const tripoint_bub_ms &p, bool player_immune, const int radius )
     }
 
     for( monster &critter : g->all_monsters() ) {
-        if( critter.type->in_species( species_ROBOT ) || critter.has_flag( mon_flag_FLASHBANGPROOF ) ) {
+        // CMBT-J11: robots are immune through their species' FLASHBANGPROOF flag
+        if( critter.has_flag( mon_flag_FLASHBANGPROOF ) ) {
             continue;
         }
         // TODO: can the following code be called for all types of creatures
@@ -813,19 +847,22 @@ void emp_blast( const tripoint_bub_ms &p )
     if( monster *const mon_ptr = get_creature_tracker().creature_at<monster>( p ) ) {
         monster &critter = *mon_ptr;
         if( critter.has_flag( mon_flag_ELECTRONIC ) ) {
-            int deact_chance = 0;
+            // CMBT-J11: the monster's "emp_deactivate_one_in", else by size
+            int deact_chance = critter.type->emp_deactivate_one_in;
             const itype_id mon_item_id = critter.type->revert_to_itype;
-            switch( critter.get_size() ) {
-                case creature_size::tiny:
-                    deact_chance = 6;
-                    break;
-                case creature_size::small:
-                    deact_chance = 3;
-                    break;
-                default:
-                    // Currently not used, I have no idea what chances bigger bots should have,
-                    // Maybe export this to json?
-                    break;
+            if( deact_chance < 0 ) {
+                deact_chance = 0;
+                switch( critter.get_size() ) {
+                    case creature_size::tiny:
+                        deact_chance = 6;
+                        break;
+                    case creature_size::small:
+                        deact_chance = 3;
+                        break;
+                    default:
+                        // bigger bots are never switched off, unless their JSON says so
+                        break;
+                }
             }
             if( !mon_item_id.is_empty() && deact_chance != 0 && one_in( deact_chance ) ) {
                 if( sight ) {
@@ -870,32 +907,38 @@ void emp_blast( const tripoint_bub_ms &p )
             add_msg( _( "The %s is unaffected by the EMP blast." ), critter.name() );
         }
     }
-    if( player_character.pos_bub() == p ) {
-        if( player_character.get_power_level() > 0_kJ &&
-            !player_character.has_flag( json_flag_EMP_IMMUNE ) &&
-            !player_character.has_flag( json_flag_EMP_ENERGYDRAIN_IMMUNE ) ) {
-            add_msg( m_bad, _( "The EMP blast drains your power." ) );
-            int max_drain = ( player_character.get_power_level() > 1000_kJ ? 1000 : units::to_kilojoule(
-                                  player_character.get_power_level() ) );
-            player_character.mod_power_level( units::from_kilojoule( static_cast<std::int64_t>( -rng(
-                                                  1 + max_drain / 3, max_drain ) ) ) );
+    // CMBT-J11: whoever is on the tile, NPCs too (it used to be the avatar only)
+    if( Character *const guy_ptr = get_creature_tracker().creature_at<Character>( p ) ) {
+        Character &guy = *guy_ptr;
+        if( guy.get_power_level() > 0_kJ &&
+            !guy.has_flag( json_flag_EMP_IMMUNE ) &&
+            !guy.has_flag( json_flag_EMP_ENERGYDRAIN_IMMUNE ) ) {
+            guy.add_msg_player_or_npc( m_bad, _( "The EMP blast drains your power." ),
+                                       _( "The EMP blast drains <npcname>'s power." ) );
+            int max_drain = ( guy.get_power_level() > 1000_kJ ? 1000 : units::to_kilojoule(
+                                  guy.get_power_level() ) );
+            guy.mod_power_level( units::from_kilojoule( static_cast<std::int64_t>( -rng(
+                                     1 + max_drain / 3, max_drain ) ) ) );
         }
         // TODO: More effects?
         //e-handcuffs effects
-        item_location weapon = player_character.get_wielded_item();
+        item_location weapon = guy.get_wielded_item();
         if( weapon && weapon->typeId() == itype_e_handcuffs && weapon->charges > 0 ) {
             weapon->unset_flag( json_flag_NO_UNWIELD );
             weapon->charges = 0;
             weapon->active = false;
-            add_msg( m_good, _( "The %s on your wrists spark briefly, then release your hands!" ),
-                     weapon->tname() );
+            guy.add_msg_player_or_npc( m_good,
+                                       _( "The %s on your wrists spark briefly, then release your hands!" ),
+                                       _( "The %s on <npcname>'s wrists spark briefly, then release their hands!" ),
+                                       weapon->tname() );
         }
 
-        if( !player_character.has_flag( json_flag_EMP_IMMUNE ) ) {
-            player_character.visit_carried( []( item_location it ) {
-                // Render any electronic stuff in player's possession non-functional
+        if( !guy.has_flag( json_flag_EMP_IMMUNE ) ) {
+            guy.visit_carried( [&guy]( item_location it ) {
+                // Render any electronic stuff in their possession non-functional
                 if( it->has_flag( flag_ELECTRONIC ) && !it->is_broken() ) {
-                    add_msg( m_bad, _( "The EMP blast fries your %s!" ), it->tname() );
+                    guy.add_msg_player_or_npc( m_bad, _( "The EMP blast fries your %s!" ),
+                                               _( "The EMP blast fries <npcname>'s %s!" ), it->tname() );
                     it->deactivate();
                     if( get_option<bool>( "GAME_EMP" ) ) {
                         it->set_fault( fault_emp_reboot );
@@ -926,7 +969,6 @@ void emp_blast( const tripoint_bub_ms &p )
             here.make_active( loc );
         }
     }
-    // TODO: Drain NPC energy reserves
 }
 void resonance_cascade( const tripoint_bub_ms &p )
 {

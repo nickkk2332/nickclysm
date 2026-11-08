@@ -1,10 +1,11 @@
 #include <cstddef>
+#include <deque>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "calendar.h"
 #include "coords_fwd.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "json.h"
 #include "message_log.h"
@@ -12,13 +13,10 @@
 #include "options.h"
 
 class Creature;
-class JsonObject;
-class JsonOut;
 namespace debugmode
 {
 enum debug_filter : int;
 }  // namespace debugmode
-struct game_message_params;
 
 namespace catacurses
 {

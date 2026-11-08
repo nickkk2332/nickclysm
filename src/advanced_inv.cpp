@@ -600,8 +600,9 @@ struct advanced_inv_sorter {
                 }
                 break;
             case SORTBY_CATEGORY:
+                // by sort_rank, then name, as the inventory menu orders them
                 if( d1.cat != d2.cat ) {
-                    return d1.cat < d2.cat;
+                    return *d1.cat < *d2.cat;
                 }
                 break;
             case SORTBY_DAMAGE: {
@@ -1717,9 +1718,13 @@ bool advanced_inventory::action_move_item( advanced_inv_listitem *sitem,
         // make sure advanced inventory is reopened after activity completion
         do_return_entry();
         if( srcarea == AIM_WORN && destarea == AIM_INVENTORY ) {
-            // if worn, we need to fix with the worn index number (starts at -2, as -1 is weapon)
-            // this is ok because worn items are never stacked (can't move more than 1)
-            player_character.takeoff( Character::worn_position_to_index( sitem->idx ) + 1 );
+            // worn items are never stacked (can't move more than 1). Taking it off costs what
+            // the take off menu charges, and nothing when it can't be taken off.
+            item_location worn_item = sitem->items.front();
+            const int takeoff_cost = worn_item.obtain_cost( player_character );
+            if( player_character.takeoff( worn_item ) ) {
+                player_character.mod_moves( -takeoff_cost );
+            }
         } else {
             // important if item is worn
             if( player_character.can_drop( it_copy ).success() ) {
@@ -1831,12 +1836,13 @@ bool advanced_inventory::action_unload( advanced_inv_listitem *sitem,
                                         advanced_inventory_pane &spane, advanced_inventory_pane &dpane )
 {
     avatar &u = get_avatar();
+    // the highlighted item, or else the container this pane shows
     item_location src = spane.container;
     item_location dest = dpane.container;
 
-    if( !src && sitem ) {
+    if( sitem ) {
         src = sitem->items.front();
-    } else {
+    } else if( !src ) {
         add_msg( m_info, _( "Nothing to unload." ) );
         return false;
     }

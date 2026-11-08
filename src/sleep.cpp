@@ -1,11 +1,15 @@
 #include "sleep.h"
 
 #include <list>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "character.h"
+#include "condition.h"
+#include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
@@ -13,6 +17,7 @@
 #include "item_stack.h"
 #include "map.h"
 #include "mapdata.h"
+#include "talker.h"
 #include "translations.h"
 #include "trap.h"
 #include "type_id.h"
@@ -39,6 +44,8 @@ template<> std::string enum_to_string<comfort_data::category>( comfort_data::cat
             return "character";
         case comfort_data::category::trait:
             return "trait";
+        case comfort_data::category::condition:
+            return "condition";
         case comfort_data::category::last:
             break;
     }
@@ -187,6 +194,13 @@ bool comfort_data::condition::is_condition_true( const Character &guy,
                 result = guy.has_trait( trait_id( id ) );
             }
             break;
+        case category::condition: {
+            // The spot may not be where the sleeper is (NPCs rate the spots around them).
+            const_dialogue d( get_const_talker_for( guy ), nullptr );
+            d.set_value( "loc", here.get_abs( p ) );
+            result = dialogue_condition( d );
+            break;
+        }
         case category::last:
             break;
     }
@@ -218,6 +232,12 @@ void comfort_data::condition::deserialize( const JsonObject &jo )
         case category::trait:
             mandatory( jo, false, "id", id );
             optional( jo, false, "active", active );
+            break;
+        case category::condition:
+            if( !jo.has_member( "condition" ) ) {
+                jo.throw_error( R"(a comfort condition of type "condition" needs a "condition")" );
+            }
+            read_condition( jo, "condition", dialogue_condition, false );
             break;
         case category::last:
             break;

@@ -17,6 +17,7 @@
 #include "color.h"
 #include "debug.h"
 #include "effect_grant_state.h"
+#include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enums.h"
 #include "event.h"
@@ -37,6 +38,8 @@
 
 enum class cata_variant_type : int;
 struct mutation_branch;
+
+static const addiction_id addiction_opiate( "opiate" );
 
 static const efftype_id effect_bandaged( "bandaged" );
 static const efftype_id effect_beartrap( "beartrap" );
@@ -121,6 +124,22 @@ void limb_score_effect::load( const JsonObject &jo )
 }
 
 void limb_score_effect::deserialize( const JsonObject &jo )
+{
+    load( jo );
+}
+
+void effect_body_temperature::load( const JsonObject &jo )
+{
+    optional( jo, false, "body_part", body_part );
+    // Degrees Celsius as a number (3, -1.5), or a string with units ("3 C", "-1500 mC")
+    if( jo.has_number( "add" ) ) {
+        add = units::from_celsius_delta( jo.get_float( "add" ) );
+    } else {
+        mandatory( jo, false, "add", add );
+    }
+}
+
+void effect_body_temperature::deserialize( const JsonObject &jo )
 {
     load( jo );
 }
@@ -614,6 +633,14 @@ double effect_type::get_mod_value( const std::string &type, mod_action action,
     return ret;
 }
 
+bool effect_type::has_mod_value( const std::string &type, mod_action action,
+                                 uint8_t reduction_level ) const
+{
+    const auto it = mod_data.find( type );
+    return it != mod_data.cend() &&
+           it->second.count( get_effect_modifier_key( action, reduction_level ) ) > 0;
+}
+
 void effect_type::check_consistency()
 {
     for( deferred_effect_type &waiting : deferred_effect_types ) {
@@ -644,9 +671,25 @@ void effect_type::verify() const
             debugmsg( "effect_type %s has unknown vitamin %s", id.str(), vit.vitamin.str() );
         }
     }
+    if( pkill_addict_reduces && !pkill_addiction.is_valid() ) {
+        debugmsg( "effect_type %s: pkill_addict_reduces names unknown addiction %s", id.str(),
+                  pkill_addiction.str() );
+    }
+    for( const effect_periodic_message &msg : periodic_msgs ) {
+        if( msg.chance < 1 || msg.min_intensity > msg.max_intensity ) {
+            debugmsg( "effect_type %s: a periodic message needs a chance of at least 1 and "
+                      "min_intensity no higher than max_intensity", id.str() );
+        }
+    }
     for( const limb_score_effect &score : limb_score_data ) {
         if( !score.score_id.is_valid() ) {
             debugmsg( "effect_type %s has unknown limb score %s", id.str(), score.score_id.str() );
+        }
+    }
+    for( const effect_body_temperature &temp : body_temperature ) {
+        if( temp.body_part.has_value() && !temp.body_part->is_valid() ) {
+            debugmsg( "effect_type %s has body_temperature for unknown body part %s", id.str(),
+                      temp.body_part->str() );
         }
     }
     for( const effect_dur_mod &scaling : effect_dur_scaling ) {
@@ -660,6 +703,23 @@ void effect_type::verify() const
             debugmsg( "effect_type %s has unknown enchantment %s", id.str(), ench.str() );
         }
     }
+    // HLTH-J02: these lists were never checked, and shipped data had ids in them that pointed
+    // at nothing, so the resistance or removal silently never happened
+    for( const trait_id &trait : resist_traits ) {
+        if( !trait.is_valid() ) {
+            debugmsg( "effect_type %s has unknown trait %s in resist_traits", id.str(), trait.str() );
+        }
+    }
+    const auto check_effects = [this]( const std::vector<efftype_id> &list, const char *member ) {
+        for( const efftype_id &other : list ) {
+            if( !other.is_valid() ) {
+                debugmsg( "effect_type %s has unknown effect %s in %s", id.str(), other.str(), member );
+            }
+        }
+    };
+    check_effects( resist_effects, "resist_effects" );
+    check_effects( removes_effects, "removes_effects" );
+    check_effects( blocks_effects, "blocks_effects" );
 }
 
 bool effect_type::has_flag( const flag_id &flag ) const
@@ -787,6 +847,15 @@ static game_message_type read_effect_rating( const JsonObject &jo )
                            "\"neutral\", \"bad\", or \"mixed\"", r ) );
     }
     return *rate;
+}
+
+void effect_periodic_message::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "text", text );
+    mandatory( jo, false, "chance", chance );
+    type = read_effect_rating( jo );
+    optional( jo, false, "min_intensity", min_intensity, 1 );
+    optional( jo, false, "max_intensity", max_intensity, INT_MAX );
 }
 
 // helps load the internal message arrays for decay and apply into the msgs vector
@@ -1513,11 +1582,33 @@ bool effect::get_sizing( const std::string &arg ) const
     return false;
 }
 
+// The "top" of an effect's chance to apply arg, or nullopt for never. A chance the effect gives
+// works as written: one that comes to 0 or less never fires (vanilla writes -1 for that), and a
+// positive one is at least 1, where it used to truncate to 0 and so fire every time. Only a
+// chance the effect leaves out is 0: every time, for a nonzero value.
+static std::optional<int> effect_chance_top( const effect_type &type, const std::string &arg,
+        bool reduced, int intensity )
+{
+    if( !type.has_mod_value( arg, mod_action::CHANCE_TOP, reduced ) ) {
+        return 0;
+    }
+    const double top = type.get_mod_value( arg, mod_action::CHANCE_TOP, reduced, intensity );
+    if( top <= 0 ) {
+        return std::nullopt;
+    }
+    return std::max( 1, static_cast<int>( top ) );
+}
+
 double effect::get_percentage( const std::string &arg, int val, bool reduced ) const
 {
     // Like every other scaling mod, chances stop scaling at max_effective_intensity.
     const int eff_intensity = get_effective_intensity();
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
+    const std::optional<int> chance_top = effect_chance_top( *eff_type, arg, reduced,
+                                          eff_intensity );
+    if( !chance_top ) {
+        return 0;
+    }
+    const int top = *chance_top;
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1536,11 +1627,12 @@ double effect::get_percentage( const std::string &arg, int val, bool reduced ) c
     // Start with 100%
     double ret = 100;
 
-    // If bot is zero the formula is one_in(top), else the formula is x_in_y(top, bot)
+    // If bot is zero the formula is one_in(top), else the formula is x_in_y(top, bot);
+    // with no chance at all (top 0) it is every time
     if( bot ) {
         // Cast to double here to allow for partial percentages
         ret *= static_cast<double>( top ) / static_cast<double>( bot );
-    } else {
+    } else if( top > 0 ) {
         // Cast to double here to allow for partial percentages
         ret /= static_cast<double>( top );
     }
@@ -1556,7 +1648,12 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
 {
     // Like every other scaling mod, chances stop scaling at max_effective_intensity.
     const int eff_intensity = get_effective_intensity();
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
+    const std::optional<int> chance_top = effect_chance_top( *eff_type, arg, reduced,
+                                          eff_intensity );
+    if( !chance_top ) {
+        return false;
+    }
+    const int top = *chance_top;
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1581,10 +1678,10 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
     }
 
     // If bot value is zero the formula is x_in_y(1, top) i.e. one_in(top),
-    // else the formula is x_in_y(top, bot).
+    // else the formula is x_in_y(top, bot); with no chance at all (top 0) it is every time.
     // mod multiplies the overall percentage chances
     if( !bot ) {
-        return x_in_y( mod, top );
+        return top > 0 ? x_in_y( mod, top ) : mod > 0;
     } else {
         return x_in_y( top * mod, bot );
     }
@@ -1592,16 +1689,26 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
 
 double effect::get_addict_mod( const std::string &arg, int addict_level ) const
 {
-    // TODO: convert this to JSON id's and values once we have JSON'ed addictions
     if( arg == "PKILL" ) {
         if( eff_type->pkill_addict_reduces ) {
-            return 1.0 / std::max( static_cast<double>( addict_level ) * 2.0, 1.0 );
+            return 1.0 / std::max( static_cast<double>( addict_level ) * eff_type->pkill_addict_scale,
+                                   1.0 );
         } else {
             return 1.0;
         }
     } else {
         return 1.0;
     }
+}
+
+const addiction_id &effect::get_pkill_addiction() const
+{
+    return eff_type->pkill_addiction;
+}
+
+const std::vector<effect_periodic_message> &effect::get_periodic_msgs() const
+{
+    return eff_type->periodic_msgs;
 }
 
 bool effect::get_harmful_cough() const
@@ -1831,6 +1938,8 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "vitamins", new_etype.vitamin_data );
     optional( jo, was_loaded, "limb_score_mods", new_etype.limb_score_data );
+    optional( jo, was_loaded, "body_temperature", new_etype.body_temperature );
+    optional( jo, was_loaded, "warmth_per_intensity", new_etype.warmth_per_intensity, 0 );
     optional( jo, was_loaded, "effect_dur_scaling", new_etype.effect_dur_scaling );
     optional( jo, was_loaded, "chance_kill", new_etype.kill_chance );
     optional( jo, was_loaded, "chance_kill_resist", new_etype.red_kill_chance );
@@ -1869,7 +1978,30 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "main_parts_only", new_etype.main_parts_only, false );
     optional( jo, was_loaded, "show_in_info", new_etype.show_in_info, false );
     optional( jo, was_loaded, "show_intensity", new_etype.show_intensity, true );
-    optional( jo, was_loaded, "pkill_addict_reduces", new_etype.pkill_addict_reduces, false );
+    // HLTH-J11: true is opiate tolerance; an object names the addiction and how strongly each
+    // level of it weakens the painkiller.
+    no_inheritance_ops( "pkill_addict_reduces" );
+    if( jo.has_object( "pkill_addict_reduces" ) ) {
+        const JsonObject tolerance = jo.get_object( "pkill_addict_reduces" );
+        new_etype.pkill_addict_reduces = true;
+        mandatory( tolerance, false, "addiction", new_etype.pkill_addiction );
+        optional( tolerance, false, "per_intensity", new_etype.pkill_addict_scale, 2.0 );
+    } else if( jo.has_member( "pkill_addict_reduces" ) ) {
+        new_etype.pkill_addict_reduces = jo.get_bool( "pkill_addict_reduces" );
+        new_etype.pkill_addiction = new_etype.pkill_addict_reduces ? addiction_opiate :
+                                    addiction_id::NULL_ID();
+        new_etype.pkill_addict_scale = 2.0;
+    }
+    if( !new_etype.pkill_addict_reduces ) {
+        new_etype.pkill_addiction = addiction_id::NULL_ID();
+    }
+
+    // HLTH-J13: given, the list replaces the parent's.
+    no_inheritance_ops( "periodic_messages" );
+    if( jo.has_member( "periodic_messages" ) ) {
+        new_etype.periodic_msgs.clear();
+        jo.read( "periodic_messages", new_etype.periodic_msgs, true );
+    }
 
     optional( jo, was_loaded, "pain_sizing", new_etype.pain_sizing, false );
     optional( jo, was_loaded, "hurt_sizing", new_etype.hurt_sizing, false );
@@ -1926,6 +2058,57 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
                 new_etype.enchantments.erase( iter );
             }
         }
+    }
+
+    // EVT-J04: EOCs run when a creature gains the effect, its intensity changes or it's lost.
+    // Given, a list replaces the parent's; "extend" adds to it and "delete" takes EOC ids out.
+    const auto load_eocs = [&]( const std::string_view member,
+    std::vector<effect_on_condition_id> &eocs ) {
+        warn_disabled_feature( jo, "relative", member, "not supported for effect_type" );
+        warn_disabled_feature( jo, "proportional", member, "not supported for effect_type" );
+        if( !was_loaded ) {
+            warn_disabled_feature( jo, "extend", member, "no copy-from" );
+            warn_disabled_feature( jo, "delete", member, "no copy-from" );
+        }
+        if( jo.has_member( member ) ) {
+            eocs.clear();
+            for( const JsonValue jv : jo.get_array( member ) ) {
+                eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+            }
+            return;
+        }
+        if( !was_loaded ) {
+            return;
+        }
+        if( jo.has_object( "extend" ) ) {
+            JsonObject extend = jo.get_object( "extend" );
+            extend.allow_omitted_members();
+            for( const JsonValue jv : extend.get_array( member ) ) {
+                eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+            }
+        }
+        if( jo.has_object( "delete" ) ) {
+            JsonObject del = jo.get_object( "delete" );
+            del.allow_omitted_members();
+            for( const JsonValue jv : del.get_array( member ) ) {
+                const effect_on_condition_id doomed( jv.get_string() );
+                const auto iter = std::find( eocs.begin(), eocs.end(), doomed );
+                if( iter == eocs.end() ) {
+                    jv.throw_error( "the effect type has no such effect_on_condition" );
+                }
+                eocs.erase( iter );
+            }
+        }
+    };
+    load_eocs( "apply_eocs", new_etype.apply_eocs );
+    load_eocs( "intensity_change_eocs", new_etype.intensity_change_eocs );
+    load_eocs( "remove_eocs", new_etype.remove_eocs );
+    // HLTH-J07: run every tick_eocs_interval while the creature has the effect, counted from
+    // when it gained it
+    load_eocs( "tick_eocs", new_etype.tick_eocs );
+    optional( jo, was_loaded, "tick_eocs_interval", new_etype.tick_eocs_interval, 1_turns );
+    if( new_etype.tick_eocs_interval < 1_turns ) {
+        jo.throw_error_at( "tick_eocs_interval", "must be at least 1 turn" );
     }
 
     if( is_abstract ) {

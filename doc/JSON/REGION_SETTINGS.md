@@ -22,7 +22,8 @@ see their info later in this document.
 | `place_specials`         | boolean                             | Controls placement of overmap specials |
 | `neighbor_connections`   | boolean                             | Generate connections between neighboring overmaps |
 | `max_urbanity`           | integer                             | Max urbanity (a multiplier on city size) |
-| `npc_spawntime`          | float                               | How long between each random NPC spawn, roughly in days. Default 4.0  |
+| `npc_spawntime`          | float                               | How long between each random NPC spawn, roughly in days. Default 4.0. 0 means no random NPCs. |
+| `random_npcs`            | object                              | Optional, how random NPCs appear; see [Random NPCs](#random-npcs). |
 | `urbanity_increase`      | array of numbers                    | Increase in urbanity to the [ north, east, south, west ] of overmap (0,0) |
 | `rivers`                 | `region_settings_river`             | River generation parameters; Use `null` to disable river generation.  |
 | `lakes`                  | `region_settings_lake`              | Defines parameters for generating lakes in the region. `null` to disable. |
@@ -40,6 +41,33 @@ see their info later in this document.
 | `default_groundcover`    |  weighted list of `oter_id`         | List of terrain types and weights applied as default ground cover.    |
 | `feature_flag_settings`  |  two lists of strings               | Defines operations on overmap features based on their flags.          |
 | `connections`            | `overmap_connection_id` fields      | Defines what overmap connections this region uses.                    |
+| `special_sector_size`    | integer                             | Overmap specials are placed one per square of this many tiles a side (1 to 180, default 15).  Smaller squares make denser specials.  Best a divisor of 180. |
+| `special_attempts_per_sector` | integer                        | Spots tried in each square before it is given up (default 10).        |
+| `worldgen_monsters`      | object                              | The monster groups worldgen places on the region's overmaps.  See [Worldgen monsters](#worldgen-monsters). |
+
+### Worldgen monsters
+
+`worldgen_monsters` sets which monster groups worldgen places on this region's overmaps, and how
+many, instead of overriding the global groups (which applies to every region and dimension).  A
+region that leaves a field out keeps its parent's value (with `copy-from`) or the default.  A group
+of `GROUP_NULL` places none.
+
+| Identifier                  | Default              | Description                                                         |
+| --------------------------- | -------------------- | ------------------------------------------------------------------- |
+| `city_horde`                | `GROUP_ZOMBIE_HORDE` | Hordes placed along a city's roads (the `SPAWN_CITY_HORDE_*` world options set how many). |
+| `city_horde_pack_size`      | 10                   | City hordes are split into groups of at most this many.             |
+| `swamp`                     | `GROUP_SWAMP`        | Placed in swampy parts of the map; only with the `DISABLE_ANIMAL_CLASH` world option on. |
+| `river`                     | `GROUP_RIVER`        | Placed along rivers and lakes.                                      |
+| `ocean_shore`, `ocean_deep` | `GROUP_OCEAN_SHORE`, `GROUP_OCEAN_DEEP` | Placed in shallow and deep ocean.                |
+| `water_min_tiles`           | 25                   | The swamp, river and ocean groups go in 7x7 tile windows of the surface with at least this many such tiles (a swamp tile counts twice). |
+| `water_population_per_tile` | `[ 8, 25 ]`          | Their population: this many monsters per such tile, rolled, scaled by the group's frequency total. |
+| `deep_ocean_threshold`      | 1.25                 | Ocean counts as deep where its noise is above the ocean's `noise_threshold_ocean` times this. |
+| `subway_city`               | `GROUP_SUBWAY_CITY`  | Placed under each city, size times size times 2 monsters.           |
+| `subway_z`                  | -2                   | The level the subway group goes on (-1 to -10).                     |
+
+```jsonc
+"worldgen_monsters": { "swamp": "GROUP_SWAMP_TROPICAL", "river": "GROUP_NULL", "city_horde_pack_size": 20 }
+```
 
 ### Example
 ```jsonc
@@ -152,6 +180,8 @@ are interpreted.
 | `surface_ter`                              | Overmap terrain id of surface terrain, placed on z = 0. |
 | `interior_ter`                             | Overmap terrain id of interior terrain, placed between surface terrain and bed terrain. |
 | `bed_ter`                                  | Overmap terrain id of bed terrain, placed on bottom of the lake. |
+| `mapgen_deep_water`                        | (_optional_) Terrain id the built-in lake shore mapgen fills the lake side with. Default `t_water_dp`. |
+| `mapgen_shallow_water`                     | (_optional_) Terrain id of the lake shore mapgen's shallow edge. Default `t_water_sh`. |
 
 ### Example
 
@@ -171,6 +201,43 @@ are interpreted.
     ]
 }
 ```
+
+## Water Terrain of the Built-in Mapgen
+
+The rivers, lake shores and ocean shores are drawn by built-in (C++) mapgen. These optional fields
+of **region_settings_river**, **region_settings_lake** (above) and **region_settings_ocean** set the
+terrain it draws, so a desert, swamp or frozen region doesn't get temperate water and banks. Left
+out, the mapgen draws what it always has. A region with no river settings (`"rivers": null`) gets
+the defaults.
+
+| Settings                | Field                  | Default                                  | Description |
+| ----------------------- | ---------------------- | ---------------------------------------- | ----------- |
+| `region_settings_river` | `mapgen_deep_water`    | `t_water_moving_dp`                      | The river's middle. |
+| `region_settings_river` | `mapgen_shallow_water` | `t_water_moving_sh`                      | The shallows along the banks. |
+| `region_settings_river` | `mapgen_bank`          | `t_grass` (1 in 4) or `t_dirt`           | Weighted list of the bank's terrain, as `[ [ "t_sand", 3 ], [ "t_dirt", 1 ] ]`. |
+| `region_settings_river` | `mapgen_bank_detail`   | `t_sand` (1 in 16) or `t_clay`           | Weighted list for the odd tile between the bank and the water. |
+| `region_settings_lake`  | `mapgen_deep_water`    | `t_water_dp`                             | See above. |
+| `region_settings_lake`  | `mapgen_shallow_water` | `t_water_sh`                             | See above. |
+| `region_settings_ocean` | `mapgen_deep_water`    | `t_swater_dp`                            | The sea side of an ocean shore. |
+| `region_settings_ocean` | `mapgen_shallow_water` | `t_swater_sh`                            | The shallows. |
+| `region_settings_ocean` | `mapgen_surf`          | `t_swater_surf`                          | The surf between the shallows and the beach. |
+| `region_settings_ocean` | `mapgen_beach`         | `t_sand`                                 | The beach. |
+
+The lists can name region pseudo terrain such as `t_region_groundcover`: it is resolved with the
+rest of the map.
+
+```jsonc
+{
+  "type": "region_settings_river",
+  "id": "desert_rivers",
+  "copy-from": "default",
+  "mapgen_shallow_water": "t_water_murky",
+  "mapgen_bank": [ [ "t_sand", 3 ], [ "t_dirt", 1 ] ],
+  "mapgen_bank_detail": [ [ "t_clay", 1 ] ]
+}
+```
+
+The forest's tuning values and the subway layouts are still fixed in C++.
 
 ## Region Forest Settings
 
@@ -193,6 +260,20 @@ Two noise functions with values between 0 and 1 are generated over the entire ma
 | `river_floodplain_buffer_distance_max` | Maximum buffer distance in overmap terrains for river floodplains.     |
 | `forest_threshold_limit`               | Number. Maximum increase in forest threshold value due to distance from overmap (0,0) |
 | `forest_threshold_increase`               | Array of numbers. [ north, east, south, west ] change in forest noise threshold per overmap from overmap (0,0) |
+| `forest_ter`                           | Overmap terrain id placed for forest. Default `forest`.                |
+| `forest_thick_ter`                     | Overmap terrain id placed for thick forest. Default `forest_thick`.    |
+| `swamp_ter`                            | Overmap terrain id placed for swamp. Default `forest_water`. Forest trails are laid through these three terrains, swamps grow only on the first two, and swamp monsters spawn where there's a lot of `swamp_ter`. |
+| `noise`                                | Optional [noise shape](#noise-shapes) of the forest noise. Default `{ "octaves": 4, "persistence": 0.5, "scale": 0.03, "exponent": 2 }`. |
+| `noise_detail`                         | Optional [noise shape](#noise-shapes) subtracted, at half strength, from `noise`. Default `{ "octaves": 6, "persistence": 0.5, "scale": 0.07, "exponent": 3 }`. |
+| `floodplain_noise`                     | Optional [noise shape](#noise-shapes) tested against the swamp thresholds. Default `{ "octaves": 4, "persistence": 0.5, "scale": 0.05, "exponent": 2 }`. |
+
+### Noise shapes
+
+A noise shape is an object with any of `octaves` (int, at least 1), `persistence`, `scale` (positive)
+and `exponent`; members left out keep their default (or the `copy-from` value). The noise is octave
+simplex noise in [0, 1] raised to `exponent`: a smaller `scale` makes bigger features, a bigger
+`exponent` makes high values rarer, more `octaves` add finer detail with `persistence` setting how
+much each one adds.
 
 ### Example
 
@@ -208,6 +289,41 @@ Two noise functions with values between 0 and 1 are generated over the entire ma
     "river_floodplain_buffer_distance_max": 15
 }
 ```
+
+## Region Ocean Settings
+
+**region_settings_ocean** defines how oceans are generated.
+
+### Fields
+
+|      Identifier       |                                     Description                                      |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `noise_threshold_ocean` | [0, 1], x > value (plus the distance gradient from the ocean start) spawns ocean.   |
+| `ocean_size_min`      | Minimum size of an ocean in overmap terrains for it to actually spawn.                |
+| `ocean_depth`         | Depth of oceans, expressed in Z-levels.                                              |
+| `ocean_start_north`, `ocean_start_east`, `ocean_start_west`, `ocean_start_south` | Optional. Distance in overmaps from overmap (0,0) at which the ocean starts in that direction; with none of them, no oceans. |
+| `sandy_beach_width`   | Width of the sand on ocean shore maps.                                               |
+| `surface_ter`         | Overmap terrain id of the surface, placed on z = 0. Default `ocean_surface`.         |
+| `shore_ter`           | Overmap terrain id of the shore, placed on the boundary with land. Default `ocean_shore`. |
+| `interior_ter`        | Overmap terrain id placed between the surface and the bed. Default `ocean_water_cube`. |
+| `bed_ter`             | Overmap terrain id of the bed, placed at the bottom. Default `ocean_bed`.            |
+
+## Region Ravine Settings
+
+**region_settings_ravine** defines how ravines are generated.
+
+### Fields
+
+|           Identifier            |                                  Description                                  |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `num_ravines`                   | Number of ravines per overmap.                                                |
+| `ravine_range`                  | Maximum distance between a ravine's two ends.                                 |
+| `ravine_width`                  | Width of the ravine.                                                          |
+| `ravine_depth`                  | Z-level of the ravine's bottom.                                               |
+| `ravine_bottom_terrain_id`      | Overmap terrain id of the bottom's inner tiles. Default `ravine_floor`.       |
+| `ravine_floor_edge_terrain_id`  | Overmap terrain id of the bottom's edge tiles. Default `ravine_floor_edge`.   |
+| `ravine_terrain_id`             | Overmap terrain id of the inner tiles above the bottom. Default `ravine`.     |
+| `ravine_edge_terrain_id`        | Overmap terrain id of the edge tiles above the bottom. Default `ravine_edge`. |
 
 ## Region Forest Map Generation Settings
 
@@ -278,10 +394,15 @@ them in region overlays.
 
 |  Identifier   |                             Description                              |
 | ------------- | -------------------------------------------------------------------- |
-| `sequence`    | Sequence in which components are processed.                          |
+| `sequence`    | Sequence in which components are processed, lowest first (default 0). |
 | `chance`      | One in X chance that something from this component will be placed.   |
-| `clear_types` | Clear all previously defined `types` for this component.             |
 | `types`       | Weighted list of terrains and furniture that make up this component. |
+
+A biome rolls its components in `sequence` order, lowest first; components with the same
+`sequence` go in order of their ids. The first component whose `chance` succeeds picks the
+feature for the tile, so components earlier in the sequence take precedence. The order of the
+biome's `components` list does not matter. To replace a component's `types` in an overlay, give
+`types` again; `extend` and `delete` add or remove single entries.
 
 ### Example
 
@@ -456,6 +577,36 @@ relative placements of various classes of buildings.
 | `city_size`            | Required Setting. Size of cities. Larger number = bigger cities. 0 = no cities. Range: 0 - 16   |
 | `city_spacing`         | Space between cities. Larger number = more space between cities. Range: 0 - 8 |
 | `is_megacity`          | Special flag to trigger special map generation. Generates a megacity.         |
+| `road_post_process`    | List of `pp_generator` ids run on every road tile in a city of this region, in order (see [OVERMAP.md](OVERMAP.md#post-process-generators)). Default `[ "riot_damage_road" ]`; `[]` for none. |
+| `manhole_chance`       | One in this many four-way `road` crossings of a city street get a manhole. Default 2; 0 for none. |
+| `manhole_terrain`      | Overmap terrain id placed for a manhole. Default `road_nesw_manhole`; its `below` rule (see [OVERMAP.md](OVERMAP.md#vertical-terrain-rules)) makes the sewer under it. |
+
+The shape of the cities can be set too.  A region that leaves a field out keeps its parent's value
+(with `copy-from`) or the default, which is what all cities used before these fields existed.
+
+|       Identifier       | Default | Description                                                          |
+| ---------------------- | ------- | -------------------------------------------------------------------- |
+| `empty_lot_chance`     | 4       | One in this many building lots along a street is left empty.         |
+| `min_size`, `max_size` | 2, 55   | A random city's size stays within these (1 to 89).                   |
+| `size_variations`      | see below | A random city's size is multiplied by `multiply` / `divide` of one of these, picked by `weight`. |
+| `max_spacing`          | 10      | The city spacing, after urbanity and forests change it, is at most this. |
+| `block_width`          | `[ 3, 5 ]` | Width of the wide blocks between side streets (they alternate with blocks of 2). |
+| `street_shrink`        | `[ 1, 3 ]` | How much shorter than its street a side street is.                |
+| `extra_branch_chance`  | 5       | One in this many streets that turn at the edge of town also branch the other way. |
+| `megacity_size`        | 40      | With `is_megacity`, the size of each city.                           |
+| `megacity_seeds`       | five points | With `is_megacity`, the `[ x, y ]` tiles of every overmap where a city goes: by default `[ 45, 45 ]`, `[ 45, 135 ]`, `[ 90, 90 ]`, `[ 135, 45 ]` and `[ 135, 135 ]`. |
+
+The default `size_variations` make a third of the cities tiny, a third small, and a sixth each large
+and huge:
+
+```jsonc
+"size_variations": [
+  { "weight": 2, "multiply": 1, "divide": 3 },
+  { "weight": 2, "multiply": 2, "divide": 3 },
+  { "weight": 1, "multiply": 3, "divide": 2 },
+  { "weight": 1, "multiply": 2 }
+]
+```
 
 ### Placing shops, parks, and houses
 
@@ -553,6 +704,30 @@ See above.
 }
 ```
 
+## Random NPCs
+
+**random_npcs** sets how the random NPCs that turn up over time (an hourly chance, see `npc_spawntime`) are made. They appear on the surface, on land, somewhere within `radius` overmap tiles of the player, each with its own faction.
+
+### Fields
+
+|    Identifier     |                                              Description                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `radius`          | Optional integer, overmap tiles around the player they appear within. NPCs within it count for `crowding_factor`. Default 90. |
+| `crowding_factor` | Optional number, each NPC already within the radius multiplies the hourly chance by this. Default 0.8. |
+| `classes`         | Optional array of `[ npc class id, weight ]`, the class of each new NPC, picked by weight. `NC_NONE` is a randomly made character. Default: none, every NPC is a randomly made character. |
+| `common_classes`  | Optional boolean. With no `classes`: pick the class by the npc classes' `common` and `common_spawn_weight` (see [NPCs](NPCs.md)). Default false. |
+| `spawn_eocs`      | Optional array of eoc ids or inline eocs, run for each new NPC with the NPC as `u` and the player as `npc`. The NPC is usually outside the reality bubble. |
+
+### Example
+
+```jsonc
+"random_npcs": {
+  "radius": 60,
+  "crowding_factor": 0.5,
+  "classes": [ [ "NC_NONE", 80 ], [ "NC_BANDIT", 20 ] ]
+}
+```
+
 ## Weather
 
 **weather** defines the base weather attributes used for the region.
@@ -561,14 +736,37 @@ See above.
 
 |     Identifier                 |                              Description                              |
 | ------------------------------ | --------------------------------------------------------------------- |
-| `base_temperature`             | Base temperature for the region in degrees Celsius.                   |
+| `base_temperature`             | Base temperature for the region: a plain number of degrees Celsius, or a string with units such as `"6 C 500 mC"` (unit strings take whole numbers, so 6.5 °C is `"6 C 500 mC"`). |
 | `base_humidity`                | Base humidity for the region in relative humidity %                   |
 | `base_pressure`                | Base pressure for the region in millibars.  Increasing it decreases the wind strength |
 | `base_wind`                    | Base wind for the region in mph units. Roughly the yearly average.    |
 | `base_wind_distrib_peaks`      | How high the wind peaks can go. Higher values produce windier days.   |
 | `base_wind_season_variation`   | How the wind varies with season. Increases wind speed in the summer, decreases wind speed in the winter. Larger values amplify effects, negative values reverse effects.  |
-| `weather_black_list`           | Ids of weather types not allowed in this region.                      |
-| `weather_white_list`           | Ids of the only weather types allowed in this region.                 |
+| `spring_temp_manual_mod`, `summer_temp_manual_mod`, `autumn_temp_manual_mod`, `winter_temp_manual_mod` | Optional integers, degrees Celsius added to the temperature in that season. Default 0. |
+| `spring_humidity_manual_mod`, `summer_humidity_manual_mod`, `autumn_humidity_manual_mod`, `winter_humidity_manual_mod` | Optional integers, percent added to the relative humidity in that season. Default 0. |
+| `weather_black_list`           | Ids of weather types not allowed in this region. Each must be a loaded weather type. |
+| `weather_white_list`           | Ids of the only weather types allowed in this region (`clear` is always allowed). Each must be a loaded weather type. Mutually exclusive with `weather_black_list`. |
+| `seasonal_amplitude`           | Optional, the greatest change from the year's average temperature: colder by this much at midwinter, warmer at midsummer. A temperature difference such as `"12 C"` (a plain number is kelvins). Default `"12 C"`. |
+| `daily_amplitude`              | Optional, the greatest change from the day's average temperature, colder at `coldest_hour` and warmer twelve hours later. Default `"5 C"`. |
+| `daily_seasonal_range`         | Optional, how much the daily swing grows towards midwinter (up to this much more) and shrinks towards midsummer. Default `"2 C"`. |
+| `coldest_hour`                 | Optional, the coldest hour of the day, 0 to 24. Default 5. |
+| `temperature_noise`            | Optional, the greatest random change from the day's temperature. Default `"6 C"`. |
+| `seasonal_noise`               | Optional, how much stronger the noise is in midwinter than midsummer: 0.5 makes it 1.5 times as strong. Default 0.5. |
+| `underground_temperature`      | Optional, the temperature below ground (z < 0), e.g. `"10 C"`. Defaults to `base_temperature`. |
+| `water_temperature`            | Optional object, the temperature of water (swimming, thermometers): `mean` (the year's average, default about 13.6 °C), `seasonal_amplitude` (coldest in late winter, warmest in late summer; default `"11 C 500 mC"`) and `daily_amplitude` (default about 1.1 °C; the water is coolest at dawn and warmest in the afternoon). Each member is optional. |
+| `wind_direction_weights`       | Optional object with members `spring`, `summer`, `autumn` and `winter` (each optional): 16 non-negative integers, the relative chance of the wind blowing from each compass point, starting from north and going clockwise (N, NNE, NE ... NNW). Defaults to New England's prevailing winds. |
+| `snow`                         | Optional, how snow piles up, melts and slows movement here; see below. |
+
+`snow` (all members optional; a `copy-from` child keeps the members it doesn't name):
+
+|     Identifier  |                              Description                              |
+| --------------- | --------------------------------------------------------------------- |
+| `water_ratio`   | mm of snow per mm of precipitation, for weather types without a `snow_rate`. Default 12. |
+| `melt_rate`     | mm of snow that melts per hour for each degree Celsius above 0. Default 2.0. |
+| `max_depth`     | Deepest the snow can get, in mm. Default 800. |
+| `move_cost`     | Rows of `depth` (mm, more than 0), `character` (added to a character's move cost) and `monster` (added to a monster's terrain cost, 25 move points each), sorted by depth, shallowest first. The deepest row the snow reaches applies; costs default to 0 and can't be negative. Given, it replaces the whole table. Default `[ { "depth": 100, "character": 20, "monster": 1 }, { "depth": 250, "character": 50, "monster": 2 }, { "depth": 500, "character": 100, "monster": 4 } ]`. |
+
+See [Snow on the ground](WEATHER_TYPE.md#snow-on-the-ground) for how snow depth works.
 
 ### Example
 
@@ -581,7 +779,26 @@ See above.
     "base_pressure": 1015.0,
     "base_wind": 3.4,
     "base_wind_distrib_peaks": 80,
-    "base_wind_season_variation": 50
+    "base_wind_season_variation": 50,
+    "snow": { "melt_rate": 3.0, "max_depth": 1500 }
+}
+```
+
+A tropical region with a small seasonal swing and warm water:
+
+```jsonc
+{
+    "type": "weather_generator",
+    "id": "tropical",
+    "base_temperature": "26 C",
+    "base_humidity": 80.0,
+    "base_pressure": 1012.0,
+    "base_wind": 4.0,
+    "seasonal_amplitude": "2 C",
+    "daily_amplitude": "4 C",
+    "underground_temperature": "24 C",
+    "water_temperature": { "mean": "27 C", "seasonal_amplitude": "1 C" },
+    "weather_black_list": [ "flurries", "snowing", "snowstorm" ]
 }
 ```
 

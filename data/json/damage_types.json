@@ -11,7 +11,12 @@
     "bash_conversion_factor": 1.0,
     "mon_difficulty": true,
     "material_required": true,
-    "immune_flags": { "character": [ "BASH_IMMUNE" ] }
+    "immune_flags": { "character": [ "BASH_IMMUNE" ] },
+    "melee_crit": { "damage_mult": 0.5, "armor_ignored": 0.5 },
+    "weakpoint_attack": "bash",
+    "embed_weight": -1,
+    "//2": "Bashing damage is less painful",
+    "pain_divisor": 5
   },
   {
     "id": "bash",
@@ -36,7 +41,10 @@
     "skill": "cutting",
     "mon_difficulty": true,
     "material_required": true,
-    "immune_flags": { "character": [ "CUT_IMMUNE" ] }
+    "immune_flags": { "character": [ "CUT_IMMUNE" ] },
+    "melee_crit": { "damage_mult": 0.25, "armor_ignored": 0.25, "arpen": 5 },
+    "weakpoint_attack": "cut",
+    "embed_weight": 0.5
   },
   {
     "id": "cut",
@@ -62,7 +70,10 @@
     "mon_difficulty": true,
     "//2": "derived from cut only for monster defs",
     "derived_from": [ "cut", 0.8 ],
-    "immune_flags": { "character": [ "STAB_IMMUNE" ] }
+    "immune_flags": { "character": [ "STAB_IMMUNE" ] },
+    "melee_crit": { "damage_mult_per_skill": 0.1, "armor_ignored": 0.34 },
+    "weakpoint_attack": "stab",
+    "embed_weight": 1
   },
   {
     "id": "stab",
@@ -106,6 +117,8 @@
     "magic_color": "light_green",
     "name": { "ctxt": "damage_type", "str": "acid" },
     "material_required": true,
+    "//2": "Acid damage and acid burns are more painful",
+    "pain_divisor": 3,
     "immune_flags": { "character": [ "ACID_IMMUNE" ], "monster": [ "ACIDPROOF" ] }
   },
   {
@@ -126,6 +139,7 @@
     "physical": false,
     "magic_color": "light_blue",
     "name": { "ctxt": "damage_type", "str": "electric" },
+    "electrocutes": true,
     "immune_flags": { "character": [ "ELECTRIC_IMMUNE" ], "monster": [ "ELECTRIC", "ELECTRIC_FIELD" ] }
   },
   {
@@ -148,7 +162,9 @@
     "magic_color": "red",
     "name": { "ctxt": "damage_type", "str": "fire" },
     "material_required": true,
-    "immune_flags": { "character": [ "HEAT_IMMUNE" ], "monster": [ "FIREPROOF" ] }
+    "ignites": true,
+    "immune_flags": { "character": [ "HEAT_IMMUNE" ], "monster": [ "FIREPROOF" ] },
+    "mon_immune_materials": [ "steel", "stone" ]
   },
   {
     "id": "heat",

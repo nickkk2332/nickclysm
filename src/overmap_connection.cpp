@@ -2,11 +2,14 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 
 #include "cata_assert.h"
 #include "debug.h"
+#include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "overmap_location.h"
 
@@ -100,7 +103,59 @@ bool overmap_connection::has( const int_id<oter_t> &oter ) const
 
 void overmap_connection::load( const JsonObject &jo, std::string_view )
 {
-    mandatory( jo, false, "subtypes", subtypes );
+    load_subtypes( jo );
+    optional( jo, was_loaded, "special_target", special_target, special_connection_target::city );
+}
+
+// OMAP-J11: "subtypes" replaces the list; with copy-from, "extend": { "subtypes": [...] } appends
+// subtypes (the first subtype that allows a terrain is used, so appended ones come last) and
+// "delete": { "subtypes": [...] } removes those with the given terrain (and locations, if given).
+void overmap_connection::load_subtypes( const JsonObject &jo )
+{
+    if( jo.has_member( "subtypes" ) ) {
+        subtypes.clear();
+        for( const JsonObject sjo : jo.get_array( "subtypes" ) ) {
+            subtypes.emplace_back();
+            subtypes.back().load( sjo );
+        }
+    } else if( !was_loaded ) {
+        jo.throw_error( R"(missing mandatory member "subtypes")" );
+    }
+    if( !was_loaded ) {
+        return;
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        if( ext.has_member( "subtypes" ) ) {
+            for( const JsonObject sjo : ext.get_array( "subtypes" ) ) {
+                subtypes.emplace_back();
+                subtypes.back().load( sjo );
+            }
+        }
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        if( del.has_member( "subtypes" ) ) {
+            for( const JsonObject sjo : del.get_array( "subtypes" ) ) {
+                string_id<oter_type_t> terrain;
+                mandatory( sjo, false, "terrain", terrain );
+                std::optional<std::set<string_id<overmap_location>>> locations;
+                if( sjo.has_member( "locations" ) ) {
+                    locations.emplace();
+                    sjo.read( "locations", *locations );
+                }
+                const size_t before = subtypes.size();
+                subtypes.remove_if( [&terrain, &locations]( const subtype & st ) {
+                    return st.terrain == terrain && ( !locations || st.locations == *locations );
+                } );
+                if( subtypes.size() == before ) {
+                    sjo.throw_error( "no subtype of this connection matches this delete entry" );
+                }
+            }
+        }
+    }
 }
 
 void overmap_connection::check() const

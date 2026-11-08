@@ -104,8 +104,6 @@ class iuse_transform : public iuse_actor
         /** Tool qualities needed, e.g. "fine bolt turning 1". **/
         std::map<quality_id, int> qualities_needed;
 
-        translation menu_text;
-
         explicit iuse_transform( const std::string &type = "transform" ) : iuse_actor( type ) {}
 
         ~iuse_transform() override = default;
@@ -116,7 +114,6 @@ class iuse_transform : public iuse_actor
         ret_val<void> can_use( const Character &, const item &, map *here,
                                const tripoint_bub_ms & ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
-        std::string get_name() const override;
         void finalize( const itype_id &my_item_type ) override;
         void info( const item &, std::vector<iteminfo> & ) const override;
 };
@@ -252,6 +249,13 @@ class consume_drug_iuse : public iuse_actor
         translation activation_message;
         /** Fields to produce when you take the drug, mostly intended for various kinds of smoke. **/
         std::map<std::string, int> fields_produced;
+        /** How many of each field, each on a random tile at most field_radius from the user. **/
+        int field_count = 3;
+        int field_radius = 2;
+        /** Effects the drug removes, before it gives its own. **/
+        std::vector<efftype_id> remove_effects;
+        /** How long taking the drug takes; unset for the default, from the tools it needs. **/
+        std::optional<time_duration> consume_time;
         /** Tool charges needed to take the drug, e.g. fire. **/
         std::map<itype_id, int> charges_needed;
         /** Tools needed, but not consumed, e.g. "smoking apparatus". **/
@@ -278,6 +282,7 @@ class consume_drug_iuse : public iuse_actor
         std::optional<int> use( Character *p, item &it, map *here, const tripoint_bub_ms & ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+        void finalize( const itype_id &my_item_type ) override;
 
         /** Item produced after using drugs. */
         itype_id used_up_item = itype_id::NULL_ID();
@@ -505,7 +510,12 @@ class firestarter_actor : public iuse_actor
             FIRE,
             SMOKER,
             KILN,
+            // furniture with a process_start examine action lit by a firestarter
+            PROCESS,
         };
+
+        // What lighting a fire at the furniture starts: a smoker, a kiln, a process or a fire.
+        static start_type furniture_start_type( const furn_id &furn );
 
         static start_type prep_firestarter_use( Character &p, map *here, tripoint_bub_ms &pos );
         // a firewood source trap or a SOURCE_FIREWOOD zone: the pile a fire is fed from
@@ -928,6 +938,9 @@ class repair_item_actor : public iuse_actor
 class heal_actor : public iuse_actor
 {
     public:
+        /** The effects some healing item cures; NPCs check their patients for these (NPC-J08) */
+        static const std::set<efftype_id> &curable_effects();
+        static void clear_curable_effects();
         /** How much hp to restore when healing limbs? */
         float limb_power = 0.0f;
         /** How much hp to restore when healing head? */
@@ -968,6 +981,42 @@ class heal_actor : public iuse_actor
         int used_up_item_charges = 1;
         std::set<flag_id> used_up_item_flags;
 
+        /** The skill that scales the healing and is practised (firstaid). */
+        skill_id skill;
+        /** A proficiency that makes the healer faster and better at it. */
+        struct proficiency_bonus {
+            proficiency_id id;
+            /** Multiplies the time it takes when the healer has the proficiency. */
+            float time_mult = 1.0f;
+            /** Added to the skill level for bandaging, disinfecting and stopping bleeding. */
+            float bonus = 0.0f;
+            void deserialize( const JsonObject &jo );
+        };
+        /** The proficiencies that help, all practised (wound care and expert wound care). */
+        std::vector<proficiency_bonus> proficiencies;
+        /** An effect the item can remove, like bite and infect. */
+        struct cure_data {
+            efftype_id effect;
+            /** Chance (0 to 1) to remove it. */
+            float chance = 1.0f;
+            /** Effect given, for as long as the cured one had left, when it's removed. */
+            efftype_id replace_with = efftype_id::NULL_ID();
+            translation message;
+            translation fail_message;
+            void deserialize( const JsonObject &jo );
+        };
+        std::vector<cure_data> cures;
+        /** Run when the healing is done: u is the healer, npc the patient. */
+        std::vector<effect_on_condition_id> finish_eocs;
+
+        /** Moves it takes `healer` to use the item, after proficiencies. */
+        int get_move_cost( const Character &healer ) const;
+        /** What the healer's proficiencies add to the skill level. */
+        float get_proficiency_bonus( const Character &healer ) const;
+        /** Whether one of the cures can remove an effect from `healed` (or from the whole body). */
+        bool can_cure( const Character &patient, const bodypart_id &healed ) const;
+        /** How much treating `healed` would cure, for choosing a part: chance times minutes left. */
+        float cure_urgency( const Character &patient, const bodypart_id &healed ) const;
         /** How much hp would `healer` heal using this actor on `healed` body part. */
         int get_heal_value( const Character &healer, bodypart_id healed ) const;
         /** How many intensity levels will be applied using this actor by `healer`. */
@@ -981,15 +1030,41 @@ class heal_actor : public iuse_actor
 
         bodypart_id use_healing_item( Character &healer, Character &patient, item &it, bool force ) const;
 
-        explicit heal_actor( const std::string &type = "heal" ) : iuse_actor( type ) {}
+        explicit heal_actor( const std::string &type = "heal" );
 
         ~heal_actor() override = default;
         void load( const JsonObject &obj, const std::string & ) override;
+        void finalize( const itype_id &my_item_type ) override;
         using iuse_actor::use;
         std::optional<int> use( Character *p, item &it, map *here,
                                 const tripoint_bub_ms &pos ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+};
+
+/**
+ * Lights a smokable, as SMOKING does a cigarette: the smoker wears its lit version, which burns
+ * for a while (a LITCIG item).
+ */
+class smoke_actor : public iuse_actor
+{
+    public:
+        /** What the item becomes when lit. */
+        itype_id lit_item;
+        /** How long the lit item burns. */
+        time_duration burn_time = 4_minutes;
+        /** Added to the smoker's hunger and thirst when it's lit. */
+        int hunger = 0;
+        int thirst = 0;
+
+        explicit smoke_actor( const std::string &type = "smoke" ) : iuse_actor( type ) {}
+        ~smoke_actor() override = default;
+        void load( const JsonObject &obj, const std::string & ) override;
+        void finalize( const itype_id &my_item_type ) override;
+        using iuse_actor::use;
+        std::optional<int> use( Character *p, item &it, map *here,
+                                const tripoint_bub_ms &pos ) const override;
+        std::unique_ptr<iuse_actor> clone() const override;
 };
 
 class place_trap_actor : public iuse_actor
@@ -1173,8 +1248,6 @@ class link_up_actor : public iuse_actor
         float efficiency = 0.85f;
         /** (Optional) The move cost to attach the cable. */
         int move_cost = 5;
-        /** (Optional) Text displayed in the activation screen, defaults to "Plug in / Manage cables". */
-        translation menu_text;
 
         std::set<link_state> targets;
         std::set<std::string> can_extend;
@@ -1190,7 +1263,6 @@ class link_up_actor : public iuse_actor
         ~link_up_actor() override = default;
         void load( const JsonObject &jo, const std::string & ) override;
         std::unique_ptr<iuse_actor> clone() const override;
-        std::string get_name() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
         using iuse_actor::use;
         std::optional<int> use( Character *p, item &it, map *here,
@@ -1239,6 +1311,25 @@ class weigh_self_actor : public iuse_actor
 };
 
 /**
+ * Washes filthy items: the WASH_* use actions, with the items washed, the water and cleanser
+ * used, how much of each and the time set in JSON (USE-J06)
+ */
+class wash_actor : public iuse_actor
+{
+    public:
+        washing_rules rules;
+
+        explicit wash_actor( const std::string &type = "wash" ) : iuse_actor( type ) {}
+
+        ~wash_actor() override = default;
+        void load( const JsonObject &obj, const std::string & ) override;
+        using iuse_actor::use;
+        std::optional<int> use( Character *p, item &, map *, const tripoint_bub_ms & ) const override;
+        std::unique_ptr<iuse_actor> clone() const override;
+        void finalize( const itype_id &my_item_type ) override;
+};
+
+/**
  * Modify clothing
  */
 class sew_advanced_actor : public iuse_actor
@@ -1269,7 +1360,6 @@ class effect_on_conditions_actor : public iuse_actor
     public:
         std::vector<effect_on_condition_id> eocs;
         translation description;
-        translation menu_text;
         /**does the item requires to be worn to be activable*/
         bool need_worn = false;
         /**does the item requires to be wielded to be activable*/
@@ -1292,7 +1382,10 @@ class effect_on_conditions_actor : public iuse_actor
                                const tripoint_bub_ms &pos ) const override;
         void finalize( const itype_id &my_item_type ) override;
         std::unique_ptr<iuse_actor> clone() const override;
-        std::string get_name() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
+        // "consume" (or "_charges") on an item with no charges uses up the item.
+        bool uses_up_item_without_charges() const override {
+            return true;
+        }
 };
 #endif // CATA_SRC_IUSE_ACTOR_H

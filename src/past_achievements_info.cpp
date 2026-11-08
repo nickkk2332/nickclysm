@@ -1,7 +1,10 @@
 #include <exception>
+#include <ostream>
 #include <utility>
 #include <vector>
 
+#include "achievement.h"
+#include "cata_path.h"
 #include "debug.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
@@ -9,9 +12,6 @@
 #include "past_achievements_info.h"
 #include "past_games_info.h"
 #include "path_info.h"
-#include "string_formatter.h"
-
-class cata_path;
 
 void past_achievements_info::clear()
 {
@@ -41,6 +41,17 @@ std::vector<std::string> past_achievements_info::avatars_completed(
         }
     }
     return completed;
+}
+
+bool past_achievements_info::unlocks_all_content() const
+{
+    // EVT-J05: the achievement says so ("unlocks_all_content"), such as Arcade Mode
+    for( const achievement &ach : achievement::get_all() ) {
+        if( ach.unlocks_all_content() && is_completed( ach.id ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void past_achievements_info::load()

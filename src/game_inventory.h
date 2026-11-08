@@ -61,6 +61,14 @@ item_location titled_filter_menu( const item_location_filter &filter, Character 
                                   const std::string &title, int radius = -1, const std::string &none_message = "" );
 drop_locations titled_multi_filter_menu( const item_location_filter &filter, Character &you,
         const std::string &title, int radius = -1, const std::string &none_message = "" );
+// as titled_filter_menu and titled_multi_filter_menu, with a caller's preset (what is shown,
+// denied and in which columns) and a hint
+item_location titled_preset_menu( const inventory_selector_preset &preset, Character &you,
+                                  const std::string &title, int radius = -1, const std::string &none_message = "",
+                                  const std::string &hint = "" );
+drop_locations titled_multi_preset_menu( const inventory_selector_preset &preset, Character &you,
+        const std::string &title, int radius = -1, const std::string &none_message = "",
+        const std::string &hint = "" );
 
 /**
 * @name Customized inventory menus

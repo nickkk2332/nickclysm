@@ -51,6 +51,15 @@ class read_only_visitable
             const std::function<VisitResponse( const item_location & )> &func ) const = 0;
 
         /**
+         * Walks the same items as visit_items(), in the same order and with the same responses,
+         * but hands func each item instead of its location. Only the top-level items get a
+         * location built, so this is the cheaper walk for code that looks at the items and not at
+         * where they are.
+         * @return VisitResponse::NEXT, or VisitResponse::ABORT if func aborted the walk.
+         */
+        VisitResponse visit_items_raw( const std::function<VisitResponse( const item & )> &func ) const;
+
+        /**
          * Determine the immediate parent container (if any) for an item.
          * @param it item to search for which must be contained (at any depth) by this object
          * @return parent container or nullptr if the item is not within a container

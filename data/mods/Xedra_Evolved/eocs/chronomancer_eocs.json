@@ -672,7 +672,7 @@
         "target_var": { "context_val": "target_var" },
         "parse_tags": true
       },
-      { "math": [ "v_target_var = u_vitamin('rad')" ] },
+      { "math": [ "v_target_var = u_vitamin('rad')" ], "optional_ids": true },
       {
         "set_string_var": "u_xedra_calcium_before_<context_val:xedra_chronomancer_prefix>",
         "target_var": { "context_val": "target_var" },

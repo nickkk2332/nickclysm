@@ -1,5 +1,7 @@
 #include <climits>
 #include <initializer_list>
+#include <map>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -7,7 +9,6 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -34,8 +35,8 @@
 
 static const activity_id ACT_AUDIT_QF_MATH_A( "ACT_AUDIT_QF_MATH_A" );
 
-static const efftype_id effect_audit_qf_math_effect( "audit_qf_math_effect" );
 static const efftype_id effect_audit_qf_math_dur_scaled( "audit_qf_math_dur_scaled" );
+static const efftype_id effect_audit_qf_math_effect( "audit_qf_math_effect" );
 static const efftype_id effect_audit_qf_math_main_part( "audit_qf_math_main_part" );
 
 static const mutation_category_id mutation_category_INST_TEST( "INST_TEST" );

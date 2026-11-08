@@ -84,6 +84,7 @@
 #include "value_ptr.h"
 #include "veh_interact.h"
 #include "veh_type.h"
+#include "veh_utils.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
 #include "visitable.h"
@@ -120,6 +121,9 @@ static const itype_id itype_soldering_iron( "soldering_iron" );
 static const itype_id itype_water_faucet( "water_faucet" );
 static const itype_id itype_welder( "welder" );
 
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
+
 static const quality_id qual_AXE( "AXE" );
 static const quality_id qual_BUTCHER( "BUTCHER" );
 static const quality_id qual_DIG( "DIG" );
@@ -139,12 +143,6 @@ static const requirement_id
 requirement_data_multi_farm_cut_harvesting( "multi_farm_cut_harvesting" );
 static const requirement_id requirement_data_multi_farm_tilling( "multi_farm_tilling" );
 static const requirement_id requirement_data_multi_fishing( "multi_fishing" );
-
-static const ter_str_id ter_t_stump( "t_stump" );
-static const ter_str_id ter_t_trunk( "t_trunk" );
-
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 static const trap_str_id tr_firewood_source( "tr_firewood_source" );
 
@@ -166,6 +164,7 @@ static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
 static const zone_type_id zone_type_LOOT_WOOD( "LOOT_WOOD" );
 static const zone_type_id zone_type_MINING( "MINING" );
 static const zone_type_id zone_type_MOPPING( "MOPPING" );
+static const zone_type_id zone_type_NO_NPC_PICKUP( "NO_NPC_PICKUP" );
 static const zone_type_id zone_type_SOURCE_FIREWOOD( "SOURCE_FIREWOOD" );
 static const zone_type_id zone_type_STRIP_CORPSES( "STRIP_CORPSES" );
 static const zone_type_id zone_type_STUDY_ZONE( "STUDY_ZONE" );
@@ -2279,7 +2278,8 @@ activity_reason_info multi_vehicle_repair_activity_actor::multi_activity_can_do(
         const vpart_info &vpinfo = part_elem->info();
         int vpindex = veh->index_of_part( part_elem, true );
         // if part is undamaged or beyond repair - can skip it.
-        if( !part_elem->is_repairable() ) {
+        // A NO_MODIFY_VEHICLE vehicle can't be repaired, as in veh_interact (VINT-B05)
+        if( !part_elem->is_repairable() || veh_utils::modification_forbidden( *veh, vpinfo ) ) {
             continue;
         }
         // If repairing this part would make the vehicle non-flyable, avoid it
@@ -2301,10 +2301,24 @@ activity_reason_info multi_vehicle_repair_activity_actor::multi_activity_can_do(
         // repair_part() consumes one set of requirements per repairable level.
         const requirement_data reqs = vpinfo.repair_requirements() *
                                       part_elem->get_base().repairable_levels();
-        const temp_crafting_inventory &inv =
-            you.crafting_inventory( src_loc, PICKUP_RANGE - 1, false );
-        const bool can_make = reqs.can_make_with_inventory( &you, inv, is_crafting_component );
+        // What the fetch counts as at the work spot already: what lies near the part, reachable
+        // or not. Until `you` stand next to the part, it stands for what repair_part() will
+        // repair with there; the check is made again once `you` are there.
+        const bool near_part = reqs.can_make_with_inventory( &you,
+                               you.crafting_inventory( src_loc, PICKUP_RANGE - 1, false ), is_crafting_component );
+        // Next to the part, the repair is done from where `you` stand, with what it accepts
+        // (veh_utils::repair_inventory: along a clear path, unless `you` are an NPC).
+        const bool at_work_spot = square_dist( you.pos_bub(), src_loc ) <= 1;
+        const bool can_make = at_work_spot ? reqs.can_make_with_inventory( &you,
+                              veh_utils::repair_inventory( you, you.pos_bub(), PICKUP_RANGE ),
+                              is_crafting_component ) : near_part;
         you.set_value( "veh_index_type", vpinfo.name() );
+        if( !can_make && near_part ) {
+            // What's needed is near the part but out of the repair's reach (behind a wall, say).
+            // Fetching would bring nothing, as it counts it there already: skip the part.
+            you.activity_vehicle_part_index = -1;
+            return activity_reason_info::fail( do_activity_reason::BLOCKING_TILE );
+        }
         // temporarily store the intended index, we do this so two NPCs don't try and work on the same part at same time.
         you.activity_vehicle_part_index = vpindex;
         if( !can_make ) {
@@ -2387,7 +2401,8 @@ activity_reason_info multi_chop_trees_activity_actor::multi_activity_can_do( Cha
     map &here = get_map();
 
     const ter_id &t = here.ter( src_loc );
-    if( t == ter_t_trunk || t == ter_t_stump || here.has_flag( ter_furn_flag::TFLAG_TREE, src_loc ) ) {
+    // ACT-J10: a tree, or what's left of one (terrain with a "chop" object)
+    if( t->can_chop() || here.has_flag( ter_furn_flag::TFLAG_TREE, src_loc ) ) {
         if( you.has_unreserved_quality( qual_AXE ) ) {
             return activity_reason_info::ok( do_activity_reason::NEEDS_TREE_CHOPPING );
         } else {
@@ -2487,9 +2502,9 @@ activity_reason_info multi_study_activity_actor::multi_activity_can_do( Characte
         return activity_reason_info::fail( do_activity_reason::NO_ZONE );
     }
 
-    item_location book = find_study_book( abspos, you );
-    if( book ) {
-        book->set_var( "activity_var", you.name );
+    // only looks: the scan asks about tiles it may not pick, so multi_activity_do marks the book
+    // it takes, where the mark is cleared when the reading ends (ACT-B08)
+    if( find_study_book( abspos, you ) ) {
         return activity_reason_info::ok( do_activity_reason::NEEDS_BOOK_TO_LEARN );
     }
 
@@ -2702,21 +2717,19 @@ activity_reason_info multi_craft_activity_actor::multi_activity_can_do( Characte
     return activity_reason_info::fail( do_activity_reason::ALREADY_DONE );
 }
 
-activity_reason_info multi_disassemble_activity_actor::multi_activity_can_do( Character &you,
-        const tripoint_bub_ms &src_loc )
+// The first item at src_loc that `you` can take apart with the tools at hand, or nullptr. `req`
+// keeps the requirements of the last item it looked at. Only looks: the scan asks about tiles
+// it may not pick, so multi_activity_do marks the item it takes (ACT-B08).
+static item *disassembly_at( Character &you, const tripoint_bub_ms &src_loc,
+                             requirement_data &req )
 {
-
     map &here = get_map();
-    // Is there anything to be disassembled?
     const temp_crafting_inventory &inv = you.crafting_inventory( src_loc, PICKUP_RANGE, false );
-    requirement_data req;
     for( item &i : here.i_at( src_loc ) ) {
         // Skip items marked by other ppl.
         if( i.has_var( "activity_var" ) && i.get_var( "activity_var" ) != you.name ) {
             continue;
         }
-        //unmark the item before check
-        i.erase_var( "activity_var" );
         if( i.is_disassemblable() ) {
             // Are the requirements fulfilled?
             const recipe &r = recipe_dictionary::get_uncraft( ( i.typeId() == itype_disassembly ) ?
@@ -2739,10 +2752,19 @@ activity_reason_info multi_disassemble_activity_actor::multi_activity_can_do( Ch
             } ) ) {
                 continue;
             }
-            // check passed, mark the item
-            i.set_var( "activity_var", you.name );
-            return activity_reason_info::ok( do_activity_reason::NEEDS_DISASSEMBLE );
+            return &i;
         }
+    }
+    return nullptr;
+}
+
+activity_reason_info multi_disassemble_activity_actor::multi_activity_can_do( Character &you,
+        const tripoint_bub_ms &src_loc )
+{
+    // Is there anything to be disassembled?
+    requirement_data req;
+    if( disassembly_at( you, src_loc, req ) != nullptr ) {
+        return activity_reason_info::ok( do_activity_reason::NEEDS_DISASSEMBLE );
     }
     if( !req.is_null() || !req.is_empty() ) {
         // need tools
@@ -3126,6 +3148,10 @@ void add_basecamp_storage_to_loot_zone_list(
                 mgr.get_near( zone_type_CAMP_STORAGE, here.get_abs( src_loc ),
                               MAX_VIEW_DISTANCE, nullptr, _fac_id( you ) );
             for( const tripoint_abs_ms &elem : bc_storage_set ) {
+                // as for loot zones (get_point_set_loot), NPCs leave NO_NPC_PICKUP tiles alone
+                if( mgr.has( zone_type_NO_NPC_PICKUP, elem, _fac_id( you ) ) ) {
+                    continue;
+                }
                 tripoint_bub_ms here_local = here.get_bub( elem );
 
                 // Check that a coordinate is not already in the combined list, otherwise actions
@@ -3268,9 +3294,9 @@ std::vector<std::tuple<tripoint_bub_ms, itype_id, int>>
     // will be filtered for amounts/charges afterwards.
     for( const tripoint_bub_ms &point_elem : pickup_task ? loot_spots : combined_spots ) {
         std::map<itype_id, int> temp_map;
-        for( item &stack_elem : here.i_at( point_elem ) ) {
+        const auto count_item = [&]( const item & stack_elem ) {
             if( craft_reservation::contains_reserved( stack_elem ) ) {
-                continue;
+                return;
             }
             for( std::vector<item_comp> &elem : req_comps ) {
                 for( item_comp &comp_elem : elem ) {
@@ -3306,6 +3332,18 @@ std::vector<std::tuple<tripoint_bub_ms, itype_id, int>>
                         }
                         temp_map[stack_elem.typeId()] += stack_elem.count();
                     }
+                }
+            }
+        };
+        for( const item &stack_elem : here.i_at( point_elem ) ) {
+            count_item( stack_elem );
+        }
+        // the requirement check (fill_requirement_inventory) counts vehicle cargo for tasks that
+        // use their items where they are, and fetch_activity takes it from there (ACT-B07)
+        if( !pickup_task ) {
+            if( const std::optional<vpart_reference> ovp = here.veh_at( point_elem ).cargo() ) {
+                for( const item &stack_elem : ovp->items() ) {
+                    count_item( stack_elem );
                 }
             }
         }
@@ -3531,9 +3569,10 @@ bool fetch_required_activity_actor::fetch_activity(
     const units::volume volume_allowed = you.free_space();
     const units::mass weight_allowed = you.weight_capacity() - you.weight_carried();
 
-    // if the items are in vehicle cargo, move them to their position
+    // if the items are in vehicle cargo, move them to their position: requirements_map plans
+    // cargo for every task that uses its items where they are (ACT-B07)
     const std::optional<vpart_reference> ovp = here.veh_at( src_loc ).cargo();
-    if( ovp ) {
+    if( ovp && !fetch_for_activity->fetch_items_to_zone() ) {
         for( item &veh_elem : ovp->items() ) {
             // These loops match by itype_id alone, so a reserved instance would be
             // fetched in place of the free one planning cleared.
@@ -3542,13 +3581,11 @@ bool fetch_required_activity_actor::fetch_activity(
             }
             for( auto elem : mental_item_map ) {
                 if( std::get<0>( elem ) == src_loc && veh_elem.typeId() == std::get<1>( elem ) ) {
-                    if( fetch_for_activity == ACT_MULTIPLE_CONSTRUCTION ) {
-                        //TODO: this teleports the item, assign an item moving activity
-                        move_item( you, veh_elem, veh_elem.count_by_charges() ? std::get<2>( elem ) : 1, src_loc,
-                                   here.get_bub( fetched_item_destination ), ovp,
-                                   activity_to_restore );
-                        return true;
-                    }
+                    //TODO: this teleports the item, assign an item moving activity
+                    move_item( you, veh_elem, veh_elem.count_by_charges() ? std::get<2>( elem ) : 1, src_loc,
+                               here.get_bub( fetched_item_destination ), ovp,
+                               activity_to_restore );
+                    return true;
                 }
             }
         }
@@ -3563,8 +3600,10 @@ bool fetch_required_activity_actor::fetch_activity(
                 // some tasks (construction/crafting) want the required item moved near the work spot.
                 if( !fetch_for_activity->fetch_items_to_zone() ) {
                     //TODO: this teleports the item, assign an item moving activity
+                    // from the ground: a cargo part on the tile is not where it comes from
                     move_item( you, it, it.count_by_charges() ? std::get<2>( elem ) : 1, src_loc,
-                               here.get_bub( fetched_item_destination ), ovp, activity_to_restore );
+                               here.get_bub( fetched_item_destination ), std::nullopt,
+                               activity_to_restore );
 
                     return true;
                     // other tasks want the item picked up
@@ -3763,7 +3802,7 @@ static bool chop_tree_activity( Character &you, const tripoint_bub_ms &src_loc )
         you.assign_activity( chop_tree_activity_actor( moves, item_location( you, &best_qual ) ) );
         you.activity.placement = here.get_abs( src_loc );
         return true;
-    } else if( ter == ter_t_trunk || ter == ter_t_stump ) {
+    } else if( ter->can_chop() ) {
         you.assign_activity( chop_logs_activity_actor( moves, item_location( you, &best_qual ) ) );
         you.activity.placement = here.get_abs( src_loc );
         return true;
@@ -4052,7 +4091,9 @@ bool multi_farm_activity_actor::multi_activity_do( Character &you,
     } else if( reason == do_activity_reason::NEEDS_TILLING &&
                here.has_flag( ter_furn_flag::TFLAG_PLOWABLE, src_loc ) &&
                you.has_unreserved_quality( qual_DIG, 1 ) && !here.has_furn( src_loc ) ) {
-        you.assign_activity( churn_activity_actor( 18000, item_location() ) );
+        // ACT-J10: the terrain's till time
+        you.assign_activity( churn_activity_actor( here.ter( src_loc )->till_moves(),
+                             item_location() ) );
         you.activity.placement = src;
         return false;
     } else if( reason == do_activity_reason::NEEDS_PLANTING ) {
@@ -4321,25 +4362,25 @@ bool multi_disassemble_activity_actor::multi_activity_do( Character &you,
     map &here = get_map();
 
     if( reason == do_activity_reason::NEEDS_DISASSEMBLE ) {
-        map_stack items = here.i_at( src_loc );
-        for( item &elem : items ) {
-            if( elem.is_disassemblable() ) {
-                // Disassemble the checked one.
-                if( elem.get_var( "activity_var" ) == you.name ) {
-                    const recipe &r = ( elem.typeId() == itype_disassembly ) ? elem.get_making() :
-                                      recipe_dictionary::get_uncraft( elem.typeId() );
-                    int const qty = std::max( 1, elem.typeId() == itype_disassembly ? elem.get_making_batch_size() :
-                                              elem.charges );
-                    player_activity act = player_activity( disassemble_activity_actor( r.time_to_craft_moves( you, {},
-                                                           recipe_time_flag::ignore_proficiencies ) * qty ) );
-                    act.targets.emplace_back( map_cursor( src_loc ), &elem );
-                    act.placement = here.get_abs( src_loc );
-                    act.position = qty;
-                    act.index = false;
-                    you.assign_activity( act );
-                    break;
-                }
-            }
+        requirement_data req;
+        // the item multi_activity_can_do found, marked now that it is taken; the mark is
+        // cleared when the disassembly ends without using it up (ACT-B08)
+        if( item *const target = disassembly_at( you, src_loc, req ) ) {
+            item &elem = *target;
+            elem.set_var( "activity_var", you.name );
+            const item_location marked( map_cursor( src_loc ), &elem );
+            you.may_activity_occupancy_after_end_items_loc.push_back( marked );
+            const recipe &r = ( elem.typeId() == itype_disassembly ) ? elem.get_making() :
+                              recipe_dictionary::get_uncraft( elem.typeId() );
+            int const qty = std::max( 1, elem.typeId() == itype_disassembly ? elem.get_making_batch_size() :
+                                      elem.charges );
+            player_activity act = player_activity( disassemble_activity_actor( r.time_to_craft_moves( you, {},
+                                                   recipe_time_flag::ignore_proficiencies ) * qty ) );
+            act.targets.emplace_back( marked );
+            act.placement = here.get_abs( src_loc );
+            act.position = qty;
+            act.index = false;
+            you.assign_activity( act );
         }
         return false;
     }
@@ -4601,7 +4642,8 @@ static int get_comestible_order( Character &you, const item_location &loc,
                                  const time_duration &time )
 {
     if( loc->rotten() ) {
-        if( you.has_trait( trait_SAPROPHAGE ) || you.has_trait( trait_SAPROVORE ) ) {
+        if( you.has_flag( json_flag_SAPROPHAGE_DIET ) ||
+            you.has_flag( json_flag_SAPROVORE_DIET ) ) {
             return 1;
         } else {
             return 5;

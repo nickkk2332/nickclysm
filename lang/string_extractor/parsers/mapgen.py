@@ -1,5 +1,14 @@
 from ..helper import get_singular_name
 from ..write_text import write_text
+from .effect import parse_effect_on_condition
+
+
+def parse_computer_eocs(computer, origin, com_name):
+    for eoc in computer.get("eocs", []):
+        parse_effect_on_condition(eoc, origin, f"computer '{com_name}'")
+    for entry in computer.get("options", []) + computer.get("failures", []):
+        for eoc in entry.get("eocs", []):
+            parse_effect_on_condition(eoc, origin, f"computer '{com_name}'")
 
 
 def parse_mapgen(json, origin):
@@ -50,10 +59,12 @@ def parse_mapgen_object(json, origin, om):
             write_text(option.get("name"), origin,
                        comment="Interactive menu name in computer"
                        f" '{com_name}'")
+        parse_computer_eocs(computer, origin, com_name)
 
     for computer in json.get("place_computers", []):
         write_text(computer.get("name"), origin,
                    comment=f"Computer name placed on map '{om}'")
+        parse_computer_eocs(computer, origin, get_singular_name(computer))
 
     monsters = json.get("place_monster", [])
     if "monster" in json:

@@ -6,6 +6,7 @@
 #include <numeric>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "avatar.h"
@@ -168,6 +169,33 @@ overmap_special_terrain::overmap_special_terrain(
 {}
 
 
+namespace io
+{
+template<>
+std::string enum_to_string<special_connection_target>( special_connection_target data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case special_connection_target::city: return "city";
+        case special_connection_target::nearest_existing: return "nearest_existing";
+        // *INDENT-ON*
+        case special_connection_target::last:
+            break;
+    }
+    cata_fatal( "Invalid special_connection_target" );
+}
+} // namespace io
+
+void special_connection_route::load( const JsonObject &jo )
+{
+    if( jo.has_member( "target" ) ) {
+        target = jo.get_enum_value<special_connection_target>( "target" );
+    }
+    if( jo.has_member( "max_length" ) ) {
+        max_length = jo.get_int( "max_length" );
+    }
+}
+
 void overmap_special_connection::deserialize( const JsonObject &jo )
 {
     optional( jo, false, "point", p );
@@ -175,6 +203,7 @@ void overmap_special_connection::deserialize( const JsonObject &jo )
     optional( jo, false, "existing", existing, false );
     optional( jo, false, "connection", connection );
     optional( jo, false, "from", from );
+    route.load( jo );
 }
 
 overmap_special::overmap_special( const overmap_special_id &i, const overmap_special_terrain &ter )
@@ -198,22 +227,41 @@ bool overmap_special::requires_city() const
            constraints_.city_distance.max < std::max( OMAPX, OMAPY );
 }
 
-bool overmap_special::can_belong_to_city( const tripoint_om_omt &p, const city &cit,
-        const overmap &omap ) const
+bool overmap_special::can_belong_to_city( const city *nearest_city,
+        const int nearest_distance ) const
 {
+    const int min_distance = constraints_.city_distance.min;
+    // Whether some city is at most max_distance away (or the spot is in a city)
+    const auto city_within = [&]( const int max_distance ) {
+        return nearest_city != nullptr &&
+               ( nearest_distance == 0 || nearest_distance <= max_distance );
+    };
     if( !requires_city() ) {
-        return true;
+        // An open-ended distance like [ 5, -1 ] still keeps the special more than its minimum away
+        // from every city, whatever its city sizes.  This returned true before (OMAP-B08).
+        return min_distance <= 0 || !city_within( min_distance );
     }
-    if( !cit || !constraints_.city_size.contains( cit.size ) ) {
+    if( nearest_city == nullptr || !*nearest_city ||
+        !constraints_.city_size.contains( nearest_city->size ) ) {
         return false;
     }
     if( constraints_.city_distance.max > std::max( OMAPX, OMAPY ) ) {
         // Only care that we're more than min away from a city
-        return !omap.approx_distance_to_city( p, constraints_.city_distance.min ).has_value();
+        return !city_within( min_distance );
     }
-    const std::optional<int> dist = omap.approx_distance_to_city( p, constraints_.city_distance.max );
     // Found a city within max and it's greater than min away
-    return dist.has_value() && constraints_.city_distance.min < *dist;
+    return city_within( constraints_.city_distance.max ) && min_distance < nearest_distance;
+}
+
+bool overmap_special::eoc_condition_allows( const overmap &om ) const
+{
+    if( !has_eoc() ) {
+        return true;
+    }
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    d.set_value( "overmap_pos", project_to<coords::ms>( project_combine( om.pos(),
+                 tripoint_om_omt( OMAPX / 2, OMAPY / 2, 0 ) ) ) );
+    return get_eoc()->test_condition( d );
 }
 
 bool overmap_special::has_flag( const std::string &flag ) const
@@ -277,12 +325,24 @@ special_placement_result overmap_special::place(
     overmap &om, const tripoint_om_omt &origin, om_direction::type dir,
     const city &cit, bool must_be_unexplored ) const
 {
+    const bool blob = has_flag( "BLOB" );
+    special_placement_result result = data_->place( om, origin, dir, blob, cit, must_be_unexplored );
+    // The effect runs once the special is on the map, and is told where it went (OMAP-J07).
     if( has_eoc() ) {
         dialogue d( get_talker_for( get_avatar() ), nullptr );
+        d.set_value( "special_id", id.str() );
+        d.set_value( "special_pos", project_to<coords::ms>( project_combine( om.pos(), origin ) ) );
+        d.set_value( "rotation", io::enum_to_string( dir ) );
+        d.set_value( "overmap_pos", project_to<coords::ms>( project_combine( om.pos(),
+                     tripoint_om_omt( OMAPX / 2, OMAPY / 2, 0 ) ) ) );
+        if( cit ) {
+            d.set_value( "city_name", cit.name );
+            d.set_value( "city_size", cit.size );
+            d.set_value( "city_distance", cit.get_distance_from( origin ) );
+        }
         get_eoc()->apply_true_effects( d );
     }
-    const bool blob = has_flag( "BLOB" );
-    return data_->place( om, origin, dir, blob, cit, must_be_unexplored );
+    return result;
 }
 
 void overmap_special::force_one_occurrence()

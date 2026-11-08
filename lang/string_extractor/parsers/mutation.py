@@ -1,3 +1,4 @@
+from .effect import parse_effect_on_condition
 from .enchant import parse_enchant
 from ..helper import get_singular_name
 from ..write_text import write_text
@@ -31,6 +32,10 @@ def parse_mutation(json, origin):
         write_text(attack.get("attack_text_npc"), origin,
                    comment="Message when NPC with mutation"
                    f" '{name}' attacks")
+
+    write_text(json.get("unwearable_message"), origin,
+               comment="Message when a character with mutation"
+               f" '{name}' can't wear an item")
 
     if "ranged_mutation" in json:
         write_text(json["ranged_mutation"].get("message"), origin,
@@ -66,6 +71,14 @@ def parse_mutation(json, origin):
                    comment="Message when transforming from mutation"
                    f" '{name}' to '{target_id}'")
 
+    for retaliation in json.get("retaliation", []):
+        write_text(retaliation.get("message"), origin,
+                   comment="Message when a melee attacker is hurt by"
+                   f" the player's mutation '{name}'")
+        write_text(retaliation.get("npc_message"), origin,
+                   comment="Message when a melee attacker is hurt by"
+                   f" an NPC's mutation '{name}'")
+
     for enchantment in json.get("enchantments", []):
         parse_enchant(enchantment, origin)
 
@@ -77,3 +90,15 @@ def parse_mutation(json, origin):
         write_text(json["activation_fail_message"], origin,
                    comment=f"Message when mutation '{name}' fails its "
                    "activation condition")
+
+    eat_conditions = json.get("eat_condition", [])
+    if type(eat_conditions) is dict:
+        eat_conditions = [eat_conditions]
+    for eat_condition in eat_conditions:
+        if "fail_message" in eat_condition:
+            write_text(eat_condition["fail_message"], origin,
+                       comment=f"Message when mutation '{name}' refuses "
+                       "food")
+
+    for eoc in json.get("eat_eocs", []):
+        parse_effect_on_condition(eoc, origin)

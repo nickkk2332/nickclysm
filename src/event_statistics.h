@@ -115,9 +115,15 @@ class score
         string_id<score> id;
         std::vector<std::pair<string_id<score>, mod_id>> src;
         bool was_loaded = false;
+
+        /** Shown in a game that started before it was loaded (a mod added to the save) */
+        bool allows_late_tracking() const {
+            return allow_late_tracking_;
+        }
     private:
         translation description_;
         string_id<event_statistic> stat_;
+        bool allow_late_tracking_ = false;
 };
 
 #endif // CATA_SRC_EVENT_STATISTICS_H

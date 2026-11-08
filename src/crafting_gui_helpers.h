@@ -3,6 +3,7 @@
 #define CATA_SRC_CRAFTING_GUI_HELPERS_H
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
@@ -10,8 +11,11 @@
 #include <string_view>
 #include <vector>
 
+#include "calendar.h"
 #include "color.h"
+#include "coordinates.h"
 #include "item.h"
+#include "point.h"
 #include "proficiency.h"
 #include "translation.h"
 
@@ -19,7 +23,6 @@ class Character;
 class recipe;
 class recipe_subset;
 class temp_crafting_inventory;
-
 struct crafting_cost_context;
 struct tool_comp;
 
@@ -172,6 +175,197 @@ recipe_list_data build_recipe_list(
     bool unread_first,
     std::map<const recipe *, availability> &availability_cache,
     const recipe_subset &available_recipes );
+
+// --- Recipe info panel ---
+// The crafting menu redraws about 100 times a second.  Everything its info panel shows that
+// needs the crafter, the inventory or the map is built once per selection into a
+// recipe_panel, and the draw code only reads it.
+
+// What building a selection's panel needs from the menu.
+struct recipe_panel_context {
+    Character &crafter;
+    // helpers who know the recipe are listed from this group
+    const std::vector<Character *> &crafting_group;
+    // a nested recipe group lists its children that are in here
+    const recipe_subset &available_recipes;
+    std::map<const recipe *, availability> &availability_cache;
+    bool camp_crafting = false;
+    temp_crafting_inventory *inventory_override = nullptr;
+};
+
+// One line of the panel, or one alternative of a group, with its colour.
+struct recipe_panel_text {
+    std::string text;
+    nc_color color;
+    bool operator==( const recipe_panel_text &rhs ) const;
+};
+
+// A component or tool group, its alternatives in the order shown: the ones at hand first.
+struct recipe_panel_group {
+    // the menu remembers expanded groups by this: the group's position in its requirement,
+    // plus, for the tools of a step, the tool groups of the steps before it
+    int index = 0;
+    // tools only: "• <requirement name>: " or "• One of: "
+    std::string label;
+    std::vector<recipe_panel_text> options;
+    bool operator==( const recipe_panel_group &rhs ) const;
+};
+
+// The "Components:" or "Tools:" block of one requirement.
+struct recipe_panel_requirement {
+    // the requirement has groups of this kind, so the block and its header are shown
+    bool shown = false;
+    // tools only: one line per quality group, its alternatives coloured and joined by " OR "
+    std::vector<std::string> qualities;
+    std::vector<recipe_panel_group> groups;
+    bool operator==( const recipe_panel_requirement &rhs ) const;
+};
+
+// One step of a recipe with several steps.
+struct recipe_panel_step {
+    std::string name;
+    std::string time;
+    // " (xN, saves <time>)", or empty
+    std::string batch_note;
+    std::string activity;
+    nc_color activity_color;
+    bool unattended = false;
+    std::vector<recipe_panel_text> proficiencies;
+    recipe_panel_requirement tools;
+    bool operator==( const recipe_panel_step &rhs ) const;
+};
+
+// A skill row of the details table.
+struct recipe_panel_skill {
+    std::string name;
+    int level = 0;
+    int required = 0;
+    // the difficulty range of a practice recipe, or empty
+    std::string suffix;
+    nc_color color;
+    bool operator==( const recipe_panel_skill &rhs ) const;
+};
+
+// A proficiency row of the details table.
+struct recipe_panel_proficiency {
+    std::string name;
+    bool required = false;
+    // the crafter or a helper has it
+    bool known = false;
+    float time_multiplier = 1.0f;
+    float skill_penalty = 0.0f;
+    bool operator==( const recipe_panel_proficiency &rhs ) const;
+};
+
+// Everything the info panel shows for one selection (recipe, batch size, crafter).
+struct recipe_panel {
+    // --- summary ---
+    std::string result_name;
+    // "as written in <book>", or how sure the crafter is of the recipe
+    std::string source_text;
+    std::string description;
+    // not nested: the "<chance> chance you can make it in <time> of <activity>" line, plain
+    // (for measuring) and coloured
+    std::string stats_plain;
+    std::string stats_colored;
+    // not nested: the lighting multiplier is 0
+    bool too_dark = false;
+    // names of the recipe's required proficiencies
+    std::vector<std::string> required_proficiencies;
+    bool too_complex = false;
+    bool npc_cannot_craft = false;
+    std::string npc_reason;
+    // batches of more than one only
+    std::string batch_savings;
+
+    // --- details table (not nested) ---
+    std::string base_time;
+    std::vector<recipe_panel_skill> skills;
+    std::vector<recipe_panel_proficiency> proficiencies;
+    float morale_mult = 1.0f;
+    float light_mult = 1.0f;
+    float pain_mult = 1.0f;
+    float limb_mult = 1.0f;
+    float mut_mult = 1.0f;
+    float mut_skill_bonus = 0.0f;
+    // the primary skill's crafting stat (intelligence by default): its name, value, and what it
+    // adds to the effective skill compared to a stat of 8
+    std::string crafting_stat_name;
+    int intelligence = 0;
+    float int_delta = 0.0f;
+    bool has_farsight = false;
+    float vision_penalty = 0.0f;
+    std::string total_time;
+    // percent
+    float success = 0.0f;
+    float destruction = 0.0f;
+    std::string darkness;
+    // how many of the result are in the crafting inventory already
+    int nearby = 0;
+    // practice recipes with a skill: below the minimum skill, the skill and the
+    // proficiencies it trains
+    std::string practice_requirement;
+    std::string practice_gains;
+    nc_color practice_gains_color;
+    std::vector<std::string> practice_trains;
+
+    // --- recipe ---
+    std::string single_step_name;
+    std::vector<recipe_panel_text> character_requirements;
+    recipe_panel_requirement components;
+    // the recipe's tools and qualities together
+    recipe_panel_requirement tools;
+    // recipes with more than one step
+    std::vector<recipe_panel_step> steps;
+    bool resources_shown = false;
+    std::vector<recipe_panel_text> resources;
+    // "Known by: ..." when the crafter doesn't know the recipe and a helper does
+    std::string known_by;
+    // a nested group's children the crafter can see, coloured by availability
+    std::vector<recipe_panel_text> nested;
+
+    bool operator==( const recipe_panel &rhs ) const;
+};
+
+// Builds the panel of `recp` at `batch_size`.  `avail` is the selection's availability.
+recipe_panel build_recipe_panel( const recipe &recp, const availability &avail, int batch_size,
+                                 const recipe_panel_context &ctx );
+
+// The panel of the current selection, rebuilt only when something it shows can have changed:
+// another recipe, batch size, crafter or inventory, a change in the inventory's contents, game
+// time passing (lighting, item ages), the crafter moving or acting, or another language.
+class recipe_panel_cache
+{
+    public:
+        const recipe_panel &get( const recipe &recp, const availability &avail, int batch_size,
+                                 const recipe_panel_context &ctx );
+        // Makes the next get() rebuild.
+        void invalidate();
+        // How many panels get() has built.
+        int builds() const {
+            return build_count;
+        }
+    private:
+        struct key_type {
+            const recipe *rec = nullptr;
+            int batch_size = 0;
+            const Character *crafter = nullptr;
+            const temp_crafting_inventory *inventory = nullptr;
+            uint64_t inventory_generation = 0;
+            const temp_crafting_inventory *inventory_override = nullptr;
+            uint64_t override_generation = 0;
+            time_point turn;
+            int moves = 0;
+            tripoint_abs_ms pos;
+            int lang_version = 0;
+            bool operator==( const key_type &rhs ) const;
+        };
+        static key_type key_for( const recipe &recp, const availability &avail, int batch_size,
+                                 const recipe_panel_context &ctx );
+        std::optional<key_type> key;
+        recipe_panel panel;
+        int build_count = 0;
+};
 
 // Generates a colored hierarchical text description of nested recipe contents.
 // Used by the item info panel when a nested category is selected.

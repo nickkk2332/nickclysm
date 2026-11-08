@@ -11,6 +11,7 @@ bool prevent_occlusion_transp;
 float prevent_occlusion_min_dist;
 float prevent_occlusion_max_dist;
 bool show_creature_overlay_icons;
+bool tile_lookup_cache = false;
 bool use_tiles;
 bool use_far_tiles;
 bool use_pinyin_search;
@@ -23,6 +24,7 @@ int pixel_minimap_g;
 int pixel_minimap_b;
 int pixel_minimap_a;
 float combat_speed_modifier;
+int sound_attenuation_percent = 100;
 
 namespace cata::options
 {

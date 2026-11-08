@@ -58,34 +58,36 @@ blueprint requires, blueprint provides, and blueprint excludes are abstract conc
 
 Every upgrade mission has its recipe `"result"` as a blueprint_provides and a blueprint_excludes, so upgrade missions will automatically prevent themselves from being repeatable.
 
-These are arbitrary strings and can be used to control the branching of the upgrade paths.  However, some strings have meaning within the basecamp code:
+While companions are out building an upgrade, the camp counts what it will provide: that upgrade (in any of its parametric variants) and every upgrade whose blueprint_excludes it would meet can't be started at the same expansion until they come back.
+
+### Skills and EOCs
+When companions come back from an upgrade, each trains the skills of the blueprint's needs (given in `"blueprint_needs"` or worked out from its mapgen, the same skills the companions were picked by) at the recipe's `"difficulty"`, sharing the time worked out between them; a blueprint whose needs name no skill trains its `"skill_used"`.  A recipe crafted at a camp trains its `"skill_used"` at its `"difficulty"` when the companion comes back.  Only a recipe that names no skill at all trains the general "construction" companion practice, as every camp craft and upgrade used to.
+
+A camp craft runs the recipe's `"result_eocs"` when the companion comes back, once per item of the batch as normal crafting does (context `recipe_id`, `batch_size`, `batch_index`), with the companion as alpha and the player as beta; a recipe with no result item can be crafted at a camp for its EOCs alone.  An upgrade runs its recipe's `"result_eocs"` once when it is finished (`batch_size` 1), with the first of its builders as alpha.  `"result_item_eocs"` don't run for camp crafts.
+
+These are arbitrary strings and can be used to control the branching of the upgrade paths.  They also gate camp missions: a [faction_mission](FACTION_MISSIONS.md) is offered at an expansion that has all of its `"required_provides"`, so a mod can add a provide (say `"fishing_dock"`) and a mission that needs it.  The vanilla missions in the table below say what they need in `data/json/faction_missions.json`.  Some strings have meaning within the basecamp code or the vanilla missions:
 
 Provides `"id"`  | Meaning
 --               | --
-`"bed"`          | every 2 `"amount"`' of `"bed"` allows another expansion in the camp, to a maximum of 8, not include the camp center.
-`"tool_storage"` | after this upgrade mission is complete, the Store Tools mission will be available.
-`"radio"`        | after this upgrade mission is complete, two way radios communicating to the camp have extended range.
-`"pantry"`       | after this upgrade mission is complete, the Distribute Food mission is more efficient when dealing with short term spoilage items.
-`"gathering"`    | after this upgrade mission is complete, the Gather Materials, Distribute Food, and Reset Sort Points basecamp missions will be available.
-`"firewood"`     | after this upgrade mission is complete, the Gather Firewood basecamp mission will be available.
-`"sorting"`      | after this upgrade mission is complete, the Menial Labor basecamp mission will be available.
-`"logging"`      | after this upgrade mission is complete, the Cut Logs and Clear a Forest basecamp missions will be available.
-`"relaying"`     | after this upgrade mission is complete, the Setup Hide Site and Relay Hide Site basecamp missions will be available.
-`"foraging"`     | after this upgrade mission is complete, the Forage for Plants basecamp mission will be available.
-`"trapping"`     | after this upgrade mission is complete, the Trap Small Game basecamp mission will be available.
-`"hunting"`      | after this upgrade mission is complete, the Hunt Large Animals basecamp mission will be available.
-`"walls"`        | after this upgrade mission is complete, the Construct Map Fortifications basecamp mission will be available.
-`"recruiting"`   | after this upgrade mission is complete, the Recruit Companions basecamp mission will be available.
-`"scouting"`     | after this upgrade mission is complete, the Scout Mission basecamp mission will be available.
-`"patrolling"`   | after this upgrade mission is complete, the Combat Patrol basecamp mission will be available.
-`"dismantling"`  | after this upgrade mission is complete, the Chop Shop basecamp mission will be available.
-`"farming"`      | after this upgrade mission is complete, the Plow Fields, Plant Fields, Fertilize Fields, and Harvest Fields basecamp missions will be available.
-`"reseeding"`    | after this upgrade mission is complete, recipe groups with `"building_type": "FARM"` will become visible.
-`"kitchen"`      | after this upgrade mission is complete, recipe groups with `"building_type": "COOK"` will become visible.
-`"blacksmith"`   | after this upgrade mission is complete, recipe groups with `"building_type": "SMITH"` will become visible.
-`"water_well"`   | after this upgrade mission is complete, the camp will have a permanent water source. This enables your followers at or near the camp to automatically drink from its well when they are thirsty.
+`"radio"`        | two way radios reach the camp from farther away (the faction menu's radio range).
+`"gathering"`    | the Gather Materials mission is offered at the expansion.
+`"firewood"`     | the Collect Firewood mission is offered at the expansion.
+`"sorting"`      | the Menial Labor mission is offered at the expansion.
+`"logging"`      | the Cut Logs and Clear a forest missions are offered at the expansion.
+`"relaying"`     | the Setup Hide Site and Relay Hide Site missions are offered at the expansion.
+`"foraging"`     | the Forage for plants mission is offered at the expansion.
+`"trapping"`     | the Trap Small Game mission is offered at the expansion.
+`"hunting"`      | the Hunt Large Animals mission is offered at the expansion.
+`"walls"`        | the Construct Map Fortifications mission is offered at the expansion.
+`"recruiting"`   | the Recruit Companions mission is offered at the expansion.
+`"scouting"`     | the Scout Mission mission is offered at the expansion.
+`"patrolling"`   | the Combat Patrol mission is offered at the expansion.
+`"farming"`      | the Plow Fields, Plant Fields and Harvest Fields missions are offered at the expansion.
+`"water_well"`   | the camp has a permanent water source: followers at or near the camp drink from its well when they are thirsty.  (A camp that built `fbmh_well_north` before it provided `water_well` counts as having one too.)
 
-`blueprint_provides` can also be used to name objects from `recipe_group.json`. The recipes will be craftable by NPCs at that expansion, allowing the creation of custom recipes that can be performed exclusively at faction camps.
+The missions in this table are vanilla [faction_missions](FACTION_MISSIONS.md) and ask for their provide in `"required_provides"`, so a mod can change what gates them or add its own.  Distribute Food, Assign Jobs, Reset Sort Points and the other actions of the camp's own tile need no provide.  The code gives no meaning to any other provide: a camp can have at most 8 expansions, one on each neighbouring overmap tile, whatever it provides, and no provide adds or improves a mission beyond the table (some older docs listed `bed`, `tool_storage`, `pantry`, `dismantling`, `kitchen`, `blacksmith` and `reseeding`; like any other provide they only gate the upgrades and missions that ask for them in `"blueprint_requires"` or `"required_provides"`).
+
+`blueprint_provides` can also be used to name objects from `recipe_group.json`. The recipes will be craftable by NPCs at that expansion, allowing the creation of custom recipes that can be performed exclusively at faction camps.  This is the only way camp recipes become available: a provide whose id is a `recipe_group` id (e.g. `"kitchen_recipes_1"`) makes that group's recipes craftable at the expansion.  The group's `"building_type"` (`"BASE"`, `"COOK"`, `"FARM"`, `"SMITH"`, ...) only groups the companions crafting from it on the camp board and names their return entry ("Finish Cooking" for `"COOK"`, "Finish Smithing" for `"SMITH"`, "Finish Crafting" for the others).
 
 ### Sample recipe JSON
 ```jsonc

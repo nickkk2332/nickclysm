@@ -148,6 +148,68 @@ enum class event_type : int {
     npc_dismissed,
     npc_mutinies,
     mod_setting_changed,
+    character_crafts_item,
+    character_disassembles_item,
+    character_learns_recipe,
+    tile_destroyed,
+    monster_dies,
+    mission_ends,
+    var_changed,
+    creature_teleported,
+    character_hears_sound,
+    omt_generated,
+    map_extra_spawned,
+    character_reloads_item,
+    character_unloads_item,
+    character_installs_gunmod,
+    character_removes_gunmod,
+    character_armor_damaged,
+    character_armor_transformed,
+    character_picks_up_item,
+    character_drops_item,
+    character_stores_item,
+    character_activates_item,
+    character_changes_move_mode,
+    character_falls,
+    character_climbs,
+    character_moves,
+    character_gains_wound,
+    character_wound_progresses,
+    character_loses_wound,
+    loses_skill_level,
+    activates_bionic,
+    deactivates_bionic,
+    activates_mutation,
+    deactivates_mutation,
+    character_dodges,
+    character_blocks,
+    character_melee_hits,
+    character_fires_gun,
+    monster_melee_attacks_character,
+    monster_melee_attacks_monster,
+    monster_upgrades,
+    monster_reproduces,
+    monster_uses_special,
+    monster_tamed,
+    monster_milked,
+    monster_sheared,
+    character_mounts_monster,
+    avatar_trades,
+    vehicle_collides,
+    vehicle_part_destroyed,
+    vehicle_engine_stalls,
+    // VINT-J06: vehicle work by a character, with the vehicle as beta talker
+    vehicle_part_installed,
+    vehicle_part_removed,
+    vehicle_part_repaired,
+    vehicle_engine_started,
+    vehicle_engine_stopped,
+    vehicle_part_toggled,
+    appliance_placed,
+    character_levels_spell,
+    monster_casts_spell,
+    monster_triggers_trap,
+    avatar_spots_hostile,
     num_event_types // last
 };
 
@@ -215,15 +277,16 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 124,
+static_assert( static_cast<int>( event_type::num_event_types ) == 185,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
 template<>
 struct event_spec<event_type::activates_artifact> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
             { "item_name", cata_variant_type::string },
+            { "itype", cata_variant_type::itype_id },
         }
     };
 };
@@ -273,8 +336,15 @@ struct event_spec<event_type::avatar_dies> : event_spec_empty {};
 template<>
 struct event_spec<event_type::awakes_dark_wyrms> : event_spec_empty {};
 
+// pos: where the avatar was photographed (map squares)
 template<>
-struct event_spec<event_type::becomes_wanted> : event_spec_character {};
+struct event_spec<event_type::becomes_wanted> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
 
 template<>
 struct event_spec<event_type::broken_bone> {
@@ -347,32 +417,42 @@ struct event_spec<event_type::character_eats_item> : event_spec_character_item {
 
 template<>
 struct event_spec<event_type::character_casts_spell> {
-    static constexpr std::array<event_field, 7> fields = { {
+    static constexpr std::array<event_field, 9> fields = { {
             { "character", cata_variant_type::character_id },
             { "spell", cata_variant_type::spell_id },
             { "school", cata_variant_type::trait_id },
             { "difficulty", cata_variant_type::int_},
             { "cost", cata_variant_type::int_},
             { "cast_time", cata_variant_type::int_},
-            { "damage", cata_variant_type::int_}
+            { "damage", cata_variant_type::int_},
+            // where it was cast at (map squares); the statistics don't keep it
+            { "target", cata_variant_type::tripoint },
+            // the level it was cast at (MAGIC-J10); the statistics don't keep it
+            { "level", cata_variant_type::int_ }
         }
     };
 };
 
+// killer: the character that killed them (invalid otherwise); killer_type: the monster that
+// did (mon_null otherwise)
 template<>
 struct event_spec<event_type::character_dies> {
-    static constexpr std::array<event_field, 1> fields = {{
-            { "character", cata_variant_type::character_id }
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "killer", cata_variant_type::character_id },
+            { "killer_type", cata_variant_type::mtype_id }
         }
     };
 };
 
 template<>
 struct event_spec<event_type::character_finished_activity> {
-    static constexpr std::array<event_field, 3> fields = { {
+    static constexpr std::array<event_field, 4> fields = { {
             { "character", cata_variant_type::character_id },
             { "activity", cata_variant_type::activity_id },
-            { "canceled", cata_variant_type::bool_ }
+            { "canceled", cata_variant_type::bool_ },
+            // "completed", "canceled", or "interrupted" (canceled, but kept to resume)
+            { "outcome", cata_variant_type::string }
         }
     };
 };
@@ -438,9 +518,10 @@ struct event_spec<event_type::character_grabs_creature> {
 
 template<>
 struct event_spec<event_type::character_heals_damage> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
             { "damage", cata_variant_type::int_ },
+            { "bodypart", cata_variant_type::body_part },
         }
     };
 };
@@ -549,10 +630,12 @@ struct event_spec<event_type::character_releases_grab> {
 
 template<>
 struct event_spec<event_type::character_smashes_tile> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "character", cata_variant_type::character_id },
             { "terrain", cata_variant_type::ter_str_id },
             { "furniture", cata_variant_type::furn_str_id },
+            // map squares; the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
         }
     };
 };
@@ -567,22 +650,29 @@ struct event_spec<event_type::character_starts_activity> {
     };
 };
 
+// damage_type: the type that dealt most of the hit; empty for damage of no type (hurtall,
+// bleeding, an EOC)
 template<>
 struct event_spec<event_type::character_takes_damage> {
-    static constexpr std::array<event_field, 4> fields = {{
+    static constexpr std::array<event_field, 5> fields = {{
             { "character", cata_variant_type::character_id },
             { "damage", cata_variant_type::int_ },
             { "bodypart", cata_variant_type::body_part },
-            { "pain", cata_variant_type::int_ }
+            { "pain", cata_variant_type::int_ },
+            { "damage_type", cata_variant_type::damage_type_id }
         }
     };
 };
 
 template<>
 struct event_spec<event_type::monster_takes_damage> {
-    static constexpr std::array<event_field, 2> fields = { {
+    static constexpr std::array<event_field, 5> fields = { {
             { "damage", cata_variant_type::int_ },
             { "dies", cata_variant_type::bool_ },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "bodypart", cata_variant_type::body_part },
+            // as for character_takes_damage
+            { "damage_type", cata_variant_type::damage_type_id },
         }
     };
 };
@@ -602,17 +692,22 @@ struct event_spec<event_type::character_throws_creature> {
 
 template<>
 struct event_spec<event_type::character_triggers_trap> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
             { "trap", cata_variant_type::trap_str_id },
+            // map squares; the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
         }
     };
 };
 
+// "cause": "noise", "alarm" (an internal chronometer), "damage", "rested" (slept enough) or
+// "other" (character.h, wake_up_cause_scope)
 template<>
 struct event_spec<event_type::character_wakes_up> {
-    static constexpr std::array<event_field, 1> fields = {{
+    static constexpr std::array<event_field, 2> fields = {{
             { "character", cata_variant_type::character_id },
+            { "cause", cata_variant_type::string },
         }
     };
 };
@@ -634,12 +729,16 @@ struct event_spec<event_type::character_attempt_to_fall_asleep> {
     };
 };
 
+// MONDT-J13: sent for every butchery outcome, quartering and fatal failures included, with the
+// corpse as beta while it still exists; success is false for a fatal failure or a failed field
+// dressing
 template<>
 struct event_spec<event_type::character_butchered_corpse> {
-    static constexpr std::array<event_field, 3> fields = { {
+    static constexpr std::array<event_field, 4> fields = { {
             { "character", cata_variant_type::character_id },
             { "monster_id", cata_variant_type::mtype_id },
             { "butcher_type", cata_variant_type::string },
+            { "success", cata_variant_type::bool_ },
         }
     };
 };
@@ -649,6 +748,7 @@ struct event_spec<event_type::character_wears_item> : event_spec_character_item 
 
 template<>
 struct event_spec<event_type::character_takeoff_item> : event_spec_character_item {};
+
 template<>
 struct event_spec<event_type::character_armor_destroyed> : event_spec_character_item {};
 
@@ -657,21 +757,24 @@ struct event_spec<event_type::character_wields_item> : event_spec_character_item
 
 template<>
 struct event_spec<event_type::companion_mission_finished> {
-    static constexpr std::array<event_field, 4> fields = {{
+    static constexpr std::array<event_field, 5> fields = {{
             { "npc", cata_variant_type::character_id },
             { "mission", cata_variant_type::string },
             { "pos", cata_variant_type::tripoint },
             { "outcome", cata_variant_type::string },
+            // the faction_mission id of a camp mission from JSON, empty for the others
+            { "camp_mission", cata_variant_type::string },
         }
     };
 };
 
 template<>
 struct event_spec<event_type::companion_mission_started> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "npc", cata_variant_type::character_id },
             { "mission", cata_variant_type::string },
             { "pos", cata_variant_type::tripoint },
+            { "camp_mission", cata_variant_type::string },
         }
     };
 };
@@ -695,7 +798,14 @@ template<>
 struct event_spec<event_type::crosses_mycus_threshold> : event_spec_character {};
 
 template<>
-struct event_spec<event_type::cuts_tree> : event_spec_character {};
+struct event_spec<event_type::cuts_tree> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            // the tree (map squares); the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
 
 template<>
 struct event_spec<event_type::dermatik_eggs_hatch> : event_spec_character {};
@@ -789,10 +899,12 @@ struct event_spec<event_type::fails_to_remove_cbm> {
 template<>
 struct event_spec<event_type::falls_asleep_from_exhaustion> : event_spec_character {};
 
+// the vehicle is alpha (VEH-J03); "fuel" is what the tank held
 template<>
 struct event_spec<event_type::fuel_tank_explodes> {
-    static constexpr std::array<event_field, 1> fields = {{
+    static constexpr std::array<event_field, 2> fields = {{
             { "vehicle_name", cata_variant_type::string },
+            { "fuel", cata_variant_type::itype_id },
         }
     };
 };
@@ -824,12 +936,14 @@ struct event_spec<event_type::gains_proficiency> {
     };
 };
 
+// "type" is "practical" or "theoretical" (PROG-J06)
 template<>
 struct event_spec<event_type::gains_skill_level> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "character", cata_variant_type::character_id },
             { "skill", cata_variant_type::skill_id },
             { "new_level", cata_variant_type::int_ },
+            { "type", cata_variant_type::string },
         }
     };
 };
@@ -933,6 +1047,7 @@ struct event_spec<event_type::loses_addiction> {
         }
     };
 };
+
 template<>
 struct event_spec<event_type::loses_mutation> {
     static constexpr std::array<event_field, 2> fields = { {
@@ -1005,6 +1120,545 @@ struct event_spec<event_type::mod_setting_changed> {
             { "id", cata_variant_type::string },
             { "old_value", cata_variant_type::string },
             { "new_value", cata_variant_type::string },
+        }
+    };
+};
+
+// a character finished crafting a recipe; quantity is the batch size, itype the recipe's result
+// (null for a recipe with none)
+template<>
+struct event_spec<event_type::character_crafts_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "recipe", cata_variant_type::string },
+            { "itype", cata_variant_type::itype_id },
+            { "quantity", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character finished taking an item apart with a disassembly recipe
+template<>
+struct event_spec<event_type::character_disassembles_item> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "recipe", cata_variant_type::string },
+            { "itype", cata_variant_type::itype_id },
+        }
+    };
+};
+
+// a character learned a recipe it didn't know; how: "crafting" (memorized from a book while
+// crafting), "disassembly" or "eoc"
+template<>
+struct event_spec<event_type::character_learns_recipe> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "recipe", cata_variant_type::string },
+            { "how", cata_variant_type::string },
+        }
+    };
+};
+
+// INV-J08: the avatar picked an item up (pickup menu or auto-pickup); count is the number of
+// items, or of charges for an item counted by charges. Its EOCs get the item, where it went,
+// as beta.
+template<>
+struct event_spec<event_type::character_picks_up_item> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "count", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character dropped an item with the drop activity (onto the ground or into vehicle cargo);
+// count as for character_picks_up_item. Its EOCs get the item where it landed as beta.
+template<>
+struct event_spec<event_type::character_drops_item> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "count", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character put an item into a container, holster or sheath (holstering, "Store in", the
+// insert activity); count as for character_picks_up_item. Its EOCs get the container as beta.
+template<>
+struct event_spec<event_type::character_stores_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "count", cata_variant_type::int_ },
+            { "container", cata_variant_type::itype_id },
+        }
+    };
+};
+
+// a bash destroyed the terrain or furniture of a tile on the main map; cause as for bash EOCs
+// (map.h, bash_cause_scope). Its EOCs get the basher as alpha, or an empty talker if no
+// creature did it.
+template<>
+struct event_spec<event_type::tile_destroyed> {
+    static constexpr std::array<event_field, 6> fields = {{
+            { "location", cata_variant_type::tripoint },
+            { "old_ter", cata_variant_type::ter_str_id },
+            { "old_furn", cata_variant_type::furn_str_id },
+            { "new_ter", cata_variant_type::ter_str_id },
+            { "new_furn", cata_variant_type::furn_str_id },
+            { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// Any monster that dies, whatever killed it; not a hallucination. Sent with the monster as
+// alpha and its killer (if any) as beta. killer: the character that killed it, or whose summon
+// did (invalid otherwise); killer_type: the monster that killed it (mon_null otherwise)
+template<>
+struct event_spec<event_type::monster_dies> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "victim_type", cata_variant_type::mtype_id },
+            { "killer", cata_variant_type::character_id },
+            { "killer_type", cata_variant_type::mtype_id },
+        }
+    };
+};
+
+// a character reloaded an item: what it now holds (ammo_itype null if no ammo, e.g. a liquid)
+template<>
+struct event_spec<event_type::character_reloads_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "ammo_itype", cata_variant_type::itype_id },
+            { "ammo_remaining", cata_variant_type::int_ },
+        }
+    };
+};
+
+// A mission ended: completed (success) or failed. character: who it was assigned to; npc:
+// who gave it (invalid for none); mission: the mission type id
+template<>
+struct event_spec<event_type::mission_ends> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "npc", cata_variant_type::character_id },
+            { "mission", cata_variant_type::string },
+            { "success", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// a character took the ammo or magazine out of an item (an item_location unload, not a container)
+template<>
+struct event_spec<event_type::character_unloads_item> : event_spec_character_item {};
+
+// a gunmod installation finished, successfully or not
+template<>
+struct event_spec<event_type::character_installs_gunmod> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "gun", cata_variant_type::itype_id },
+            { "gunmod", cata_variant_type::itype_id },
+            { "success", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// A watched variable (a watched_variable entry) was written, by anything: u_add_var, math, any
+// other effect. owner: the character it belongs to (invalid for another talker or a global);
+// scope: character, monster, item, vehicle, other or global. Sent with the owner as alpha.
+template<>
+struct event_spec<event_type::var_changed> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "owner", cata_variant_type::character_id },
+            { "scope", cata_variant_type::string },
+            { "var", cata_variant_type::string },
+            { "value", cata_variant_type::string },
+        }
+    };
+};
+
+// a creature (the avatar, an NPC or a monster) arrived alive somewhere by teleport; its EOCs get
+// the creature as alpha
+template<>
+struct event_spec<event_type::creature_teleported> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "from", cata_variant_type::tripoint },
+            { "to", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// a character heard a sound (heard_volume > 0, after hearing ability, the weather, the distance
+// and what muffles it); "volume" is the sound's own, "location" where it was made
+template<>
+struct event_spec<event_type::character_hears_sound> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "volume", cata_variant_type::int_ },
+            { "heard_volume", cata_variant_type::int_ },
+            { "category", cata_variant_type::string },
+            { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::character_removes_gunmod> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "gun", cata_variant_type::itype_id },
+            { "gunmod", cata_variant_type::itype_id },
+        }
+    };
+};
+
+// CMBT-J04: the combat events below are sent once the action is resolved, with the other creature
+// (the attacker, the victim) as the beta talker when there is one
+
+// a character dodged a melee attack (on_dodge); beta: the attacker, if any
+template<>
+struct event_spec<event_type::character_dodges> : event_spec_character {};
+
+// a character blocked a melee hit (block_hit); "weapon" is the item blocked with ("null" for a
+// limb), "bodypart" the part that takes what is left; beta: the attacker
+template<>
+struct event_spec<event_type::character_blocks> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "weapon", cata_variant_type::itype_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "damage_blocked", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character's melee attack hit, after the damage, techniques and kill are known; "damage" is
+// dealt after armor, "technique" the technique id ("tec_none" for none); beta: the victim
+template<>
+struct event_spec<event_type::character_melee_hits> {
+    static constexpr std::array<event_field, 7> fields = {{
+            { "attacker", cata_variant_type::character_id },
+            { "weapon", cata_variant_type::itype_id },
+            { "technique", cata_variant_type::string },
+            { "bodypart", cata_variant_type::body_part },
+            { "damage", cata_variant_type::int_ },
+            { "crit", cata_variant_type::bool_ },
+            { "killed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// a character finished firing a gun: "shots" fired, of which "hits" hit a creature
+template<>
+struct event_spec<event_type::character_fires_gun> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "gun", cata_variant_type::itype_id },
+            { "ammo", cata_variant_type::itype_id },
+            { "shots", cata_variant_type::int_ },
+            { "hits", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character's movement mode changed (doc/JSON/MOVE_MODE.md)
+template<>
+struct event_spec<event_type::character_changes_move_mode> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "old_mode", cata_variant_type::move_mode_id },
+            { "new_mode", cata_variant_type::move_mode_id },
+        }
+    };
+};
+
+// a monster's melee attack (monster::melee_attack) on a character is over; alpha: the monster,
+// beta: the victim
+template<>
+struct event_spec<event_type::monster_melee_attacks_character> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "monster", cata_variant_type::mtype_id },
+            { "victim", cata_variant_type::character_id },
+            { "hits", cata_variant_type::bool_ },
+            { "damage", cata_variant_type::int_ },
+            { "killed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// an overmap tile the world keeps was generated (MGEN-J01); location is its north-west tile
+template<>
+struct event_spec<event_type::omt_generated> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "location", cata_variant_type::tripoint },
+            { "oter_id", cata_variant_type::oter_id },
+        }
+    };
+};
+
+// MONAI-J05: a monster grew or evolved (its "upgrades"), once per step, with the monster (now
+// of new_type) as alpha. Sent also when a monster catches up on upgrades as its map loads.
+template<>
+struct event_spec<event_type::monster_upgrades> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "old_type", cata_variant_type::mtype_id },
+            { "new_type", cata_variant_type::mtype_id },
+        }
+    };
+};
+
+// a character fell height Z-levels (counted before anything softened the landing)
+template<>
+struct event_spec<event_type::character_falls> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "height", cata_variant_type::int_ },
+        }
+    };
+};
+
+// MONAI-J05: a monster gave birth or laid eggs (its "reproduction"), with the parent as alpha.
+// count: the babies or eggs (for a baby group, the group's roll)
+template<>
+struct event_spec<event_type::monster_reproduces> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "monster_type", cata_variant_type::mtype_id },
+            { "count", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character switched a bionic on or off: sent wherever its activated_eocs or deactivated_eocs
+// run (MUT-J07)
+template<>
+struct event_spec<event_type::activates_bionic> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bionic", cata_variant_type::bionic_id },
+        }
+    };
+};
+
+// a worn armor (or an ablative plate in it) took damage and wasn't destroyed
+template<>
+struct event_spec<event_type::character_armor_damaged> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "damage_type", cata_variant_type::string },
+            { "bodypart", cata_variant_type::body_part },
+        }
+    };
+};
+
+// HLTH-J04: a character (the avatar or an NPC) got a new wound on a body part: from a hit, an
+// EOC or a treatment that adds one. "wound" is the wound type id
+template<>
+struct event_spec<event_type::character_gains_wound> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "wound", cata_variant_type::string },
+        }
+    };
+};
+
+// the avatar climbed up or down height Z-levels with a climbing aid (doc/JSON/CLIMBING.md)
+template<>
+struct event_spec<event_type::character_climbs> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "climbing_aid", cata_variant_type::string },
+            { "direction", cata_variant_type::string },
+            { "height", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character's wound became another: a hit made it worse, or its progress_timer ran out
+template<>
+struct event_spec<event_type::character_wound_progresses> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "wound", cata_variant_type::string },
+            { "new_wound", cata_variant_type::string },
+        }
+    };
+};
+
+// a map extra was placed on an overmap tile (MGEN-J01); location is the tile's north-west tile
+template<>
+struct event_spec<event_type::map_extra_spawned> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "location", cata_variant_type::tripoint },
+            { "map_extra", cata_variant_type::string },
+        }
+    };
+};
+
+// a worn armor piece broke into its "non_functional" form (ablative plates)
+template<>
+struct event_spec<event_type::character_armor_transformed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "new_itype", cata_variant_type::itype_id },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::deactivates_bionic> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bionic", cata_variant_type::bionic_id },
+        }
+    };
+};
+
+// a character used one of an item's use actions (Character::invoke_item) and it wasn't cancelled:
+// itype is the item's type before the use (a use can transform or use up the item), method the
+// action's id (its type unless the action has an "id"), charges what the use reported spending
+template<>
+struct event_spec<event_type::character_activates_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "method", cata_variant_type::string },
+            { "charges", cata_variant_type::int_ },
+        }
+    };
+};
+
+// MONDT-J14: a character made a monster its pet, by feeding it ("petfood") or with a CHARM_PET
+// spell ("spell"); the monster is beta
+template<>
+struct event_spec<event_type::monster_tamed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+            { "method", cata_variant_type::string },
+        }
+    };
+};
+
+// a character switched a mutation on (once it is paid for and its activated_eocs didn't cancel
+// it) or off
+template<>
+struct event_spec<event_type::activates_mutation> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "trait", cata_variant_type::trait_id },
+        }
+    };
+};
+
+// a character (the avatar or an NPC) stepped onto another tile; avatar_moves is the avatar's own
+template<>
+struct event_spec<event_type::character_moves> {
+    static constexpr std::array<event_field, 6> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "mount", cata_variant_type::mtype_id },
+            { "terrain", cata_variant_type::ter_id },
+            { "movement_mode", cata_variant_type::move_mode_id },
+            { "underwater", cata_variant_type::bool_ },
+            { "z", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character lost a wound: "healed" when it healed by itself, false when a treatment or an EOC
+// removed it
+template<>
+struct event_spec<event_type::character_loses_wound> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "wound", cata_variant_type::string },
+            { "healed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// MONDT-J14: a character finished milking a monster (beta), "amount" units of "itype"
+template<>
+struct event_spec<event_type::monster_milked> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+            { "itype", cata_variant_type::itype_id },
+            { "amount", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character's skill level went down (rust); "type" is "practical" (PROG-J06)
+template<>
+struct event_spec<event_type::loses_skill_level> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "skill", cata_variant_type::skill_id },
+            { "new_level", cata_variant_type::int_ },
+            { "type", cata_variant_type::string },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::deactivates_mutation> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "trait", cata_variant_type::trait_id },
+        }
+    };
+};
+
+// MONDT-J14: a character finished shearing a monster (beta)
+template<>
+struct event_spec<event_type::monster_sheared> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+        }
+    };
+};
+
+// as monster_melee_attacks_character, on a monster
+template<>
+struct event_spec<event_type::monster_melee_attacks_monster> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "monster", cata_variant_type::mtype_id },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "hits", cata_variant_type::bool_ },
+            { "damage", cata_variant_type::int_ },
+            { "killed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// MONAI-J05: a monster used one of its special attacks with success, with the monster as alpha
+// and its attack target, if any, as beta
+template<>
+struct event_spec<event_type::monster_uses_special> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "monster_type", cata_variant_type::mtype_id },
+            { "attack", cata_variant_type::string },
+        }
+    };
+};
+
+// MONDT-J14: a character climbed on a monster (beta) to ride it, a mech included
+template<>
+struct event_spec<event_type::character_mounts_monster> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
         }
     };
 };
@@ -1092,7 +1746,7 @@ struct event_spec<event_type::seals_hazardous_material_sarcophagus> : event_spec
 
 template<>
 struct event_spec<event_type::spellcasting_finish> {
-    static constexpr std::array<event_field, 8> fields = { {
+    static constexpr std::array<event_field, 10> fields = { {
             { "character", cata_variant_type::character_id },
             { "success", cata_variant_type::bool_ },
             { "spell", cata_variant_type::spell_id },
@@ -1100,7 +1754,10 @@ struct event_spec<event_type::spellcasting_finish> {
             { "difficulty", cata_variant_type::int_},
             { "cost", cata_variant_type::int_},
             { "cast_time", cata_variant_type::int_},
-            { "damage", cata_variant_type::int_}
+            { "damage", cata_variant_type::int_},
+            // as for character_casts_spell
+            { "target", cata_variant_type::tripoint },
+            { "level", cata_variant_type::int_ }
         }
     };
 };
@@ -1143,6 +1800,8 @@ struct event_spec<event_type::uses_debug_menu> {
     };
 };
 
+// Only for the avatar's variables, and only from u_add_var and npc_add_var; var_changed
+// covers every owner and every way of writing one
 template<>
 struct event_spec<event_type::u_var_changed> {
     static constexpr std::array<event_field, 2> fields = { {
@@ -1166,6 +1825,185 @@ struct event_spec<event_type::vehicle_moves> {
             { "is_skidding", cata_variant_type::bool_ },
             { "velocity", cata_variant_type::int_ }, // vehicle current velocity, mph * 100
             { "z", cata_variant_type::int_ },
+        }
+    };
+};
+
+// the avatar finished a trade with an NPC (CAMP-J12): value_given is the trade value of what the
+// avatar handed over, value_received of what the NPC did, in cents
+template<>
+struct event_spec<event_type::avatar_trades> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "faction", cata_variant_type::faction_id },
+            { "value_given", cata_variant_type::int_ },
+            { "value_received", cata_variant_type::int_ },
+        }
+    };
+};
+
+// VEH-J03: a moving vehicle hit something; alpha is the vehicle, beta the creature it hit (none
+// for terrain and vehicles). collision_type is body, terrain, other (an obstacle that does not
+// break) or vehicle; velocity_delta (mph * 100) is the speed it lost, damage its part's damage.
+// Sent by vehicle::process_queued_events(), like vehicle_part_destroyed and fuel_tank_explodes
+template<>
+struct event_spec<event_type::vehicle_collides> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "collision_type", cata_variant_type::string },
+            { "target_name", cata_variant_type::string },
+            { "vpart_id", cata_variant_type::string },
+            { "velocity_delta", cata_variant_type::int_ },
+            { "damage", cata_variant_type::int_ },
+        }
+    };
+};
+
+// VEH-J03: damage broke a part of a vehicle on the main map; alpha is the vehicle
+template<>
+struct event_spec<event_type::vehicle_part_destroyed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "vpart_id", cata_variant_type::string },
+            { "damage_type", cata_variant_type::damage_type_id },
+        }
+    };
+};
+
+// VEH-J03: a running vehicle's engines stopped on their own; alpha is the vehicle. reason is
+// no_power (no engine has fuel or power left), no_battery (no charge for the ignition) or
+// reactor (its reactors ran out of fuel)
+template<>
+struct event_spec<event_type::vehicle_engine_stalls> {
+    static constexpr std::array<event_field, 1> fields = {{
+            { "reason", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a character finished installing a part on a vehicle (the vehicle activity, not an
+// EOC); its EOCs get the character as alpha and the vehicle as beta. vpart_id: the part's id
+template<>
+struct event_spec<event_type::vehicle_part_installed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a character removed a part from a vehicle (also an appliance taken down); the
+// vehicle is the beta talker, unless the removal took its last part
+template<>
+struct event_spec<event_type::vehicle_part_removed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a character repaired a vehicle part, or replaced a broken one (replaced); the
+// vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_part_repaired> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+            { "replaced", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// VINT-J06: a character started a vehicle's engines (some of them started); the vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_engine_started> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vehicle_name", cata_variant_type::string },
+        }
+    };
+};
+
+// VINT-J06: a running vehicle's engines were switched off (vehicle::stop_engines; a stall is
+// vehicle_engine_stalls); alpha is the vehicle, as for a stall
+template<>
+struct event_spec<event_type::vehicle_engine_stopped> : event_spec_empty {};
+
+// VINT-J06: a character switched a vehicle part on or off from the vehicle's electronics menu
+// (once per part switched); the vehicle is beta
+template<>
+struct event_spec<event_type::vehicle_part_toggled> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+            { "vehicle_name", cata_variant_type::string },
+            { "enabled", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// VINT-J06: a character placed an appliance (or wiring); the new appliance is the beta talker
+template<>
+struct event_spec<event_type::appliance_placed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "vpart_id", cata_variant_type::string },
+        }
+    };
+};
+
+// MAGIC-J10: a monster cast a spell (each of its effects, as character_casts_spell). The
+// monster is the EOC's alpha and the creature at the target, if any, its beta
+template<>
+struct event_spec<event_type::monster_casts_spell> {
+    static constexpr std::array<event_field, 6> fields = { {
+            { "monster_type", cata_variant_type::mtype_id },
+            { "spell", cata_variant_type::spell_id },
+            { "school", cata_variant_type::trait_id },
+            { "level", cata_variant_type::int_ },
+            { "damage", cata_variant_type::int_ },
+            { "target", cata_variant_type::tripoint }
+        }
+    };
+};
+
+// MAGIC-J05: as player_levels_spell, for every character (the avatar and NPCs)
+template<>
+struct event_spec<event_type::character_levels_spell> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "spell", cata_variant_type::spell_id },
+            { "old_level", cata_variant_type::int_ },
+            { "new_level", cata_variant_type::int_ },
+            { "school", cata_variant_type::trait_id },
+        }
+    };
+};
+
+// a monster set off a trap (character_triggers_trap is the event for a character); its EOCs get
+// the monster as alpha
+template<>
+struct event_spec<event_type::monster_triggers_trap> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "trap", cata_variant_type::trap_str_id },
+            // map squares; the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// UIHUD-J07: more hostiles are in view than on the last check (when safe mode stops you); the
+// spotted one is beta. For an NPC monster_id is the null id, for a monster npc is the invalid id
+template<>
+struct event_spec<event_type::avatar_spots_hostile> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+            { "npc", cata_variant_type::character_id },
+            { "distance", cata_variant_type::int_ },
+            { "hostiles", cata_variant_type::int_ },
         }
     };
 };

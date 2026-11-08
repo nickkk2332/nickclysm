@@ -1,0 +1,250 @@
+[
+  {
+    "//": "MUT-J05 fixture: a datacore-like CBM that teaches Muay Thai while installed.",
+    "type": "bionic",
+    "id": "test_bio_m17a_style_core",
+    "name": { "str": "Test Style Core" },
+    "description": "Test CBM that teaches a martial art.",
+    "learned_ma_styles": [ "style_muay_thai" ]
+  },
+  {
+    "//": "MUT-J05 fixture: item for test_bio_m17a_style_core.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_style_core",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Style Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J05 fixture: a second CBM teaching the same style.",
+    "type": "bionic",
+    "id": "test_bio_m17a_style_core_b",
+    "name": { "str": "Test Style Core B" },
+    "description": "Test CBM that teaches the same martial art.",
+    "learned_ma_styles": [ "style_muay_thai" ]
+  },
+  {
+    "//": "MUT-J05 fixture: item for test_bio_m17a_style_core_b.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_style_core_b",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Style Core B CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J05 fixture: an upgrade of test_bio_m17a_style_core that teaches the same style.",
+    "type": "bionic",
+    "id": "test_bio_m17a_style_upgrade",
+    "name": { "str": "Test Style Core Upgrade" },
+    "description": "Test CBM upgrading the style core.",
+    "upgraded_bionic": "test_bio_m17a_style_core",
+    "learned_ma_styles": [ "style_muay_thai" ]
+  },
+  {
+    "//": "MUT-J05 fixture: item for test_bio_m17a_style_upgrade.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_style_upgrade",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Style Core Upgrade CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J05 fixture: a CQB-like CBM that knows Muay Thai while it is on.",
+    "type": "bionic",
+    "id": "test_bio_m17a_style_switch",
+    "name": { "str": "Test Style Switch" },
+    "description": "Test CBM that knows a martial art while active.",
+    "flags": [ "BIONIC_TOGGLED" ],
+    "known_ma_styles": [ "style_muay_thai" ]
+  },
+  {
+    "//": "MUT-J05 fixture: item for test_bio_m17a_style_switch.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_style_switch",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Style Switch CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J05 fixture: a second CQB-like CBM knowing the same style.",
+    "type": "bionic",
+    "id": "test_bio_m17a_style_switch_b",
+    "name": { "str": "Test Style Switch B" },
+    "description": "Test CBM that knows the same martial art while active.",
+    "flags": [ "BIONIC_TOGGLED" ],
+    "known_ma_styles": [ "style_muay_thai" ]
+  },
+  {
+    "//": "MUT-J05 fixture: item for test_bio_m17a_style_switch_b.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_style_switch_b",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Style Switch B CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J07 fixture: a CBM that can be switched on and off for free.",
+    "type": "bionic",
+    "id": "test_bio_m17a_toggle",
+    "name": { "str": "Test Toggle" },
+    "description": "Test CBM that does nothing while on.",
+    "flags": [ "BIONIC_TOGGLED" ]
+  },
+  {
+    "//": "MUT-J07 fixture: item for test_bio_m17a_toggle.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_toggle",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Toggle CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J07 fixture: a CBM whose operation removes one trait and whose removal gives another.",
+    "type": "bionic",
+    "id": "test_bio_m17a_surgery",
+    "name": { "str": "Test Surgery Implant" },
+    "description": "Test CBM with install and removal side effects.",
+    "canceled_mutations": [ "TEST_M17A_CANCELED" ],
+    "give_mut_on_removal": [ "TEST_M17A_SCAR" ]
+  },
+  {
+    "//": "MUT-J07 fixture: item for test_bio_m17a_surgery.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_m17a_surgery",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Surgery Implant CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  },
+  {
+    "//": "MUT-J07 fixture: removed by installing test_bio_m17a_surgery.",
+    "type": "mutation",
+    "id": "TEST_M17A_CANCELED",
+    "name": { "str": "Test Canceled Trait" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait an operation removes."
+  },
+  {
+    "//": "MUT-J07 fixture: left by removing test_bio_m17a_surgery.",
+    "type": "mutation",
+    "id": "TEST_M17A_SCAR",
+    "name": { "str": "Test Operation Scar" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait an operation leaves."
+  },
+  {
+    "//": "MUT-J07 fixture: a trait that evolves into TEST_M17A_EVOLVED.",
+    "type": "mutation",
+    "id": "TEST_M17A_BASE",
+    "name": { "str": "Test Base Trait" },
+    "points": 1,
+    "valid": false,
+    "changes_to": [ "TEST_M17A_EVOLVED" ],
+    "description": "Test trait that can evolve."
+  },
+  {
+    "//": "MUT-J07 fixture: what TEST_M17A_BASE evolves into.",
+    "type": "mutation",
+    "id": "TEST_M17A_EVOLVED",
+    "name": { "str": "Test Evolved Trait" },
+    "points": 2,
+    "valid": false,
+    "prereqs": [ "TEST_M17A_BASE" ],
+    "description": "Test trait evolved from another."
+  },
+  {
+    "//": "MUT-J07 fixture: a slot two traits share, so one replaces the other.",
+    "type": "mutation_type",
+    "id": "TEST_M17A_SLOT"
+  },
+  {
+    "//": "MUT-J07 fixture: one trait of the test slot.",
+    "type": "mutation",
+    "id": "TEST_M17A_SLOT_A",
+    "name": { "str": "Test Slot Trait A" },
+    "points": 0,
+    "valid": false,
+    "types": [ "TEST_M17A_SLOT" ],
+    "description": "Test trait in a shared slot."
+  },
+  {
+    "//": "MUT-J07 fixture: the other trait of the test slot.",
+    "type": "mutation",
+    "id": "TEST_M17A_SLOT_B",
+    "name": { "str": "Test Slot Trait B" },
+    "points": 0,
+    "valid": false,
+    "types": [ "TEST_M17A_SLOT" ],
+    "description": "Test trait in the same shared slot."
+  },
+  {
+    "//": "MUT-J07 fixture: an active trait that costs nothing and does nothing.",
+    "type": "mutation",
+    "id": "TEST_M17A_TOGGLE",
+    "name": { "str": "Test Free Toggle" },
+    "points": 0,
+    "valid": false,
+    "active": true,
+    "description": "Test trait that can be switched on and off."
+  },
+  {
+    "//": "MUT-J06 fixture: a modded trait with the slime splitting activation and a thirst cost.",
+    "type": "mutation",
+    "id": "TEST_M17A_SPLITTER",
+    "name": { "str": "Test Splitter" },
+    "points": 0,
+    "valid": false,
+    "active": true,
+    "builtin_activation": "slime_split",
+    "cost": 50,
+    "thirst": true,
+    "description": "Test trait that splits off a slime."
+  },
+  {
+    "//": "MUT-J06 fixture: a modded trait with the web weaving activation. WEBWALK as vanilla WEB_WEAVER keeps WEB_WALKER's: the web placed under a weaver who isn't a web walker is torn at once (decrease_intensity_on_contact).",
+    "type": "mutation",
+    "id": "TEST_M17A_WEAVER",
+    "name": { "str": "Test Weaver" },
+    "points": 0,
+    "valid": false,
+    "active": true,
+    "builtin_activation": "web",
+    "flags": [ "WEBWALK" ],
+    "description": "Test trait that weaves webs."
+  },
+  {
+    "//": "MUT-J06 fixture: a trait that gives blood type O.",
+    "type": "mutation",
+    "id": "TEST_M17A_BLOOD_O",
+    "name": { "str": "Test Blood O" },
+    "points": 0,
+    "valid": false,
+    "blood_type": "O",
+    "description": "Test trait that sets the blood type."
+  },
+  {
+    "//": "MUT-J06 fixture: a trait that halves the left arm's maximum HP.",
+    "type": "mutation",
+    "id": "TEST_M17A_FRAGILE_ARM",
+    "name": { "str": "Test Fragile Arm" },
+    "points": 0,
+    "valid": false,
+    "bodypart_hp_multiplier": [ [ "arm_l", 0.5 ] ],
+    "description": "Test trait with a weaker left arm."
+  }
+]

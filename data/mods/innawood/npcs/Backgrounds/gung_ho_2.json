@@ -13,7 +13,7 @@
     "type": "talk_topic",
     "dynamic_line": "Oh, probably the same stuff everyone's thinking.  No special ideas.  Like, maybe this is some kind of weapon gone wrong.  Or maybe the world just is like this every so often, and that's what killed the dinosaurs.  Who knows.",
     "responses": [
-      { "text": "What were you saying about goop?", "topic": "BGSS_GUNG_HO_2_IDEAS2a" },
+      { "text": "What were you saying about goop?", "topic": "CWH_GUNG_HO_2_IDEAS2a" },
       { "text": "<done_conversation_section>", "topic": "TALK_FRIEND" },
       { "text": "<end_talking>", "topic": "TALK_DONE" }
     ]

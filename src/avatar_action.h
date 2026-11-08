@@ -30,6 +30,10 @@ void eat_or_use( avatar &you, item_location loc );
 bool move( avatar &you, map &m, const tripoint_rel_ms &d );
 /** Handles swimming by the player. Called by avatar_action::move(). */
 void swim( map &m, avatar &you, const tripoint_bub_ms &p );
+/** What landing in deep water does to the avatar already there (a knockback into it): the
+ * swimming state, water on what they carry and wear, and sinking if they can't swim. No move
+ * cost, no practice. */
+void enter_water( avatar &you );
 
 void autoattack( avatar &you, map &m );
 

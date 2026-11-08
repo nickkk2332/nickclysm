@@ -19,3 +19,16 @@ def parse_fault(json, origin):
 
     write_text(json.get("item_suffix"), origin,
                comment=f"Suffix for item's name '{name}'")
+
+    if "runover" in json:
+        write_text(json["runover"].get("message"), origin,
+                   comment="Message when running something over gives a "
+                   f"vehicle wheel fault '{name}'")
+
+    if "while_moving" in json:
+        write_text(json["while_moving"].get("sound"), origin,
+                   comment="Sound of a moving vehicle wheel with fault "
+                   f"'{name}'")
+        write_text(json["while_moving"].get("message"), origin,
+                   comment="Message when driving damages a vehicle wheel "
+                   f"with fault '{name}'")

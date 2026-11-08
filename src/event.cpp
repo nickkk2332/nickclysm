@@ -140,6 +140,67 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::npc_dismissed: return "npc_dismissed";
         case event_type::npc_mutinies: return "npc_mutinies";
         case event_type::mod_setting_changed: return "mod_setting_changed";
+        case event_type::character_crafts_item: return "character_crafts_item";
+        case event_type::character_disassembles_item: return "character_disassembles_item";
+        case event_type::character_learns_recipe: return "character_learns_recipe";
+        case event_type::tile_destroyed: return "tile_destroyed";
+        case event_type::monster_dies: return "monster_dies";
+        case event_type::mission_ends: return "mission_ends";
+        case event_type::var_changed: return "var_changed";
+        case event_type::creature_teleported: return "creature_teleported";
+        case event_type::character_hears_sound: return "character_hears_sound";
+        case event_type::omt_generated: return "omt_generated";
+        case event_type::map_extra_spawned: return "map_extra_spawned";
+        case event_type::character_reloads_item: return "character_reloads_item";
+        case event_type::character_unloads_item: return "character_unloads_item";
+        case event_type::character_installs_gunmod: return "character_installs_gunmod";
+        case event_type::character_removes_gunmod: return "character_removes_gunmod";
+        case event_type::character_armor_damaged: return "character_armor_damaged";
+        case event_type::character_armor_transformed: return "character_armor_transformed";
+        case event_type::character_picks_up_item: return "character_picks_up_item";
+        case event_type::character_drops_item: return "character_drops_item";
+        case event_type::character_stores_item: return "character_stores_item";
+        case event_type::character_activates_item: return "character_activates_item";
+        case event_type::character_changes_move_mode: return "character_changes_move_mode";
+        case event_type::character_falls: return "character_falls";
+        case event_type::character_climbs: return "character_climbs";
+        case event_type::character_moves: return "character_moves";
+        case event_type::character_gains_wound: return "character_gains_wound";
+        case event_type::character_wound_progresses: return "character_wound_progresses";
+        case event_type::character_loses_wound: return "character_loses_wound";
+        case event_type::loses_skill_level: return "loses_skill_level";
+        case event_type::activates_bionic: return "activates_bionic";
+        case event_type::deactivates_bionic: return "deactivates_bionic";
+        case event_type::activates_mutation: return "activates_mutation";
+        case event_type::deactivates_mutation: return "deactivates_mutation";
+        case event_type::character_dodges: return "character_dodges";
+        case event_type::character_blocks: return "character_blocks";
+        case event_type::character_melee_hits: return "character_melee_hits";
+        case event_type::character_fires_gun: return "character_fires_gun";
+        case event_type::monster_melee_attacks_character: return "monster_melee_attacks_character";
+        case event_type::monster_melee_attacks_monster: return "monster_melee_attacks_monster";
+        case event_type::monster_upgrades: return "monster_upgrades";
+        case event_type::monster_reproduces: return "monster_reproduces";
+        case event_type::monster_uses_special: return "monster_uses_special";
+        case event_type::monster_tamed: return "monster_tamed";
+        case event_type::monster_milked: return "monster_milked";
+        case event_type::monster_sheared: return "monster_sheared";
+        case event_type::character_mounts_monster: return "character_mounts_monster";
+        case event_type::avatar_trades: return "avatar_trades";
+        case event_type::vehicle_collides: return "vehicle_collides";
+        case event_type::vehicle_part_destroyed: return "vehicle_part_destroyed";
+        case event_type::vehicle_engine_stalls: return "vehicle_engine_stalls";
+        case event_type::vehicle_part_installed: return "vehicle_part_installed";
+        case event_type::vehicle_part_removed: return "vehicle_part_removed";
+        case event_type::vehicle_part_repaired: return "vehicle_part_repaired";
+        case event_type::vehicle_engine_started: return "vehicle_engine_started";
+        case event_type::vehicle_engine_stopped: return "vehicle_engine_stopped";
+        case event_type::vehicle_part_toggled: return "vehicle_part_toggled";
+        case event_type::appliance_placed: return "appliance_placed";
+        case event_type::character_levels_spell: return "character_levels_spell";
+        case event_type::monster_casts_spell: return "monster_casts_spell";
+        case event_type::monster_triggers_trap: return "monster_triggers_trap";
+        case event_type::avatar_spots_hostile: return "avatar_spots_hostile";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -162,7 +223,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 124,
+static_assert( static_cast<int>( event_type::num_event_types ) == 185,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -176,6 +237,7 @@ DEFINE_EVENT_FIELDS( activates_artifact )
 DEFINE_EVENT_FIELDS( administers_mutagen )
 DEFINE_EVENT_FIELDS( avatar_enters_omt )
 DEFINE_EVENT_FIELDS( avatar_moves )
+DEFINE_EVENT_FIELDS( becomes_wanted )
 DEFINE_EVENT_FIELDS( broken_bone )
 DEFINE_EVENT_FIELDS( broken_bone_mends )
 DEFINE_EVENT_FIELDS( buries_corpse )
@@ -212,6 +274,7 @@ DEFINE_EVENT_FIELDS( character_falls_asleep )
 DEFINE_EVENT_FIELDS( character_attempt_to_fall_asleep )
 DEFINE_EVENT_FIELDS( character_wakes_up )
 DEFINE_EVENT_FIELDS( crosses_mutation_threshold )
+DEFINE_EVENT_FIELDS( cuts_tree )
 DEFINE_EVENT_FIELDS( dies_from_drug_overdose )
 DEFINE_EVENT_FIELDS( evolves_mutation )
 DEFINE_EVENT_FIELDS( fails_to_install_cbm )
@@ -240,6 +303,64 @@ DEFINE_EVENT_FIELDS( npc_recruited )
 DEFINE_EVENT_FIELDS( npc_dismissed )
 DEFINE_EVENT_FIELDS( npc_mutinies )
 DEFINE_EVENT_FIELDS( mod_setting_changed )
+DEFINE_EVENT_FIELDS( character_crafts_item )
+DEFINE_EVENT_FIELDS( character_disassembles_item )
+DEFINE_EVENT_FIELDS( character_learns_recipe )
+DEFINE_EVENT_FIELDS( tile_destroyed )
+DEFINE_EVENT_FIELDS( monster_dies )
+DEFINE_EVENT_FIELDS( mission_ends )
+DEFINE_EVENT_FIELDS( var_changed )
+DEFINE_EVENT_FIELDS( creature_teleported )
+DEFINE_EVENT_FIELDS( character_hears_sound )
+DEFINE_EVENT_FIELDS( omt_generated )
+DEFINE_EVENT_FIELDS( map_extra_spawned )
+DEFINE_EVENT_FIELDS( character_reloads_item )
+DEFINE_EVENT_FIELDS( character_installs_gunmod )
+DEFINE_EVENT_FIELDS( character_removes_gunmod )
+DEFINE_EVENT_FIELDS( character_armor_damaged )
+DEFINE_EVENT_FIELDS( character_armor_transformed )
+DEFINE_EVENT_FIELDS( character_picks_up_item )
+DEFINE_EVENT_FIELDS( character_drops_item )
+DEFINE_EVENT_FIELDS( character_stores_item )
+DEFINE_EVENT_FIELDS( character_activates_item )
+DEFINE_EVENT_FIELDS( character_changes_move_mode )
+DEFINE_EVENT_FIELDS( character_falls )
+DEFINE_EVENT_FIELDS( character_climbs )
+DEFINE_EVENT_FIELDS( character_moves )
+DEFINE_EVENT_FIELDS( character_gains_wound )
+DEFINE_EVENT_FIELDS( character_wound_progresses )
+DEFINE_EVENT_FIELDS( character_loses_wound )
+DEFINE_EVENT_FIELDS( loses_skill_level )
+DEFINE_EVENT_FIELDS( activates_bionic )
+DEFINE_EVENT_FIELDS( deactivates_bionic )
+DEFINE_EVENT_FIELDS( activates_mutation )
+DEFINE_EVENT_FIELDS( deactivates_mutation )
+DEFINE_EVENT_FIELDS( character_blocks )
+DEFINE_EVENT_FIELDS( character_melee_hits )
+DEFINE_EVENT_FIELDS( character_fires_gun )
+DEFINE_EVENT_FIELDS( monster_melee_attacks_character )
+DEFINE_EVENT_FIELDS( monster_melee_attacks_monster )
+DEFINE_EVENT_FIELDS( monster_upgrades )
+DEFINE_EVENT_FIELDS( monster_reproduces )
+DEFINE_EVENT_FIELDS( monster_uses_special )
+DEFINE_EVENT_FIELDS( monster_tamed )
+DEFINE_EVENT_FIELDS( monster_milked )
+DEFINE_EVENT_FIELDS( monster_sheared )
+DEFINE_EVENT_FIELDS( character_mounts_monster )
+DEFINE_EVENT_FIELDS( avatar_trades )
+DEFINE_EVENT_FIELDS( vehicle_collides )
+DEFINE_EVENT_FIELDS( vehicle_part_destroyed )
+DEFINE_EVENT_FIELDS( vehicle_engine_stalls )
+DEFINE_EVENT_FIELDS( vehicle_part_installed )
+DEFINE_EVENT_FIELDS( vehicle_part_removed )
+DEFINE_EVENT_FIELDS( vehicle_part_repaired )
+DEFINE_EVENT_FIELDS( vehicle_engine_started )
+DEFINE_EVENT_FIELDS( vehicle_part_toggled )
+DEFINE_EVENT_FIELDS( appliance_placed )
+DEFINE_EVENT_FIELDS( character_levels_spell )
+DEFINE_EVENT_FIELDS( monster_casts_spell )
+DEFINE_EVENT_FIELDS( monster_triggers_trap )
+DEFINE_EVENT_FIELDS( avatar_spots_hostile )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

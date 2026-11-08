@@ -38,6 +38,7 @@
 #include "overmapbuffer.h"
 #include "point.h"
 #include "rng.h"
+#include "scenario.h"
 #include "translations.h"
 
 class item;
@@ -221,7 +222,8 @@ void start_location::check() const
                       id.c_str(), loc.omt );
         } else if( loc.omt_type == ot_match_type::subtype ||
                    loc.omt_type == ot_match_type::prefix ||
-                   loc.omt_type == ot_match_type::contains ) {
+                   loc.omt_type == ot_match_type::contains ||
+                   loc.omt_type == ot_match_type::flag ) {
             bool found = false;
             for( const oter_t &ter : overmap_terrains::get_all() ) {
                 if( is_ot_match( loc.omt, ter.id.id(), loc.omt_type ) ) {
@@ -552,7 +554,10 @@ void start_location::place_player( avatar &you, const tripoint_abs_omt &omtstart
     here.invalidate_map_cache( here.get_abs_sub().z() );
     here.build_map_cache( here.get_abs_sub().z() );
     const bool must_be_inside = flags().count( "ALLOW_OUTSIDE" ) == 0;
-    const bool accommodate_npc = flags().count( "LONE_START" ) == 0;
+    // LONE_START is a scenario flag: no start location has it, so room was always kept for a
+    // starting NPC (PROG-J01)
+    const bool accommodate_npc = flags().count( "LONE_START" ) == 0 &&
+                                 !get_scenario()->has_flag( "LONE_START" );
     ///\EFFECT_STR allows player to start behind less-bashable furniture and terrain
     // TODO: Allow using items here
     const int bash = you.get_str();

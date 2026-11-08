@@ -4,7 +4,6 @@
 
 #include <map>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -26,14 +25,15 @@ template <typename E> struct enum_traits;
 using npc_ptr = shared_ptr_fast<npc>;
 using comp_list = std::vector<npc_ptr>;
 
-//  The different missions that are supported by the code. New missions have to get a new value entered to
-//  this enum (and added as appropriate in all places the enum is used). Note that there are currently
-//  two missions that take parameters based on (ultimately) JSON data, namely Camp_Crafting, that takes
-//  a recipe from a recipe group added as a "provides" in faction camp hubs/expansions, and Camp_Upgrade,
-//  that take a blueprint provided by a hub/expansion construction recipe.
-//  Camp_Survey_Expansion allows base camps to expand into surrounding tiles based on JSON definitions,
-//  but this selection is done directly as part of the finalization of the mission, rather than provided
-//  as a goal at the outset, and so only counts partially.
+//  The different missions that are supported by the code.  Camp missions are defined in JSON
+//  (faction_mission, see doc/JSON/FACTION_MISSIONS.md): a faction_mission names one of these as
+//  its "behavior", the code that runs it, and Camp_Generic runs a mission entirely from its JSON.
+//  The other camp values are the bespoke behaviours JSON can select, the camp's own menu actions
+//  and the missions that take parameters (Camp_Crafting, a recipe from a recipe group added as a
+//  "provides" in faction camp hubs/expansions, Camp_Upgrade, a blueprint provided by a
+//  hub/expansion construction recipe, and Camp_OM_Fortifications).  Values no faction_mission
+//  selects any more (Camp_Gather_Materials, Camp_Collect_Firewood, Camp_Foraging, Camp_Trapping,
+//  Camp_Hunting) stay so that saves with companions out on them still load.
 //
 enum mission_kind : int {
     No_Mission,  //  Null value
@@ -78,6 +78,7 @@ enum mission_kind : int {
     Camp_Plow,
     Camp_Plant,
     Camp_Harvest,
+    Camp_Generic,
 
     last_mission_kind
 };
@@ -90,21 +91,28 @@ struct enum_traits<mission_kind> {
 //  Operation to get translated UI strings for the corresponding misison
 std::string action_of( mission_kind kind );
 
-//  id is the identifier for the mission.
+//  id is the identifier for the mission: for a camp mission defined in JSON, its behaviour.
 //  parameters contains any additional modifiers, such as recipes or blueprints.
 //  dir indicates the hub/expansion the mission refers to if a base camp mission
 //  and not set for non base camp missions.
 //  The struct is used in companions (npc) to keep track of active missions, as
 //  well as in internal structures used to populate the UI with available,
 //  ongoing, and unavailable missions.
-//  It can be noted that only npcs serialize/deserialize mission_id, while the
-//  other usages are internal and not saved when the game is saved.
+//  type is the faction_mission (JSON camp mission) it is, empty for the others.
+//  It can be noted that only npcs and hidden camp missions serialize/deserialize mission_id,
+//  while the other usages are internal and not saved when the game is saved.
 //
 struct mission_id {
     mission_kind id = No_Mission;
     std::string parameters;
     mapgen_arguments mapgen_args;
     std::optional<point_rel_omt> dir;
+    faction_mission_id type;
+
+    mission_id() = default;
+    mission_id( mission_kind kind, std::string params, mapgen_arguments args,
+                std::optional<point_rel_omt> direction,
+                faction_mission_id camp_mission = faction_mission_id() );
 
     void serialize( JsonOut & ) const;
     void deserialize( const JsonValue & );
@@ -112,6 +120,11 @@ struct mission_id {
 
 bool is_equal( const mission_id &first, const mission_id &second );
 void reset_miss_id( mission_id &miss_id );
+/// The vanilla faction_mission a camp mission of @ref kind saved before camp missions had ids
+/// was, empty if none
+faction_mission_id legacy_camp_mission( mission_kind kind );
+//  action_of for a mission: a camp mission from JSON has its own ("progress")
+std::string action_of( const mission_id &miss_id );
 
 //  ret determines whether the mission is for the start of a mission or the return of the companion(s).
 //  Used in the UI mission generation process to distinguish active missions from available ones.
@@ -236,9 +249,12 @@ npc_ptr companion_choose( const std::map<skill_id, int> &required_skills = {}, b
                               false );
 npc_ptr companion_choose_return( const npc &p, const mission_id &miss_id,
                                  const time_point &deadline, bool ignore_parameters = false );
+/// @param until_planned_return also wait for each companion's own planned return time
+/// (companion_mission_time_ret), as camp missions with a variable length need
 npc_ptr companion_choose_return( const tripoint_abs_omt &omt_pos, const std::string &role_id,
                                  const mission_id &miss_id, const time_point &deadline,
-                                 bool by_mission = true, bool ignore_parameters = false );
+                                 bool by_mission = true, bool ignore_parameters = false,
+                                 bool until_planned_return = false );
 npc_ptr companion_choose_return( comp_list &npc_list );
 
 //Return NPC to your party
@@ -254,7 +270,10 @@ void send_companion_mission_finished( const npc &comp, const std::string &outcom
  */
 bool companion_mission_death( npc &comp );
 //Smash stuff, steal valuables, and change map marker
-std::set<item> loot_building( const tripoint_abs_omt &site, const oter_str_id &looted_replacement );
+/// Opens and smashes up @ref site, kills the hostile monsters loaded there and takes much of
+/// its loot; returns every item taken
+std::vector<item> loot_building( const tripoint_abs_omt &site,
+                                 const oter_str_id &looted_replacement );
 
 } // namespace talk_function
 #endif // CATA_SRC_MISSION_COMPANION_H

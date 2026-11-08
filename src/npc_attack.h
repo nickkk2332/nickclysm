@@ -14,6 +14,7 @@
 class Creature;
 class item;
 class npc;
+class spell;
 
 class npc_attack_rating
 {
@@ -64,13 +65,21 @@ class npc_attack
 class npc_attack_spell : public npc_attack
 {
         const spell_id attack_spell_id;
+        // A spell instance already being cast, rated instead of the npc's known spell of that
+        // id: the npc may not know it (an EOC's targeted cast, an item's spell).
+        const spell *being_cast = nullptr;
     public:
         explicit npc_attack_spell( const spell_id &attack_spell_id ) : attack_spell_id( attack_spell_id ) {}
+        // Rates where to aim a cast that has already started. Whether the npc could start it
+        // (energy, components, its ally rules) isn't asked again.
+        explicit npc_attack_spell( const spell &instance );
         npc_attack_rating evaluate( const npc &source, const Creature *target ) const override;
         std::vector<npc_attack_rating> all_evaluations( const npc &source,
                 const Creature *target ) const override;
         void use( npc &source, const tripoint_bub_ms &location ) const override;
     private:
+        // the instance being cast, or the npc's known spell
+        const spell &get_attack_spell( const npc &source ) const;
         bool can_use( const npc &source ) const;
         int base_time_penalty( const npc &source ) const;
         npc_attack_rating evaluate_tripoint(

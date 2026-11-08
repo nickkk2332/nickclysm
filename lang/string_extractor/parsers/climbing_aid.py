@@ -4,11 +4,16 @@ from ..write_text import write_text
 
 def parse_climbing_aid(json, origin):
 
+    name = get_singular_name(json)
+
+    up = json.get("up")
+    if up:
+        write_text(up.get("msg_after"), origin,
+                   comment=f"Message after climbing up with '{name}'")
+
     down = json.get("down")
     if not down:
         return
-
-    name = get_singular_name(json)
 
     write_text(down.get("menu_text"), origin,
                comment=f"Menu text for descent with '{name}'")

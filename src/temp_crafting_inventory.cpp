@@ -1,11 +1,14 @@
 
 #include "temp_crafting_inventory.h"
 
+#include <atomic>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "character.h"
@@ -33,8 +36,6 @@ class vehicle;
 
 static const flag_id json_flag_PSEUDO( "PSEUDO" );
 
-static const itype_id itype_brick_oven_pseudo( "brick_oven_pseudo" );
-static const itype_id itype_butchery_tree_pseudo( "butchery_tree_pseudo" );
 static const itype_id itype_fire( "fire" );
 
 namespace
@@ -50,6 +51,13 @@ uint64_t &current_epoch()
 {
     static uint64_t epoch = 0;
     return epoch;
+}
+
+// shared by all inventories, so no two changes get the same generation
+uint64_t next_generation()
+{
+    static std::atomic<uint64_t> last{ 0 };
+    return last.fetch_add( 1 ) + 1;
 }
 } // namespace
 
@@ -125,6 +133,12 @@ void temp_crafting_inventory::drop_caches() const
     provider_quality_answers.clear();
 }
 
+void temp_crafting_inventory::changed()
+{
+    drop_caches();
+    generation_ = next_generation();
+}
+
 std::optional<bool> temp_crafting_inventory::recall_provider_quality(
     const provider_quality_key &key ) const
 {
@@ -153,6 +167,7 @@ temp_crafting_inventory::temp_crafting_inventory( const temp_crafting_inventory 
     }
     items_loc = v.items_loc;
     max_empty_liq_cont = v.max_empty_liq_cont;
+    changed();
 }
 
 temp_crafting_inventory &temp_crafting_inventory::operator=( const temp_crafting_inventory &v )
@@ -166,6 +181,7 @@ temp_crafting_inventory &temp_crafting_inventory::operator=( const temp_crafting
     }
     items_loc = v.items_loc;
     max_empty_liq_cont = v.max_empty_liq_cont;
+    changed();
     return *this;
 }
 
@@ -176,7 +192,7 @@ size_t temp_crafting_inventory::size() const
 
 void temp_crafting_inventory::clear()
 {
-    drop_caches();
+    changed();
     items_loc.clear();
     item_copies.clear();
     temp_owned_items.clear();
@@ -186,13 +202,13 @@ void temp_crafting_inventory::clear()
 
 void temp_crafting_inventory::add_item_loc( const item_location &loc )
 {
-    drop_caches();
+    changed();
     items_loc.insert( loc );
 }
 
 item &temp_crafting_inventory::add_item_copy( const item &item )
 {
-    drop_caches();
+    changed();
     const auto iter = temp_owned_items.insert( item );
     item_copies.insert( item_location( *this, &*iter ) );
     return *iter;
@@ -362,17 +378,22 @@ void temp_crafting_inventory::form_from_map( map &m, std::vector<tripoint_bub_ms
         const bool pseudo_tools_reserved =
             get_craft_reservations().provider_tile_reserved( m.get_abs( p ) );
         const ter_id &t = m.ter( p );
-        // a temporary hack while trees are terrain
-        if( !pseudo_tools_reserved && t->has_flag( ter_furn_flag::TFLAG_TREE ) ) {
-            add_pseudo_item( itype_butchery_tree_pseudo );
-        }
-        // Another terrible hack, as terrain can't provide pseudo items, and construction can't do multi-step furniture
-        ter_id brick_oven( "t_brick_oven" );
-        if( !pseudo_tools_reserved && t == brick_oven ) {
-            add_pseudo_item( itype_brick_oven_pseudo );
-        }
         const furn_id &f = m.furn( p );
         const furn_t &fo = f.obj();
+        // CRAFT-J08: terrain and furniture "crafting_pseudo_items" (a tree's butchery tree and
+        // the brick oven were hardcoded here); crafting.cpp's provider list reads the same
+        if( !pseudo_tools_reserved ) {
+            for( const std::vector<itype_id> *tools : {
+                     &t->crafting_pseudo_tools(), &fo.crafting_pseudo_tools()
+                 } ) {
+                for( const itype_id &pseudo : *tools ) {
+                    if( pseudo.is_valid() && ( !pseudo->has_flag( flag_NEEDS_SUNLIGHT ) ||
+                                               tile_has_sufficient_sunlight( m, p ) ) ) {
+                        add_pseudo_item( pseudo );
+                    }
+                }
+            }
+        }
         const itype_id &pseudo_id = fo.crafting_pseudo_item;
         if( !pseudo_tools_reserved && pseudo_id.is_valid() ) {
             if(
@@ -466,6 +487,7 @@ void temp_crafting_inventory::dump( std::vector<item *> &dest ) const
 
 void temp_crafting_inventory::update_liq_container_count( const itype_id &id, int count )
 {
+    changed();
     max_empty_liq_cont[id] += count;
 }
 
@@ -502,6 +524,7 @@ bool temp_crafting_inventory::must_use_hallu_poison( const itype_id &id, int to_
 void temp_crafting_inventory::replace_liq_container_count( const std::map<itype_id, int> &newmap,
         bool use_max )
 {
+    changed();
     for( const auto &it : newmap ) {
         if( !use_max || max_empty_liq_cont.find( it.first ) == max_empty_liq_cont.end() ||
             max_empty_liq_cont.at( it.first ) < it.second ) {

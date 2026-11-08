@@ -1,14 +1,18 @@
 #include "event_statistics.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
+#include "calendar.h"
 #include "cata_assert.h"
 #include "cata_variant.h"
 #include "debug.h"
@@ -386,7 +390,12 @@ struct event_type_event_source : event_source {
     }
 
     cata::event::fields_type fields() const override {
-        return cata::event::get_fields( type );
+        cata::event::fields_type result = cata::event::get_fields( type );
+        // the statistics don't keep these, so a statistic can't use them
+        for( const std::string &field : stats_tracker::unrecorded_fields( type ) ) {
+            result.erase( field );
+        }
+        return result;
     }
 
     monotonically monotonicity() const override {
@@ -654,6 +663,9 @@ struct event_transformation_impl : public event_transformation::impl {
 
     void check( const std::string &name ) const override {
         const cata::event::fields_type input_fields = source_->fields();
+        // match_and_transform applies the constraints after adding the new fields, so they may
+        // constrain those too
+        cata::event::fields_type constrainable_fields = input_fields;
 
         for( const std::pair<std::string, new_field> &p : new_fields_ ) {
             if( input_fields.count( p.first ) ) {
@@ -661,13 +673,14 @@ struct event_transformation_impl : public event_transformation::impl {
                           "with that name already exists", name, p.first );
             }
             p.second.check( name, input_fields );
+            constrainable_fields.emplace( p.first, p.second.type( constrainable_fields ) );
         }
 
         for( const std::pair<std::string, value_constraint> &p : constraints_ ) {
-            auto it = input_fields.find( p.first );
-            if( it == input_fields.end() ) {
+            auto it = constrainable_fields.find( p.first );
+            if( it == constrainable_fields.end() ) {
                 debugmsg( "event_transformation %s applies constraint to field %s, but no field "
-                          "with that name exists in the input", name, p.first );
+                          "with that name exists in the input or the new fields", name, p.first );
             } else {
                 p.second.check( name, it->second );
             }
@@ -1254,6 +1267,243 @@ struct event_statistic_last_value : event_statistic_field_summary<false> {
         return std::make_unique<event_statistic_last_value>( *this );
     }
 };
+
+// The number of different values the given field takes across all events
+struct event_statistic_count_distinct : event_statistic_field_summary<false> {
+    using event_statistic_field_summary::event_statistic_field_summary;
+
+    static std::set<cata_variant> distinct_values( const event_multiset &events,
+            const std::string &field ) {
+        std::set<cata_variant> result;
+        for( const event_multiset::summaries_type::value_type &summary : events.counts() ) {
+            auto it = summary.first.find( field );
+            if( it != summary.first.end() ) {
+                result.insert( it->second );
+            }
+        }
+        return result;
+    }
+
+    cata_variant value( stats_tracker &stats ) const override {
+        const int distinct = static_cast<int>( distinct_values( source->get( stats ),
+                                               field ).size() );
+        return cata_variant::make<cata_variant_type::int_>( distinct );
+    }
+
+    struct state : stats_tracker_value_state, event_multiset_watcher {
+        state( const event_statistic_count_distinct *s, stats_tracker &stats ) :
+            stat( s ) {
+            init( s->source->get( stats ) );
+            stat->source->add_watcher( stats, this );
+        }
+
+        void init( const event_multiset &events ) {
+            seen = distinct_values( events, stat->field );
+            value = cata_variant( static_cast<int>( seen.size() ) );
+        }
+
+        void event_added( const cata::event &e, stats_tracker &stats ) override {
+            auto it = e.data().find( stat->field );
+            if( it == e.data().end() || !seen.insert( it->second ).second ) {
+                return;
+            }
+            value = cata_variant( static_cast<int>( seen.size() ) );
+            stats.stat_value_changed( stat->id, value );
+        }
+
+        void events_reset( const event_multiset &new_set, stats_tracker &stats ) override {
+            init( new_set );
+            stats.stat_value_changed( stat->id, value );
+        }
+
+        const cata_variant &get_value() const override {
+            return value;
+        }
+
+        const event_statistic_count_distinct *stat;
+        std::set<cata_variant> seen;
+        cata_variant value;
+    };
+
+    std::unique_ptr<stats_tracker_state> watch( stats_tracker &stats ) const override {
+        return std::make_unique<state>( this, stats );
+    }
+
+    cata_variant_type type() const override {
+        return cata_variant_type::int_;
+    }
+
+    monotonically monotonicity() const override {
+        return is_increasing( source->monotonicity() ) ? monotonically::increasing :
+               monotonically::unknown;
+    }
+
+    std::unique_ptr<impl> clone() const override {
+        return std::make_unique<event_statistic_count_distinct>( *this );
+    }
+};
+
+// The mean of the numeric value in the given field across all events, rounded toward zero; 0
+// when there are no events yet
+struct event_statistic_average : event_statistic_field_summary<true> {
+    using event_statistic_field_summary::event_statistic_field_summary;
+
+    // the total and the number of events with the field
+    static std::pair<int64_t, int64_t> sums( const event_multiset &events,
+            const std::string &field ) {
+        int64_t total = 0;
+        int64_t count = 0;
+        for( const event_multiset::summaries_type::value_type &summary : events.counts() ) {
+            auto it = summary.first.find( field );
+            if( it != summary.first.end() ) {
+                total += static_cast<int64_t>( summary.second.count ) *
+                         it->second.get<cata_variant_type::int_>();
+                count += summary.second.count;
+            }
+        }
+        return { total, count };
+    }
+
+    static int mean( const std::pair<int64_t, int64_t> &sum ) {
+        return sum.second == 0 ? 0 : static_cast<int>( sum.first / sum.second );
+    }
+
+    cata_variant value( stats_tracker &stats ) const override {
+        return cata_variant::make<cata_variant_type::int_>( mean( sums( source->get( stats ),
+                field ) ) );
+    }
+
+    struct state : stats_tracker_value_state, event_multiset_watcher {
+        state( const event_statistic_average *s, stats_tracker &stats ) :
+            stat( s ),
+            sum( sums( s->source->get( stats ), s->field ) ),
+            value( mean( sum ) ) {
+            stat->source->add_watcher( stats, this );
+        }
+
+        void event_added( const cata::event &e, stats_tracker &stats ) override {
+            auto it = e.data().find( stat->field );
+            if( it == e.data().end() ) {
+                return;
+            }
+            sum.first += it->second.get<cata_variant_type::int_>();
+            ++sum.second;
+            value = cata_variant( mean( sum ) );
+            stats.stat_value_changed( stat->id, value );
+        }
+
+        void events_reset( const event_multiset &new_set, stats_tracker &stats ) override {
+            sum = sums( new_set, stat->field );
+            value = cata_variant( mean( sum ) );
+            stats.stat_value_changed( stat->id, value );
+        }
+
+        const cata_variant &get_value() const override {
+            return value;
+        }
+
+        const event_statistic_average *stat;
+        std::pair<int64_t, int64_t> sum;
+        cata_variant value;
+    };
+
+    std::unique_ptr<stats_tracker_state> watch( stats_tracker &stats ) const override {
+        return std::make_unique<state>( this, stats );
+    }
+
+    monotonically monotonicity() const override {
+        return monotonically::unknown;
+    }
+
+    std::unique_ptr<impl> clone() const override {
+        return std::make_unique<event_statistic_average>( *this );
+    }
+};
+
+// The turn of the first (or the last) event, counted from turn zero; -1 when there are no
+// events yet
+template<bool Last>
+struct event_statistic_event_time : event_statistic::impl {
+    event_statistic_event_time( const string_id<event_statistic> &i,
+                                std::unique_ptr<event_source> s ) :
+        id( i ),
+        source( std::move( s ) )
+    {}
+
+    string_id<event_statistic> id;
+    cata::clone_ptr<event_source> source;
+
+    static int turn_of( const time_point &t ) {
+        return to_turns<int>( t - calendar::turn_zero );
+    }
+
+    static int time_of( const event_multiset &events ) {
+        const std::optional<event_multiset::summaries_type::value_type> d =
+            Last ? events.last() : events.first();
+        if( !d ) {
+            return -1;
+        }
+        return turn_of( Last ? d->second.last : d->second.first );
+    }
+
+    cata_variant value( stats_tracker &stats ) const override {
+        return cata_variant::make<cata_variant_type::int_>( time_of( source->get( stats ) ) );
+    }
+
+    struct state : stats_tracker_value_state, event_multiset_watcher {
+        state( const event_statistic_event_time *s, stats_tracker &stats ) :
+            stat( s ),
+            value_int( time_of( s->source->get( stats ) ) ),
+            value( value_int ) {
+            stat->source->add_watcher( stats, this );
+        }
+
+        void event_added( const cata::event &e, stats_tracker &stats ) override {
+            const int t = turn_of( e.time() );
+            int new_value = t;
+            if( value_int >= 0 ) {
+                new_value = Last ? std::max( value_int, t ) : std::min( value_int, t );
+            }
+            if( new_value == value_int ) {
+                return;
+            }
+            value_int = new_value;
+            value = cata_variant( value_int );
+            stats.stat_value_changed( stat->id, value );
+        }
+
+        void events_reset( const event_multiset &new_set, stats_tracker &stats ) override {
+            value_int = time_of( new_set );
+            value = cata_variant( value_int );
+            stats.stat_value_changed( stat->id, value );
+        }
+
+        const cata_variant &get_value() const override {
+            return value;
+        }
+
+        const event_statistic_event_time *stat;
+        int value_int;
+        cata_variant value;
+    };
+
+    std::unique_ptr<stats_tracker_state> watch( stats_tracker &stats ) const override {
+        return std::make_unique<state>( this, stats );
+    }
+
+    cata_variant_type type() const override {
+        return cata_variant_type::int_;
+    }
+
+    monotonically monotonicity() const override {
+        // -1 with no events, so neither is known to only go one way
+        return monotonically::unknown;
+    }
+
+    std::unique_ptr<impl> clone() const override {
+        return std::make_unique<event_statistic_event_time>( *this );
+    }
+};
 } // namespace
 
 cata_variant event_statistic::value( stats_tracker &stats ) const
@@ -1303,6 +1553,19 @@ void event_statistic::load( const JsonObject &jo, std::string_view )
         mandatory( jo, was_loaded, "field", field );
         impl_ = std::make_unique<event_statistic_last_value>(
                     id, event_source::load( jo ), field );
+    } else if( type == "count_distinct" ) {
+        std::string field;
+        mandatory( jo, was_loaded, "field", field );
+        impl_ = std::make_unique<event_statistic_count_distinct>(
+                    id, event_source::load( jo ), field );
+    } else if( type == "average" ) {
+        std::string field;
+        mandatory( jo, was_loaded, "field", field );
+        impl_ = std::make_unique<event_statistic_average>( id, event_source::load( jo ), field );
+    } else if( type == "first_time" ) {
+        impl_ = std::make_unique<event_statistic_event_time<false>>( id, event_source::load( jo ) );
+    } else if( type == "last_time" ) {
+        impl_ = std::make_unique<event_statistic_event_time<true>>( id, event_source::load( jo ) );
     } else {
         jo.throw_error( "Invalid stat_type '" + type + "'" );
     }
@@ -1350,6 +1613,7 @@ void score::load( const JsonObject &jo, std::string_view )
 {
     optional( jo, was_loaded, "description", description_ );
     mandatory( jo, was_loaded, "statistic", stat_ );
+    optional( jo, was_loaded, "allow_late_tracking", allow_late_tracking_, false );
 }
 
 void score::check() const

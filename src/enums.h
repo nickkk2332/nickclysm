@@ -166,6 +166,9 @@ enum class ot_match_type : int {
     // occur at the beginning, end, or middle and does not have any rules about
     // underscore delimiting.
     contains,
+    // The provided string is an overmap terrain flag (an engine flag or a mod's own)
+    // that the overmap terrain must have.
+    flag,
     num_ot_match_type
 };
 

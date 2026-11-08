@@ -32,11 +32,10 @@ class JsonValue;
 class Trait_group;
 class item;
 class nc_color;
+enum class blood_type;
 struct const_dialogue;
-struct dream;
 template <typename E> struct enum_traits;
 
-extern std::vector<dream> dreams;
 extern std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
 
 struct dream {
@@ -46,14 +45,22 @@ struct dream {
     public:
         std::vector<std::string> messages() const;
 
+        // A dream without an "id" in its JSON gets one no JSON can name, so it can't be changed.
+        string_id<dream> id;
+        bool was_loaded = false;
         mutation_category_id category; // The category that will trigger the dream
-        int strength; // The category strength required for the dream
+        int strength = 0; // The category strength required for the dream
 
-        dream() {
-            strength = 0;
-        }
-
-        static void load( const JsonObject &jsobj );
+        /** Loads one "dream" object: through the dream factory if it has an id or is abstract. */
+        static void load_all( const JsonObject &jsobj, const std::string &src );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jsobj, std::string_view src );
+        /** Every dream, in the order they were first defined */
+        static const std::vector<dream> &get_all();
+        /** Loads the dreams whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
+        static void reset();
 };
 
 struct mut_attack {
@@ -150,6 +157,29 @@ struct trait_replacement {
     bool error = false;
 };
 
+/**
+ * MONAI-J06: a "monster_relations" entry, how monsters see a character with the mutation. It
+ * applies to the monsters of any of `species`, any of `factions` and any of `monster_flags`
+ * (a list left empty doesn't narrow it: an entry with none applies to every monster).
+ */
+struct monster_relation {
+    enum class attitude_t : int { none, friendly, ignore };
+
+    std::vector<species_id> species;
+    std::vector<mfaction_str_id> factions;
+    std::vector<mon_flag_str_id> monster_flags;
+    // Only while the monster's anger (with the relations applied before this one) is in range
+    std::optional<int> min_anger;
+    std::optional<int> max_anger;
+    // Added to the monster's anger and morale toward the character
+    int anger = 0;
+    int morale = 0;
+    // "FRIEND" or "IGNORE": the monster then has that attitude, whatever its anger
+    attitude_t attitude = attitude_t::none;
+
+    void deserialize( const JsonObject &jo );
+};
+
 struct mutation_variant {
     std::string id;
 
@@ -169,6 +199,71 @@ struct mutation_variant {
 
     void deserialize( const JsonObject &jo );
     void load( const JsonObject &jo );
+};
+
+/** Where Character::can_eat checks a mutation's eat_condition, among its built-in checks */
+enum class eat_check_stage : int {
+    first,       // before the frozen, drug and tool checks (the Mycus traits)
+    before_diet, // before the CARNIVORE_DIET and HERBIVORE_DIET refusals (PROBOSCIS)
+    after_diet,  // after those, before can_only_eat (the default; VEGAN)
+    last         // after can_only_eat, the last check (PICKYEATER)
+};
+
+/** Food can only be eaten while condition is true, with the eater as u_ and the food as npc_ */
+struct mutation_eat_condition {
+    std::function<bool( const_dialogue const & )> condition;
+    translation fail_message;
+    eat_check_stage stage = eat_check_stage::after_diet;
+};
+
+/** How a mutation changes the taste of food (GOURMAND) */
+struct mutation_food_fun {
+    // Positive fun and, for positive fun, its cap are multiplied by these
+    float positive = 1.0f;
+    float positive_max = 1.0f;
+    // Fun below -1 is multiplied by this
+    float negative = 1.0f;
+    // If set, the cap of fun below -1 becomes the fun before negative was applied, times this
+    std::optional<float> negative_max;
+};
+
+/** What a creature that hits the mutant in melee suffers: SPINES, QUILLS, THORNS, CF_HAIR (CHAR-J08) */
+struct mutation_retaliation {
+    struct effect_data {
+        efftype_id effect;
+        time_duration duration = 1_turns;
+        // the effect is given with a chance of one in this
+        int one_in = 1;
+    };
+    // damage rolled from min_damage to max_damage, to the attacker's torso; none if max_damage is 0
+    damage_type_id damage_type;
+    int min_damage = 0;
+    int max_damage = 0;
+    // only when the hit part has nothing worn on it
+    bool requires_uncovered = true;
+    // only when the attacker wields nothing
+    bool unarmed_attacker_only = false;
+    std::vector<effect_data> effects;
+    // the avatar's message, %s is the attacker; others': %1$s is the mutant, %2$s the attacker
+    translation message;
+    translation npc_message;
+};
+
+/** What a mutation does when activated, built into the game ("builtin_activation") */
+enum class mutation_builtin_activation : int {
+    none,
+    web,                 // spin a web here and, while on, wherever the character walks (WEB_WEAVER)
+    sludge_trail,        // the same with sludge (SNAIL_TRAIL)
+    long_pull,           // pull a creature towards the character (LONG_TONGUE2)
+    burrow,              // dig with the fake burrowing tool (BURROW)
+    slime_split,         // split off a friendly slime microbian (SLIMESPAWNER)
+    vomit,               // throw up (VOMITOUS)
+    spores,              // release spores (M_FERTILE)
+    blossoms,            // release blossoms (M_BLOOM)
+    spores_and_blossoms, // both (M_PROVENANCE)
+    echolocation,        // one echolocation pulse (ECHOLOCATION)
+    tree_communion,      // commune with the forest next to a tree (TREE_COMMUNION)
+    last
 };
 
 struct mutation_branch {
@@ -222,11 +317,28 @@ struct mutation_branch {
         int visibility = 0;
         int ugliness   = 0;
         int cost       = 0;
+        // MUT-J11: what an activation, and each cooldown of upkeep, takes of each resource the
+        // trait uses (the flags above; bionic power when power_cost is above 0).  The legacy
+        // "cost" sets every used resource's amount to it; "costs" names each one.
+        int kcal_cost = 0;
+        int thirst_cost = 0;
+        int sleepiness_cost = 0;
+        int mana_cost = 0;
+        int stamina_cost = 0;
+        units::energy power_cost = 0_kJ;
+        // Whether activating or running it takes anything (a used resource with an amount)
+        bool has_cost() const;
         // costs are consumed every cooldown turns,
         time_duration cooldown   = 0_turns;
         // bodytemp elements:
         units::temperature_delta bodytemp_min = 0_C_delta;
         units::temperature_delta bodytemp_max = 0_C_delta;
+        // Multiplies the time a wet body takes to dry (fur and slime hold water); the largest
+        // among a character's traits applies (CHAR-J06)
+        float drying_time_mult = 1.0f;
+        // Tiles of night vision while the trait is active (always for one that can't be
+        // activated); the best among a character's traits counts (CHAR-J03)
+        float night_vision_range = 0.0f;
         // Additional bonuses
         std::optional<int> scent_intensity;
 
@@ -256,11 +368,21 @@ struct mutation_branch {
         /** The item, if any, spawned by the mutation */
         itype_id spawn_item;
 
+        /** Built-in behaviour run on activation (MUT-J06) */
+        mutation_builtin_activation builtin_activation = mutation_builtin_activation::none;
+        /** If set, gaining the mutation gives the character this blood type (ACIDBLOOD) */
+        std::optional<blood_type> sets_blood_type;
+        /** Body parts whose maximum HP the mutation multiplies (GLASSJAW's head) */
+        std::map<bodypart_str_id, double> bodypart_hp_multiplier;
+
         /**Species ignoring character with the mutation*/
         std::vector<species_id> ignored_by;
 
         /**Map of angered species and their intensity*/
         std::map<species_id, int> anger_relations;
+
+        /** MONAI-J06: species, faction and flag relations to monsters, with morale and attitude */
+        std::vector<monster_relation> monster_relations;
 
         std::vector<species_id> empathize_with;
         std::vector<species_id> no_empathize_with;
@@ -272,10 +394,14 @@ struct mutation_branch {
         std::set<flag_id> edible_food_flags;
         /** Food containing the vitamin is an allergen: eating it gives the morale penalty */
         std::vector<std::pair<vitamin_id, morale_type>> food_allergies;
-        /** Food can only be eaten while this is true, with the eater as u_ and the food as npc_ */
-        std::function<bool( const_dialogue const & )> eat_condition;
-        bool has_eat_condition = false;
-        translation eat_fail_message;
+        /** Food can only be eaten while each of these is true (see mutation_eat_condition) */
+        std::vector<mutation_eat_condition> eat_conditions;
+        /** Harm done to melee attackers (see mutation_retaliation) */
+        std::vector<mutation_retaliation> retaliation;
+        /** Changes how good or bad food tastes */
+        std::optional<mutation_food_fun> food_fun;
+        /** Run when food is swallowed, as its morale applies; eater as u_, food as npc_ */
+        std::vector<effect_on_condition_id> eat_eocs;
         /** Mutations with any of the diet rules above, in load order */
         static const std::vector<trait_id> &get_diet_traits();
 
@@ -371,6 +497,10 @@ struct mutation_branch {
         std::set<sub_bodypart_str_id> remove_rigid_subparts;
         // item flags that allow wearing gear even if its body part is restricted
         std::set<flag_id> allowed_items;
+        // Items made of these materials or with these flags can't be worn (CHAR-J02)
+        std::set<material_id> unwearable_materials;
+        std::set<flag_id> unwearable_flags;
+        translation unwearable_message;
         std::map<bodypart_str_id, resistances> armor; // Modifiers to protection values
         std::vector<itype_id> integrated_armor; // Armor pseudo-items that are put on by this mutation
         std::vector<matype_id>
@@ -411,6 +541,11 @@ struct mutation_branch {
          * Returns true if a character with this mutation has to take off rigid items at the location.
          */
         bool conflicts_with_item_rigid( const item &it ) const;
+        /**
+         * Returns true if the item is made of one of unwearable_materials or has one of
+         * unwearable_flags.
+         */
+        bool refuses_to_wear( const item &it ) const;
         /**
          * Returns damage resistance on a given body part granted by this mutation.
          */
@@ -536,10 +671,13 @@ struct mutation_category_trait {
         translation raw_mutagen_message;
         // Memorial message when you cross a threshold
         std::string raw_memorial_message;
+        // Message when you cross this category's threshold
+        translation raw_threshold_message;
 
     public:
         std::string name() const;
         std::string mutagen_message() const;
+        std::string threshold_message() const;
         std::string memorial_message_male() const;
         std::string memorial_message_female() const;
 
@@ -549,6 +687,8 @@ struct mutation_category_trait {
         bool skip_test = false;
         // Mutation category i.e "BIRD", "CHIMERA"
         mutation_category_id id;
+        bool was_loaded = false;
+        std::vector<std::pair<mutation_category_id, mod_id>> src;
         // The trait that you gain when you break the threshold for this category
         trait_id threshold_mut;
         // Amount of vitamin necessary to attempt breaking the threshold
@@ -559,6 +699,13 @@ struct mutation_category_trait {
         int base_removal_chance = 100;
         // Multiplier of vitamin costs when mutating this category removes starting traits
         float base_removal_cost_mul = 3.0f;
+        // MUT-J10: the chance that a mutation in this category is a bad one is
+        // bad_mutation_chance_scale * instability / good traits in the category, at most
+        // bad_mutation_chance_cap
+        float bad_mutation_chance_scale = 0.5f;
+        float bad_mutation_chance_cap = 0.67f;
+        // The character's level in this category needed to try crossing its threshold
+        int threshold_breach_min_level = 30;
 
         static const std::map<mutation_category_id, mutation_category_trait> &get_all();
         static const mutation_category_trait &get_category(
@@ -566,10 +713,18 @@ struct mutation_category_trait {
         static void reset();
         static void check_consistency();
 
-        static void load( const JsonObject &jsobj );
+        /** Loads one "mutation_category" object through the category factory. */
+        static void load_all( const JsonObject &jsobj, const std::string &src_name );
+        /** Called by the factory: reads one definition, or the members a copy changes */
+        void load( const JsonObject &jsobj, std::string_view src_name );
+        /** Loads the categories whose "copy-from" parent was defined later */
+        // Not "finalize": generic_factory calls a finalize() of its objects on each one.
+        static void finalize_all();
 };
 
 void load_mutation_type( const JsonObject &jsobj );
+// Forgets every mutation type, so they don't carry over to the next world loaded
+void reset_mutation_types();
 bool mutation_category_is_valid( const mutation_category_id &cat );
 bool mutation_type_exists( const std::string &id );
 std::vector<trait_id> get_mutations_in_types( const std::set<std::string> &ids );
@@ -607,6 +762,11 @@ struct traits_sorter {
 template<>
 struct enum_traits<mutagen_technique> {
     static constexpr mutagen_technique last = mutagen_technique::num_mutagen_techniques;
+};
+
+template<>
+struct enum_traits<mutation_builtin_activation> {
+    static constexpr mutation_builtin_activation last = mutation_builtin_activation::last;
 };
 
 #endif // CATA_SRC_MUTATION_H

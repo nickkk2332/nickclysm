@@ -1,0 +1,134 @@
+[
+  {
+    "type": "recipe",
+    "result": "test_m22b_dock",
+    "//": "CAMP-J08/J09: an expansion that provides 2 of test_m22b_jetty (and, as every upgrade does, 1 of its own id).  Its requirement is never provided, so no camp offers it as an upgrade; tests add it with add_expansion.",
+    "description": "Test data only.",
+    "activity_level": "NO_EXERCISE",
+    "category": "CC_BUILDING",
+    "subcategory": "CSC_BUILDING_BASES",
+    "autolearn": false,
+    "never_learn": true,
+    "time": "1 h",
+    "construction_blueprint": "test_stove_update",
+    "blueprint_name": "m22b dock",
+    "blueprint_provides": [ { "id": "test_m22b_jetty", "amount": 2 } ],
+    "blueprint_requires": [ { "id": "test_m22b_not_an_upgrade" } ],
+    "check_blueprint_needs": false
+  },
+  {
+    "type": "item_group",
+    "id": "test_m22b_catch_default",
+    "//": "CAMP-J09: what the test missions bring back outside their region: planks.",
+    "subtype": "distribution",
+    "items": [ [ "2x4", 100 ] ]
+  },
+  {
+    "type": "item_group",
+    "id": "test_m22b_catch_regional",
+    "//": "CAMP-J09: what the regional test mission brings back in the default region: fish.",
+    "subtype": "distribution",
+    "items": [ [ "fish", 100 ] ]
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_m22b_regional_fishing",
+    "//": "CAMP-J09: a generic mission with other results in the default region.",
+    "name": "Regional Fishing",
+    "desc": "Test data only.",
+    "required_provides": [ "test_m22b_jetty" ],
+    "duration": "1 h",
+    "results": { "item_group": "test_m22b_catch_default", "attempts": 2 },
+    "regional_results": { "default": { "item_group": "test_m22b_catch_regional", "attempts": 3 } }
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_m22b_deadly_fishing",
+    "//": "CAMP-J09: a generic mission whose JSON encounter always kills the companion.",
+    "name": "Deadly Fishing",
+    "desc": "Test data only.",
+    "required_provides": [ "test_m22b_jetty" ],
+    "duration": "1 h",
+    "results": { "item_group": "test_m22b_catch_default", "attempts": 2 },
+    "encounter": {
+      "one_in": 1,
+      "task": "fishing in a storm",
+      "eoc": {
+        "id": "EOC_TEST_M22B_DEADLY_ENCOUNTER",
+        "effect": [
+          { "math": [ "test_m22b_deadly_encounter = 1" ] },
+          { "copy_var": { "context_val": "task" }, "target_var": { "global_val": "test_m22b_deadly_task" } },
+          { "math": [ "_encounter_survived = 0" ] }
+        ]
+      }
+    }
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_m22b_safe_fishing",
+    "//": "CAMP-J09: a generic mission whose JSON encounter the companion always survives.",
+    "name": "Safe Fishing",
+    "desc": "Test data only.",
+    "required_provides": [ "test_m22b_jetty" ],
+    "duration": "1 h",
+    "results": { "item_group": "test_m22b_catch_default", "attempts": 2 },
+    "encounter": {
+      "one_in": 1,
+      "threat": 4,
+      "eoc": { "id": "EOC_TEST_M22B_SAFE_ENCOUNTER", "effect": [ { "math": [ "test_m22b_safe_threat = _threat" ] } ] }
+    }
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_m22b_recruiting",
+    "//": "CAMP-J06: recruiting that finds hunters and knows a bonus.  Its provide is never given, so no camp offers it.",
+    "name": "Hunter Recruiting",
+    "desc": "Test data only.",
+    "behavior": "recruiting",
+    "skill": "speech",
+    "required_provides": [ "test_m22b_never_provided" ],
+    "duration": "1 d",
+    "recruit": {
+      "npc_classes": [ [ "NC_HUNTER", 1 ] ],
+      "find_difficulty": 12,
+      "bonuses": [ { "condition": { "math": [ "test_m22b_famous == 1" ] }, "bonus": 7 } ],
+      "recruit_eocs": [ { "id": "EOC_TEST_M22B_RECRUITED", "effect": [ { "math": [ "test_m22b_recruited = 1" ] } ] } ]
+    }
+  },
+  {
+    "type": "faction_mission",
+    "id": "test_m22b_template_recruiting",
+    "//": "CAMP-J06: recruiting that finds the test NPC template.",
+    "name": "Template Recruiting",
+    "desc": "Test data only.",
+    "behavior": "recruiting",
+    "required_provides": [ "test_m22b_never_provided" ],
+    "duration": "1 d",
+    "recruit": { "npc_templates": [ "test_talker" ] }
+  },
+  {
+    "type": "shopkeeper_blacklist",
+    "id": "test_m22b_blacklist",
+    "//": "CAMP-J12: entries whose conditions look at the traded item.",
+    "entries": [
+      {
+        "item": "2x4",
+        "condition": { "compare_string": [ "free_merchants", { "context_val": "trade_item_owner" } ] },
+        "message": "stolen"
+      },
+      { "item": "nail", "condition": { "math": [ "_trade_item_count >= 10" ] }, "message": "too many" }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M22B_TRADES",
+    "//": "CAMP-J12: records the last avatar_trades event.",
+    "eoc_type": "EVENT",
+    "required_event": "avatar_trades",
+    "effect": [
+      { "math": [ "test_m22b_trade_given = _value_given" ] },
+      { "math": [ "test_m22b_trade_received = _value_received" ] },
+      { "copy_var": { "context_val": "faction" }, "target_var": { "global_val": "test_m22b_trade_faction" } }
+    ]
+  }
+]

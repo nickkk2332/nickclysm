@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -13,7 +14,11 @@
 #include "generic_factory.h"
 #include "json.h"
 #include "localized_comparator.h"
+#include "magic_enchantment.h"
 #include "options.h"
+#include "string_formatter.h"
+
+class json_flag;
 
 const float book_proficiency_bonus::default_time_factor = 0.5f;
 const float book_proficiency_bonus::default_fail_factor = 0.5f;
@@ -25,6 +30,21 @@ namespace
 {
 generic_factory<proficiency> proficiency_factory( "proficiency" );
 generic_factory<proficiency_category> proficiency_category_factory( "proficiency category" );
+
+// The `bonuses` keys the game reads, and the bonus types each one uses (PROG-J09)
+const std::map<std::string, std::set<proficiency_bonus_type>> &known_bonus_keys()
+{
+    static const std::map<std::string, std::set<proficiency_bonus_type>> keys = {
+        { "archery", { proficiency_bonus_type::strength } },
+        { "athlete", { proficiency_bonus_type::strength } },
+        { "melee_attack", { proficiency_bonus_type::stamina } },
+    };
+    return keys;
+}
+
+// Set by finalize_all: whether any proficiency has enchantments or flags
+bool proficiencies_have_enchantments = false;
+bool proficiencies_have_flags = false;
 } // namespace
 
 template<>
@@ -80,6 +100,18 @@ void proficiency::load_proficiencies( const JsonObject &jo, const std::string &s
 void proficiency::finalize_all()
 {
     proficiency_factory.finalize();
+    proficiencies_have_enchantments = false;
+    proficiencies_have_flags = false;
+    for( const proficiency &prof : proficiency_factory.get_all() ) {
+        proficiencies_have_enchantments = proficiencies_have_enchantments || !prof._enchantments.empty();
+        proficiencies_have_flags = proficiencies_have_flags || !prof._flags.empty();
+        for( const enchantment_id &ench : prof._enchantments ) {
+            if( !ench.is_valid() ) {
+                debugmsg( "proficiency %s has unknown enchantment %s", prof.id.str(), ench.str() );
+            }
+        }
+        // Character flags aren't all defined in JSON (a trait's aren't checked either)
+    }
 }
 
 void proficiency_category::load_proficiency_categories( const JsonObject &jo,
@@ -102,6 +134,8 @@ void proficiency_bonus::deserialize( const JsonObject &jo )
 void proficiency::reset()
 {
     proficiency_factory.reset();
+    proficiencies_have_enchantments = false;
+    proficiencies_have_flags = false;
 }
 
 void proficiency_category::reset()
@@ -109,7 +143,7 @@ void proficiency_category::reset()
     proficiency_category_factory.reset();
 }
 
-void proficiency::load( const JsonObject &jo, std::string_view )
+void proficiency::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "name", _name );
     mandatory( jo, was_loaded, "description", _description );
@@ -121,11 +155,40 @@ void proficiency::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "default_weakpoint_bonus", _default_weakpoint_bonus );
     optional( jo, was_loaded, "default_weakpoint_penalty", _default_weakpoint_penalty );
     optional( jo, was_loaded, "time_to_learn", _time_to_learn );
+    if( jo.has_member( "time_to_learn" ) ) {
+        _has_time_to_learn = true;
+    }
     optional( jo, was_loaded, "required_proficiencies", _required );
     optional( jo, was_loaded, "ignore_focus", _ignore_focus );
     optional( jo, was_loaded, "teachable", _teachable, true );
 
     optional( jo, was_loaded, "bonuses", _bonuses );
+    // Unknown keys and types did nothing (PROG-J09)
+    for( const std::pair<const std::string, std::vector<proficiency_bonus>> &bonus : _bonuses ) {
+        const auto known = known_bonus_keys().find( bonus.first );
+        if( known == known_bonus_keys().end() ) {
+            jo.throw_error( string_format( "proficiency %s: unknown bonuses key \"%s\" (the game reads "
+                                           "\"archery\", \"athlete\" and \"melee_attack\")",
+                                           id.str(), bonus.first ) );
+        }
+        for( const proficiency_bonus &b : bonus.second ) {
+            if( known->second.count( b.type ) == 0 ) {
+                jo.throw_error( string_format( "proficiency %s: the \"%s\" bonus doesn't read the "
+                                               "\"%s\" type", id.str(), bonus.first,
+                                               io::enum_to_string( b.type ) ) );
+            }
+        }
+    }
+
+    if( jo.has_array( "enchantments" ) ) {
+        _enchantments.clear();
+        int enchant_num = 0;
+        for( JsonValue jv : jo.get_array( "enchantments" ) ) {
+            std::string enchant_name = "INLINE_ENCH_" + id.str() + "_" + std::to_string( enchant_num++ );
+            _enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+        }
+    }
+    optional( jo, was_loaded, "flags", _flags, string_id_reader<::json_flag> {} );
 
     // TODO: Remove at some point
     if( jo.has_float( "default_fail_multiplier" ) ) {
@@ -139,6 +202,86 @@ void proficiency_category::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "name", _name );
     mandatory( jo, was_loaded, "description", _description );
+}
+
+void proficiency::check() const
+{
+    // A bad category showed up only as an error in the UI, and an unknown prerequisite made the
+    // proficiency impossible to learn by practice (PROG-J02)
+    if( !_category.is_valid() ) {
+        debugmsg( "proficiency %s has unknown category %s", id.str(), _category.str() );
+    }
+    for( const proficiency_id &req : _required ) {
+        if( !req.is_valid() ) {
+            debugmsg( "proficiency %s requires unknown proficiency %s", id.str(), req.str() );
+        }
+    }
+    if( _can_learn && !_has_time_to_learn ) {
+        debugmsg( "proficiency %s can be learned but has no time_to_learn (it would take %s)",
+                  id.str(), to_string( _time_to_learn ) );
+    }
+}
+
+namespace
+{
+enum class prerequisite_visit : int {
+    in_progress,
+    done
+};
+
+// Depth-first search from prof through its (known) prerequisites: a prerequisite still in
+// progress closes a circle, the part of path from it on
+void find_prerequisite_cycles( const proficiency_id &prof,
+                               std::map<proficiency_id, prerequisite_visit> &visited,
+                               std::vector<proficiency_id> &path,
+                               std::vector<std::vector<proficiency_id>> &cycles )
+{
+    visited[prof] = prerequisite_visit::in_progress;
+    path.push_back( prof );
+    for( const proficiency_id &req : prof->required_proficiencies() ) {
+        if( !req.is_valid() ) {
+            continue;
+        }
+        const auto found = visited.find( req );
+        if( found == visited.end() ) {
+            find_prerequisite_cycles( req, visited, path, cycles );
+        } else if( found->second == prerequisite_visit::in_progress ) {
+            std::vector<proficiency_id> cycle( std::find( path.begin(), path.end(), req ), path.end() );
+            cycle.push_back( req );
+            cycles.push_back( cycle );
+        }
+    }
+    path.pop_back();
+    visited[prof] = prerequisite_visit::done;
+}
+} // namespace
+
+std::vector<std::vector<proficiency_id>> proficiency::prerequisite_cycles()
+{
+    std::vector<std::vector<proficiency_id>> cycles;
+    std::map<proficiency_id, prerequisite_visit> visited;
+    std::vector<proficiency_id> path;
+    for( const proficiency &prof : get_all() ) {
+        if( visited.count( prof.id ) == 0 ) {
+            find_prerequisite_cycles( prof.id, visited, path, cycles );
+        }
+    }
+    return cycles;
+}
+
+void proficiency::check_all()
+{
+    for( const proficiency &prof : get_all() ) {
+        prof.check();
+    }
+    for( const std::vector<proficiency_id> &cycle : prerequisite_cycles() ) {
+        std::string listed;
+        for( const proficiency_id &prof : cycle ) {
+            listed += listed.empty() ? prof.str() : " -> " + prof.str();
+        }
+        debugmsg( "proficiencies require each other in a circle, so none of them can be learned by "
+                  "practice: %s", listed );
+    }
 }
 
 const std::vector<proficiency> &proficiency::get_all()
@@ -249,6 +392,26 @@ std::optional<float> proficiency::bonus_for( const std::string &category,
     }
 
     return std::nullopt;
+}
+
+const std::vector<enchantment_id> &proficiency::enchantments() const
+{
+    return _enchantments;
+}
+
+const std::set<json_character_flag> &proficiency::flags() const
+{
+    return _flags;
+}
+
+bool proficiency::any_enchantments()
+{
+    return proficiencies_have_enchantments;
+}
+
+bool proficiency::any_flags()
+{
+    return proficiencies_have_flags;
 }
 
 learning_proficiency &proficiency_set::fetch_learning( const proficiency_id &target )
@@ -385,6 +548,9 @@ void proficiency_set::set_time_practiced( const proficiency_id &practicing,
     }
     learning_proficiency &current = fetch_learning( practicing );
     current.practiced = amount;
+    // the time is set exactly: a fraction of a second left from earlier practice would otherwise
+    // add a second later on
+    current.remainder = 0.f;
 }
 
 // prof and its prerequisites, theirs first, each once: a circle of prerequisites ends where it
@@ -591,6 +757,18 @@ float proficiency_set::get_proficiency_bonus( const std::string &category,
         }
     }
     return stat_bonus;
+}
+
+int proficiency_set::count_flag( const json_character_flag &flag ) const
+{
+    if( !proficiency::any_flags() ) {
+        return 0;
+    }
+    int count = 0;
+    for( const proficiency_id &knows : known ) {
+        count += static_cast<int>( knows->flags().count( flag ) );
+    }
+    return count;
 }
 
 void proficiency_set::serialize( JsonOut &jsout ) const

@@ -9,7 +9,6 @@
 #include <random>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "avatar.h"

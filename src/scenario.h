@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_SCENARIO_H
 #define CATA_SRC_SCENARIO_H
 
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -15,11 +16,24 @@
 #include "ret_val.h"
 #include "translation.h"
 #include "type_id.h"
+#include "weighted_list.h"
 
 class JsonObject;
 class profession;
 template<typename T>
 class generic_factory;
+
+/** The NPC a scenario starts next to the player (unless it has the LONE_START flag) */
+struct scenario_starting_npc {
+    // npc classes to pick from, by weight; empty: NC_DOCTOR or a randomly made character, 50/50
+    weighted_int_list<npc_class_id> classes;
+    // The first talk topic; empty: TALK_SHELTER
+    std::string chat;
+    // Run with the NPC as alpha (u_) and the avatar as beta (npc_)
+    std::vector<effect_on_condition_id> eocs;
+
+    void deserialize( const JsonObject &jo );
+};
 
 class scenario
 {
@@ -52,11 +66,16 @@ class scenario
 
         std::set<trait_id> _allowed_traits;
         std::set<trait_id> _forced_traits;
+        // The variant a forced trait is given with, if any (PROG-J05)
+        std::map<trait_id, std::string> _forced_trait_variants;
         std::set<trait_id> _forbidden_traits;
         std::vector<start_location_id> _allowed_locs;
         point_rel_om origin_offset = point_rel_om::zero;
         int _point_cost = 0;
         std::set<std::string> flags; // flags for some special properties of the scenario
+        // The profession group of hobbies new characters start with, unless their profession
+        // names its own: unset, adult_basic_background; an empty id, none (PROG-J01)
+        std::optional<profession_group_id> _default_backgrounds;
         map_extra_id _map_extra;
         std::vector<mission_type_id> _missions;
         std::vector<effect_on_condition_id> _eoc;
@@ -71,6 +90,16 @@ class scenario
 
         time_point _default_start_of_cataclysm;
         time_point _default_start_of_game;
+        // The parts of the start dates as JSON gives them, so a copy changes only the parts it
+        // names (PROG-J07)
+        struct start_date {
+            int hour = 0;
+            int day = 1;
+            season_type season = SPRING;
+            int year = 1;
+        };
+        start_date _cataclysm_date;
+        start_date _game_date;
 
         time_point _start_of_cataclysm;
         time_point _start_of_game;
@@ -78,6 +107,8 @@ class scenario
         vproto_id _starting_vehicle = vproto_id::NULL_ID();
 
         std::vector<std::pair<mongroup_id, float>> _surround_groups;
+
+        std::optional<scenario_starting_npc> _starting_npc;
 
         void load( const JsonObject &jo, std::string_view src );
         bool scenario_traits_conflict_with_profession_traits( const profession &p ) const;
@@ -133,6 +164,8 @@ class scenario
 
         bool traitquery( const trait_id &trait ) const;
         std::set<trait_id> get_locked_traits() const;
+        /** The variant a forced trait is given with ("" for its default) */
+        std::string forced_trait_variant( const trait_id &trait ) const;
         bool is_locked_trait( const trait_id &trait ) const;
         bool is_forbidden_trait( const trait_id &trait ) const;
 
@@ -152,6 +185,8 @@ class scenario
 
         /** Such as a seasonal start, fiery start, surrounded start, etc. */
         bool has_flag( const std::string &flag ) const;
+        /** The JSON's "default_backgrounds", if it has one (PROG-J01) */
+        const std::optional<profession_group_id> &default_backgrounds() const;
 
         /**
          * Do you have the necessary achievement state
@@ -166,6 +201,8 @@ class scenario
         const std::vector<mission_type_id> &missions() const;
         const std::vector<effect_on_condition_id> &eoc() const;
         const std::vector<std::pair<mongroup_id, float>> &surround_groups() const;
+        /** The scenario's "starting_npc", if it has one */
+        const std::optional<scenario_starting_npc> &starting_npc() const;
 
         std::vector<std::pair<string_id<scenario>, mod_id>> src;
 };
@@ -177,9 +214,17 @@ struct scenario_sorter {
     bool operator()( const scenario *a, const scenario *b ) const;
 };
 
+// SCENARIO_BLACKLIST: every "blacklist" adds its scenarios to the hidden ones, and the last
+// "whitelist" hides every scenario it doesn't list, whatever a blacklist says
 struct scen_blacklist {
+    // The scenarios hidden, worked out by finalize() from the lists below
     std::set<string_id<scenario>> scenarios;
+    // Whether a whitelist is in force
     bool whitelist = false;
+    // Every blacklist's scenarios
+    std::set<string_id<scenario>> blacklisted;
+    // The last whitelist's scenarios
+    std::set<string_id<scenario>> whitelisted;
 
     static void load_scen_blacklist( const JsonObject &jo, std::string_view src );
     void load( const JsonObject &jo, std::string_view );

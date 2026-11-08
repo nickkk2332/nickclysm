@@ -218,7 +218,8 @@
     "visibility": 6,
     "ugliness": 2,
     "integrated_armor": [ "integrated_lightfur" ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.15 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.15 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",
@@ -234,7 +235,8 @@
     "visibility": 10,
     "ugliness": 3,
     "integrated_armor": [ "integrated_fur" ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.4 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.4 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",
@@ -249,7 +251,8 @@
     "visibility": 10,
     "ugliness": 3,
     "integrated_armor": [ "integrated_lupine_fur" ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.4 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.4 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",
@@ -278,7 +281,8 @@
     "visibility": 10,
     "ugliness": 3,
     "integrated_armor": [ "integrated_ursine_fur" ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.5 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.5 } ] } ],
+    "drying_time_mult": 4.0
   },
   {
     "type": "mutation",
@@ -307,7 +311,8 @@
     "visibility": 10,
     "ugliness": 3,
     "integrated_armor": [ "integrated_feline_fur" ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.3 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.3 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",
@@ -449,7 +454,15 @@
     "points": 1,
     "vitamin_cost": 60,
     "visibility": 1,
-    "ugliness": 2
+    "ugliness": 2,
+    "retaliation": [
+      {
+        "damage_type": "stab",
+        "damage": [ 1, 8 ],
+        "message": "Your spines puncture %s in mid-attack!",
+        "npc_message": "%1$s's spines puncture %2$s in mid-attack!"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -462,7 +475,15 @@
     "points": 2,
     "vitamin_cost": 160,
     "visibility": 3,
-    "ugliness": 3
+    "ugliness": 3,
+    "retaliation": [
+      {
+        "damage_type": "stab",
+        "damage": [ 1, 20 ],
+        "message": "Your quills puncture %s in mid-attack!",
+        "npc_message": "%1$s's quills puncture %2$s in mid-attack!"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -685,7 +706,8 @@
     "visibility": 10,
     "ugliness": 4,
     "bodytemp_modifiers": [ 100, 150 ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.1 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.1 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",
@@ -704,7 +726,8 @@
     "visibility": 10,
     "ugliness": 4,
     "bodytemp_modifiers": [ 150, 250 ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.15 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.15 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",
@@ -723,7 +746,8 @@
     "visibility": 10,
     "ugliness": 4,
     "bodytemp_modifiers": [ 150, 250 ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.15 } ] } ]
+    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.15 } ] } ],
+    "drying_time_mult": 2.0
   },
   {
     "type": "mutation",

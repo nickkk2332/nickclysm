@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -27,15 +28,11 @@
 #include "simple_pathfinding.h"
 #include "text_snippets.h"
 #include "type_id.h"
+#include "weighted_list.h"
 
 static const oter_str_id oter_road_nesw( "road_nesw" );
-static const oter_str_id oter_road_nesw_manhole( "road_nesw_manhole" );
 
 static const oter_type_str_id oter_type_road( "road" );
-
-static constexpr int BUILDINGCHANCE = 4;
-// The largest size place_cities rolls for a random city.
-static constexpr int MAX_RANDOM_CITY_SIZE = 55;
 
 static pf::directed_path<point_om_omt> straight_path( const point_om_omt &source,
         om_direction::type dir, size_t len )
@@ -75,14 +72,17 @@ void overmap::place_cities()
     }
     // Urbanity grows cities and forestosity shrinks them, but never below size 2. This used
     // std::min and then clamped back up to op_city_size, so neither ever changed a city's size
-    // and max_urbanity did nothing (OMAP-B04). No rolled size exceeds MAX_RANDOM_CITY_SIZE, so
-    // max_city_size stops there too, which keeps the candidate radius OMAPX / 2 - max_city_size
-    // positive.
+    // and max_urbanity did nothing (OMAP-B04). No rolled size exceeds the region's max_size
+    // (finalize keeps it below OMAPX / 2), so max_city_size stops there too, which keeps the
+    // candidate radius OMAPX / 2 - max_city_size positive.
+    const int min_random_size = city_settings.min_size;
+    const int max_random_size = city_settings.max_size;
     const int city_size_adjust = std::max( urbanity - static_cast<int>( forestosity / 2.0f ),
-                                           2 - op_city_size );
+                                           min_random_size - op_city_size );
     int city_space_adjust = urbanity / 2;
     const int max_city_size = std::clamp( std::min( op_city_size + city_size_adjust,
-                                          op_city_size * max_urbanity ), 2, MAX_RANDOM_CITY_SIZE );
+                                          op_city_size * max_urbanity ), min_random_size,
+                                          max_random_size );
     if( op_city_spacing > 0 ) {
         // Positive urbanity brings cities closer together, but never below a spacing of 2 (or
         // the region's own spacing if that is smaller). Negative urbanity spreads them out.
@@ -90,7 +90,7 @@ void overmap::place_cities()
         op_city_spacing = op_city_spacing - city_space_adjust + static_cast<int>( forestosity );
     }
     // make sure not to get too extreme on the spacing if you go way far.
-    op_city_spacing = std::min( op_city_spacing, 10 );
+    op_city_spacing = std::min( op_city_spacing, city_settings.max_spacing );
 
     // spacing dictates how much of the map is covered in cities
     //   city  |  cities  |   size N cities per overmap
@@ -140,31 +140,28 @@ void overmap::place_cities()
     const size_t num_cities_on_this_overmap_count = num_cities_on_this_overmap;
 
     if( city_settings.is_megacity ) {
-        // Clang pls. These are separate variables for legibility.
-        // NOLINTNEXTLINE(cata-combine-locals-into-point)
-        const int quarter_OMAPX = OMAPX / 4;
-        const int quarter_OMAPY = OMAPY / 4;
-        // This places 4 equidistant "individual cities" on every overmap, guaranteed. We're essentially building a smaller square within the square overmap.
-        // For space-filling reasons there is now a fifth in the exact center.
-        std::vector<tripoint_om_omt> megacity_quad_points = {
-            {quarter_OMAPX, quarter_OMAPY, 0},
-            {quarter_OMAPX, quarter_OMAPY * 3, 0},
-            {quarter_OMAPX * 2, quarter_OMAPY * 2, 0},
-            {quarter_OMAPX * 3, quarter_OMAPY, 0},
-            {quarter_OMAPX * 3, quarter_OMAPY * 3, 0}
-        };
-        for( tripoint_om_omt selected_point : megacity_quad_points ) {
+        // By default this places 4 equidistant "individual cities" on every overmap, guaranteed.
+        // We're essentially building a smaller square within the square overmap. For
+        // space-filling reasons there is a fifth in the exact center. The region can choose
+        // the points and the size (OMAP-J04).
+        for( const point &seed : city_settings.megacity_seeds ) {
+            const tripoint_om_omt selected_point( seed.x, seed.y, 0 );
             city tmp( SNIPPET.expand( settings->get_settings_city().name_snippet ) );
             tmp.pos_om = pos();
             ter_set( selected_point, oter_road_nesw ); // every city starts with an intersection
             city_tiles.insert( selected_point.xy() );
             tmp.pos = selected_point.xy();
             // Note: The higher we bump this, the more gets filled in. However, performance becomes worse and worse as it apparently tries to place parts of cities overtop each other.
-            // For the moment, this is the value I've gone with so it's playable in some state.
-            tmp.size = 40;
+            // The default of 40 is so it's playable in some state.
+            tmp.size = city_settings.megacity_size;
             cities.push_back( tmp );
         }
         return;
+    }
+
+    weighted_int_list<region_settings_city::size_variation> size_variations;
+    for( const region_settings_city::size_variation &variation : city_settings.size_variations ) {
+        size_variations.add( variation, variation.weight );
     }
 
     // place a seed for num_cities_on_this_overmap cities, and maybe one more
@@ -174,20 +171,16 @@ void overmap::place_cities()
         city tmp( SNIPPET.expand( city_settings.name_snippet ) );
         tmp.pos_om = pos();
         if( use_random_cities ) {
-            // randomly make some cities smaller or larger
+            // randomly make some cities smaller or larger: by default 33% tiny (x 1/3), 33% small
+            // (x 2/3), 17% large (x 3/2) and 17% huge (x 2)
             int size = rng( op_city_size - 1, max_city_size );
-            if( one_in( 3 ) ) { // 33% tiny
-                size = size * 1 / 3;
-            } else if( one_in( 2 ) ) { // 33% small
-                size = size * 2 / 3;
-            } else if( one_in( 2 ) ) { // 17% large
-                size = size * 3 / 2;
-            } else {           // 17% huge
-                size = size * 2;
+            if( !size_variations.empty() ) {
+                const region_settings_city::size_variation &variation = *size_variations.pick();
+                size = size * variation.multiply / variation.divide;
             }
-            // Ensure that cities are at least size 2, as city of size 1 is just a crossroad with no buildings at all
-            size = std::max( size, 2 );
-            size = std::min( size, MAX_RANDOM_CITY_SIZE );
+            // Ensure that cities are at least size 2 (by default), as city of size 1 is just a
+            // crossroad with no buildings at all
+            size = std::clamp( size, min_random_size, max_random_size );
             // TODO: put cities closer to the edge when they can span overmaps
             // don't draw cities across the edge of the map, they will get clipped
             selected_point = random_entry_removed( city_candidates );
@@ -422,8 +415,12 @@ void overmap::build_city_street(
     const auto from = std::next( street_path.nodes.begin() );
     const auto to = street_path.nodes.end();
 
+    // City layout settings (OMAP-J04)
+    const region_settings_city &city_settings = settings->get_settings_city();
+
     //Alternate wide and thin blocks
-    int new_width = block_width == 2 ? rng( 3, 5 ) : 2;
+    int new_width = block_width == 2 ? rng( city_settings.block_width[0],
+                                            city_settings.block_width[1] ) : 2;
 
     for( auto iter = from; iter != to; ++iter ) {
         --c;
@@ -431,8 +428,8 @@ void overmap::build_city_street(
         const tripoint_om_omt rp( iter->pos, 0 );
         if( c >= 2 && c < croad - block_width ) {
             croad = c;
-            int left = cs - rng( 1, 3 );
-            int right = cs - rng( 1, 3 );
+            int left = cs - rng( city_settings.street_shrink[0], city_settings.street_shrink[1] );
+            int right = cs - rng( city_settings.street_shrink[0], city_settings.street_shrink[1] );
 
             //Remove 1 length road nubs
             if( left == 1 ) {
@@ -449,29 +446,32 @@ void overmap::build_city_street(
                                town, placed_unique_buildings, new_width );
 
             const oter_id &oter = ter( rp );
-            // TODO: Get rid of the hardcoded terrain ids.
-            if( one_in( 2 ) && oter->get_line() == 15 && oter->type_is( oter_type_id( "road" ) ) ) {
-                ter_set( rp, oter_road_nesw_manhole.id() );
+            // OMAP-J13: the region sets the manhole chance and terrain.
+            // TODO: Get rid of the hardcoded road terrain id.
+            const region_settings_city &city_settings = settings->get_settings_city();
+            if( city_settings.manhole_chance > 0 && one_in( city_settings.manhole_chance ) &&
+                oter->get_line() == 15 && oter->type_is( oter_type_road.id() ) ) {
+                ter_set( rp, city_settings.manhole_terrain.id() );
             }
         }
 
-        if( !one_in( BUILDINGCHANCE ) ) {
+        if( !one_in( city_settings.empty_lot_chance ) ) {
             place_building( rp, om_direction::turn_left( dir ), town, placed_unique_buildings );
         }
-        if( !one_in( BUILDINGCHANCE ) ) {
+        if( !one_in( city_settings.empty_lot_chance ) ) {
             place_building( rp, om_direction::turn_right( dir ), town, placed_unique_buildings );
         }
     }
 
     // If we're big, make a right turn at the edge of town.
     // Seems to make little neighborhoods.
-    cs -= rng( 1, 3 );
+    cs -= rng( city_settings.street_shrink[0], city_settings.street_shrink[1] );
 
     if( cs >= 2 && c == 0 ) {
         const auto &last_node = street_path.nodes.back();
         const om_direction::type rnd_dir = om_direction::turn_random( dir );
         build_city_street( connection, last_node.pos, cs, rnd_dir, town, placed_unique_buildings );
-        if( one_in( 5 ) ) {
+        if( one_in( city_settings.extra_branch_chance ) ) {
             build_city_street( connection, last_node.pos, cs, om_direction::opposite( rnd_dir ),
                                town, placed_unique_buildings, new_width );
         }
@@ -530,6 +530,52 @@ std::optional<int> overmap::approx_distance_to_city( const tripoint_om_omt &p,
         }
     }
     return ret;
+}
+
+const std::vector<city> &overmap::border_cities() const
+{
+    // A neighbour can only appear once the buffer makes (or loads) an overmap.
+    const int overmap_count = overmap_buffer.get_overmap_count();
+    if( overmap_count == border_cities_overmap_count ) {
+        return border_cities_cache;
+    }
+    border_cities_overmap_count = overmap_count;
+    border_cities_cache.clear();
+    const point_abs_omt here = project_to<coords::omt>( pos() );
+    for( const tripoint &offset : eight_horizontal_neighbors ) {
+        const overmap *other = overmap_buffer.get_existing( pos() + offset.xy() );
+        if( other == nullptr || other == this ) {
+            continue;
+        }
+        const point_abs_omt there = project_to<coords::omt>( other->pos() );
+        const point_rel_omt shift = there - here;
+        for( const city &c : other->cities ) {
+            city moved = c;
+            moved.pos = c.pos + shift;
+            border_cities_cache.push_back( moved );
+        }
+    }
+    return border_cities_cache;
+}
+
+const city *overmap::nearest_city_across_borders( const tripoint_om_omt &p, int &distance ) const
+{
+    const city *nearest = nullptr;
+    distance = INT_MAX;
+    const auto consider = [&]( const city & c ) {
+        const int dist = c.get_distance_from( p );
+        if( dist < distance ) {
+            distance = dist;
+            nearest = &c;
+        }
+    };
+    for( const city &c : cities ) {
+        consider( c );
+    }
+    for( const city &c : border_cities() ) {
+        consider( c );
+    }
+    return nearest;
 }
 
 void overmap::flood_fill_city_tiles()

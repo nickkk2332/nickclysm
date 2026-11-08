@@ -49,7 +49,7 @@
     "responses": [
       {
         "text": "I'm getting close to that Department of Energy facility we talked about.  What's up?  Over.",
-        "topic": "TALK_ROBOFAC_MERC_PAT_POI_LIXA_surface_1a_recon",
+        "topic": "TALK_ROBOFAC_MERC_PAT_POI_LIXA_surface_recon",
         "condition": { "u_has_mission": "MISSION_ROBOFAC_PAT_RECON_2" }
       },
       { "text": "What's going on?  Over.", "topic": "TALK_ROBOFAC_MERC_PAT_POI_LIXA_surface_1a_1" },

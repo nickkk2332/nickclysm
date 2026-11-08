@@ -899,13 +899,23 @@ void memorial_logger::notify( const cata::event &e )
                 int new_level = e.get<int>( "new_level" );
                 if( new_level % 4 == 0 ) {
                     skill_id skill = e.get<skill_id>( "skill" );
-                    add( pgettext( "memorial_male",
-                                   //~ %d is skill level %s is skill name
-                                   "Reached skill level %1$d in %2$s." ),
-                         pgettext( "memorial_female",
-                                   //~ %d is skill level %s is skill name
-                                   "Reached skill level %1$d in %2$s." ),
-                         new_level, skill->name() );
+                    if( e.get<cata_variant_type::string>( "type" ) == "theoretical" ) {
+                        add( pgettext( "memorial_male",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached theoretical knowledge level %1$d in %2$s." ),
+                             pgettext( "memorial_female",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached theoretical knowledge level %1$d in %2$s." ),
+                             new_level, skill->name() );
+                    } else {
+                        add( pgettext( "memorial_male",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached skill level %1$d in %2$s." ),
+                             pgettext( "memorial_female",
+                                       //~ %d is skill level %s is skill name
+                                       "Reached skill level %1$d in %2$s." ),
+                             new_level, skill->name() );
+                    }
                 }
             }
             break;
@@ -1181,6 +1191,67 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::npc_dismissed:
         case event_type::npc_mutinies:
         case event_type::mod_setting_changed:
+        case event_type::character_crafts_item:
+        case event_type::character_disassembles_item:
+        case event_type::character_learns_recipe:
+        case event_type::tile_destroyed:
+        case event_type::monster_dies:
+        case event_type::mission_ends:
+        case event_type::var_changed:
+        case event_type::creature_teleported:
+        case event_type::character_hears_sound:
+        case event_type::omt_generated:
+        case event_type::map_extra_spawned:
+        case event_type::character_reloads_item:
+        case event_type::character_unloads_item:
+        case event_type::character_installs_gunmod:
+        case event_type::character_removes_gunmod:
+        case event_type::character_armor_damaged:
+        case event_type::character_armor_transformed:
+        case event_type::character_picks_up_item:
+        case event_type::character_drops_item:
+        case event_type::character_stores_item:
+        case event_type::character_activates_item:
+        case event_type::character_changes_move_mode:
+        case event_type::character_falls:
+        case event_type::character_climbs:
+        case event_type::character_moves:
+        case event_type::character_gains_wound:
+        case event_type::character_wound_progresses:
+        case event_type::character_loses_wound:
+        case event_type::loses_skill_level:
+        case event_type::activates_bionic:
+        case event_type::deactivates_bionic:
+        case event_type::activates_mutation:
+        case event_type::deactivates_mutation:
+        case event_type::character_dodges:
+        case event_type::character_blocks:
+        case event_type::character_melee_hits:
+        case event_type::character_fires_gun:
+        case event_type::monster_melee_attacks_character:
+        case event_type::monster_melee_attacks_monster:
+        case event_type::monster_upgrades:
+        case event_type::monster_reproduces:
+        case event_type::monster_uses_special:
+        case event_type::monster_tamed:
+        case event_type::monster_milked:
+        case event_type::monster_sheared:
+        case event_type::character_mounts_monster:
+        case event_type::avatar_trades:
+        case event_type::vehicle_collides:
+        case event_type::vehicle_part_destroyed:
+        case event_type::vehicle_engine_stalls:
+        case event_type::vehicle_part_installed:
+        case event_type::vehicle_part_removed:
+        case event_type::vehicle_part_repaired:
+        case event_type::vehicle_engine_started:
+        case event_type::vehicle_engine_stopped:
+        case event_type::vehicle_part_toggled:
+        case event_type::appliance_placed:
+        case event_type::character_levels_spell:
+        case event_type::monster_casts_spell:
+        case event_type::monster_triggers_trap:
+        case event_type::avatar_spots_hostile:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

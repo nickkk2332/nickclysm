@@ -31,6 +31,8 @@
 class Character;
 class JsonObject;
 class JsonValue;
+enum class creature_size : int;
+enum class temperature_flag : int;
 struct connect_group;
 struct furn_t;
 struct itype;
@@ -49,8 +51,8 @@ extern generic_factory<furn_t> furniture_data;
 const int NUM_TERCONN = 256;
 connect_group get_connect_group( const std::string &name );
 
-template <typename E> struct enum_traits;
 struct map_data_common_t;
+template <typename E> struct enum_traits;
 
 struct map_common_bash_info { //TODO: Half of this shouldn't be common
         // min str(*) required to bash
@@ -174,6 +176,8 @@ struct furn_workbench_info {
     // Mass/volume allowed before a crafting speed penalty is applied
     units::mass allowed_mass;
     units::volume allowed_volume;
+    // The crafting menu opened here starts with this search (UIINV-J02)
+    std::string recipe_filter;
     furn_workbench_info();
     bool load( const JsonObject &jsobj, std::string_view member );
 };
@@ -399,6 +403,8 @@ enum class ter_furn_flag : int {
     TFLAG_ONE_DIMENSIONAL_X,
     TFLAG_ONE_DIMENSIONAL_Y,
     TFLAG_ONE_DIMENSIONAL_Z,
+    TFLAG_RAIL_DIAGONAL,
+    TFLAG_RAIL_STRAIGHT,
 
     NUM_TFLAG_FLAGS
 };
@@ -506,6 +512,13 @@ class activity_data_ter : public activity_data_common
         ter_str_id result_;
 };
 
+// ACT-J10: what tilling (churning) a PLOWABLE terrain gives, from its "till" object
+struct ter_till_info {
+    ter_str_id result;
+    time_duration time = time_duration::from_moves( 18000 );
+    translation message;
+};
+
 class activity_data_furn : public activity_data_common
 {
     public:
@@ -527,6 +540,8 @@ void init_mapdata();
 struct map_data_common_t {
         std::set<emit_id> emissions;
         translation lockpick_message; // Lockpick action: message when successfully lockpicked
+        // ACT-J07: the lock's difficulty, rolled between the two; unset rolls 3d5-3
+        std::optional<std::pair<int, int>> lockpick_difficulty;
         cata::value_ptr<map_shoot_info> shoot;
 
     public:
@@ -552,6 +567,14 @@ struct map_data_common_t {
     public:
         ter_str_id curtain_transform;
 
+        // CRAFT-J08: pseudo tools the tile lends to crafting, besides furniture's
+        // crafting_pseudo_item (which alone gets ammo from the tile).  Given at all, it replaces
+        // the TREE default.
+        std::vector<itype_id> crafting_pseudo_items;
+        bool crafting_pseudo_items_set = false;
+        // crafting_pseudo_items, or for TREE terrain that gives none, a butchery tree
+        const std::vector<itype_id> &crafting_pseudo_tools() const;
+
         bool has_curtains() const {
             return !( curtain_transform.is_empty() || curtain_transform.is_null() );
         }
@@ -568,13 +591,22 @@ struct map_data_common_t {
         */
         std::array<int, NUM_SEASONS> symbol_;
 
+        // Whether examining it at examp does something, for the avatar or for who
         bool can_examine( const tripoint_bub_ms &examp ) const;
+        bool can_examine( const tripoint_bub_ms &examp, const Character &who ) const;
+        // The examine actor an NPC who examines it at examp uses: the first one it may use
+        // (iexamine_actor::npc_can_use), nullptr if none
+        const iexamine_actor *npc_examine_actor( const Character &who,
+                const tripoint_bub_ms &examp ) const;
         // checks if it has corresponding examine_func
         bool has_examine( iexamine_examine_function func ) const;
         // checks if it has corresponding examine_actor
         bool has_examine( const std::string &action ) const;
         void set_examine( const iexamine_functions &func );
         std::vector<cata::clone_ptr<iexamine_actor>> get_examine() const;
+        const std::vector<cata::clone_ptr<iexamine_actor>> &get_examine_actors() const {
+            return examine_actor;
+        }
         void examine( Character &, const tripoint_bub_ms & ) const;
 
         int light_emitted = 0;
@@ -589,8 +621,16 @@ struct map_data_common_t {
         int comfort = 0;
         //flat damage reduction (increase if negative) on fall (some logic may apply)
         int fall_damage_reduction = 0;
+        // Volume a sound loses passing through this tile, on top of its distance
+        int sound_attenuation = 0;
+        // The biggest creature that fits on this tile ("max_creature_size"), if it is limited
+        std::optional<creature_size> max_creature_size;
         // Maximal volume of items that can be stored in/on this furniture/terrain
         units::volume max_volume = DEFAULT_TILE_VOLUME;
+
+        // MAP-J04: the temperature items on this tile keep, as a root cellar, fridge or freezer
+        // does (furniture's wins over the terrain's); none for the weather's
+        std::optional<temperature_flag> item_temperature;
 
         itype_id liquid_source_item_id = itype_id::NULL_ID(); // id of a liquid this tile provides
         double liquid_source_min_temp = 4; // in centigrades, cold water as default value
@@ -630,6 +670,11 @@ struct map_data_common_t {
         bool has_flag( const std::string &flag ) const {
             return flags.count( flag ) > 0;
         }
+
+        // The biggest creature that fits on this tile: max_creature_size, and medium for
+        // SMALL_PASSAGE, whichever is smaller; unset if any size fits
+        std::optional<creature_size> max_fitting_size() const;
+        bool fits_creature_size( creature_size size ) const;
 
         bool has_flag( const ter_furn_flag flag ) const {
             return bitflags[flag];
@@ -697,6 +742,19 @@ struct map_data_common_t {
         virtual void check() const {};
 };
 
+// MAP-J04: a liquid a terrain makes as time passes, into the first container on it (a tapped
+// maple's sap)
+struct ter_liquid_production {
+    itype_id item;
+    // charges made over one whole span of the year it is made in
+    int amount = 0;
+    // that span, in seasons from the start of spring (0 to 4); it may run past the end of winter
+    double start = 0.0;
+    double end = 0.0;
+    // one fill in this many is poisoned; 0 for none
+    int poison_chance = 0;
+};
+
 /*
 * Struct ter_t:
 * Short for terrain type. This struct defines all of the metadata for a given terrain id (an enum below).
@@ -724,6 +782,8 @@ struct ter_t : map_data_common_t {
     std::string phase_method;
 
     ter_str_id lockpick_result; // Lockpick action: transform when successfully lockpicked
+    // ACT-J07: what a clumsy lockpicking attempt jams the lock into; empty: it can't jam
+    ter_str_id lockpick_jam_result;
 
     cata::value_ptr<activity_data_ter> boltcut; // Bolt cutting action data
     cata::value_ptr<activity_data_ter> hacksaw; // Hacksaw action data
@@ -733,6 +793,27 @@ struct ter_t : map_data_common_t {
     std::string trap_id_str;     // String storing the id string of the trap.
     ter_str_id transforms_into; // Transform into what terrain?
     ter_str_id roof;            // What will be the floor above this terrain
+
+    // MAP-J04: made while the tile is away from the player
+    std::optional<ter_liquid_production> produces_liquid;
+    // MAP-J04: what radiation scorches it into; empty for the built-in rules (shrubs die into
+    // dirt, trees into dead trees)
+    ter_str_id rad_scorch;
+    // MAP-J05: what a felled tree (TREE terrain) leaves where it fell and where it stood; empty
+    // for t_trunk and t_stump
+    ter_str_id felled_trunk;
+    ter_str_id felled_stump;
+    // MAP-J05: what a vehicle without enough wheels churns it into; empty for the built-in rule
+    // (dirt and grass into a mound of dirt)
+    ter_str_id churned_into;
+    // ACT-J10: chopping it up with an axe (a trunk or a stump): what it becomes, what it leaves
+    // and the message; terrain without a "chop" object can't be chopped
+    cata::value_ptr<activity_data_ter> chop;
+    // ACT-J10: tilling it (a PLOWABLE terrain); without "till" it becomes a mound of dirt in 3
+    // minutes
+    std::optional<ter_till_info> till;
+    // ACT-J10: what a PLANTABLE terrain becomes when a seed is planted on it; empty for dirt
+    ter_str_id plant_result;
 
     trap_id trap; // The id of the trap located at this terrain. Limit one trap per tile currently.
 
@@ -751,6 +832,13 @@ struct ter_t : map_data_common_t {
 
     bool is_null() const;
     bool is_terrain() const override;
+    // ACT-J10: it has a "chop" object
+    bool can_chop() const;
+    // ACT-J10: what tilling it gives: its "till" object, or a mound of dirt in 3 minutes
+    ter_str_id till_result() const;
+    int till_moves() const;
+    // ACT-J10: what it becomes when a seed is planted on it: its plant_result, or dirt
+    ter_str_id planted_terrain() const;
 
     std::vector<std::string> extended_description() const override;
     bool is_smashable() const override;
@@ -767,6 +855,16 @@ void reset_furn_ter();
  * The terrain list contains the master list of information and metadata for a given type of terrain.
  */
 
+// ACT-J11: a smoking rack (examine action smoker_options), from the furniture's "smoker" object
+struct furn_smoker_info {
+    // on an unlit rack: what it becomes while it smokes
+    furn_str_id lit;
+    // on a lit rack: what it goes back to when the smoking ends or is stopped
+    furn_str_id unlit;
+    // how much food it holds
+    units::volume capacity = units::from_liter( 20 );
+};
+
 struct furn_t : map_data_common_t {
 
     std::vector<std::pair<furn_str_id, mod_id>> src;
@@ -775,6 +873,10 @@ struct furn_t : map_data_common_t {
     furn_str_id open;  // Open action: transform into furniture with matching id
     furn_str_id close; // Close action: transform into furniture with matching id
     furn_str_id lockpick_result; // Lockpick action: transform when successfully lockpicked
+    // ACT-J07: what a clumsy lockpicking attempt jams the lock into; empty: it can't jam
+    furn_str_id lockpick_jam_result;
+    // ACT-J06: what an electronic safe (gunsafe_el) becomes when hacked; empty: f_safe_o
+    furn_str_id hack_result;
     std::optional<map_furn_bash_info> bash;
     std::optional<map_furn_deconstruct_info> deconstruct;
     itype_id crafting_pseudo_item;
@@ -796,6 +898,9 @@ struct furn_t : map_data_common_t {
     cata::value_ptr<plant_data> plant;
 
     cata::value_ptr<float> surgery_skill_multiplier;
+
+    // ACT-J11: a smoking rack's lit and unlit furniture and capacity
+    cata::value_ptr<furn_smoker_info> smoker;
 
     // May return NULL
     const itype *crafting_pseudo_item_type() const;

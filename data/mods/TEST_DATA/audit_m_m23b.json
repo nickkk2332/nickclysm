@@ -1,0 +1,57 @@
+[
+  {
+    "type": "fault",
+    "id": "test_veh_j04_low_oil",
+    "name": { "str": "test low oil" },
+    "description": "A test engine fault with numeric multipliers.",
+    "engine_power_mult": 0.5,
+    "fuel_consumption_mult": 1.5,
+    "exhaust_mult": 2.0
+  },
+  {
+    "type": "fault",
+    "id": "test_veh_j04_bent_tie_rod",
+    "name": { "str": "test bent tie-rod" },
+    "description": "A test wheel fault that halves how well the wheel steers.",
+    "steering_mult": 0.5
+  },
+  {
+    "type": "trap",
+    "id": "tr_test_veh_j05_spikes",
+    "name": "test vehicle spikes",
+    "color": "dark_gray",
+    "symbol": "_",
+    "visibility": 4,
+    "avoidance": 6,
+    "difficulty": 0,
+    "action": "none",
+    "vehicle_data": { "runover_faults": true, "wheel_faults": [ "fault_tire_treads" ], "eocs": [ "EOC_test_veh_j05_trap" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_veh_j05_trap",
+    "condition": "u_is_vehicle",
+    "effect": [
+      { "math": [ "test_veh_j05_trap_hits += 1" ] },
+      { "copy_var": { "context_val": "trap_id" }, "target_var": { "global_val": "test_veh_j05_trap_id" } },
+      { "copy_var": { "context_val": "vpart_id" }, "target_var": { "global_val": "test_veh_j05_vpart_id" } }
+    ]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_veh_j06_shock_ram",
+    "copy-from": "ram_steel",
+    "name": { "str": "test shock ram" },
+    "collision_damage": [ { "damage_type": "electric", "amount": 1.0 } ]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_veh_j07_typed_muffler",
+    "copy-from": "muffler",
+    "name": { "str": "test typed muffler" },
+    "muffle_factor": 0.25,
+    "funnel_radius": "150 mm",
+    "seatbelt_strength": 7,
+    "shock_absorption": 12
+  }
+]

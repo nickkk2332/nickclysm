@@ -55,7 +55,9 @@ void anatomy::load_anatomy( const JsonObject &jo, const std::string &src )
 void anatomy::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "id", id );
-    mandatory( jo, was_loaded, "parts", unloaded_bps );
+    // Required on first load; with copy-from, "extend" and "delete" can add or remove parts
+    // instead of replacing the whole list (CHAR-J05)
+    mandatory( jo, was_loaded, "parts", unloaded_bps, string_id_reader<body_part_type> {} );
 }
 
 void anatomy::reset()
@@ -73,11 +75,11 @@ void anatomy::finalize()
     size_sum = 0.0f;
 
     cached_bps.clear();
-    for( const bodypart_str_id &id : unloaded_bps ) {
-        if( id.is_valid() ) {
-            add_body_part( id );
+    for( const bodypart_str_id &bp : unloaded_bps ) {
+        if( bp.is_valid() ) {
+            add_body_part( bp );
         } else {
-            debugmsg( "Anatomy %s has invalid body part %s", id.c_str(), id.c_str() );
+            debugmsg( "Anatomy %s has invalid body part %s", id.c_str(), bp.c_str() );
         }
     }
 }
@@ -99,8 +101,13 @@ void anatomy::check() const
     std::unordered_set<bodypart_str_id> all_parts( unloaded_bps.begin(), unloaded_bps.end() );
     std::unordered_set<bodypart_str_id> root_parts;
 
+    // A part listed twice (an "extend" adding one already there) would be hit twice as often
+    if( all_parts.size() != unloaded_bps.size() ) {
+        debugmsg( "Anatomy %s lists a body part more than once", id.str() );
+    }
+
     for( const bodypart_str_id &bp : unloaded_bps ) {
-        if( !id.is_valid() ) {
+        if( !bp.is_valid() ) {
             // Error already reported in finalize
             continue;
         }
@@ -109,7 +116,7 @@ void anatomy::check() const
                       id.str(), bp.str(), bp->main_part.str() );
         } else if( !all_parts.count( bp->connected_to ) ) {
             debugmsg( "Anatomy %s contains part %s with connected_to part %s which is not part of "
-                      "the anatomy", id.str(), bp.str(), bp->main_part.str() );
+                      "the anatomy", id.str(), bp.str(), bp->connected_to.str() );
         }
 
         if( bp->connected_to == bp ) {

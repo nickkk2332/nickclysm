@@ -1,0 +1,77 @@
+[
+  {
+    "//": "CMBT-J03 fixture: hands that can't work a trigger.",
+    "type": "mutation",
+    "id": "TEST_M18B_PAWS",
+    "name": { "str": "Test Paws" },
+    "points": 0,
+    "description": "Test mutation: hands that can't use firearms.",
+    "flags": [ "HANDS_CANNOT_USE_FIREARMS" ]
+  },
+  {
+    "//": "CMBT-J07 fixture: blocks as hard as the legacy club below, by its block bonus; lets half of elemental damage through and doesn't block cuts.",
+    "id": "test_m18b_block_club",
+    "type": "ITEM",
+    "copy-from": "club_wooden",
+    "name": { "str": "test blocking club" },
+    "extend": { "flags": [ "UNBREAKABLE_MELEE" ] },
+    "block": { "bonus": 6, "elemental_mult": 0.5, "effectiveness": { "cut": 0 } }
+  },
+  {
+    "//": "CMBT-J07 fixture: blocks by the legacy WBLOCK_2 technique.",
+    "id": "test_m18b_legacy_club",
+    "type": "ITEM",
+    "copy-from": "club_wooden",
+    "name": { "str": "test legacy blocking club" },
+    "extend": { "flags": [ "UNBREAKABLE_MELEE" ], "techniques": [ "WBLOCK_2" ] }
+  },
+  {
+    "//": "CMBT-J06 fixture: a buff with a condition, and EOC lists for copy-from.",
+    "type": "martial_art",
+    "id": "test_style_m18b",
+    "name": { "str": "Test M18B Style" },
+    "description": "Test martial art for the loader checks.",
+    "initiate": [ "You take a test stance.", "%s takes a test stance." ],
+    "allow_all_weapons": true,
+    "static_buffs": [
+      {
+        "id": "test_m18b_cond_buff",
+        "name": "Test Conditional Buff",
+        "description": "Only while a global variable says so.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "condition": { "math": [ "test_m18b_buff_on == 1" ] },
+        "condition_desc": "* Only while the <info>test</info> says so"
+      }
+    ],
+    "onhit_eocs": [ { "id": "EOC_TEST_M18B_A", "effect": [ { "math": [ "u_test_m18b_a = 1" ] } ] } ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_m18b_extended",
+    "copy-from": "test_style_m18b",
+    "name": { "str": "Test M18B Extended Style" },
+    "extend": { "onhit_eocs": [ { "id": "EOC_TEST_M18B_B", "effect": [ { "math": [ "u_test_m18b_b = 1" ] } ] } ] }
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_m18b_replaced",
+    "copy-from": "test_style_m18b",
+    "name": { "str": "Test M18B Replaced Style" },
+    "onhit_eocs": [ "EOC_TEST_M18B_B" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_m18b_deleted",
+    "copy-from": "test_style_m18b_extended",
+    "name": { "str": "Test M18B Deleted Style" },
+    "delete": { "onhit_eocs": [ "EOC_TEST_M18B_A" ] }
+  },
+  {
+    "//": "CMBT-J06 fixture: tech effect durations as a string and as turns.",
+    "type": "technique",
+    "id": "test_tec_m18b_durations",
+    "name": "test durations",
+    "tech_effects": [ { "id": "downed", "duration": "3 s" }, { "id": "stunned", "duration": 5 } ]
+  }
+]

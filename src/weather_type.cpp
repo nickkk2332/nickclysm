@@ -1,9 +1,15 @@
 #include "weather_type.h"
 
+#include <utility>
+
 #include "condition.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "weather.h"
+
+static const efftype_id effect_glare( "glare" );
+static const efftype_id effect_snow_glare( "snow_glare" );
 
 namespace
 {
@@ -93,6 +99,94 @@ void weather_type::check() const
             debugmsg( "Weather type %s does not exist.", type.c_str() );
         }
     }
+    if( glare_override ) {
+        for( const weather_glare &entry : *glare_override ) {
+            if( !entry.effect.is_valid() ) {
+                debugmsg( "Weather type %s: glare effect %s does not exist.", id.str(), entry.effect.str() );
+            }
+        }
+    }
+}
+
+double weather_type::get_precip_rate() const
+{
+    return precip_rate_override ? *precip_rate_override : precip_mm_per_hour( precip );
+}
+
+int weather_type::get_wetness() const
+{
+    if( wetness_override ) {
+        return *wetness_override;
+    }
+    switch( precip ) {
+        case precip_class::very_light:
+            return 5;
+        case precip_class::light:
+            return 30;
+        case precip_class::heavy:
+            return 60;
+        case precip_class::none:
+        case precip_class::last:
+            break;
+    }
+    return 0;
+}
+
+time_duration weather_type::get_field_decay() const
+{
+    if( field_decay_override ) {
+        return *field_decay_override;
+    }
+    switch( precip ) {
+        case precip_class::very_light:
+            return 5_turns;
+        case precip_class::light:
+            return 15_turns;
+        case precip_class::heavy:
+            return 45_turns;
+        case precip_class::none:
+        case precip_class::last:
+            break;
+    }
+    return 0_turns;
+}
+
+// Without a "glare" list: snow glare in winter at moderate sun, sun glare at high sun
+static const std::vector<weather_glare> &default_glare()
+{
+    static const std::vector<weather_glare> glare = []() {
+        std::vector<weather_glare> ret;
+        weather_glare snow;
+        snow.effect = effect_snow_glare;
+        snow.min_irradiance = irradiance::moderate;
+        snow.condition = []( const_dialogue const & ) {
+            return season_of_year( calendar::turn ) == WINTER;
+        };
+        ret.push_back( snow );
+        weather_glare sun;
+        sun.effect = effect_glare;
+        sun.min_irradiance = irradiance::high;
+        ret.push_back( sun );
+        return ret;
+    }
+    ();
+    return glare;
+}
+
+const std::vector<weather_glare> &weather_type::get_glare() const
+{
+    return glare_override ? *glare_override : default_glare();
+}
+
+void weather_glare::load( const JsonObject &jo )
+{
+    mandatory( jo, false, "effect", effect );
+    mandatory( jo, false, "min_irradiance", min_irradiance );
+    optional( jo, false, "duration", duration, 20_turns );
+    optional( jo, false, "repeat_duration", repeat_duration, 10_turns );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    }
 }
 
 void weather_type::load( const JsonObject &jo, std::string_view )
@@ -132,6 +226,38 @@ void weather_type::load( const JsonObject &jo, std::string_view )
     mandatory( jo, was_loaded, "dangerous", dangerous );
     mandatory( jo, was_loaded, "precip", precip );
     mandatory( jo, was_loaded, "rains", rains );
+    optional( jo, was_loaded, "snow_rate", snow_rate );
+    if( snow_rate && *snow_rate < 0.0 ) {
+        jo.throw_error_at( "snow_rate", "snow_rate can't be negative" );
+    }
+    if( jo.has_member( "precip_rate" ) ) {
+        const double rate = jo.get_float( "precip_rate" );
+        if( rate < 0 ) {
+            jo.throw_error_at( "precip_rate", "precip_rate must not be negative" );
+        }
+        precip_rate_override = rate;
+    }
+    if( jo.has_member( "wetness" ) ) {
+        const int wet = jo.get_int( "wetness" );
+        if( wet < 0 ) {
+            jo.throw_error_at( "wetness", "wetness must not be negative" );
+        }
+        wetness_override = wet;
+    }
+    if( jo.has_member( "field_decay" ) ) {
+        time_duration decay = 0_turns;
+        mandatory( jo, false, "field_decay", decay );
+        field_decay_override = decay;
+    }
+    if( jo.has_member( "glare" ) ) {
+        std::vector<weather_glare> glare_list;
+        for( JsonObject jg : jo.get_array( "glare" ) ) {
+            weather_glare entry;
+            entry.load( jg );
+            glare_list.push_back( std::move( entry ) );
+        }
+        glare_override = std::move( glare_list );
+    }
     optional( jo, was_loaded, "tiles_animation", tiles_animation, "" );
     optional( jo, was_loaded, "sound_category", sound_category, weather_sound_category::silent );
     optional( jo, was_loaded, "duration_min", duration_min, 5_minutes );

@@ -2,8 +2,10 @@
 #ifndef CATA_SRC_ITYPE_H
 #define CATA_SRC_ITYPE_H
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -17,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "ammo.h"
 #include "body_part_set.h"
 #include "bodypart.h"
 #include "calendar.h"
@@ -32,6 +35,7 @@
 #include "item.h"
 #include "item_pocket.h"
 #include "item_transformation.h"
+#include "lightmap.h"
 #include "iuse.h" // use_function
 #include "mapdata.h"
 #include "material.h"
@@ -49,6 +53,8 @@ class Character;
 class Item_factory;
 class Trait_group;
 class map;
+struct const_dialogue;
+struct disassembly_substitute;
 template <typename E> struct enum_traits;
 
 class gun_modifier_data
@@ -199,6 +205,23 @@ struct rot_spawn_data {
     void deserialize( const JsonObject &jo );
 };
 
+// When an NPC takes a comestible as medicine on its own (JSON "npc_use", NPC-J07)
+struct comestible_npc_use {
+    // the pain level it suits; an item with one is a painkiller
+    std::optional<int> pain;
+    // carrying it makes an NPC reach for a painkiller only while its pain is in this range
+    int min_pain = 0;
+    int max_pain = INT_MAX;
+    // divides how far the NPC's pain is from `pain` when it picks a painkiller
+    int preference = 1;
+    // the NPC (u_) takes it only while this holds (the item is npc_); medicine that isn't a
+    // painkiller is taken whenever it holds
+    std::function<bool( const_dialogue const & )> condition;
+    bool has_condition = false;
+
+    void deserialize( const JsonObject &jo );
+};
+
 struct islot_comestible {
     public:
         friend Item_factory;
@@ -297,6 +320,9 @@ struct islot_comestible {
 
         /** The monster that is drawn from when the item rots away */
         rot_spawn_data rot_spawn;
+
+        /** When NPCs take it as medicine; none: they don't */
+        std::optional<comestible_npc_use> npc_use;
 
     private:
         // What seasonings can be eaten with this food for a morale bonus?
@@ -504,6 +530,11 @@ struct islot_armor {
          * The Non-Functional variant of this item. Currently only applies to ablative plates
          */
         itype_id non_functional;
+        /**
+         * What this armor turns into when activated, for the "When active" part of its info.
+         * Unset: for power armor, the target of its transform use action or a "<id>_on" item.
+         */
+        itype_id active_form;
         /**
          * The verb for what happens when the item transforms to non-functional
          */
@@ -846,6 +877,16 @@ struct islot_gun : common_ranged_data {
      * Volume of the noise made when reloading this weapon.
      */
     int reload_noise_volume = 0;
+    /**
+     * Sound of firing (CMBT-J09); unset: its ammunition type's, or the usual one.
+     */
+    std::optional<gun_fire_sound> fire_sound;
+    /**
+     * Moves spent working the action after a shot, before skill (CMBT-J09); it also sets the aim
+     * lost (10 MOA a move). Unset: 80 for LEVER_ACTION, 100 SINGLE_ACTION, 120 PUMP_ACTION,
+     * 160 BOLT_ACTION, else 0.
+     */
+    std::optional<int> cycle_time;
 
     /** Maximum aim achievable using base weapon sights */
     int sight_dispersion = 30;
@@ -888,6 +929,11 @@ struct islot_gun : common_ranged_data {
     *Default mods, string is id of mod. These mods are removable but are default on the weapon.
     */
     std::set<itype_id> default_mods;
+    /**
+     * Gunmods must also be usable on one of these gun types (untranslated "mod_targets" names)
+     * to be installed: a hand crossbow takes only mods that fit pistols.  Empty: no limit.
+     */
+    std::set<std::string> required_mod_targets;
 
     /** Firing modes are supported by the gun. Always contains at least DEFAULT mode */
     std::map<gun_mode_id, gun_modifier_data> modes;
@@ -1078,6 +1124,24 @@ struct islot_gunmod : common_ranged_data {
 
     /** Not compatible on weapons that have these mods */
     std::set<itype_id> blacklist_mod;
+
+    /** Not compatible on weapons that have any of these flags (an already waterproof gun) */
+    std::set<flag_id> blacklist_gun_flags;
+
+    /** Reason shown when a blacklist or "installable" refuses the mod; empty: a default one */
+    translation blacklist_message;
+
+    /** False for a template that has to be modified before it can be installed */
+    bool installable = true;
+
+    /** Whether the gun has to be unloaded to install or remove this mod; unset: see needs_unloaded() */
+    std::optional<bool> requires_unloaded;
+
+    /**
+     * Whether the gun has to be unloaded to install or remove this mod: requires_unloaded, or
+     * by default for mods in the magazine, mechanism, loading port and bore locations.
+     */
+    bool needs_unloaded() const;
     // hard coded barrel length from this mod
     units::length barrel_length = 0_mm;
 
@@ -1353,6 +1417,23 @@ struct memory_card_info {
     void deserialize( const JsonObject &jo );
 };
 
+/**
+ * How an item blocks melee hits (the item's "block" object; Character::block_hit).  Unset values
+ * keep the old rules: the WBLOCK_1/2/3 techniques (4, 6, 10) or BLOCK_WHILE_WORN (2) give the
+ * block strength, and an item block lets a fifth of elemental damage through.
+ */
+struct item_block_data {
+    // Block strength, in place of the WBLOCK techniques and BLOCK_WHILE_WORN
+    std::optional<int> bonus;
+    // The part of elemental (non-physical) damage that gets through an item block
+    std::optional<float> elemental_mult;
+    // How well it blocks each physical damage type, as a part of its normal block (default 1)
+    std::map<damage_type_id, float> effectiveness;
+
+    bool was_loaded = false;
+    void deserialize( const JsonObject &jo );
+};
+
 struct item_melee_damage {
     std::unordered_map<damage_type_id, float> damage_map;
     float default_value = 0.0f;  // NOLINT(cata-serialize)
@@ -1360,6 +1441,19 @@ struct item_melee_damage {
     item_melee_damage &operator+=( const item_melee_damage &rhs );
     void finalize();
     void deserialize( const JsonObject &jo );
+};
+
+/** The "smoke" block of a lit smokable (LITCIG): what its puffs and burning out do. */
+struct itype_smoke_data {
+    /** Given to the smoker on each puff; null for none. */
+    efftype_id puff_effect = efftype_id::NULL_ID();
+    /** How long a puff's effect lasts: halved by TOLERANCE, doubled by LIGHTWEIGHT. */
+    time_duration puff_duration = 15_seconds;
+    /** Run on each puff, with the smoker as u. */
+    std::vector<effect_on_condition_id> puff_eocs;
+    /** Run when it burns out, with the smoker (if any) as u. */
+    std::vector<effect_on_condition_id> burn_out_eocs;
+    void load( const JsonObject &jo, std::string_view src );
 };
 
 struct itype {
@@ -1400,7 +1494,7 @@ struct itype {
         /** Action to take when countdown expires */
         use_function countdown_action;
 
-        /** Actions to take when item is processed */
+        /** Actions to take when item is processed, indexed by action id (its type by default) */
         std::map<std::string, use_function> tick_action;
 
         /**
@@ -1449,6 +1543,10 @@ struct itype {
 
         // Rather than use its own materials to determine repair difficulty, the item uses this item's materials
         itype_id repairs_like;
+
+        // CRAFT-J07: set when a reversible recipe needing this tool needs something else to
+        // disassemble (a welder or forge becomes a fine metal saw); shared by copies
+        std::shared_ptr<const disassembly_substitute> disassembly_sub;
 
         std::string snippet_category;
 
@@ -1508,19 +1606,22 @@ struct itype {
         // TODO: This is really legacy behavior and should maybe be removed
         material_id default_mat;
 
-        /** Actions an instance can perform (if any) indexed by action type */
+        /** Actions an instance can perform (if any) indexed by action id (its type by default) */
         std::map<std::string, use_function> use_methods;
 
         // @return returns itype_id of first ammo_id or itype_id::NULL_ID if not tool or no ammo defined
         const itype_id &tool_slot_first_ammo() const;
 
-        /** The factor of ammo consumption indexed by action type*/
+        /** The factor of ammo consumption indexed by action id (its type by default) */
         std::map<std::string, int> ammo_scale;
 
         /** Fields to emit when item is in active state */
         std::set<emit_id> emits;
 
         std::set<matec_id> techniques;
+
+        /** How the item blocks melee hits ("block") */
+        item_block_data block;
 
         // Minimum stat(s) or skill(s) to use the item
         std::map<skill_id, int> min_skills;
@@ -1598,6 +1699,9 @@ struct itype {
         */
         std::optional<item_transformation> transform_into;
 
+        /** How a lit smokable (LITCIG) acts while it burns; null for the default puffs. */
+        cata::value_ptr<itype_smoke_data> smoke;
+
         /**
         * Space occupied by items of this type
         * CAUTION: value given is for a default-sized stack. Avoid using where @ref count_by_charges items may be encountered; see @ref item::volume instead.
@@ -1639,6 +1743,8 @@ struct itype {
         bool using_legacy_to_hit = false;
 
         unsigned light_emission = 0;   // Exactly the same as item_tags LIGHT_*, this is for lightmap.
+        // The colour of that light on the map ("light_color"); none is white
+        light_color_rgb light_color{};
 
         nc_color color = c_white; // Color on the map (color.h)
 
@@ -1663,7 +1769,12 @@ struct itype {
     private:
         /** maximum amount of damage to a non- count_by_charges item */
         static constexpr int damage_max_ = 4000;
-        int degrade_increments_ = 50;
+        /** degradation increments of an item with a degradation_multiplier of 1 */
+        static constexpr int base_degrade_increments_ = 50;
+        int degrade_increments_ = base_degrade_increments_;
+        /** "degradation_multiplier" as written (or inherited): the increments are derived from it
+         * on each load, so copy-from doesn't apply a parent's multiplier twice */
+        std::optional<float> degrade_mult_;
 
     public:
         /** Damage output in melee for zero or more damage types */
@@ -1760,11 +1871,21 @@ struct itype {
         // returns read-only set of all item tags/flags
         const FlagsSetType &get_flags() const;
 
+        /**
+         * The use action with the id @p iuse_name; failing that, the first (by id) whose type is
+         * @p iuse_name, so code and old saves that name an action by its type still find it when
+         * it has an id.
+         */
         bool can_use( const std::string &iuse_name ) const;
         const use_function *get_use( const std::string &iuse_name ) const;
         // can use/get_use, but for tick actions
         bool has_tick( const std::string &iuse_name ) const;
         const use_function *get_tick( const std::string &iuse_name ) const;
+        /**
+         * The factor of ammo consumption of the use action @p method (found as get_use() finds
+         * it, then by its id), 1 when it has none.
+         */
+        int get_ammo_scale( const std::string &method ) const;
 
         // Here "invoke" means "actively use". "Tick" means "active item working"
         // TODO: Replace usage of map less overload.
@@ -1792,5 +1913,7 @@ struct itype {
 
 void load_charge_removal_blacklist( const JsonObject &jo, std::string_view src );
 void load_temperature_removal_blacklist( const JsonObject &jo, std::string_view src );
+// Empties both blacklists, so they don't carry over to the next world loaded
+void reset_removal_blacklists();
 
 #endif // CATA_SRC_ITYPE_H

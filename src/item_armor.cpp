@@ -38,14 +38,7 @@
 #include "units.h"
 #include "value_ptr.h"
 
-static const std::string CLOTHING_MOD_VAR_PREFIX( "clothing_mod_" );
 static const std::string var_lateral( "lateral" );
-
-static const damage_type_id damage_acid( "acid" );
-static const damage_type_id damage_bash( "bash" );
-static const damage_type_id damage_bullet( "bullet" );
-static const damage_type_id damage_cut( "cut" );
-static const damage_type_id damage_heat( "heat" );
 
 static const efftype_id effect_bleed( "bleed" );
 
@@ -1119,19 +1112,15 @@ std::string item::get_pet_armor_bodytype() const
 
 float item::get_clothing_mod_val_for_damage_type( const damage_type_id &dmg_type ) const
 {
-    // FIXME: Hardcoded damage types
-    if( dmg_type == damage_bash ) {
-        return get_clothing_mod_val( clothing_mod_type_bash );
-    } else if( dmg_type == damage_cut ) {
-        return get_clothing_mod_val( clothing_mod_type_cut );
-    } else if( dmg_type == damage_bullet ) {
-        return get_clothing_mod_val( clothing_mod_type_bullet );
-    } else if( dmg_type == damage_heat ) {
-        return get_clothing_mod_val( clothing_mod_type_fire );
-    } else if( dmg_type == damage_acid ) {
-        return get_clothing_mod_val( clothing_mod_type_acid );
+    // Worked out from the mod flags the item has now, so a flag set by an itemgroup or an EOC
+    // counts as much as one sewn on, and a rebalanced mod applies to existing items
+    float result = 0.0f;
+    for( const clothing_mod &cm : clothing_mods::get_all_with( clothing_mod_type_damage ) ) {
+        if( has_own_flag( cm.flag ) ) {
+            result += cm.get_damage_mod_val( dmg_type, *this );
+        }
     }
-    return 0.0f; // No mods for other damage types
+    return result;
 }
 
 int item::breathability( const bodypart_id &bp ) const
@@ -1603,37 +1592,18 @@ bool item::has_clothing_mod() const
     return false;
 }
 
-static const std::string &get_clothing_mod_val_key( clothing_mod_type type )
-{
-    const static auto cache = ( []() {
-        std::array<std::string, clothing_mods::all_clothing_mod_types.size()> res;
-        for( const clothing_mod_type &type : clothing_mods::all_clothing_mod_types ) {
-            res[type] = CLOTHING_MOD_VAR_PREFIX + clothing_mods::string_from_clothing_mod_type(
-                            clothing_mods::all_clothing_mod_types[type]
-                        );
-        }
-        return res;
-    } )();
-
-    return cache[ type ];
-}
-
 float item::get_clothing_mod_val( clothing_mod_type type ) const
 {
-    return get_var( get_clothing_mod_val_key( type ), 0.0f );
-}
-
-void item::update_clothing_mod_val()
-{
-    for( const clothing_mod_type &type : clothing_mods::all_clothing_mod_types ) {
-        float tmp = 0.0f;
-        for( const clothing_mod &cm : clothing_mods::get_all_with( type ) ) {
-            if( has_own_flag( cm.flag ) ) {
-                tmp += cm.get_mod_val( type, *this );
-            }
+    // Worked out from the mod flags the item has now (see
+    // get_clothing_mod_val_for_damage_type).  Older versions kept these values in item vars,
+    // set only by the sewing action; loading an item drops those.
+    float result = 0.0f;
+    for( const clothing_mod &cm : clothing_mods::get_all_with( type ) ) {
+        if( has_own_flag( cm.flag ) ) {
+            result += cm.get_mod_val( type, *this );
         }
-        set_var( get_clothing_mod_val_key( type ), tmp );
     }
+    return result;
 }
 
 std::list<item *> item::all_ablative_armor()

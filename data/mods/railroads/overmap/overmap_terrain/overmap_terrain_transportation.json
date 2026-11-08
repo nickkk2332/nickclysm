@@ -22,7 +22,12 @@
     "id": "railroad_bridge",
     "copy-from": "generic_railroad_bridge",
     "color": "light_cyan",
-    "flags": [ "RIVER" ]
+    "flags": [ "RIVER" ],
+    "bridge": {
+      "overpass": "railroad_bridge_overpass",
+      "bridgehead_ground": "railroad_bridgehead_ground",
+      "bridgehead_ramp": "railroad_bridgehead_ramp"
+    }
   },
   {
     "type": "overmap_terrain",

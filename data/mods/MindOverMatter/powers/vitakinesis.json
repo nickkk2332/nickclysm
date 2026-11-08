@@ -394,7 +394,7 @@
     },
     "base_casting_time": {
       "math": [
-        "u_effect_intensity('effect_vita_increased_hp') > -1 ? 10 : max( (125 - ( u_spell_level('vita_increased_hp') * 6)), 50)"
+        "u_effect_intensity('effect_vita_increase_hp') > -1 ? 10 : max( (125 - ( u_spell_level('vita_increased_hp') * 6)), 50)"
       ]
     }
   },

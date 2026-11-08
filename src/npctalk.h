@@ -3,18 +3,25 @@
 #define CATA_SRC_NPCTALK_H
 
 #include <functional>
+#include <list>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "type_id.h"
 
 class Character;
+class const_talker;
 class item;
+class item_location;
 class JsonOut;
 class JsonValue;
 class json_talk_topic;
 class npc;
+class talker;
 class time_duration;
+struct dialogue_chatbin;
 
 namespace talk_function
 {
@@ -141,9 +148,9 @@ time_duration calc_proficiency_training_time( const Character &teacher, const Ch
 int calc_proficiency_training_cost( const Character &teacher, const Character &student,
                                     const proficiency_id &proficiency );
 time_duration calc_ma_style_training_time( const Character &teacher, const Character &student,
-        const matype_id &id );
+        const matype_id &style );
 int calc_ma_style_training_cost( const Character &teacher, const Character &student,
-                                 const matype_id &id );
+                                 const matype_id &style );
 time_duration calc_spell_training_time( const Character &teacher, const Character &student,
                                         const spell_id &id );
 int calc_spell_training_cost( const Character &teacher, const Character &student,
@@ -157,6 +164,28 @@ const json_talk_topic *get_talk_topic( const std::string &id );
 bool talk_topic_exists( const std::string &id );
 
 std::vector<std::string> get_all_talk_topic_ids();
+
+/**
+ * The handle u_set_talker stores for @p who, which run_eocs' keep_talkers keeps too: a character's
+ * id, or "monster:", "item:" or "vehicle:" and a uid.  Empty for a talker that has none (a
+ * computer, a zone...).
+ */
+std::string talker_handle( const_talker const &who );
+/**
+ * The talker a handle names, or nullptr if it's dead, gone or out of the reality bubble.  An item
+ * found is kept in @p items, which must outlive the talker.
+ */
+std::unique_ptr<talker> find_talker_by_handle( const std::string &handle,
+        std::list<item_location> &items );
+/** Whether two handles name the same talker (an item's may say different places it was) */
+bool same_talker_handle( std::string_view a, std::string_view b );
+
+/**
+ * The topic of @p chatbin a name stands for: the names npc template JSON gives them
+ * ("talk_friend", "talk_stranger_wary"...), and "first_topic" for its "chat".  nullptr for any
+ * other name.
+ */
+std::string *chatbin_topic( dialogue_chatbin &chatbin, std::string_view name );
 
 std::vector<int> npcs_select_menu( const std::vector<Character *> &npc_list,
                                    const std::string &prompt,

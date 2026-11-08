@@ -33,8 +33,9 @@ Each scenario builds a fixed, seeded setup without timing it, then times a fixed
 of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones marked
 *combat* (`tests/benchmark_scenarios_combat_test.cpp`), *load*
 (`tests/benchmark_scenarios_load_test.cpp`), *world*
-(`tests/benchmark_scenarios_world_test.cpp`) and *npc*
-(`tests/benchmark_scenarios_npc_test.cpp`).
+(`tests/benchmark_scenarios_world_test.cpp`), *npc*
+(`tests/benchmark_scenarios_npc_test.cpp`) and *sound*
+(`tests/benchmark_scenarios_sound_test.cpp`).
 
 | Scenario | Work timed | Audit findings it covers |
 |---|---|---|
@@ -44,6 +45,8 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `submap_travel_dense` | 20 submap crossings over already generated terrain, with a dense base (2,700 items) and a full inventory | MAP-P01 |
 | `crafting_recompute` | crafting time and craftability for 300 recipes, 5 times, in a dense base, outside any query cache scope (the path activities and NPCs take) | CRAFT-P02, requirement checks |
 | `crafting_recompute_scoped` | the same, inside the query cache scope the crafting menu opens | crafting menu |
+| `crafting_panel_redraws_rebuilt` | the crafting menu's info panel for 2 recipes (crossbow: tools, qualities, proficiencies; bat: steps), 100 redraws each, built on every redraw as the menu did before, in a dense base, inside the menu's query cache scope | UIINV-P01 |
+| `crafting_panel_redraws_cached` | the same redraws, read from the menu's panel cache, which builds each panel once | UIINV-P01 |
 | `weather_catchup` | `sum_conditions` over 3 days at 4 locations, as a returning player's funnels and solar vehicles run it | LOOP-P01 |
 | `overmap_generate` | generating one overmap from scratch | OMAP-P01, OMAP-P02 |
 | `zone_sort_queries` | 2,000 "which loot zone takes this item" lookups with 9 category zones of 400 tiles | ACT-P01 |
@@ -71,6 +74,9 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `npc_decision` (*npc*) | 300 turns of the `npc_decision` behavior tree for 20 NPCs (5 followers, 5 guards, 5 thirsty carrying water, 5 idle), as `npc::move()` walks it | NPC-J03 |
 | `npc_decision_condition_math` (*npc*) | the same, with 4 condition and math nodes added to the priorities (`data/mods/TEST_DATA/npc_behavior_bench.json`) | NPC-J03 |
 | `npc_decision_condition_math_cached` (*npc*) | the same, with those 4 nodes evaluated every 5 turns | NPC-J03 |
+| `sound_open_ground` (*sound*) | 100 turns of 20 sounds and 100 footsteps, heard by 300 zombies (`process_sounds`) and the avatar (`process_sound_markers`), on open ground | SPAT-J01 |
+| `sound_brick_walls` (*sound*) | the same among a grid of brick walls, which muffle 15 since SPAT-J01-values (it was `sound_vanilla_walls` while vanilla walls muffled nothing and the walk was skipped) | SPAT-J01 |
+| `sound_muffling_walls` (*sound*) | the same among walls with a `sound_attenuation` (TEST_DATA), so every hearer in earshot walks the line to each sound cluster | SPAT-J01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
@@ -82,7 +88,10 @@ but without the avatar's input handling and screen updates, which tests can't dr
 - DATA-P01 (a vsync-blocked redraw for every loading step) only exists in the tiles build
   with a real display.
 - UI redraw loops (the crafting menu's 100 Hz redraw, the surroundings menu) need a
-  display; `crafting_recompute` times the work such a redraw repeats.
+  display. The `crafting_panel_redraws_*` scenarios call the crafting menu's panel-building
+  code directly, without ImGui; `crafting_recompute` times the craftability checks behind
+  the recipe list.
+- REND-P02 (sprite lookups in the tiles renderer) only exists in the tiles build.
 
 ## Changing scenarios
 

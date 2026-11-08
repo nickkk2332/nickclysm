@@ -1,0 +1,42 @@
+[
+  {
+    "//": "HLTH-J14: the per-turn side effects of these traits used to be C++ in suffer.cpp.  Each runs every turn as its trait's processed_eocs, while awake, with the chance the C++ had.",
+    "type": "effect_on_condition",
+    "id": "EOC_TRAIT_NARCOLEPTIC",
+    "condition": { "and": [ { "not": "u_in_sleep_state" }, { "x_in_y_chance": { "x": 1, "y": 28800 } } ] },
+    "effect": [
+      { "u_message": "You're suddenly overcome with the urge to sleep and you pass out.", "type": "bad" },
+      { "u_fall_asleep": "20 minutes" }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TRAIT_MOODSWINGS",
+    "condition": { "and": [ { "not": "u_in_sleep_state" }, { "x_in_y_chance": { "x": 1, "y": 21600 } } ] },
+    "effect": [
+      {
+        "if": { "x_in_y_chance": { "x": 11, "y": 20 } },
+        "then": { "u_add_morale": "morale_moodswing", "bonus": -20, "max_bonus": -100 },
+        "else": { "u_add_morale": "morale_moodswing", "bonus": 20, "max_bonus": 100 }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TRAIT_SHOUT1",
+    "condition": { "and": [ { "not": "u_in_sleep_state" }, { "x_in_y_chance": { "x": 1, "y": 21600 } } ] },
+    "effect": [ "u_shout" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TRAIT_SHOUT2",
+    "condition": { "and": [ { "not": "u_in_sleep_state" }, { "x_in_y_chance": { "x": 1, "y": 14400 } } ] },
+    "effect": [ "u_shout" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TRAIT_SHOUT3",
+    "condition": { "and": [ { "not": "u_in_sleep_state" }, { "x_in_y_chance": { "x": 1, "y": 10800 } } ] },
+    "effect": [ "u_shout" ]
+  }
+]

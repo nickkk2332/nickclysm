@@ -11,13 +11,12 @@
 #include "character.h"
 #include "creature.h"
 #include "effect.h"
+#include "effect_source.h"
 #include "event.h"
 #include "event_bus.h"
 #include "flat_set.h"
 #include "pimpl.h"
 #include "type_id.h"
-
-class effect_source;
 
 static const json_character_flag json_flag_CANNOT_GAIN_EFFECTS( "CANNOT_GAIN_EFFECTS" );
 
@@ -101,6 +100,12 @@ bool Creature::add_effect_grant( int64_t token, const effect_source &source,
     if( !existed && present() ) {
         process_one_effect( snapshot, true );
     }
+    // EVT-J04: last, as the EOCs may change this creature's effects
+    if( !existed && present() ) {
+        run_effect_eocs( effect_eoc_hook::apply, *id, bp, now, 0, source );
+    } else if( existed && previous != now ) {
+        run_effect_eocs( effect_eoc_hook::intensity_change, *id, bp, now, previous, source );
+    }
     return present();
 }
 
@@ -130,11 +135,14 @@ void Creature::remove_effect_grant( int64_t token )
             remove_effect( cell.first, cell.second );
         } else if( before != value.get_intensity() ) {
             const int after = value.get_intensity();
+            const effect_source source = value.get_source();
             on_effect_int_change( cell.first, after, cell.second );
             if( Character *person = as_character() ) {
                 get_event_bus().send<event_type::character_effect_intensity_changed>( person->getID(),
                         cell.second.id(), cell.first, after );
             }
+            run_effect_eocs( effect_eoc_hook::intensity_change, *cell.first, cell.second, after,
+                             before, source );
         }
     }
 }

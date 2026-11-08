@@ -1,0 +1,187 @@
+[
+  {
+    "type": "SPECIES",
+    "id": "TEST_M19B_SPECIES_A",
+    "description": "MONAI-J06/J07 test species: resists poison 40% of the time, and drips mechanical fluid.",
+    "effect_immunities": [ { "id": "poison", "chance": 40 } ],
+    "bleed_effect": "dripping_mechanical_fluid"
+  },
+  {
+    "type": "SPECIES",
+    "id": "TEST_M19B_SPECIES_B",
+    "description": "MONAI-J07 test species: always resists poison.",
+    "effect_immunities": [ "poison" ]
+  },
+  {
+    "type": "monster_flag",
+    "id": "TEST_M19B_FLAG",
+    "//": "MONAI-J06 test flag, for a monster relation."
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_immune",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b immune test monster" },
+    "description": "MONAI-J07: of both test species, so it always resists poison and drips mechanical fluid.",
+    "species": [ "TEST_M19B_SPECIES_A", "TEST_M19B_SPECIES_B" ],
+    "effect_immunities": [ { "id": "stunned", "chance": 30 } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_vulnerable",
+    "copy-from": "mon_test_m19b_immune",
+    "name": { "str": "m19b vulnerable test monster" },
+    "description": "MONAI-J07: its own entries win over its species': poisonable, and can't be downed.",
+    "extend": { "effect_immunities": [ { "id": "poison", "chance": 0 }, "downed" ] },
+    "delete": { "effect_immunities": [ "stunned" ] }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_bee",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b bee test monster" },
+    "description": "MONAI-J06: a monster of the bee faction, of no species, that attacks characters.",
+    "default_faction": "bee",
+    "species": [  ],
+    "aggro_character": true
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_calm",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b calm test monster" },
+    "description": "MONAI-J06: of a test species and with the test flag, it only attacks characters that annoyed it.",
+    "species": [ "TEST_M19B_SPECIES_A" ],
+    "extend": { "flags": [ "TEST_M19B_FLAG" ] },
+    "aggro_character": false
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M19B_IGNORED_BY_FLAG",
+    "name": { "str": "Test m19b ignored" },
+    "points": 0,
+    "valid": false,
+    "description": "MONAI-J06 fixture: monsters with TEST_M19B_FLAG ignore the character.",
+    "monster_relations": [ { "monster_flag": "TEST_M19B_FLAG", "attitude": "IGNORE" } ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M19B_SEQUENCE",
+    "name": { "str": "Test m19b sequence" },
+    "points": 0,
+    "valid": false,
+    "description": "MONAI-J06 fixture: angers a calm monster of the test species, then scares it if that made it angry enough.",
+    "monster_relations": [
+      { "species": "TEST_M19B_SPECIES_A", "max_anger": 30, "anger": 40 },
+      { "species": [ "TEST_M19B_SPECIES_A" ], "min_anger": 50, "morale": -200 }
+    ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M19B_CALMING",
+    "name": { "str": "Test m19b calming" },
+    "points": 0,
+    "valid": false,
+    "description": "MONAI-J06 fixture: a calming anger relation to the test species.",
+    "anger_relations": [ [ "TEST_M19B_SPECIES_A", -50 ] ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M19B_ANGERING",
+    "name": { "str": "Test m19b angering" },
+    "points": 0,
+    "valid": false,
+    "description": "MONAI-J06 fixture: an angering anger relation to the test species.",
+    "anger_relations": [ [ "TEST_M19B_SPECIES_A", 50 ] ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_triggers",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b trigger test monster" },
+    "description": "MONAI-J08: triggers with their own numbers, and condition triggers.",
+    "anger_triggers": [
+      "HURT",
+      { "id": "PLAYER_CLOSE", "amount": 8, "range": 7, "cap": 50 },
+      { "id": "CONDITION", "condition": "has_beta", "amount": { "math": [ "2 + 3" ] }, "aggro_character": true }
+    ],
+    "fear_triggers": [
+      { "id": "FIRE", "amount": 9, "range": 2 },
+      { "id": "CONDITION", "condition": { "math": [ "1 == 2" ] }, "amount": 50 }
+    ],
+    "placate_triggers": [ { "id": "CONDITION", "condition": { "math": [ "1 == 1" ] }, "amount": 1 } ],
+    "aggro_character": false
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_triggers_child",
+    "copy-from": "mon_test_m19b_triggers",
+    "name": { "str": "m19b trigger test child" },
+    "description": "MONAI-J08: extend replaces a trigger's numbers, delete removes a trigger and its conditions.",
+    "extend": { "anger_triggers": [ { "id": "PLAYER_CLOSE", "amount": 3 } ] },
+    "delete": { "fear_triggers": [ "FIRE", "CONDITION" ] }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_grows",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b growing test monster" },
+    "description": "MONAI-J05: grows into mon_test_m19b_grown after a day.",
+    "upgrades": { "age_grow": 1, "into": "mon_test_m19b_grown" }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_grown",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b grown test monster" },
+    "description": "MONAI-J05: what mon_test_m19b_grows grows into.",
+    "upgrades": false
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_layer",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "m19b egg-laying test monster" },
+    "description": "MONAI-J05: lays a chicken egg every day.",
+    "reproduction": { "baby_type": { "baby_egg": "egg_chicken" }, "baby_count": 1, "baby_timer": 1 }
+  },
+  {
+    "type": "behavior",
+    "id": "test_m19b_goal_target",
+    "//": "MONAI-J09 test: while the monster's attack target is the avatar, run EOC_TEST_M19B_TARGET.",
+    "conditions": [ { "predicate": "condition", "condition": "npc_is_avatar" } ],
+    "goal": "eoc:EOC_TEST_M19B_TARGET"
+  },
+  {
+    "type": "behavior",
+    "id": "test_m19b_goal_special",
+    "//": "MONAI-J09 test: while test_m19b_goal_special is 1, use test_eoc_mark_target.",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "test_m19b_goal_special == 1" ] } } ],
+    "goal": "special:test_eoc_mark_target"
+  },
+  {
+    "type": "behavior",
+    "id": "test_m19b_goal_eoc",
+    "//": "MONAI-J09 test: while test_m19b_goal_allowed is 1, run EOC_TEST_M19B_GOAL.",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "test_m19b_goal_allowed == 1" ] } } ],
+    "goal": "eoc:EOC_TEST_M19B_GOAL"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19B_TARGET",
+    "effect": [ { "if": "npc_is_avatar", "then": [ { "math": [ "test_m19b_target_ran = 1" ] } ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M19B_GOAL",
+    "effect": [ { "math": [ "test_m19b_goal_ran = test_m19b_goal_ran + 1" ] } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m19b_goals",
+    "copy-from": "mon_test_eoc_attacker",
+    "name": { "str": "m19b behavior test monster" },
+    "description": "MONAI-J09: picks its goals with the test_m19b nodes, then its special attack's.",
+    "behavior": [ "test_m19b_goal_special", "test_m19b_goal_target", "test_m19b_goal_eoc" ]
+  }
+]

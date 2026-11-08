@@ -6,7 +6,9 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "cata_path.h"
@@ -32,8 +34,9 @@
 #include "string_input_popup.h"
 #include "translation.h"
 #include "translations.h"
-#include "uilist.h"
+#include "type_id.h"
 #include "ui_manager.h"
+#include "uilist.h"
 #include "worldfactory.h"
 
 safemode &get_safemode()
@@ -361,7 +364,9 @@ void safemode::show( const std::string &custom_name_in, bool is_safemode_in )
                                                 "acidic zo*     matches monsters beginning with 'acidic zo'\n"
                                                 "*mbie          matches monsters ending with 'mbie'\n"
                                                 "*cid*zo*ie     multiple * are allowed\n"
-                                                "AcI*zO*iE      case insensitive search" )
+                                                "AcI*zO*iE      case insensitive search\n"
+                                                "id:mon_zomb*   matches monster ids, in any language\n"
+                                                "species:ZOMBIE matches the monsters of a species" )
                                           );
                             break;
                         case Categories::SOUND:
@@ -492,6 +497,33 @@ void safemode::show( const std::string &custom_name_in, bool is_safemode_in )
     }
 }
 
+static const std::string safemode_id_prefix( "id:" );
+static const std::string safemode_species_prefix( "species:" );
+
+// Whether a hostile-spotted rule is matched against monster type ids or species ids
+static bool is_type_rule( std::string_view rule )
+{
+    return string_starts_with( rule, safemode_id_prefix ) ||
+           string_starts_with( rule, safemode_species_prefix );
+}
+
+// Whether a hostile-spotted rule names a monster type: "id:pattern" its id, "species:pattern" one
+// of its species, any other rule its (translated) name; * is a wildcard in all of them
+static bool rule_matches_type( const std::string &rule, const mtype &type )
+{
+    if( string_starts_with( rule, safemode_id_prefix ) ) {
+        return wildcard_match( type.id.str(), rule.substr( safemode_id_prefix.size() ) );
+    }
+    if( string_starts_with( rule, safemode_species_prefix ) ) {
+        const std::string pattern = rule.substr( safemode_species_prefix.size() );
+        return std::any_of( type.species.begin(), type.species.end(),
+        [&pattern]( const species_id & species ) {
+            return wildcard_match( species.str(), pattern );
+        } );
+    }
+    return wildcard_match( type.nname(), rule );
+}
+
 void safemode::test_pattern( const int tab_in, const int row_in )
 {
     std::vector<std::string> creature_list;
@@ -510,9 +542,8 @@ void safemode::test_pattern( const int tab_in, const int row_in )
 
     //Loop through all monster mtypes
     for( const mtype &mtype : MonsterGenerator::generator().get_all_mtypes() ) {
-        std::string creature_name = mtype.nname();
-        if( wildcard_match( creature_name, temp_rules[row_in].rule ) ) {
-            creature_list.push_back( creature_name );
+        if( rule_matches_type( temp_rules[row_in].rule, mtype ) ) {
+            creature_list.push_back( mtype.nname() );
         }
     }
 
@@ -656,7 +687,16 @@ void safemode::add_rules( const std::vector<rules_class> &rules_in )
     for( const rules_class &rule : rules_in ) {
         switch( rule.category ) {
             case Categories::HOSTILE_SPOTTED:
-                if( !rule.whitelist ) {
+                if( is_type_rule( rule.rule ) ) {
+                    // Matched against the monster types; a whitelist rule only takes away
+                    for( const mtype &mtype : MonsterGenerator::generator().get_all_mtypes() ) {
+                        if( rule_matches_type( rule.rule, mtype ) &&
+                            ( !rule.whitelist || safemode_rules_hostile.count( mtype.nname() ) > 0 ) ) {
+                            set_rule( rule, mtype.nname(), rule.whitelist ? rule_state::WHITELISTED :
+                                      rule_state::BLACKLISTED, true );
+                        }
+                    }
+                } else if( !rule.whitelist ) {
                     //Check include patterns against all monster mtypes
                     for( const mtype &mtype : MonsterGenerator::generator().get_all_mtypes() ) {
                         set_rule( rule, mtype.nname(), rule_state::BLACKLISTED );
@@ -677,7 +717,8 @@ void safemode::add_rules( const std::vector<rules_class> &rules_in )
     }
 }
 
-void safemode::set_rule( const rules_class &rule_in, const std::string &name_in, rule_state rs_in )
+void safemode::set_rule( const rules_class &rule_in, const std::string &name_in, rule_state rs_in,
+                         bool matched )
 {
     static std::vector<Creature::Attitude> attitude_any = { {Creature::Attitude::HOSTILE, Creature::Attitude::NEUTRAL, Creature::Attitude::FRIENDLY} };
     std::vector<MovementModes> movement_modes;
@@ -688,7 +729,8 @@ void safemode::set_rule( const rules_class &rule_in, const std::string &name_in,
     }
     switch( rule_in.category ) {
         case Categories::HOSTILE_SPOTTED:
-            if( !rule_in.rule.empty() && rule_in.active && wildcard_match( name_in, rule_in.rule ) ) {
+            if( !rule_in.rule.empty() && rule_in.active &&
+                ( matched || wildcard_match( name_in, rule_in.rule ) ) ) {
                 for( MovementModes mode : movement_modes ) {
                     if( rule_in.attitude == Creature::Attitude::ANY ) {
                         for( Creature::Attitude &att : attitude_any ) {

@@ -53,6 +53,7 @@
 #include "map_scale_constants.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "mapgen_functions.h"
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
@@ -655,6 +656,8 @@ bool game::do_turn()
         return turn_handler::cleanup_at_end();
     }
     timed_events.process();
+    // What map generation sent since last turn (MGEN-J01)
+    send_queued_mapgen_events();
     get_item_wakeups().process( calendar::turn );
     if( calendar::once_every( 1_hours ) ) {
         get_craft_reservations().sweep_expired_records();
@@ -832,6 +835,12 @@ bool game::do_turn()
     m.process_fields();
     m.process_items();
     explosion_handler::process_explosions();
+    // what fields, rotting items and births queued this turn appears now, not at the next shift
+    m.spawn_queued_monsters();
+    if( calendar::once_every( 1_days ) ) {
+        // a new day's temperature average freezes or thaws water near the player too
+        m.refresh_phase_changes();
+    }
     m.creature_in_field( u );
 
     // Apply sounds from previous turn to monster and NPC AI.

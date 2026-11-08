@@ -9,7 +9,6 @@
 #include "activity_actor_definitions.h"
 #include "calendar.h"
 #include "character.h"
-#include "clone_ptr.h"
 #include "coordinates.h"
 #include "game.h"
 #include "gates.h"
@@ -180,17 +179,20 @@ std::optional<std::string> examine_from_eoc( Character &who, const tripoint_bub_
     const map_data_common_t &examined = here.has_furn( pos ) ?
                                         static_cast<const map_data_common_t &>( furn ) :
                                         static_cast<const map_data_common_t &>( ter );
-    // map_data_common_t::examine gives an NPC the first examine actor.
-    const std::vector<cata::clone_ptr<iexamine_actor>> actors = examined.get_examine();
-    if( !actors.empty() ) {
-        if( actors.front()->type != "effect_on_condition" ) {
+    // map_data_common_t::examine gives an NPC the first examine actor it may use.
+    if( !examined.get_examine_actors().empty() ) {
+        const iexamine_actor *actor = examined.npc_examine_actor( who, pos );
+        if( actor == nullptr ) {
+            return string_format( _( "There is nothing an NPC can do with the %s now." ), name );
+        }
+        if( actor->type != "effect_on_condition" ) {
             return string_format( _( "Examining the %s opens a menu, which an NPC can't use." ),
                                   name );
         }
-        actors.front()->call( who, pos );
+        actor->call_with_context( who, pos, examined );
         return std::nullopt;
     }
-    if( !examined.can_examine( pos ) ) {
+    if( !examined.can_examine( pos, who ) ) {
         return string_format( _( "There is nothing to do with the %s." ), name );
     }
     for( const npc_examine_action &action : npc_examine_actions() ) {

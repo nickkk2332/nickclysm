@@ -123,6 +123,9 @@ class mapgendata
         mapgen_arguments mapgen_args_;
         enum_bitset<jmapgen_flags> mapgen_flags_;
         std::vector<oter_id> predecessors_;
+        // The quarter turns the nested chunk being applied is turned by, and its size (MGEN-B08)
+        int nest_rotation_ = 0;
+        int nest_size_ = 0;
 
     public:
         std::array<oter_id, 8> t_nesw;
@@ -185,6 +188,18 @@ class mapgendata
 
         const oter_id &terrain_type() const {
             return terrain_type_;
+        }
+        // The pieces of a nested chunk applied with this data are placed turned by this many
+        // quarter turns within its square of nest_size() (MGEN-B08); 0 outside nested chunks
+        int nest_rotation() const {
+            return nest_rotation_;
+        }
+        int nest_size() const {
+            return nest_size_;
+        }
+        void set_nest_rotation( int turns, int size ) {
+            nest_rotation_ = turns;
+            nest_size_ = size;
         }
         float monster_density() const {
             return density_;

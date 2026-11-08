@@ -20,16 +20,22 @@
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
+#include "field_type.h"
 #include "game.h"
 #include "game_constants.h"
+#include "generic_factory.h"
 #include "itype.h" // IWYU pragma: keep
 #include "line.h"
 #include "map.h"
 #include "map_iterator.h"
+#include "mapdata.h"
 #include "messages.h"
 #include "monster.h"
 #include "music.h"
 #include "npc.h"
+#include "options.h"
 #include "output.h"
 #include "overmapbuffer.h"
 #include "player_activity.h"
@@ -183,8 +189,6 @@ static const ter_str_id ter_t_underbrush( "t_underbrush" );
 static const ter_str_id ter_t_underbrush_harvested( "t_underbrush_harvested" );
 #endif
 
-static const trait_id trait_HEAVYSLEEPER( "HEAVYSLEEPER" );
-static const trait_id trait_HEAVYSLEEPER2( "HEAVYSLEEPER2" );
 
 namespace
 {
@@ -265,28 +269,96 @@ static std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> monster_soun
     return ret;
 }
 
+// Whether loaded content can muffle sound at all, set by sounds::finalize_muffling
+static bool terrain_muffling_loaded = false;
+static bool vehicle_muffling_loaded = false;
+
+void sounds::finalize_muffling()
+{
+    terrain_muffling_loaded = false;
+    for( const ter_t &ter : mapdata::terrain_data.get_all() ) {
+        terrain_muffling_loaded |= ter.sound_attenuation > 0;
+    }
+    for( const furn_t &furn : mapdata::furniture_data.get_all() ) {
+        terrain_muffling_loaded |= furn.sound_attenuation > 0;
+    }
+    for( const field_type &fd : field_types::get_all() ) {
+        terrain_muffling_loaded |= fd.muffles_sound;
+    }
+    vehicle_muffling_loaded = false;
+    for( const vpart_info &vpi : vehicles::parts::get_all() ) {
+        vehicle_muffling_loaded |= vpi.sound_attenuation > 0;
+    }
+}
+
+bool sounds::terrain_can_muffle()
+{
+    return terrain_muffling_loaded;
+}
+
+bool sounds::vehicles_can_muffle()
+{
+    return vehicle_muffling_loaded;
+}
+
+namespace
+{
+// How much a level of vertical separation costs a sound, from the external options
+struct vertical_falloff {
+    // tiles of distance per level of separation
+    int z_level_mult;
+    // levels the first level of separation counts as when the lower end is underground
+    int underground_mult;
+    // levels each further underground level of separation counts as
+    int deep_underground_mult;
+};
+} // namespace
+
+static vertical_falloff current_vertical_falloff()
+{
+    return { get_option<int>( "SOUND_Z_LEVEL_MULT" ), get_option<int>( "SOUND_UNDERGROUND_MULT" ),
+             get_option<int>( "SOUND_DEEP_UNDERGROUND_MULT" ) };
+}
+
 // This is an attempt to handle attenuation of sound for underground areas.
 // The main issue it addresses is that you can hear activity
 // relatively deep underground while on the surface.
 // My research indicates that attenuation through soil-like materials is as
 // high as 100x the attenuation through air, plus vertical distances are
 // roughly five times as large as horizontal ones.
-static int sound_distance( const tripoint_bub_ms &source, const tripoint_bub_ms &sink )
+static int sound_distance( const tripoint_bub_ms &source, const tripoint_bub_ms &sink,
+                           const vertical_falloff &falloff )
 {
     const int lower_z = std::min( source.z(), sink.z() );
     const int upper_z = std::max( source.z(), sink.z() );
     const int vertical_displacement = upper_z - lower_z;
     int vertical_attenuation = vertical_displacement;
     if( lower_z < 0 && vertical_displacement > 0 ) {
-        // Apply a moderate bonus attenuation (5x) for the first level of vertical displacement.
-        vertical_attenuation += 4;
-        // At displacements greater than one, apply a large additional attenuation (100x) per level.
+        // The first level of vertical displacement counts as underground_mult levels (5x).
+        vertical_attenuation += falloff.underground_mult - 1;
+        // Each further underground level counts as deep_underground_mult levels (21x).
         const int underground_displacement = std::min( -lower_z, vertical_displacement );
-        vertical_attenuation += ( underground_displacement - 1 ) * 20;
+        vertical_attenuation += ( underground_displacement - 1 ) * ( falloff.deep_underground_mult - 1 );
     }
-    // Regardless of underground effects, scale the vertical distance by 5x.
-    vertical_attenuation *= 5;
+    // Regardless of underground effects, scale the vertical distance by z_level_mult (5x).
+    vertical_attenuation = std::max( vertical_attenuation * falloff.z_level_mult, 0 );
     return rl_dist( source.xy(), sink.xy() ) + vertical_attenuation;
+}
+
+int sounds::sound_distance( const tripoint_bub_ms &source, const tripoint_bub_ms &sink )
+{
+    if( source.z() == sink.z() ) {
+        return rl_dist( source.xy(), sink.xy() );
+    }
+    return ::sound_distance( source, sink, current_vertical_falloff() );
+}
+
+// sound_distance plus what the tiles between source and sink muffle, for the sound
+// effects the avatar hears
+static int heard_distance( const tripoint_bub_ms &source, const tripoint_bub_ms &sink )
+{
+    return sounds::sound_distance( source, sink ) +
+           get_map().sound_attenuation_between( source, sink );
 }
 
 static std::string season_str( const season_type &season )
@@ -399,6 +471,7 @@ static std::vector<centroid> cluster_sounds(
     if( input_sounds.empty() ) {
         return sound_clusters;
     }
+    const vertical_falloff falloff = current_vertical_falloff();
     const int num_seed_clusters =
         std::max( std::min( input_sounds.size(), static_cast<size_t>( 10 ) ),
                   static_cast<size_t>( std::log( input_sounds.size() ) ) );
@@ -426,7 +499,8 @@ static std::vector<centroid> cluster_sounds(
         for( auto centroid_iter = sound_clusters.begin(); centroid_iter != cluster_end;
              ++centroid_iter ) {
             tripoint_bub_ms centroid_pos { static_cast<int>( centroid_iter->x ), static_cast<int>( centroid_iter->y ), static_cast<int>( centroid_iter->z ) };
-            const int dist = sound_distance( tripoint_bub_ms( sound_event_pair.first ), centroid_pos );
+            const int dist = sound_distance( tripoint_bub_ms( sound_event_pair.first ), centroid_pos,
+                                             falloff );
             if( dist < best_dist ) {
                 found_centroid = centroid_iter;
                 best_dist = dist;
@@ -499,6 +573,10 @@ void sounds::process_sounds()
     sounds_to_process.swap( recent_sounds );
     std::vector<centroid> sound_clusters =
         cluster_sounds( monster_sounds_in_bubble( sounds_to_process ) );
+    if( sound_clusters.empty() ) {
+        return;
+    }
+    const vertical_falloff falloff = current_vertical_falloff();
     const int weather_vol = get_weather().weather_id->sound_attn;
     for( const centroid &this_centroid : sound_clusters ) {
         // Since monsters don't go deaf ATM we can just use the weather modified volume
@@ -519,10 +597,16 @@ void sounds::process_sounds()
         // Alert all monsters (that can hear) to the sound.
         for( monster &critter : g->all_monsters() ) {
             // TODO: Generalize this to Creature::hear_sound
-            const int dist = sound_distance( source, critter.pos_bub() );
-            if( vol * 2 > dist ) {
-                // Exclude monsters that certainly won't hear the sound
-                critter.hear_sound( source, vol, dist, this_centroid.provocative );
+            const tripoint_bub_ms listener = critter.pos_bub();
+            const int dist = sound_distance( source, listener, falloff );
+            // Exclude monsters that certainly won't hear the sound; muffling only lowers it,
+            // so the walk between is left for the rest
+            if( vol * 2 > dist && critter.can_hear() ) {
+                const int muffled_dist = dist + here.sound_attenuation_between( source, listener,
+                                         vol * 2 - dist );
+                if( vol * 2 > muffled_dist ) {
+                    critter.hear_sound( source, vol, muffled_dist, this_centroid.provocative );
+                }
             }
         }
         // Trigger sound-triggered traps and ensure they are still valid
@@ -534,10 +618,11 @@ void sounds::process_sounds()
                 if( tr.loadid != trapType->loadid ) {
                     continue;
                 }
-                const int dist = sound_distance( source, tp );
+                int dist = sound_distance( source, tp, falloff );
                 // Exclude traps that certainly won't hear the sound
                 if( vol * 2 > dist ) {
-                    if( tr.triggered_by_sound( vol, dist ) ) {
+                    dist += here.sound_attenuation_between( source, tp, vol * 2 - dist );
+                    if( vol * 2 > dist && tr.triggered_by_sound( vol, dist ) ) {
                         tr.trigger( tp );
                     }
                 }
@@ -600,9 +685,14 @@ void sounds::process_sound_markers( Character *you )
 {
     const map &here = get_map();
 
+    if( sounds_since_last_turn.empty() ) {
+        return;
+    }
     bool is_deaf = you->is_deaf();
     const float volume_multiplier = you->hearing_ability();
     const int weather_vol = get_weather().weather_id->sound_attn;
+    const vertical_falloff falloff = current_vertical_falloff();
+    const std::size_t sounds_heard_before = sounds_since_last_turn.size();
     // NOLINTNEXTLINE(modernize-loop-convert)
     for( std::size_t i = 0; i < sounds_since_last_turn.size(); i++ ) {
         // copy values instead of making references here to fix use-after-free error
@@ -610,13 +700,19 @@ void sounds::process_sound_markers( Character *you )
         // so the references may become invalid after the vector enlarged its internal buffer
         const tripoint_bub_ms pos = here.get_bub( sounds_since_last_turn[i].first );
         const sound_event sound = sounds_since_last_turn[i].second;
-        const int distance_to_sound = sound_distance( you->pos_bub(), pos );
+        const int distance_to_sound = sound_distance( you->pos_bub(), pos, falloff );
         const int raw_volume = sound.volume;
+        const int unmuffled_felt = static_cast<int>( raw_volume * std::min( 1.0f, volume_multiplier ) );
+        const int unmuffled_heard = static_cast<int>( ( raw_volume - weather_vol ) * volume_multiplier );
+        // What the tiles between muffle, which only lowers a sound: a sound too faint to be
+        // felt or heard anyway skips the walk, which stops where it couldn't be either
+        const int audible_by = std::max( unmuffled_felt, unmuffled_heard ) - distance_to_sound;
+        const int muffling = audible_by > 0 ?
+                             here.sound_attenuation_between( pos, you->pos_bub(), audible_by ) : 0;
 
         // The felt volume of a sound is not affected by negative multipliers, such as already
         // deafened players or players with sub-par hearing to begin with.
-        int felt_volume = static_cast<int>( raw_volume * std::min( 1.0f,
-                                            volume_multiplier ) ) - distance_to_sound;
+        int felt_volume = unmuffled_felt - distance_to_sound - muffling;
         if( you->has_flag( json_flag_HEARING_PROTECTION ) ) {
             felt_volume /= 2;
         }
@@ -649,8 +745,7 @@ void sounds::process_sound_markers( Character *you )
         }
 
         // The heard volume of a sound is the player heard volume, regardless of true volume level.
-        const int heard_volume = static_cast<int>( ( raw_volume - weather_vol ) *
-                                 volume_multiplier ) - distance_to_sound;
+        const int heard_volume = unmuffled_heard - distance_to_sound - muffling;
 
         if( heard_volume <= 0 && pos != you->pos_bub() ) {
             continue;
@@ -659,6 +754,15 @@ void sounds::process_sound_markers( Character *you )
         // Player volume meter includes all sounds from their tile and adjacent tiles
         if( distance_to_sound <= 1 ) {
             you->volume = std::max( you->volume, heard_volume );
+        }
+
+        // Not for a sound made while these are heard (by an EOC of the event, say): one that
+        // answers every sound it hears would never let this loop end
+        if( heard_volume > 0 && i < sounds_heard_before ) {
+            const cata::event heard = cata::event::make<event_type::character_hears_sound>(
+                                          you->getID(), raw_volume, heard_volume,
+                                          io::enum_to_string( sound.category ), here.get_abs( pos ).raw() );
+            get_event_bus().send_with_talker( you, static_cast<Creature *>( nullptr ), heard );
         }
 
         // Noises from vehicle player is in.
@@ -677,13 +781,12 @@ void sounds::process_sound_markers( Character *you )
         bool slept_through = you->has_effect( effect_slept_through_alarm );
         // See if we need to wake someone up
         if( you->in_sleep_state() ) {
-            if( ( ( !( you->has_trait( trait_HEAVYSLEEPER ) ||
-                       you->has_trait( trait_HEAVYSLEEPER2 ) ) && dice( 2, 15 ) < heard_volume ) ||
-                  ( you->has_trait( trait_HEAVYSLEEPER ) && dice( 3, 15 ) < heard_volume ) ||
-                  ( you->has_trait( trait_HEAVYSLEEPER2 ) && dice( 6, 15 ) < heard_volume ) ) &&
+            // HLTH-J12: 2d15, 3d15 for Heavy Sleeper, 6d15 for Very Heavy Sleeper (WAKE_RESISTANCE)
+            if( dice( you->wake_dice(), 15 ) < heard_volume &&
                 !you->has_effect( effect_narcosis ) &&
                 !you->has_bionic( bio_sleep_shutdown ) ) {
                 //Not kidding about sleep-through-firefight
+                const wake_up_cause_scope cause( "noise" );
                 you->wake_up();
                 if( listener ) {
                     listener->note_noise( true );
@@ -1098,12 +1201,13 @@ void sfx::do_vehicle_exterior_engine_sfx()
     vehicle *veh = nullptr;
 
     for( wrapped_vehicle vehicle : vehs ) {
-        if( vehicle.v->vehicle_noise > 0 &&
-            vehicle.v->vehicle_noise -
-            sound_distance( player_character.pos_bub( here ), vehicle.v->pos_bub( here ) ) > noise_factor ) {
-
-            noise_factor = vehicle.v->vehicle_noise - sound_distance( player_character.pos_bub( here ),
-                           vehicle.v->pos_bub( here ) );
+        if( vehicle.v->vehicle_noise == 0 ) {
+            continue;
+        }
+        const int heard_noise = vehicle.v->vehicle_noise -
+                                heard_distance( vehicle.v->pos_bub( here ), player_character.pos_bub( here ) );
+        if( heard_noise > noise_factor ) {
+            noise_factor = static_cast<unsigned char>( heard_noise );
             veh = vehicle.v;
         }
     }
@@ -1398,7 +1502,7 @@ void sfx::generate_gun_sound( const Character &source_arg, const item &firing )
         }
     } else {
         angle = get_heard_angle( source );
-        distance = sound_distance( player_character.pos_bub(), source );
+        distance = heard_distance( source, player_character.pos_bub() );
         if( distance <= 17 ) {
             selected_sound = "";
         } else {
@@ -2130,7 +2234,7 @@ void sfx::play_variant_sound( std::string_view, std::string_view, std::string_vi
 /*@{*/
 int sfx::get_heard_volume( const tripoint_bub_ms &source )
 {
-    int distance = sound_distance( get_player_character().pos_bub(), source );
+    int distance = heard_distance( source, get_player_character().pos_bub() );
     // fract = -100 / 24
     const float fract = -4.166666f;
     int heard_volume = fract * distance - 1 + 100;

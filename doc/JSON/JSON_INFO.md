@@ -44,6 +44,7 @@ Use the `Home` key to return to the top.
     - [Emitters](#emitters)
     - [Item Groups](#item-groups)
     - [Item Category](#item-category)
+    - [Zone types](#zone-types)
     - [Item faults](#item-faults)
     - [Item fault fixes](#item-fault-fixes)
     - [Item fault groups](#item-fault-groups)
@@ -74,6 +75,7 @@ Use the `Home` key to return to the top.
       - [`achievement`](#achievement)
       - [`conduct`](#conduct)
     - [Skills](#skills)
+    - [Speech](#speech)
     - [Speed Description](#speed-description)
     - [Mood Face](#mood-face)
     - [Tool Qualities](#tool-qualities)
@@ -83,8 +85,10 @@ Use the `Home` key to return to the top.
     - [Vehicle Groups](#vehicle-groups)
     - [Vehicle Parts](#vehicle-parts)
       - [Symbols and Variants](#symbols-and-variants)
+      - [Control requirements](#control-requirements)
       - [The following optional fields are specific to CARGO parts.](#the-following-optional-fields-are-specific-to-cargo-parts)
       - [The following optional fields are specific to ENGINEs.](#the-following-optional-fields-are-specific-to-engines)
+        - [Engine power from math](#engine-power-from-math)
       - [The following optional fields are specific to WHEELs.](#the-following-optional-fields-are-specific-to-wheels)
       - [The following optional fields are specific to ROTORs.](#the-following-optional-fields-are-specific-to-rotors)
       - [The following optional fields are specific to WORKBENCHes.](#the-following-optional-fields-are-specific-to-workbenches)
@@ -103,6 +107,7 @@ Use the `Home` key to return to the top.
       - [`entries`](#entries)
       - [`leftovers`](#leftovers)
     - [Harvest Drop Type](#harvest-drop-type)
+      - [Butchery yield rules](#butchery-yield-rules)
     - [Weapon Category](#weapon-category)
     - [Connect group definitions](#connect-group-definitions)
     - [Furniture](#furniture)
@@ -111,6 +116,9 @@ Use the `Home` key to return to the top.
       - [`deployed_item`](#deployed_item)
       - [`lockpick_result`](#lockpick_result)
       - [`lockpick_message`](#lockpick_message)
+      - [`lockpick_difficulty`](#lockpick_difficulty)
+      - [`lockpick_jam_result`](#lockpick_jam_result)
+      - [`hack_result`](#hack_result)
       - [`light_emitted`](#light_emitted)
       - [`boltcut`](#boltcut)
       - [`hacksaw`](#hacksaw)
@@ -128,6 +136,8 @@ Use the `Home` key to return to the top.
       - [`light_emitted`](#light_emitted-1)
       - [`lockpick_result`](#lockpick_result-1)
       - [`lockpick_message`](#lockpick_message-1)
+      - [`lockpick_difficulty`](#lockpick_difficulty-1)
+      - [`lockpick_jam_result`](#lockpick_jam_result-1)
       - [`trap`](#trap)
       - [`boltcut`](#boltcut-1)
       - [`hacksaw`](#hacksaw-1)
@@ -140,6 +150,13 @@ Use the `Home` key to return to the top.
       - [`harvest_by_season`](#harvest_by_season)
       - [`liquid_source`](#liquid_source)
       - [`roof`](#roof)
+      - [`produces_liquid`](#produces_liquid)
+      - [`rad_scorch`](#rad_scorch)
+      - [`felled`](#felled)
+      - [`churned_into`](#churned_into)
+      - [`chop`](#chop)
+      - [`till`](#till)
+      - [`plant_result`](#plant_result)
     - [Common To Furniture And Terrain](#common-to-furniture-and-terrain)
       - [`id`](#id-1)
       - [`name`](#name)
@@ -153,11 +170,16 @@ Use the `Home` key to return to the top.
       - [`comfort`](#comfort)
       - [`floor_bedding_warmth`](#floor_bedding_warmth)
       - [`fall_damage_reduction`](#fall_damage_reduction)
+      - [`sound_attenuation`](#sound_attenuation)
+      - [`max_creature_size`](#max_creature_size)
+      - [`light_color`](#light_color)
       - [`bonus_fire_warmth_feet`](#bonus_fire_warmth_feet)
       - [`looks_like`](#looks_like)
+      - [`item_temperature`](#item_temperature)
       - [`color` or `bgcolor`](#color-or-bgcolor)
       - [`coverage`](#coverage)
       - [`max_volume`](#max_volume)
+      - [`crafting_pseudo_items`](#crafting_pseudo_items)
       - [`examine_action`](#examine_action)
       - [`close` and `open`](#close-and-open)
       - [`bash`](#bash)
@@ -226,6 +248,10 @@ Use the `Home` key to return to the top.
   - [`tiles-new`](#tiles-new)
 - [Obsoletion and migration](#obsoletion-and-migration)
 - [Field types](#field-types)
+  - [Field processors](#field-processors)
+    - [`processors`](#processors)
+    - [`contact_processors`](#contact_processors)
+    - [`contact_damage`](#contact_damage)
   - [Emits](#emits)
   - [Immunity data](#immunity-data)
 - [Mod settings](#mod-settings)
@@ -930,6 +956,13 @@ Addictions are defined in JSON using `"addiction_type"`:
 | `"craving_morale"`      | ID of the `morale_type` penalty
 | `"effect_on_condition"` | ID of the `effect_on_condition` (can also be an inline EOC) which activates on each `update_body` (aka every turn)
 | `"builtin"`             | *(for legacy addiction code)* Name of a hardcoded function to process the addiction's effect. For new addictions, use `"effect_on_condition"` instead.
+| `"dose_satiation"`      | How long a dose keeps the addiction sated (default `"2 h"`).  A dose while it's sated for less than 10 minutes adds this much, otherwise half of it; a dose after the satiation ran out sets it to this.
+| `"recovery_time"`       | How long past the end of its satiation it takes to lose a level (default `"6 h"`); each level of intensity makes it `"intensity_decay"` shorter.  At the end, the intensity drops by 1 and the satiation starts again from 0.
+| `"intensity_decay"`     | How much sooner each level of intensity ends the recovery (default `"10 m"`), so heavier addictions lose levels faster.
+| `"max_intensity"`       | The intensity doses can't raise it past (default 20).  A dose raises it by 1 when its strength beats the intensity times 2 to 5.
+| `"remove_below"`        | When a recovery ends below this intensity, the addiction is gone instead of losing a level (default 3, the intensity where withdrawal starts; at least 1).
+
+The character's enchantment values change the lifecycle (see [MAGIC.md](MAGIC.md)): `ADDICTION_STRENGTH` multiplies the strength of each dose, `ADDICTION_SATIATION` the `dose_satiation` and `ADDICTION_RECOVERY` the `recovery_time`.  Addictive Personality and Addiction Resistant are those values, not C++.
 
 Each turn, the player's addictions are processed using either the given `effect_on_condition` or `builtin`. These effects usually have a rng condition so that the effect isn't applied constantly every turn. Ex:
 
@@ -1086,7 +1119,7 @@ reference at least one body part or sub body part.
 | `limb_scores`          | (_optional_) List of arrays defining limb scores. Each array contains 2 mandatory values and 1 optional value. Value 1 is a reference to a `limb_score` id. Value 2 is a float defining the limb score's value. (optional) Value 3 is a float defining the limb score's maximum value (mostly just used for manipulator score).
 | `effects_on_hit`       | (_optional_) Array of effects that can apply whenever the limb is damaged.  For details see below.
 | `unarmed_damage`       | (_optional_) An array of objects, each detailing the amount of unarmed damage the bodypart contributes to unarmed attacks and their armor penetration. The unarmed damages of each limb are summed and added to the base unarmed damage. Should be used for limbs the character is expected to *always* attack with, for special attacks use a dedicated technique.
-| `similar_bodyparts`           | (_optional_) Array of (sub)bodypart ids.  Armor coverage is automatically extended to these bodyparts - Ex: any armor covering the bodypart `arm_l` will cover `arm_bear_l` with the same coverage in the below example.  Sublocations will need a similar definition as well to ensure correct function.  Currently bodyparts can only point at bodyparts and sub-bodyparts at sub-bodyparts. 
+| `similar_bodypart`     | (_optional_) A (sub)bodypart id, which must exist.  Armor coverage is automatically extended between the two bodyparts, both ways - Ex: any armor covering the bodypart `arm_l` will cover `arm_bear_l` with the same coverage in the below example.  Sublocations will need a similar definition as well to ensure correct function.  Currently bodyparts can only point at bodyparts and sub-bodyparts at sub-bodyparts. 
   Only one step of substitution occurs ( Ie. an armor covering `arm_l` will cover `arm_bear_l`, but not any similar bps defined in `arm_bear_l` ).
   Any coverage of a similar sbp will imply coverage of the substitute subpart's parent for the sub-part in question:  Armor covering the elbows will cover similar elbows on other limbs, but not any of the other locations.
 | `armor`                | (_optional_) An object containing damage resistance values. Ex: `"armor": { "bash": 2, "cut": 1 }`. See [Part Resistance](#part-resistance) for details.
@@ -1123,11 +1156,21 @@ reference at least one body part or sub body part.
   "drench_capacity": 10,
   "smash_message": "You elbow-smash the %s.",
   "bionic_slots": 20,
-  "similar_bodyparts": [ "arm_bear_l" ],
+  "similar_bodypart": "arm_bear_l",
   "qualities": [ { "quality": "HAMMER", "level": 1, "disable_percent": 0.5 }, { "quality": "BUTCHER", "level": 2 } ],
   "sub_parts": [ "arm_shoulder_l", "arm_upper_l", "arm_elbow_l", "arm_lower_l" ]
 }
 ```
+
+The ids in `effects_on_hit`, `qualities`, `sub_parts` and `similar_bodypart` must exist; loading reports one that doesn't.  So must a sub body part's `parent`, `opposite`, `locations_under`, `similar_bodypart` and `unarmed_damage` types.
+
+An `anatomy` lists the body parts a creature has in `parts`.  A mod can add parts to an existing anatomy, or take some away, without repeating the list:
+
+```jsonc
+{ "type": "anatomy", "id": "human_anatomy", "copy-from": "human_anatomy", "extend": { "parts": [ "tail_long" ] } }
+```
+
+A part listed twice is a load error.
 
 List of possible limb types:
 ```jsonc
@@ -1321,12 +1364,13 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `act_cost`                   | (_optional_) How many kJ it costs to activate the bionic.  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`)
 | `deact_cost`                 | (_optional_) How many kJ it costs to deactivate the bionic.  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`)
 | `react_cost`                 | (_optional_) How many kJ it costs over time to keep this bionic active, does nothing without a non-zero "time".  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`)
-| `trigger_cost`               | (_optional_) How many kJ it costs to trigger special effects for this bionic. This can be a reaction to specific conditions or an action taken while the bionic is active.  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`)
+| `trigger_cost`               | (_optional_) How many kJ it costs to trigger special effects for this bionic. This can be a reaction to specific conditions or an action taken while the bionic is active.  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`).  The engine charges it only for some hardcoded bionics (see below); `processed_eocs` get it as the context variable `trigger_cost` (in mJ), for an EOC to charge what it does, e.g. `{ "math": [ "u_bionic_power() -= _trigger_cost" ] }`.
 | `time`                       | (_optional_) How long, when activated, between drawing cost. If 0, it draws power once. (default: `0`)
 | `upgraded_bionic`            | (_optional_) Bionic that can be upgraded by installing this one.
 | `available_upgrades`         | (_optional_) Upgrades available for this bionic, i.e. the list of bionics having this one referenced by `upgraded_bionic`.
 | `encumbrance`                | (_optional_) A list of body parts and how much this bionic encumber them.
-| `known_ma_styles`            | (_optional_) A list of martial art styles that are known to the wearer when the bionic is activated
+| `known_ma_styles`            | (_optional_) A list of martial art styles that are known to the wearer while the bionic is active.  Activating the bionic opens the style menu with these styles (for the avatar), and turning it off drops the selected style unless the character knows it otherwise or another active bionic lists it.  Only a bionic that stays on (`BIONIC_TOGGLED` or a `time`) keeps its styles; for styles that last as long as the CBM is installed, use `learned_ma_styles`.
+| `learned_ma_styles`          | (_optional_) Array of martial art style ids the character learns when installing this CBM, and forgets when uninstalling it.  As with `learned_proficiencies`, only styles this CBM taught are forgotten: one the character knew before, or that another installed CBM also teaches, stays.  An upgrade that teaches the same style takes it over.
 | `canceled_mutations`         | (_optional_) A list of mutations/traits that are removed when this bionic is installed (e.g. because it replaces the fault biological part).
 | `mutation_conflicts`         | (_optional_) A list of mutations that prevent this bionic from being installed.
 | `included_bionics`           | (_optional_) Additional bionics that are installed automatically when this bionic is installed. This can be used to install several bionics from one CBM item, which is useful as each of those can be activated independently.
@@ -1347,11 +1391,12 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `stat_bonus`                 | (_optional_) List of passive stat bonus. Stat are designated as follow: "DEX", "INT", "STR", "PER".
 | `activation_condition`       | (_optional_) Dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the CBM to activate, with the character as `u` and the context variable `this` (the bionic id).  Checked before any power is spent: when false, nothing happens except `activation_fail_message`.  Example: `"activation_condition": { "not": { "u_has_effect": "riding" } }`.
 | `activation_fail_message`    | (_optional_) Message shown when `activation_condition` is false, e.g. `"You cannot activate Time Dilation while mounted."` (default: none).
-| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.  They run after the activation has succeeded, so an activation that fails or is cancelled (no target picked, not enough power to fire, ...) runs none of them.
+| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.  They run after the activation has succeeded, so an activation that fails or is cancelled (no target picked, no function picked from `bio_remote`'s menu, not enough power to fire, ...) runs none of them.
 | `processed_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate each turn this CBM is active.  A passive CBM (one that can't be activated from the bionics menu) runs them every turn while it is installed, like a passive mutation.
-| `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.  All three lists get the context variable `this` (the bionic id), so one EOC can serve several CBMs; EOCs can read and switch a CBM's state with `u_has_active_bionic`, `u_activate_bionic` and `u_deactivate_bionic` (see EFFECT_ON_CONDITION.md).
-| `enchantments`               | (_optional_) List of enchantments applied by this CBM (see MAGIC.md for instructions on enchantment. NB: enchantments are not necessarily magic.) Values can either be the enchantment's id or an inline definition of the enchantment.
-| `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.  Uninstalling only takes away spells this CBM taught: one you knew before installing it, or that another installed CBM also teaches, stays.  A spell you knew at a lower level keeps the level the CBM raised it to.  Spells taught by its `included_bionics` go with it too.
+| `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.  All three lists get the context variable `this` (the bionic id), so one EOC can serve several CBMs; EOCs can read and switch a CBM's state with `u_has_active_bionic`, `u_activate_bionic` and `u_deactivate_bionic` (see EFFECT_ON_CONDITION.md).  In a `copy-from`, each of the three lists, given, replaces the parent's; `"extend"` adds to it and `"delete"` takes EOC ids out.
+| `enchantments`               | (_optional_) List of enchantments applied by this CBM (see MAGIC.md for instructions on enchantment. NB: enchantments are not necessarily magic.) Values can either be the enchantment's id or an inline definition of the enchantment.  An inline one is named `INLINE_ENCH_<bionic id>_<n>`, `n` counting that id's inline enchantments in load order across all its definitions.  In a `copy-from`, the list, given, replaces the parent's; `"extend"` adds to it and `"delete"` takes enchantment ids out.
+| `faulty_pool`                | (_optional_) Bionics a failed installation of this one can leave behind (a "faulty installation").  Default: any bionic with the `BIONIC_FAULTY` flag.  As before, one the patient already has is skipped unless it allows dupes.  Example: `"faulty_pool": [ "bio_dis_shock", "bio_dis_acid" ]`.
+| `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.  Uninstalling only takes away spells this CBM taught: one you knew before installing it, or that another installed CBM also teaches, stays.  A spell you knew at a lower level loses the experience the CBM added to raise it, and keeps what you gained since; if another installed CBM teaches it at a higher level, it stays at that level.  CBMs installed in older saves did not record that experience, so the spell keeps the raised level.  Spells taught by its `included_bionics` go with it too.
 | `learned_proficiencies`      | (_optional_) Array of proficiency ids you gain when installing this CBM, and lose when uninstalling.  As with `learned_spells`, only proficiencies this CBM taught are lost, and practice you had put into one before the CBM taught it comes back.  CBMs installed in older saves did not record what they taught, so they take away everything they list (unless another installed CBM teaches it).
 | `installation_requirement`   | (_optional_) Requirement id pointing to a requirement defining the tools and components necessary to install this CBM.  A CBM with one can be installed by the character on themselves; that still needs free bionic slots (`occupied_bodyparts`) and a body the CBM suits (`mutation_conflicts`, `required_bionic`, `replaced_bodyparts`), as with an autodoc, and asks before removing `canceled_mutations`.
 | `dupes_allowed`              | (_optional_) Boolean to determine if multiple copies of this bionic can be installed.  Defaults to false.
@@ -1364,11 +1409,11 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `installable_weapon_flags`   | (_optional_) Items with this flag can be installed inside this bionic
 | `fake_weapon`                | (_optional_) Activation of this bionic spawn an irremovable weapon in your hands. Require `BIONIC_TOGGLED` flag
 | `active_flags`               | (_optional_) Activation of this bionic applies this character flag
-| `auto_deactivates`           | (_optional_) Activation of this bionic automatically turn of another bionic, if character has one
+| `auto_deactivates`           | (_optional_) Bionics that a successful activation of this one switches off, if the character has them (for any bionic, including those with hardcoded effects).
 | `toggled_pseudo_items`       | (_optional_) Activation of this bionic spawn an irremovable tool in your hands.  Require `BIONIC_TOGGLED` flag
 | `spell_on_activation`        | (_optional_) Activation of this bionic allow you to cast a spell
 | `activated_close_ui`         | (_optional_) Activation of this bionic closes the bionic menu
-| `npc_use`                    | (_optional_) When NPCs switch this bionic on and off; needs the `BIONIC_NPC_USABLE` flag.  One of `"combat"` (on when preparing for a fight, off once the danger is gone), `"melee"` (on right before a melee or reach attack while the follower's CBM reserve allows it, off once the danger is gone), `"wounds"` (on while the NPC needs healing; it then doesn't use healing items), `"pain"` (on while in pain; it then doesn't take painkillers), `"radiation"` (on while badly irradiated, off once clean), `"upkeep"` (on during the NPC's hourly idle upkeep) or `"sleep"` (on when lying down to sleep, off during the hourly upkeep).  Default `"none"`: NPCs never switch it themselves.  Weapon CBMs don't use this: NPCs extend or fire every `BIONIC_NPC_USABLE` bionic with `BIONIC_WEAPON` or `BIONIC_GUN` when it beats their wielded weapon, guns first.  Example: `"npc_use": "combat"`.
+| `npc_use`                    | (_optional_) When NPCs switch this bionic on and off; needs the `BIONIC_NPC_USABLE` flag.  One of `"combat"` (on when preparing for a fight, off once the danger is gone), `"melee"` (on right before a melee or reach attack while the follower's CBM reserve allows it, off once the danger is gone), `"wounds"` (on while the NPC needs healing; it then doesn't use healing items), `"pain"` (on while in pain; it then doesn't take painkillers), `"radiation"` (on while badly irradiated, off once clean), `"upkeep"` (on during the NPC's hourly idle upkeep) or `"sleep"` (on when lying down to sleep, off during the hourly upkeep).  Default `"none"`: NPCs never switch it themselves.  Weapon CBMs don't use this: NPCs extend or fire every `BIONIC_NPC_USABLE` bionic with `BIONIC_WEAPON` or `BIONIC_GUN` when it beats their wielded weapon, guns first.  Example: `"npc_use": "combat"`.  It can also be an object with a priority: `"npc_use": { "when": "combat", "priority": 10 }`.  When it is time for one `npc_use`, NPCs switch on all their bionics with it, the highest `priority` first (default 0; equal ones in the order they were installed), so when power runs short the important ones are on.  The string form keeps the priority of a `copy-from` bionic.  A bionic with a `spell_on_activation` is cast instead of switched on: at the creature the NPC is fighting if the spell can reach and target it from where the NPC stands, otherwise at the NPC itself if the spell can target its caster (`"valid_targets": [ "self" ]`); with neither, or when the NPC can't cast it right now (hands full, not enough energy, ...), the activation fails before anything is paid.  The NPC casts one spell CBM at a time, taking the spell's casting time, and for `"melee"` the cast replaces that turn's attack.  This also applies to `npc_activate_bionic`.
 
 ```jsonc
 {
@@ -1432,7 +1477,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
   }
 ```
 
-Bionics effects are defined in the code and new effects cannot be created through JSON alone.
+A bionic does what its JSON gives it: flags (see JSON_FLAGS.md), `enchantments`, `spell_on_activation`, `activated_eocs`/`processed_eocs`/`deactivated_eocs`, pseudo items, a `fake_weapon`, fuel and power generation, `learned_spells` and the like, so most new bionics need no code.  Some vanilla bionics have effects coded in C++ by their id: activating `bio_evap`, `bio_cqb`, `bio_resonator`, `bio_teleport`, `bio_blood_anal`, `bio_torsionratchet`, `bio_jointservo`, `bio_lighter`, `bio_geiger`, `bio_radscrubber`, `bio_emp`, `bio_water_extractor`, `bio_magnet`, `bio_lockpick`, `bio_flashbang`, `bio_shockwave`, `bio_meteorologist` or `bio_remote`; deactivating `bio_cqb` or `bio_remote`; and, each turn while on, `bio_remote`, `bio_nanobots`, `bio_painkiller`, `bio_gills` and `bio_evap` (other files check a few more ids, e.g. for `bio_painkiller` or `bio_cqb`).  A bionic that `copy-from`s one of these keeps its coded effects under its new id (except `bio_cqb`'s), so a variant of `bio_teleport` teleports too.
 When adding a new bionic, if it's not included with another one, you must also add the corresponding CBM item in `data/json/items/bionics.json`. Even for a faulty bionic.
 
 
@@ -1451,10 +1496,17 @@ When adding a new bionic, if it's not included with another one, you must also a
 | `mon_difficulty`    | _(optional)_ Determines whether this damage type should contribute to a monster's difficulty rating. (defaults to false)
 | `no_resist`         | _(optional)_ Identifies this damage type as being impossible to resist against (ie. "pure" damage). (defaults to false)
 | `immune_flags`      | _(optional)_ An object with two optional fields: `"character"` and `"monster"`. Both inner fields list an array of character flags and monster flags, respectively, that would make the character or monster immune to this damage type.
+| `mon_immune_materials` | _(optional)_ An array of material ids: monsters made of any of them are immune to this damage type (vanilla `heat`: `steel` and `stone`).
+| `pain_divisor`      | _(optional)_ Pain from damage of this type is the damage divided by this, rounded up or down at random. Must be above 0. (defaults to 4; vanilla `bash` is 5 and `acid` 3)
+| `ignites`           | _(optional)_ Damage of this type sets the creature on fire (the `onfire` effect, 1 to 3 turns, on the body part hit), with a chance in percent of the damage. (defaults to false; true for vanilla `heat`)
+| `electrocutes`      | _(optional)_ Damage of this type may zap the creature (the `zapped` effect, with a chance and a duration that grow with the damage, scaled by a monster's `status_chance_multiplier`), and pains a character more by its `EXTRA_ELEC_PAIN` enchantment. (defaults to false; true for vanilla `electric`)
 | `magic_color`       | _(optional)_ Determines which color identifies this damage type when used in spells. (defaults to "black")
 | `derived_from`      | _(optional)_ An array that determines how this damage type should be calculated in terms of armor protection and monster resistance values. The first value is the source damage type and the second value is the modifier applied to source damage type calculations.
 | `onhit_eocs`        | _(optional)_ An array of effect-on-conditions that activate when a monster or character hits another monster or character with this damage type. In this case, `u` refers to the damage source and `npc` refers to the damage target.
 | `ondamage_eocs`        | _(optional)_ An array of effect-on-conditions that activate when a monster or character takes damage from another monster or character with this damage type. In this case, `u` refers to the damage source and `npc` refers to the damage target. Also have access to some [context vals](EFFECT_ON_CONDITION.md#context-variables-for-other-eocs)
+| `melee_crit`        | _(optional)_ What a character's melee critical hit does with this damage type (for `melee_only` types).  An object with `damage_mult` (the damage is multiplied by 1 + `damage_mult` + `damage_mult_per_skill` times the attack's skill), `damage_mult_per_skill`, `armor_ignored` (the share of the target's armor ignored, 0 to 1) and `arpen` (flat armor penetration added), all default 0; each is scaled by the critical factor of the body part hit (1 for most).  Bash has `{ "damage_mult": 0.5, "armor_ignored": 0.5 }`, cut `{ "damage_mult": 0.25, "armor_ignored": 0.25, "arpen": 5 }` and stab `{ "damage_mult_per_skill": 0.1, "armor_ignored": 0.34 }`.  Without it, criticals give this type no bonus.
+| `weakpoint_attack`  | _(optional)_ The kind of melee attack this damage type makes when it is the main damage of a hit: `"bash"`, `"cut"`, `"stab"` or `"none"` (default).  Weak points' `difficulty` for `bash`, `cut` and `stab` attacks and a character's melee weak point skill go by it; with `"none"` a character has no weak point skill for the hit.  Bash, cut and stab have their own.
+| `embed_weight`      | _(optional)_ How much each point of this damage a thrown or fired item deals helps it embed in the monster it hit (default 0; negative hinders).  The item embeds if the sum (each type's share rounded toward zero) is more than 3 for each 250 ml of the item plus a roll of 0 to 5.  Cut has 0.5, stab 1 and bash -1.
 
 ```jsonc
   {
@@ -1470,7 +1522,10 @@ When adding a new bionic, if it's not included with another one, you must also a
     "skill": "stabbing",
     "//2": "derived from cut only for monster defs",
     "derived_from": [ "cut", 0.8 ],
-    "immune_flags": { "character": [ "STAB_IMMUNE" ] }
+    "immune_flags": { "character": [ "STAB_IMMUNE" ] },
+    "melee_crit": { "damage_mult_per_skill": 0.1, "armor_ignored": 0.34 },
+    "weakpoint_attack": "stab",
+    "embed_weight": 1
   },
   {
     "//": "e.g. electrical discharge",
@@ -1519,16 +1574,25 @@ Using `damage_info_order` we can reorder how these are shown, and even determine
 | `messages` | List of potential dreams.
 | `category` | Mutation category needed to dream.
 | `strength` | Mutation category strength required (1 = 20-34, 2 = 35-49, 3 = 50+).
+| `id` | (optional) Lets later JSON change or copy the dream.  Vanilla dreams are named `dream_<category>_<strength>`.
 
 ```jsonc
 {
+    "type" : "dream",
+    "id" : "dream_BIRD_1",
     "messages" : [
         "You have a strange dream about birds.",
         "Your dreams give you a strange feathered feeling."
     ],
-    "category" : "MUTCAT_BIRD",
+    "category" : "BIRD",
     "strength" : 1
 }
+```
+
+A dream with an `id` can `copy-from` another one (or an `abstract` one), and a later mod changes it by copying it under the same id: it keeps every member it doesn't name, and `messages` takes `extend` and `delete`.  A second definition of the id without `copy-from` replaces the dream.  A dream without an `id` is added to the others, and nothing can change it later.
+
+```jsonc
+{ "type" : "dream", "id" : "dream_BIRD_1", "copy-from" : "dream_BIRD_1", "extend" : { "messages" : [ "You dream of flying south." ] } }
 ```
 
 ### Disease
@@ -1544,6 +1608,8 @@ Using `damage_info_order` we can reorder how these are shown, and even determine
 | `symptoms`           | The effect applied by the disease.
 | `affected_bodyparts` | The list of bodyparts on which the effect is applied. (optional, default to bp_null)
 
+The symptoms effect, the body parts, and that neither minimum is above its maximum are checked when the game loads.  A character catches a disease from food with it in its `contamination`, or from the EOC effect `u_expose_to_disease` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).  The common cold and the flu are not disease types: when and how a character catches them is still set in the game's code.
+
 
 ```jsonc
   {
@@ -1553,7 +1619,7 @@ Using `damage_info_order` we can reorder how these are shown, and even determine
     "max_duration": "1 h",
     "min_intensity": 1,
     "max_intensity": 1,
-    "affected_bodyparts": [ "TORSO" ],
+    "affected_bodyparts": [ "torso" ],
     "health_threshold": 100,
     "symptoms": "foodpoison"
   }
@@ -1667,6 +1733,36 @@ When you sort your inventory by category, these are the categories that are disp
 }
 ```
 
+### Zone types
+
+The zone types the zone manager offers (`data/json/loot_zones.json`, `data/json/zones.json`), type `LOOT_ZONE`. They support `copy-from`.
+
+| Identifier        | Description
+|---                |---
+| `id`              | Unique ID.
+| `name`            | Shown in the zone manager.
+| `description`     | (optional) Shown in the zone manager.
+| `display_field`   | The field type that marks the zone's tiles while it's shown.
+| `can_be_personal` | (optional, default false) The zone can be a personal zone, one that moves with you.
+| `hidden`          | (optional, default false) Not offered in the zone manager (zones placed by mapgen or EOCs only).
+| `loot_source`     | (optional) Zones of this type are where zone jobs fetch tools and materials from, and where NPC traders' goods are. Default: true for the types whose id starts with `LOOT`.
+
+```jsonc
+{
+  "id": "LOOT_FOOD",
+  "type": "LOOT_ZONE",
+  "name": "Loot: Food",
+  "display_field": "fd_food_loot_zone",
+  "can_be_personal": true,
+  "description": "Destination for comestibles.  If more specific food zone is not defined, all food is moved here."
+}
+```
+
+What a zone type does is up to the game's code or to your JSON:
+- Sorting (`Sort out the loot`) moves items to the zone that their [item category](#item-category)'s `zone` or `priority_zones` names, so a new zone type works as a sorting destination.
+- The zone jobs (farming, chopping, construction, mining...) work on their own vanilla zone types only.
+- For anything else, run EOCs on the zones: `u_run_fixed_zone_eocs` (with `zone_types`) gives each zone as a talker with its corners; `u_in_zone` and `map_in_zone` test a location; `create_zone`, `remove_zones` and `set_zones_enabled` change zones. See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md#u_run_fixed_zone_eocs-npc_run_fixed_zone_eocs).
+
 ### Item faults
 
 Faults can be defined for more specialized damage of an item.
@@ -1693,6 +1789,21 @@ Faults can be defined for more specialized damage of an item.
   "contact_area_mod": 0.5, // Modifies(multiplicative) the contact area of the vehicle part that this item is the base for
   "rolling_resistance_mod": 10.0, // Modifies(multiplicative) the rolling resistance of the vehicle part that this item is the base for
   "vehicle_move_penalty_mod": 5, // Modifies(additive) the move_penalty of terrain that this vehicle part moves over, thus decreasing traction. See wheel_terrain_modifiers
+  "engine_power_mult": 0.6, // (Optional) Multiplies the power of the engine that this item is the base for. Default 1, or 0.6 with the REDUCE_ENG_POWER flag. The multipliers of several faults multiply
+  "fuel_consumption_mult": 2.0, // (Optional) Multiplies the fuel the engine uses. Default 1, or 2 with the DOUBLE_FUEL_CONSUMPTION flag
+  "exhaust_mult": 1.5, // (Optional, default 1) Multiplies the smoke of a combustion engine (the EXTRA_EXHAUST flag still squares it)
+  "steering_mult": 0.5, // (Optional, default 1) Multiplies how much a steering wheel with this fault steers
+  "runover": { // (Optional) Wheel damage from running over sharp items, or a trap whose vehicle_data has "runover_faults": the wheel's faults with a "runover" entry form a chain
+    "weight": 100, // (default 0) A wheel in none of its chain faults gets one of them, picked by this weight; 0: only reached by escalating
+    "message": "You hear a loud pop from below!", // (Optional) Shown to the driver when running something over applies this fault
+    "escalates_to": [ { "fault": "fault_flat_tire_riding_on_rims", "weight": 100 } ] // What running something over again does to a wheel with this fault, picked by weight. Without it this is the worst state: a wheel with such a fault takes no more runover faults
+  },
+  "while_moving": { // (Optional) What a wheel with this fault does each turn its vehicle drives on (the first such fault of the wheel acts)
+    "sound": "hissssssss!", "sound_volume": 5, "sound_type": "sensory", // (Optional) sound made each turn; sound_type as in sounds.h (default sensory)
+    "escalates_to": "fault_flat_tire_riding_on_rims", // (Optional) a 1 in (wheel durability) chance per turn to turn into this fault
+    "damages_part": true, // (Optional, without escalates_to) the same chance to take one level of damage
+    "message": "The %s is damaged by driving with a flat!" // (Optional) shown then, %s is the part name
+  },
   "encumbrance_mult": 1.3, // if armor, item encumbrance will be multiplied by this amount, in this case 1.3x as much (100-> 130)
   "block_faults": [ "fault_handle_chipping", "fault_handle_cracked" ], // Faults, that cannot be applied if this fault is already presented on item. If there is already such a fault, it will be removed. Can't have chipped blade if the blade is gone
   "flags": [ "JAMMED_GUN" ] // optional flags, see below
@@ -1721,7 +1832,9 @@ Fault fixes are methods to fix faults, the fixes can optionally add other faults
   "mod_damage": 1000, // damage to modify on item when fix is applied, can be negative to repair
   "mod_degradation": 50, // degradation to modify on item when fix is applied, can be negative to reduce degradation
   "time_save_profs": { "prof_gun_cleaning": 0.5, "prof_welding": 0.5, }, // those proficiencies change how fast you fix the item
-  "time_save_flags": { "EASY_CLEAN": 0.5 } // This flag on the item change how fast you fix this item
+  "time_save_flags": { "EASY_CLEAN": 0.5 }, // This flag on the item change how fast you fix this item
+  "condition": { "u_has_trait": "GUNSMITH" }, // (optional) dialogue condition: the fix is only offered while it is true; the mender is `u` and the item `npc`
+  "effect_on_conditions": [ "EOC_GUN_CLEANED" ] // (optional) EOCs (ids or inline) run once the fix is applied, with the mender as `u` and the item as `npc`
 }
 ```
 
@@ -1746,6 +1859,35 @@ Fault group is a combination of a fault and corresponding weight, made so multip
 ```
 
 The list of possible faults, their weight and actual chances can be checked in item info with a debug mode on
+
+### Keybindings
+
+A mod can add a hotkey to the main game that runs an effect_on_condition. The player sees it in
+the keybindings menu (`?`) under its `name` and can rebind or unbind it there; their keys win
+over the mod's.
+
+```jsonc
+{
+  "type": "keybinding",
+  "id": "MOM_TELEPORT",
+  "name": "Psionic teleport",
+  "bindings": [ { "input_method": "keyboard_any", "key": "T", "mod": [ "ctrl" ] } ],
+  "effect_on_condition": "EOC_MOM_TELEPORT_MENU",
+  "condition": { "u_has_trait": "TELEPORTER" }
+}
+```
+
+| Field                 | Description
+|---                    |---
+| `id`                  | (_mandatory_) The action id. It must differ from every built-in action (`pause`, `sleep`...).
+| `name`                | (_mandatory_) Name shown in the keybindings menu.
+| `bindings`            | (_optional_) Default keys, in the format of `data/raw/keybindings.json`: `input_method` (`keyboard_any`, `keyboard_char`, `keyboard_code`, `gamepad` or `mouse`), `key`, and optionally `mod` (`ctrl`, `alt`, `shift`). A key another main game action already uses is left out, so the hotkey starts unbound there. Without `bindings` the player has to bind it.
+| `effect_on_condition` | (_mandatory_) The EOC to run (an id or an inline EOC). Alpha is you, there is no beta.
+| `condition`           | (_optional_) A [dialogue condition](NPCs.md#dialogue-conditions); while false the key does nothing.
+| `category`            | (_optional_) Only `"DEFAULTMODE"` (the main game, the default) is supported.
+
+Pressing the key takes a turn only when the EOC spends moves (for example `u_mod_moves`). The
+hotkey only works on the main game screen, not inside menus.
 
 ### Materials
 
@@ -1774,8 +1916,12 @@ The list of possible faults, their weight and actual chances can be checked in i
 | `salvaged_into`        | Item, into which this material could be salvaged
 | `sheet_thickness`      | Clothes, made out of this material, has this thickness, meaning clothes thickness should be multiple of this value; layered kevlar has `"sheet_thickness": 4.4,`, meaning all clothes that uses layered kevlar should be either 4.4, 8.8, 13.2 etc milimeters thick; unless `"ignore_sheet_thickness": true` is used for this clothes
 | `uncomfortable`        | Clothes made out of this material is always uncomfortable, no matter of it's properties
+| `wet_warmth_retention` | 0.0-1.0. How much of the warmth wetness takes away clothing made, even in part, of this material keeps: wet clothes lose up to 66% of their warmth, times (1 - this).  The best of an item's materials counts.  `wool` has 1.0, so wet wool stays as warm.  Default 0.
 | `soft`                 | True for pliable materials, whose length doesn't prevent fitting into a container, or through the opening of a container. Default is false.
 | `conductive`           | True if the material conducts electricity, defaults to false
+| `creature_flesh`       | A creature (monster or character) made of it counts as flesh: fire, lava and incendiary ammo hurt it more, and attacks and traps that only work on flesh affect it. Optional boolean, default false (true for `flesh` and `iflesh` in vanilla).
+| `breathes`             | A creature made of it breathes: tear gas and relaxation gas affect it unless it has the `NO_BREATHE` flag. Optional boolean, default false (true for `flesh`, `iflesh` and `veggy` in vanilla).
+| `creature_flammability` | How fire treats a creature made of it: `high` (fire, lava and incendiary ammo hurt it more and set it on fire more easily), `normal` (the default) or `resistant` (fire hurts it less, and burning fields don't set it on fire). In vanilla `high` for `paper`, `powder`, `wood`, `cotton` and `wool`, `resistant` for `stone`, `kevlar` and `steel`.
 | `reinforces`           | Optional boolean. Default is false.
 
 There are seven -resist parameters: acid, bash, chip, cut, elec, fire, and bullet. These are integer values; the default is 0 and they can be negative to take more damage.
@@ -1859,11 +2005,13 @@ Note that burn_data is defined per material, but items may be made of multiple m
 | `monsters`              | To choose a monster for spawning, the game creates entries equal to the sum of all `weight` and picks one. Each monster will have a number of entries equal to its `weight`. See the table below for how to build the single monster definitions.
 | `freq_total`            | (_optional_) (int) The number the spawn roll is made against. When it is larger than the sum of all `weight`s, the rest of the roll goes to the `default` monster. (default: the sum of all `weight`s of entries without an `event`)
 | `auto_total`            | (_optional_) (bool) Set `freq_total` to the sum of all `weight`s, including entries added by other definitions of the same group. (default: false)
-| `is_safe`               | (_optional_) (bool) Check to not trigger safe-mode warning, currently inconsequential.
-| `is_animal`             | (_optional_) (bool) Check if that group has only normal animals, currently inconsequential.
-| `replace_monster_group` | (_optional_) (bool) Check if the group should be replaced completely by another monster group as game time progresses - doesn't affect already spawned monsters, as such mostly superseded by monster evolution.
-| `new_monster_group_id`  | (_optional_) (string) The id of the monster group that should replace this one.
-| `replacement_time`      | (_optional_) (int) The amount of time before the group should be replaced by the new one, in days. Final replacement date is calculated by `replacement_time * evolution factor`.
+| `is_safe`               | (_optional_) (bool) The group doesn't make its overmap tile unsafe: a tile counts as safe (the `u_at_safe_space` condition, missions that look for a safe place) only when every monster group on it is safe. (default: false)
+| `is_animal`             | (_optional_) (bool) The group has only normal animals: map spawns of the group use the world's animal spawn density (`SPAWN_ANIMAL_DENSITY`) instead of the monster spawn density. (default: false)
+| `replace_monster_group` | (_optional_) (bool) **Not implemented**: read and kept, but nothing replaces the group. Meant to replace the group completely by another monster group as game time progresses; monster evolution (`starts`, `ends` and `upgrades`) does this job instead.
+| `new_monster_group_id`  | (_optional_) (string) **Not implemented** (see `replace_monster_group`): the id of the monster group that should replace this one.
+| `replacement_time`      | (_optional_) (time) **Not implemented** (see `replace_monster_group`): the time before the group should be replaced by the new one, at least one day.
+
+A definition that adds to an existing group keeps the group's `is_safe`, `is_animal`, `default` and replacement fields unless it sets them itself.
 
 #### Monster/Subgroup definition
 
@@ -1878,10 +2026,10 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 | `cost_multiplier` | (_optional_) How many monsters each monster in this definition should count as, if spawning a limited number of monsters.  (default: 1)
 | `pack_size`       | (_optional_) The minimum and maximum number of monsters in this group that should spawn together.  (default: `[1,1]`)
 | `conditions`      | (_optional_) Conditions limit when monsters spawn. Valid options: `SUMMER`, `WINTER`, `AUTUMN`, `SPRING`, `DAY`, `NIGHT`, `DUSK`, `DAWN`. Multiple Time-of-day conditions (`DAY`, `NIGHT`, `DUSK`, `DAWN`) will be combined together so that any of those conditions makes the spawn valid. Multiple Season conditions (`SUMMER`, `WINTER`, `AUTUMN`, `SPRING`) will be combined together so that any of those conditions makes the spawn valid. Any other value (including a different spelling such as `"Night"`) is a load error.
-| `condition`       | (_optional_) A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions) that must be true for this entry to spawn. It is checked together with `conditions`, `starts`, `ends` and `event`. `u` is the avatar and there is no `npc`, so the condition can check the player (`u_has_trait`), global variables, weather or the time (`math` functions such as `weather('temperature')`), but not the spawn location. While it is false the entry is skipped and its share of the roll goes to the other entries or the `default` monster, exactly like an entry outside its `conditions`.
+| `condition`       | (_optional_) A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions) that must be true for this entry to spawn. It is checked together with `conditions`, `starts`, `ends` and `event`. `u` is the avatar and there is no `npc`, so the condition can check the player (`u_has_trait`), global variables, weather or the time (`math` functions such as `weather('temperature')`). The context value `loc` is where the monsters would spawn, for mapgen's `place_monster` and `place_monsters`; for other spawns it is the avatar's position. The `map_*` tile conditions read the reality bubble, so a spawn generated outside it can only use overmap-level ones such as `map_in_city`. While it is false the entry is skipped and its share of the roll goes to the other entries or the `default` monster, exactly like an entry outside its `conditions`.
 | `starts`          | (_optional_) This entry becomes active after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
 | `ends`            | (_optional_) This entry becomes inactive after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
-| `spawn_data`      | (_optional_) Any properties that the monster only has when spawned in this group. `ammo` defines how much of which ammo types the monster spawns with. Only applies to "monster" type entries.
+| `spawn_data`      | (_optional_) Any properties that the monster only has when spawned in this group. `ammo` defines how much of which ammo types the monster spawns with; `patrol`, `effects`, `variables`, `faction` and `eocs` work as for mapgen (see [MAPGEN.md](MAPGEN.md#spawn_data-for-monsters)). Only applies to "monster" type entries. Hordes and overmap spawns don't use it.
 | `event`           | (_optional_) If present, this entry can only spawn during the specified event. See the `holiday` enum for possible values. Defaults to `none`. (Ex: `"event": "halloween"`)
 
 ```jsonc
@@ -1925,6 +2073,7 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 | `neutral`       | Always be neutral towards this faction.
 | `friendly`      | Always be friendly towards this faction. By default a faction is friendly towards itself.
 | `hate`          | Always be hostile towards this faction. Will change target to monsters of this faction if available.
+| `ignores_npcs_if_option` | Optional name of a boolean option (usually an `EXTERNAL_OPTION` a mod sets): while it is on, this faction's monsters ignore every NPC, whatever their anger. Not inherited through `base_faction` (`copy-from` does copy it). Vanilla's `nether_player_hate` uses `PORTAL_STORM_IGNORE_NPC`, which the Personal Portal Storms mod turns on.
 
 ```jsonc
 {
@@ -2057,11 +2206,14 @@ The following properties (mandatory, except if noted otherwise) are supported:
     "pets": [ { "name": "mon_black_rat", "amount": 13 } ],     // (optional) Array of starting monster IDs, tamed as pets
     "vehicle": "car_sports",                                   // (optional) String of a starting vehicle ID. The vehicle will be spawned at the closest road, with the character "remembering" its location in the overmap
     "flags": [ "SCEN_ONLY", "NO_BONUS_ITEMS" ],                // (optional) Array of flags applied to the character, for character creation purposes
+    "default_backgrounds": "adult_basic_background",           // (optional) The profession group of hobbies a new character with this profession starts with (see Profession groups); "" for none
     "CBMs": [ "bio_fuel_cell_blood" ],                         // (optional) Array of starting implanted CMBs
     "traits": [ "PROF_CHURL", "ILLITERATE" ],                  // (optional) Array of starting traits/mutations. For further information, see mutations.json and MUTATIONS.md. Note: "trait" is also supported, used for a single trait/mutation ID (legacy!)
     "requirement": "achievement_survive_28_days",              // (optional) String or Array of String of achievement ID(s) required to unlock this profession
     "hard_requirement": true,                                  // (optional) Defaults false. Whether or not the requirement ignores the metaprogression setting and is always required. Intended for use by mods.
-    "effect_on_conditions": [ "scenario_assassin_conv" ],      // (optional) eoc id, inline eoc, or multiple of them, that would run when scenario starts
+    "effect_on_conditions": [ "scenario_assassin_conv" ],      // (optional) eoc id, inline eoc, or multiple of them, that would run when scenario starts.  They run for the avatar; for an NPC with the profession only those with `run_for_npcs`, unless `run_eocs_for_npcs` is true
+    "run_eocs_for_npcs": true,                                 // (optional) Defaults false.  When true, an NPC with this profession (or hobby) also runs all of its effect_on_conditions when it is made, with the NPC as u
+    "forbidden_traits": [ "ILLITERATE" ],                      // (optional) Traits a character with this profession (or hobby) can't take in the character creator
     "spells": [                                                // (optional) Array of starting spell IDs the character knows upon creation. For further information, see MAGIC.md
       { "id": "magic_missile", "level": 4 },
       { "id": "summon_undead", "level": 5 },
@@ -2101,6 +2253,14 @@ Items the player starts with when selecting this profession.  One can specify di
 
 Choosing a profession in the character creator drops the hobbies it doesn't allow (with the traits only they gave) and the traits in its `forbidden_traits`, with a message for each; finishing the character checks this again.  The default background hobbies (see [Profession groups](#profession-groups)) leave out those the profession doesn't allow.
 
+#### Copying a profession
+
+A profession (or hobby) can `copy-from` another one.  `pets`, `spells` and `effect_on_conditions`, when given, replace the copied ones; `extend` adds to them and `delete` removes entries: a pet by its monster id (every one of that monster), a spell by its id, an EOC by its id.  An `extend` of a spell the copy already has changes its level.
+
+```jsonc
+{ "type": "profession", "id": "my_wizard", "copy-from": "wizard", "extend": { "spells": [ { "id": "magic_missile", "level": 6 } ] }, "delete": { "pets": [ "mon_cat" ] } }
+```
+
 
 ### Hobbies
 
@@ -2127,11 +2287,19 @@ Note: hobby fields derive from those used in professions.  The following is a no
   },
 ```
 
+A hobby also gives its `recipes`, `missions`, `pets`, `starting_styles` and `starting_styles_choices` (after the profession's), its `effect_on_conditions` (run as the profession's are, see `run_eocs_for_npcs` above), and adds its `starting_trauma` and `starting_cash` to the profession's.  Its `forbidden_traits` can't be picked while it is taken, and it can't be taken with one of them.  A hobby can't have `items`, `vehicle` or `no_bonus` (loading reports them): give items with an effect_on_condition (`u_spawn_item`).
+
 ### Profession groups
 
-Profession groups are a list of hobbies added to the character upon creation.
-While the list is automatically added by hardcode to each character upon creation (adding a minimum set of skills to all characters, regardless of their professions), the list can be modified via JSON.
-Thus, it is listed here for reference and modding purposes only.
+Profession groups are lists of hobbies.  A new character starts with the hobbies of one group, the default background, besides those chosen (adding a minimum set of skills to all characters, regardless of their professions):
+
+1. The group the profession's `default_backgrounds` names, if it has that member.
+2. Otherwise the group the scenario's `default_backgrounds` names, if it has that member.
+3. Otherwise `adult_basic_background`.
+
+An empty `default_backgrounds` (`""`) gives no default hobbies.  So does the `SKIP_DEFAULT_BACKGROUND` flag, on the profession, or on the scenario when the profession has no `default_backgrounds`.  Choosing another profession in the character creator swaps the default hobbies of the old profession for those of the new one.  Random NPCs of a class with `"common": true` get the default background of their profession (or of the generic scenario, never the player's).
+
+The default group, as the base game defines it:
 
 ```jsonc
   {
@@ -2148,11 +2316,13 @@ Thus, it is listed here for reference and modding purposes only.
   }
 ```
 
-The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants to start with no hobbies, the list has to be set as:
+The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants every character to start with no hobbies, the list has to be set as:
 
 ```jsonc
     "professions": [  ]
 ```
+
+Loading reports a `default_backgrounds` that isn't a profession group.
 
 ### Constructions
 ```jsonc
@@ -2167,6 +2337,7 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "activity_level": "EXTRA_EXERCISE",                                 // Activity level of the activity, harder activities consume more calories over time. Valid values are, from easiest to most demanding of the body: `NO_EXERCISE`, `LIGHT_EXERCISE`, `MODERATE_EXERCISE`, `BRISK_EXERCISE`, `ACTIVE_EXERCISE`, `EXTRA_EXERCISE`, `EXPLOSIVE_EXERCISE`.
 "do_turn_special": "do_turn_shovel",                                // Special effect, that occur, when you perform a construction. Can be either `do_turn_shovel` (cause "hsh!" message every minute, may trigger a buried trap, if there is one) or `do_turn_exhume` (applied mood effect for gravedigging related to your traits)
 "vehicle_start": true,                                              // Hardcoded check for construction recipe, that result into vehicle frame; Can be used only with `done_vehicle`
+"place_appliance": true,                                            // The construction's one component is placed on the tile as an appliance once it is finished (default false). Not together with the post_special `done_appliance`, which does the same
 "time": "30 m",                                                     // Time required to complete construction. Integers will be read as minutes or a time string can be used.
 "components": [ [ [ "spear_wood", 4 ], [ "pointy_stick", 4 ] ] ],   // Items used in construction
 "pre_special": [ "check_empty", "check_up_OK" ],                    // Required something that isn't terrain. The syntax also allows for a square bracket enclosed list of specials which all have to be fulfilled
@@ -2175,7 +2346,7 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "post_terrain": "t_pit_spiked",                                     // Terrain type after construction is complete
 "post_special": "done_mine_upstairs",                               // Required to do something beyond setting the post terrain. The syntax also allows for a square bracket enclosed list of specials which all have to be fulfilled
 "pre_note": "Build a spikes on a diggable terrain",                 // Create an annotation to this recipe
-"dark_craftable": true,                                             // If true, you can construct it with lack of light
+"dark_craftable": true,                                             // If true, you can construct it with lack of light (and so can every construction of its group in the construction menu)
 "byproducts": [ { "item": "material_soil", "count": [ 2, 5 ] } ],   // Items, that would be left after construction
 "strict": false,                                                    // If true, the build activity for this construction will only look for prerequisites in the same group
 "on_display": false,                                                // This is a hidden construction item, used by faction camps to calculate construction times but not available to the player
@@ -2183,6 +2354,8 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "do_turn_eocs": [ "EOC_WARD_CHANT" ],                               // Effect on conditions run on every turn of work, see below
 "post_eocs": [ "EOC_WARD_DONE" ]                                    // Effect on conditions run once the construction is finished, see below
 ```
+
+A construction with `copy-from` inherits its parent's `components`, `tools` and `qualities`. Each of the three that it gives replaces the inherited list whole, and `extend` and `delete` change one, as for recipes (see [ITEM_CRAFT_AND_DISASSEMBLY.md](ITEM_CRAFT_AND_DISASSEMBLY.md#inheriting-and-changing-components-tools-and-qualities-with-copy-from)): `"extend": { "components": [ [ [ "nail", 4 ] ] ] }` adds whole groups, `"delete": { "tools": [ "hammer" ] }` takes ids out of every group, and neither is allowed without `copy-from`. `using`, as a string or an array, replaces the inherited one.
 
 #### Construction conditions and EOCs
 
@@ -2246,8 +2419,8 @@ When a construction is finished, the `character_finishes_construction` event is 
 |---                     |---
 | `done_trunk_plank`     | Generate logs and then planks here (under the assumption the tile was a trunk or stump)
 | `done_grave`           | Finish grave digging by performing burial activities
-| `done_vehicle`         | Create a new vehicle and name it
-| `done_appliance`       | Finish the placement of a partially placed appliance
+| `done_vehicle`         | Create a new vehicle and name it, from the construction's one component (any category or id)
+| `done_appliance`       | Finish the placement of a partially placed appliance, from the construction's one component (any category or id)
 | `done_wiring`          | Place a wiring "appliance" at the location
 | `done_deconstruct`     | Finish deconstruction of furniture or, if not present, terrain
 | `done_dig_grave`       | Finish digging up a grave and find what's inside of it
@@ -2262,9 +2435,29 @@ When a construction is finished, the `character_finishes_construction` event is 
 | `done_mark_practice_target`| Sets a target practice trap at the location
 | `done_ramp_low`        | Sets a t_ramp_down_low at the tile above the target
 | `done_ramp_high`       | Sets a t_ramp_down_high at the tile above the target
-| `done_matching_down_above`| The terrain on the Z level above is set to the corresponding terrain at this level, but with the "down" suffix instead
+| `add_matching_down_above`| The terrain on the Z level above is set to the corresponding terrain at this level, but with the "down" suffix instead
 | `remove_above`         | Remove the terrain at the Z level above and replace it with t_open_air
 | `add_roof`             | Add the roof specified for the terrain at the site to the tile above
+
+Every `post_special` still works, but vanilla uses JSON for the ones JSON can express:
+
+| post_special | What vanilla uses instead
+|---           |---
+| `done_appliance` | `"place_appliance": true`
+| `done_window_curtains` | `byproducts` (4 nails, 2 sheets, a stick and a string) and a `message` in `post_eocs`, see `constr_window_boarded_curtains`
+| `done_extract_maybe_revert_to_dirt` | `"post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ]`: one time in ten the tile becomes `t_dirt`, then a message says what was gathered
+| `done_mark_firewood`, `done_mark_practice_target` | `post_eocs` with `set_trap` at `pos` (`"radius": 0`), see `constr_firewood_source`
+| `done_ramp_low`, `done_ramp_high`, `done_wood_stairs`, `remove_above` | `post_eocs` that `set_terrain` on the tile above: `location_variable_adjust` of `pos` with `"z_adjust": 1` into another variable, then `set_terrain` there with `"radius": 0`, see `constr_concrete_ramp_low`
+
+The others stay in C++ because they do what JSON can't:
+
+- `done_trunk_plank` cuts logs into planks with the same code as cutting a log item, whose yield depends on the character.
+- `done_grave` goes through each corpse on the tile: a message naming it, funeral morale for the `SPIRITUAL` trait and a `buries_corpse` event for each, then the prompt to inscribe the grave.
+- `done_vehicle` asks for a name and makes a new vehicle from the component; `done_wiring` places the wiring and offers to reveal all wiring nearby.
+- `done_deconstruct` drops and replaces what the furniture's or terrain's `deconstruct` data says, with the code deconstruction uses everywhere.
+- `done_dig_grave` and `done_dig_grave_nospawn` send the `exhumes_grave` event, and `done_dig_grave` also damages and soils each piece of clothing it finds by that item's own durability.
+- `done_dig_stair`, `done_mine_downstair` and `done_mine_upstair` look for lava or water beyond the rock, ask whether to go on, give back the materials when they stop, and pick stairs or a ladder by what is below.
+- `add_matching_down_above` and `add_roof` work out the terrain above from the terrain built (its `down` counterpart by id, or its `roof`), so they follow that terrain's JSON; a fixed id in an EOC wouldn't.
 
 
 ### Scent_types
@@ -2342,7 +2535,37 @@ Any or all of the following alterations can be made to the event stream:
 
 * Add new fields to each event based on event field transformations.  The event
   field transformations can be found in
-  [`event_field_transformations.cpp`](/src/event_field_transformations.cpp).
+  [`event_field_transformations.cpp`](/src/event_field_transformations.cpp):
+
+  | Transformation | Input field type | New field type | New field |
+  | --- | --- | --- | --- |
+  | `category_of_itype` | `itype_id` | `item_category_id` | the item type's category (none if it has none) |
+  | `flags_of_furniture` | `furn_str_id` | `string` | one event per flag of the furniture |
+  | `flags_of_itype` | `itype_id` | `flag_id` | one event per flag of the item type |
+  | `flags_of_monster` | `mtype_id` | `string` | one event per flag of the monster type |
+  | `flags_of_terrain` | `ter_id` | `string` | one event per flag of the terrain |
+  | `flags_of_terrain_str` | `ter_str_id` | `string` | as `flags_of_terrain`, for the fields that are `ter_str_id` (`character_smashes_tile`'s `terrain`) |
+  | `is_mounted` | `mtype_id` | `bool` | whether there is a mount |
+  | `is_swimming_terrain` | `ter_id` | `bool` | deep, swimmable water |
+  | `materials_of_itype` | `itype_id` | `material_id` | one event per material of the item type |
+  | `math_abs` | `int` | `int` | the absolute value |
+  | `mutation_category_of_trait` | `trait_id` | `mutation_category_id` | one event per category of the trait |
+  | `oter_type_of_oter` | `oter_id` | `oter_type_str_id` | the overmap terrain's type |
+  | `overmap_special_at` | `tripoint` | `overmap_special_id` | see below |
+  | `overmap_special_if_any` | `overmap_special_id` | `overmap_special_id` | the field, or no event if it is empty |
+  | `species_of_monster` | `mtype_id` | `species_id` | one event per species of the monster type |
+
+  A transformation that gives several values makes one event for each; with a
+  `value_constraints` on the new field this keeps the events with that value, so
+  "kills of a monster with the `FLIES` flag" is `flags_of_monster` on
+  `victim_type` constrained to `"equals": [ "string", "FLIES" ]`.
+
+  Statistics don't keep a few fields that EVENT EOCs get, since each would make
+  the save keep a summary per tile or per monster type: the `pos` of
+  `becomes_wanted`, `character_smashes_tile`, `character_triggers_trap` and
+  `cuts_tree`, the `target` of `character_casts_spell` and `spellcasting_finish`,
+  and the `victim_type`, `bodypart` and `damage_type` of `monster_takes_damage`.
+  A statistic or transformation that names one is an error at load.
   Statistics are rebuilt from the whole event history (on every game load, for
   one), so `overmap_special_at` only sees overmaps already in memory and finds
   nothing elsewhere. For the OMTs the avatar entered, use the `overmap_special`
@@ -2464,6 +2687,31 @@ The value of the given field for the last event in the input stream:
 "field": "avatar_id"
 ```
 
+The number of different values the given field takes across all events (the
+number of distinct monster species killed, say):
+```jsonc
+"stat_type": "count_distinct",
+"field": "species"
+```
+
+The mean of the numeric value in the specified field across all events, rounded
+toward zero (0 when there are no events yet):
+```jsonc
+"stat_type": "average",
+"field": "damage"
+```
+
+The turn of the first, or of the last, event in the input stream, counted from
+the start of the calendar (turn zero; a turn is a second), or -1 when there are
+no events yet.  A requirement on it is best paired with one on a `count`, since
+-1 is below any time:
+```jsonc
+"stat_type": "first_time"
+```
+```jsonc
+"stat_type": "last_time"
+```
+
 Regardless of `stat_type`, each `event_statistic` can also have:
 ```jsonc
 // Intended for use in describing scores and achievement requirements.
@@ -2488,6 +2736,11 @@ optional.  It defaults to "<statistic description>: <value>".
 "description": "Headshots: %s",
 "statistic": "avatar_num_headshots"
 ```
+
+A game shows the scores that existed when it started.  A score with
+`"allow_late_tracking": true` (default false) is also shown in games that
+started before it was loaded, for example when its mod is added to a save.  Its
+value counts everything since the game started.
 
 #### `achievement`
 
@@ -2575,6 +2828,27 @@ add an `"anything"` constraint on it.  For example:
 This is a simple "survive a day" but is triggered by waking up, so it will be
 completed when you wake up for the first time after 24 hours into the game.
 
+A game tracks the achievements and conducts that existed when it started:
+one from a mod added to a save later is not shown and can't be completed or
+failed.  Add `"allow_late_tracking": true` (default false) to track it in such
+a game too, from the first time the game is loaded with it.  Its statistics
+count everything since the game started, but, as above, it is only claimed (or
+failed, for a conduct) when one of them next changes.
+
+```jsonc
+"unlocks_all_content": true
+```
+
+Once a game completes this achievement, every profession and scenario can be
+picked in every world, whatever achievements they require (default false).
+Arcade Mode, given from the debug menu, is one.
+
+EOCs can complete an achievement with
+[`give_achievement`](EFFECT_ON_CONDITION.md#give_achievement), fail a conduct
+with [`fail_conduct`](EFFECT_ON_CONDITION.md#fail_conduct), and read them with
+the math functions `achievement_state()` and `past_achievement()` (see
+[NPCs.md](NPCs.md)).
+
 Using the debug menu disables achievements for that game.  Achievements
 completed while they are disabled still show in that game, but they are not
 written to the `achievements` folder, so they don't unlock professions or
@@ -2630,8 +2904,8 @@ it is present to help catch errors.
       { "level": 4, "description": "xyz" }
   ],
   "companion_skill_practice": [ { "skill": "hunting", "weight": 25 } ],
-  "required_traits": [ "THINSKIN", "HORNS" ],
-  "allowed_traits": [ "PAWS", "SKIN_DARK" ]
+  "requires_all_traits": [ "THINSKIN", "HORNS" ],
+  "requires_any_traits": [ "PAWS", "SKIN_DARK" ]
 }
 ```
 
@@ -2645,6 +2919,8 @@ it is present to help catch errors.
 | `consumes_focus`           | (Boolean) Whether focus is consumed when this skill is trained.
 | `sort_rank`                | Order in which the skill is shown. |
 | `teachable`                | Whether it's possible to teach this skill between characters. (Default = true) |
+| `training_time`            | How long a lesson in this skill from an NPC (or to one) takes: a duration, a [variable object](EFFECT_ON_CONDITION.md#variable-object) or math in seconds, at least one turn.  u is the student and npc the teacher; the context values are `skill` (this skill's id), `level` (the student's practical level), `knowledge_level` (the student's theoretical level) and `teacher_level` (the teacher's practical level).  Default: 1 hour + 30 minutes x `level` - 1 minute x `teacher_level`, as `{ "math": [ "3600 + 1800 * _level - 60 * _teacher_level" ] }`. |
+| `training_cost`            | What that lesson costs, in cents, from the same dialogue: a number, variable object or math, not below 0.  A follower teaches for free whatever this says.  Default: 1000 x (1 + `knowledge_level`)², as `{ "math": [ "1000 * (1 + _knowledge_level) * (1 + _knowledge_level)" ] }`. |
 | `companion_skill_practice` | Determines the priority of this skill within a mision skill category when an NPC gains experience from a companion mission. |
 | `level_descriptions_theory`|  Description of your current theoretical level. The smallest one is picked, if you define only level 0 and 2, skill level 1 would show description for level 0 
 | `level_descriptions_practice`| Same as level_descriptions_theory, but for practical skill level.
@@ -2653,8 +2929,63 @@ it is present to help catch errors.
 | `companion_industry_rank_factor` | _(int)_ Affects an NPC's rank when determining the success rate for industry missions. |
 | `requires_all_traits` | Traits that the player is required to have to display the skill in the character tab. All traits are required |
 | `requires_any_traits` | Traits that the player needs at least one of to display the skill in the character tab. At least one trait is required |
+| `obsolete` | (Boolean) The skill is kept for old saves but isn't shown or used. (Default = false) |
+| `max_level` | _(int)_ The highest level the skill can be practiced to, learned from books and chosen in character creation, from 0 to 10. A skill at its `max_level` doesn't rust. Professions, debug tools and EOCs (`u_set_skill_level`) can still set it higher. (Default = 10) |
+| `training_multiplier` | _(float)_ Multiplies the experience practicing the skill gives (activities, crafting, combat, `u_skill_exp(..., 'practice': true)`), after focus. Not below 0. (Default = 1.0) |
+| `catchup_multiplier` | _(float)_ Multiplies how fast practice catches up to what the character already knows in theory. Not below 0. (Default = 1.0) |
+| `book_learning_multiplier` | _(float)_ Multiplies the theoretical experience reading a book for the skill gives. Not below 0. (Default = 1.0) |
+| `rust` | _(object)_ How the skill rusts, see below. |
+| `vision_penalty` | _(float)_ Taken off the effective skill when crafting a recipe with this as its primary skill, for a farsighted (`HYPEROPIC`) crafter without correction: no worn `FIX_FARSIGHT` item, no trait, bionic or effect with the `FIX_FARSIGHT` flag, no contact lenses. Not below 0. Shipped: 2 for electronics, 1 for tailoring. (Default = 0) |
+| `crafting_stat` | The stat that adds to the effective skill when crafting a recipe with this as its primary skill: `"str"`, `"dex"`, `"int"` or `"per"`. Recipes without a skill use intelligence. (Default = `"int"`) |
+| `crafting_stat_divisor` | _(float)_ The crafting stat adds stat / this to the effective skill; the crafting menu shows the difference from a stat of 8. More than 0. (Default = 4) |
+
+`rust` has these optional members:
+
+| Member | Purpose |
+| ---    | ---     |
+| `enabled` | _(bool)_ Whether the skill rusts at all. (Default = true) |
+| `grace_period` | _(duration)_ How long the skill must go without practice before it starts to rust. (Default = "24 h") |
+| `multiplier` | _(float)_ Multiplies the experience lost to each day's rust. Not below 0. (Default = 1.0) |
+| `max_levels` | _(float)_ Rust stops once this many levels' worth of experience (at the current level) has rusted away since the skill was last caught up. (Default = 3.0) |
+
+Rust is checked once a day.  `SKILL_RUST_RESIST` enchantments and the world's rust options apply on top of these.
+
+```jsonc
+{ "type": "skill", "id": "swimming", "copy-from": "swimming", "training_multiplier": 1.5, "rust": { "enabled": false } }
+```
 
 If neither `requires_all_traits` or `requires_any_traits` are defined, the skill will always display in the character tab
+
+A skill can `copy-from` another skill (or an `abstract` one), and a later mod changes a skill by copying it under the same id: it keeps every member it doesn't name.  `tags`, `requires_all_traits` and `requires_any_traits` take `extend` and `delete`; `time_to_attack` changes only the members it names; `companion_skill_practice` and the level descriptions, when given, replace the copied ones.  A second definition of an id without `copy-from` replaces the first one entirely (and moves the skill to the end of the skill list, as it always did).  A copy's `rust` changes only the members it names.
+
+```jsonc
+{ "type": "skill", "id": "spellcraft", "copy-from": "spellcraft", "sort_rank": 9000, "extend": { "tags": [ "combat_skill" ] } }
+```
+
+### Speech
+
+A line that monsters, items and other speakers can say (see `PARROT` in [MONSTER_SPECIAL_ATTACKS.md](MONSTER_SPECIAL_ATTACKS.md)); a speaker picks one of its lines at random.
+
+| Identifier | Description
+|---         |---
+| `speaker`  | The speaker id, or a list of them (usually monster or item ids), that can say the line.
+| `sound`    | The text heard.
+| `volume`   | How loud the line is.
+| `id`       | (optional) Lets later JSON change or copy the line.
+
+```jsonc
+{ "type": "speech", "speaker": [ "mon_mi_go", "mon_mi_go_slaver" ], "sound": "\"Papaya!\"", "volume": 32 }
+```
+
+A line with an `id` can `copy-from` another one (or an `abstract` one), and a later mod changes it by copying it under the same id: it keeps every member it doesn't name, and `speaker` takes `extend` and `delete`.  A second definition of the id without `copy-from` replaces the line, and keeps its place among its speakers' lines.  A line without an `id` is added to its speakers' lines, and nothing can change it later.
+
+Every vanilla line (`data/json/speech.json`) has an id `speech_<first speaker>_<n>`: its first `speaker`, and a number counting that speaker's lines from 1 in file order (`speech_mon_mi_go_1` is the first line whose speaker list starts with `mon_mi_go`).  The ids don't change when lines are added: `tools/json_tools/speech_ids.py <files>` names lines without an id, numbering on from the highest number the files already use for that first speaker.  A mod changes a vanilla line, or takes it away from a speaker or from everyone:
+
+```jsonc
+{ "type": "speech", "id": "speech_mon_mi_go_2", "copy-from": "speech_mon_mi_go_2", "sound": "\"Mango!\"" }
+{ "type": "speech", "id": "speech_mon_mi_go_3", "copy-from": "speech_mon_mi_go_3", "delete": { "speaker": [ "mon_mi_go_myrmidon" ] } }
+{ "type": "speech", "id": "speech_mon_mi_go_4", "copy-from": "speech_mon_mi_go_4", "speaker": [ ] }
+```
 
 ### Speed Description
 
@@ -2744,7 +3075,8 @@ Format and syntax:
   "type": "tool_quality",
   "id": "SAW_W",                      // Unique ID
   "name": { "str": "wood sawing" },   // Description used in tabs in-game when looking at entries with the id
-  "usages": [ [ 2, [ "LUMBER" ] ] ]   // Not mandatory.  The special actions that may be performed with the item.
+  "usages": [ [ 2, [ "LUMBER" ] ] ],  // Not mandatory.  The special actions that may be performed with the item.
+  "disassembly_substitute": { "qualities": [ { "id": "CUT" } ] } // Not mandatory.  What a reversible recipe needing this quality needs instead to be disassembled ({ } for nothing); see ITEM_CRAFT_AND_DISASSEMBLY.md, "Reversible crafting recipes".
 },
 ```
 
@@ -2815,10 +3147,19 @@ See [MUTATIONS.md](MUTATIONS.md)
     "funnel_radius": 200, // millimeters. The higher the more rain it will capture.
     "comfort": 0, // Same property affecting furniture and terrain
     "floor_bedding_warmth": -500, // Same property affecting furniture and terrain. Also affects how comfortable a resting place this is(affects healing). Vanilla values should not exceed 1000.
-    "eocs": [ "EOC_COOL_EOC_TRAP" ], // array of eocs to trigger, only usable with "action": "eocs". The alpha talker is the creature that triggered the trap and the trap's location is passed as a context variable trap_location for use with ranged traps. Items can't currently trigger eoc traps.
+    "eocs": [ "EOC_COOL_EOC_TRAP" ], // array of eocs to trigger, only usable with "action": "eocs". The alpha talker is the creature that triggered the trap and the trap's location is passed as a context variable trap_location for use with ranged traps. A copy-from child's "eocs" replace its parent's, and a child with another "action" drops them.
+    "item_eocs": [ "EOC_PLATE_PRESSED" ], // only with "action": "eocs": run when an item thrown or dropped onto the trap (see "trigger_weight") or a sound (see "sound_threshold") sets it off; without them, those do nothing to an eocs trap. No alpha talker; context values trap (the trap id), trap_location, and trigger_item (the item's type id, empty for a sound). The trap is removed first, unless it has the UNCONSUMED flag.
+    "disarm_eocs": [ "EOC_DISARMED" ], // run after the trap is disarmed or taken down, with the disarmer as alpha and the context values trap and trap_location (the trap is gone by then)
+    "disarm_fail_eocs": [ "EOC_DISARM_FAILED" ], // the same, after a failed attempt to disarm it (whether or not that set it off)
+    "disarm_condition": { "u_has_trait": "TRAPPER" }, // the disarmer (alpha) must meet it to try, else "disarm_condition_msg" (a format string with %s for the trap's name) is shown. Context values trap and trap_location.
+    "easy_take_down_condition": { "u_has_worn_with_flag": "DIMENSIONAL_ANCHOR" }, // a disarmer (alpha) who meets it takes the trap down without a roll, as for a trap with no avoidance and no difficulty
+    "trigger_damage": [ { "damage_type": "cut", "min": 9, "max": 15 } ], // "beartrap", "board", "caltrops" and "caltrops_glass" actions only: the damage they deal ("amount", or a random amount from "min" to "max", per damage type), in place of their own (beartrap 12 bash and 18 cut, board 3-5 cut, caltrops 9-15 cut, glass caltrops 3-10 cut)
+    "tetanus_chance": 35, // beartrap, board and caltrops: one in this many cutting hits gives tetanus (0: never). Their own: 128 (beartrap), 35. "tetanus_chance_resistant" is the same for infection resistance (512, 256).
+    "break_weight": "100 kg", // board and caltrops: a creature this heavy always breaks the trap, a lighter one may, in proportion (100 kg board, 200 kg caltrops)
+    "self_disarm_chance": 40, // board and caltrops: percent chance that a trap a creature didn't break disarms itself, as if disarmed (40 board, 20 caltrops)
     "spell_data": { "id": "bear_trap" }, // data required for trapfunc::spell(), only usable with "action": "spell"
     "trigger_weight": "200 g", // If an item with this weight or more is thrown onto the trap, it triggers. Defaults to 500 grams.
-    "drops": [ "beartrap" ], // ID of item spawned when disassembled
+    "drops": [ "beartrap" ], // ID of item spawned when disassembled, and when an item sets off a "beartrap" action trap
     "flags": [ "UNDODGEABLE", "AVATAR_ONLY" ], // UNDODGEABLE means that it can not be dodged, no roll required. AVATAR_ONLY means only the player can trigger this trap.
     "vehicle_data": {
       "damage": 300,
@@ -2827,7 +3168,10 @@ See [MUTATIONS.md](MUTATIONS.md)
       "sound_type": "trap",
       "sound_variant": "bear_trap",
       "remove_trap": true,
-      "spawn_items": [ "beartrap" ]
+      "spawn_items": [ "beartrap" ],
+      "runover_faults": false, // (Optional) The wheel moves on along the runover chain of its faults, as when running over a sharp item (see Item faults)
+      "wheel_faults": [ "fault_punctured_tires" ], // (Optional) Faults set on the wheel, those it can have
+      "eocs": [ "EOC_RAN_OVER_TRAP" ] // (Optional) Run once the vehicles have moved that turn, with the vehicle as alpha (u) and its driver, if any, as beta (npc); context variables trap_id, vpart_id (the wheel) and trap_pos
     },
     "trigger_message_u": "A bear trap closes on your foot!", // This message will be printed when player steps on a trap
     "trigger_message_npc": "A bear trap closes on <npcname>'s foot!", // This message will be printed when NPC or monster steps on a trap
@@ -2847,6 +3191,21 @@ See [MUTATIONS.md](MUTATIONS.md)
 ]
 ```
 
+Every vehicle prototype (except an `abstract` one) is also a group of its own id that holds only that vehicle.  A group left with nothing to pick (no vehicles, or none of any weight, say after a `delete`) is an error when the game data loads, and spawns nothing.
+
+A second definition of a group that already exists (from vanilla or an earlier mod) adds its `vehicles` to the group, like a `monstergroup`.  To change the group instead:
+
+| Identifier | Description
+|---         |---
+| `override` | (optional, bool) `true` makes this definition replace the existing group instead of adding to it.
+| `copy-from` | (optional) starts from the named group (or `abstract`); its `vehicles`, if present, replace the copied ones.
+| `extend` | (optional) `{ "vehicles": [ [ "car", 100 ] ] }` adds entries, in a copy or a second definition.
+| `delete` | (optional) `{ "vehicles": [ "car" ] }` removes every entry of each listed vehicle, in a copy or a second definition; naming a vehicle the group doesn't have is an error.
+
+```jsonc
+{ "type": "vehicle_group", "id": "city_parked", "delete": { "vehicles": [ "road_roller" ] }, "extend": { "vehicles": [ [ "bicycle", 200 ] ] } }
+```
+
 ### Vehicle Parts
 
 Vehicle components when installed on a vehicle.
@@ -2856,13 +3215,36 @@ Vehicle components when installed on a vehicle.
 "name": "wheel",              // Displayed name
 "looks_like": "small_wheel",  // (Optional) hint to tilesets if this part has no tile,
                               // use the looks_like tile.
-"bonus": 100,                 // Function depends on part type:
-                              // seatbelt part is in "str" (non-functional #30239)
-                              // muffler part is % noise reduction
+"bonus": 100,                 // Function depends on part type (no units, read by the part's flags):
+                              // seatbelt part: damage it takes off a passenger's crash damage
+                              // muffler part: % of the engine noise left (40 is 60% quieter;
+                              //   100 doesn't muffle at all)
                               // horn part volume
+                              // reversing beeper (BEEPER) part volume
                               // light part intensity
                               // recharger part charging speed in watts
-                              // funnel part water collection area in mm^2
+                              // funnel part: radius of the opening in mm (the area is pi * r^2)
+                              // shock absorber part: damage it takes off the shock of a distant
+                              //   collision to the other parts on its tile
+                              // rotor part: extra diameter in meters
+                              // camera part (EXTENDS_VISION and CAMERA): how far it sees, less
+                              //   as it gets damaged (a plain mirror doesn't use it)
+                              // reaper part (REAPER): the most plants a harvest yields, unless
+                              //   its "reaper" field sets them (see REAPERs)
+"funnel_radius": "300 mm",    // (Optional) FUNNEL: radius of the opening; overrides bonus
+"muffle_factor": 0.4,         // (Optional) MUFFLER: share of the engine noise left at full health,
+                              // 0 to 1 (0.4 is 60% quieter); overrides bonus
+"seatbelt_strength": 10,      // (Optional) SEATBELT: crash damage it takes off; overrides bonus
+"shock_absorption": 15,       // (Optional) SHOCK_ABSORBER: shock damage it takes off; overrides bonus
+"collision_damage": [ { "damage_type": "cut", "amount": 1.0, "armor_penetration": 5 } ],
+                              // (Optional) Damage the part deals to a creature it rams, as a damage
+                              // instance whose amounts are fractions of the collision damage (after
+                              // damage_modifier). Dealt like any other damage (armor, immunities,
+                              // ondamage_eocs): to every main body part of a character, 60-100% each,
+                              // and to a monster's whole body. Default: cut 1.0 for SHARP parts,
+                              // bash 1.0 otherwise
+"light_color": [ 255, 0, 0 ], // (Optional) colour of a light part's light, red, green and blue
+                              // from 0 to 255; white if unset
 "color": "dark_gray",         // Color used when part is working
 "broken_color": "light_gray", // Color used when part is broken
 "location": "fuel_source",    // Optional. One of the checks used when determining if a part 
@@ -2906,20 +3288,41 @@ Vehicle components when installed on a vehicle.
   },
   "removal": { "skills": [ [ "mechanics", 1 ] ], "time": "200 s", "using": [ [ "vehicle_screw", 1 ] ] },
   "repair": { "skills": [ [ "mechanics", 1 ] ], "time": "20 s", "using": [ [ "adhesive", 1 ] ] }
-},
+},                            // With copy-from, each block given replaces the copied block as a
+                              // whole: "install": { "time": "5 m" } leaves the install with no
+                              // skills, tools or components (only the part's item), and a
+                              // "repair" block with no "using", "tools", "qualities" or
+                              // "components" makes the part unrepairable.  A block not given is
+                              // copied.  An action's XP comes from its own skills and time: a
+                              // repair gives XP in the repair skills for the repair time times
+                              // the damage levels repaired, a removal half of what its removal
+                              // skills and time would give.
 "control_requirements": {     // (Optional) Control requirements of the vehicle this part is installed.
   "air": {                    // Requirements of flying in air.
     "proficiencies": [ "prof_helicopter_pilot" ], // "proficiencies" is a list of proficiency names.
+    "maintenance_proficiency": "prof_aircraft_mechanic" // (Optional, "air" only) see below
   },
   "land": {                    // Requirements of running on ground.
     "skills": [ [ "driving", 1 ] ], // "skills" is a list of lists, with each list being a skill
                               // name and skill level.
+  },
+  "water": {                  // Requirements of steering in deep water.
+    "proficiencies": [ "prof_boat_pilot" ],
+    "handling_skill": "driving",                 // (Optional) see below
+    "handling_proficiency": "prof_boat_pilot",   // (Optional) see below
+    "trains": [ "prof_boat_pilot" ]              // (Optional) see below
   }
 },
-"pseudo_tools" : [            // Crafting tools provided by this part
-  { "id": "hotplate", "hotkey": "h" },
+"pseudo_tools" : [            // Crafting tools provided by this part; with copy-from it
+  { "id": "hotplate", "hotkey": "h" }, // replaces the copied tools, and [] removes them
   { "id": "pot" }
 ],
+"enchantments": [ "ench_id", { "condition": "ACTIVE", "values": [ ] } ], // (Optional)
+                              // Enchantments the part gives, ids or inline definitions (see
+                              // MAGIC.md); an inline one gets the id INLINE_ENCH_vpart_<part id>_<n>.
+                              // With copy-from the list replaces the copied one, "extend":
+                              // { "enchantments": [ ... ] } adds to it and "delete":
+                              // { "enchantments": [ "ench_id" ] } removes enchantments by id.
 "folded_volume": "750 ml", // volume this vpart takes in folded form, undefined or null disables folding
 "folding_tools": [ "needle_curved" ], // tool itype_ids required for folding
 "folding_time": "100 seconds", // time to fold this part
@@ -2929,6 +3332,11 @@ Vehicle components when installed on a vehicle.
     "all" : 10,
     "physical" : 5
 },
+"sound_attenuation": 15,      // (Optional, default 0, at most 1000) Volume a sound loses crossing
+                              // this part's tile, as for terrain (see `sound_attenuation` under
+                              // "Common To Furniture And Terrain"). Not while the part is broken,
+                              // or open if it is OPENABLE (doors, hatches, curtains). The parts
+                              // on one tile add up.
 "qualities": [ [ "SELF_JACK", 17 ] ], // (Optional) A list of lists, with each list being a tool
                               // quality and the quality level, that the vehicle part provides.
                               // Only the "LIFT", "JACK", and "SELF_JACK" qualities are valid.
@@ -2967,6 +3375,17 @@ Variant bases are for generating extra variants from the specified ones, in the 
 
 For more details on how tilesets interact with variants and ids look into [VEHICLES_JSON.md](VEHICLES_JSON.md#part-variants) "Part Variants" section.
 
+#### Control requirements
+
+Each mode of `control_requirements` (`air` while flying, `water` in deep water, `land` otherwise) lists the `skills` and `proficiencies` needed to take the controls in that mode; every part's requirements must be met.  The `land` requirements don't apply in deep water, where the `water` ones do.  A mode can also say how the vehicle handles:
+
+- `handling_skill` (skill id, default `driving`): the skill that steering, the fumble chance and skid recovery use, and that driving trains.
+- `handling_proficiency` (proficiency id, default `prof_driver`, or `prof_boat_pilot` in deep water): without it, steering is harder and fumbles are likely, scaled by how much of it the driver has learned.
+- `trains` (list of proficiency ids, default the handling proficiency): what driving under load in this mode trains.  An empty list trains none.
+- `maintenance_proficiency` (proficiency id, `air` only, default `prof_aircraft_mechanic`): installing, repairing or removing a non-`SIMPLE_PART` part of a flyable aircraft without it makes the aircraft unflyable.  If parts name several, all are needed.
+
+If several parts set the same field for a mode, the first part of the vehicle that sets it wins.  Example: `"control_requirements": { "air": { "proficiencies": [ "prof_helicopter_pilot" ], "handling_proficiency": "prof_helicopter_pilot", "trains": [ "prof_helicopter_pilot" ] } }`.
+
 Unless specified as optional, the following fields are mandatory for parts with appropriate flag and are ignored otherwise.
 #### The following optional fields are specific to CARGO parts.
 ```jsonc
@@ -2986,7 +3405,9 @@ Unless specified as optional, the following fields are mandatory for parts with 
 "backfire_freq": 20,          // (Optional, default = 0) One in X chance of a backfire if the
                               // ratio of damaged HP to max HP is below the backfire_threshold.
 "noise_factor": 15,           // (Optional, default = 0). Multiple engine power by this number to
-                              // determine noise.
+                              // determine noise. Applies to every engine type (electric, muscle,
+                              // animal...), not only combustion; a moving vehicle also makes noise
+                              // from its speed (velocity / 500), engines on or off.
 "damaged_power_factor": 0.5,  // (Optional, default = 0) If more than 0, power when damaged is
                               // scaled to power * ( damaged_power_factor +
                               // ( 1 - damaged_power_factor ) * ( damaged HP / max HP )
@@ -3002,6 +3423,29 @@ Unless specified as optional, the following fields are mandatory for parts with 
                               // To be a fuel an item needs to be made of only one material,
                               // this material has to produce energy, *ie* have a `data_fuel` entry,
                               // and it needs to have consumable charges.
+"power_math": { "math": [ "u_spirit_power * 100" ] }, // (Optional) see "Engine power from math"
+"full_reverse": false,        // (Optional, default true for engines whose fuel_type is battery,
+                              // false otherwise) The engine drives as well in reverse as forward:
+                              // while one such engine is on, reversing has full acceleration and
+                              // full top speed, instead of 60% acceleration and 1/4 top speed.
+"stall_message": true,        // (Optional, default false for engines whose fuel_type is animal,
+                              // muscle, wind or mana, true otherwise) Whether "The <vehicle>'s
+                              // engine dies!" is shown when the running engines stop giving power.
+                              // The message shows if any engine that is on has it.
+```
+
+##### Engine power from math
+
+`power_math` (a number or a [math object](NPCs.md#math), in watts) replaces the engine's `power`, and the built-in formulas for engines whose `fuel_type` is `animal` (the harnessed animal's size, speed and carrying ratio), `muscle` (the rider's strength) or `wind` (the wind against the vehicle's heading). It is evaluated every time the engine's power is needed, with the vehicle as alpha (`u_`, so `u_vehicle_fuel('gasoline')` and the vehicle's own variables work), and as beta (`n_`) the character on the engine's tile, else the monster there (such as a harnessed animal). The context variable `_has_rider` is 1 when there is a beta and 0 when not: an expression that reads `n_` must check it first, for example `_has_rider ? n_val('strength') * 50 : 0`, since reading a missing beta is an error. Damage still lowers the result as for any engine (`damaged_power_factor`), and the `VEH_ENGINE_POWER` enchantment value applies on top. An engine with `power_math` may leave `power` at 0. For a new pseudo-fuel (rowing, steam, spirit power), give the fuel item the `PERPETUAL` flag so the engine always has fuel, and compute the power here.
+
+#### The following fields are specific to REACTORs.
+A `REACTOR` part makes battery charge on demand, when the vehicle's (or grid's) batteries are not full. With `PERPETUAL` it needs no fuel. Without it, it burns `fuel_type` held in the part itself (its base item's tank or magazine):
+```jsonc
+"epower": "3000 W",           // Most power it makes.
+"power": "7 W",               // Not watts here: the battery charge, in kJ, made from one unit
+                              // (charge or mL) of fuel_type.  Must be positive unless PERPETUAL.
+"fuel_type": "gasoline",      // What it burns.  A spawned vehicle's reactors start with some of it,
+                              // like its tanks.
 ```
 
 #### The following optional fields are specific to WHEELs.
@@ -3022,12 +3466,24 @@ Unless specified as optional, the following fields are mandatory for parts with 
 
 The key is one of the terrain flags, the list of flags can be found in [JSON_FLAGS.md](JSON_FLAGS.md#furniture-and-terrain).
 
-The value expects an array of length 2. The first element is a modifier override applied when wheel is on the flagged terrain, the second element is an additive modifier penalty applied when wheel is NOT on flagged terrain, values of 0 are ignored. The modifier is applied over a base value provided by `map::move_cost_ter_furn`.
+The value expects an array of length 2. The first element is a move cost override applied when the wheel is on the flagged terrain, the second element is a move cost penalty added when the wheel is NOT on the flagged terrain; values of 0 are ignored. They work on the tile's move cost from `map::move_cost_ter_furn` (2 on most open ground), and the wheel's traction is `2 * contact_area / move cost`, so a higher move cost means less traction.
+
+The entries are combined the same way whatever order they are written in:
+* If the tile has the flag of an entry with an override, that override is the move cost and no penalty applies. If several overrides apply, the lowest is used.
+* Otherwise, of the entries whose flag the tile lacks, the largest penalty is added. Penalties don't stack.
 
 Examples:
-* Standard `wheel` has the field set to `{ "FLAT": [ 0, 4 ], "ROAD": [ 0, 2 ] }`. If wheel is not on terrain flagged `FLAT` then the traction is 1/4 of base value. If not on terrain flagged `ROAD` then it's 1/2 of base value. If neither flag is present then traction will be 1/6 of base value. If terrain is flagged with both `ROAD` and `FLAT` then the base value from `map::move_cost_ter_furn` is used.
-* `rail_wheel` has the field set to `{ "RAIL": [ 2, 8 ] }`. If wheel is on terrain flagged `RAIL` the traction is overridden to be 1/2 of value calculated by `map::move_cost_ter_furn`, this value is the first element and considered an override, so if there had been modifiers applied prior to this they are ignored. If on terrain not flagged with `RAIL` then traction will be 1/8 of base value.
+* Standard `wheel` has the field set to `{ "FLAT": [ 0, 4 ], "ROAD": [ 0, 2 ] }`. On terrain that is not `FLAT` the move cost is base + 4 (the larger penalty; the `ROAD` one is not added on top). On `FLAT` terrain that is not `ROAD` it is base + 2. On terrain with both flags it is the base move cost.
+* `rail_wheel` has the field set to `{ "RAIL": [ 2, 8 ] }`. On terrain flagged `RAIL` the move cost is 2, whatever the terrain's own move cost. On terrain without `RAIL` it is base + 8.
 
+
+#### The following optional field is specific to REAPERs.
+```jsonc
+"reaper": {
+  "plant_yield": [ 1, 4 ],  // (Optional, default [ 1, bonus ]) The least and most plants a harvest yields
+  "seed_yield": [ 1, 3 ]    // (Optional, default [ 1, 3 ]) The least and most seeds it yields
+}
+```
 
 #### The following optional fields are specific to ROTORs.
 ```jsonc
@@ -3062,6 +3518,30 @@ with the avatar as alpha talker and the vehicle as beta talker, and gets the con
 `vpart_id` (the part's id), `vpart_variant` (its variant, or `""`) and `vpart_pos` (a location
 variable: the part's tile).  See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md).
 
+#### The following optional field gives a CARGO part a timed processing cycle.
+```jsonc
+"processing_cycle": {
+  "duration": "60 m",                      // How long a cycle takes (mandatory)
+  "unset_item_flags": [ "FILTHY" ],        // Flags taken off every item inside when it ends
+  "set_item_flags": [ ],                   // Flags put on every item inside when it ends
+  "transform_items": [ { "from": "wet_rag", "to": "rag" } ], // Items of the first type become the second
+  "start_message": "You switch the dryer on.",   // Shown when it starts (else "You start the <part>.")
+  "progress_message": "The dryer rumbles.",      // Shown every 15 minutes while it runs
+  "finish_message": "The dryer has finished.",   // Shown when it ends
+  "eoc_on_start": "EOC_DRYER_START",       // Id or inline EOC run when the avatar starts it; the cycle
+                                           // starts only if its condition holds (its false_effect can
+                                           // say why not), and its effects can use up water, detergent...
+  "eoc_on_finish": "EOC_DRYER_DONE",       // Id or inline EOC run when it ends
+  "item_condition": { "u_has_flag": "FILTHY" }, // (Optional) The cycle starts only if every item
+                                           // inside meets this condition, with the item as alpha
+                                           // talker and the vehicle as beta (checked before
+                                           // eoc_on_start)
+  "item_condition_message": "Take out what isn't filthy first." // Shown when an item doesn't
+                                           // (else "The <part> can't process what it holds.")
+}
+```
+`e`xamining the part's tile offers "Start the <part> (<duration>)", or "Stop the <part>" while it runs. An empty part can't be started. While the cycle runs nothing can be put in or taken out of the part, as with the washing machine. The EOCs run like an `activatable_eoc`: the avatar is the alpha talker, the vehicle the beta talker, and they get the context variables `vpart_id`, `vpart_variant` and `vpart_pos`. A cycle that ran out while the vehicle was away from the player finishes when it comes back. The vanilla washing machine, dishwasher, autoclave and mobile weather station keep their own code (their flags).
+
 #### The following optional field describes pseudo tools for any part.
 Crafting stations (e.g. kitchen, welding rigs etc) have tools that they provide as part
 of forming the inventory for crafting as well as providing menu items when `e`xamining
@@ -3074,6 +3554,7 @@ It also has a hotplate that can be activated by examining it with `e` then `h` o
   { "id": "pot" }
 ],
 ```
+An activated tool draws what it uses (battery charge, or a fuel such as gasoline) from the vehicle.  Any tool with a `repair_item` use works this way, a welder's or not: the repair finds it on the part's tile for each attempt, and the vehicle pays for what each attempt uses.
 
 ### Vehicle Part Locations
 
@@ -3134,8 +3615,8 @@ Damage resistance values, used by:
   "y" : 8,   // The y placement. Can be a single value or a range of possibilities. Not needed if placement is specified.
   "facing" : [90,270], // The facing of the vehicle. Can be a single value or an array of possible values. Not needed if placement is specified.
   "number" : 1, // The number of vehicles to spawn.
-  "fuel" : -1, // The fuel of the new vehicles. Defined in percentage. 0 is empty, 100 is full tank, -1 is random from 7% to 35% (default).
-  "status" : 1  // The status of the new vehicles. -1 = light damage (default), 0 = undamaged, 1 = disabled: destroyed seats, controls, tanks, tires, OR engine.
+  "fuel" : -1, // (Optional) The fuel of the new vehicles. Defined in percentage. 0 is empty, 100 is full tank, -1 is random from 7% to 35% (default).
+  "status" : 1  // (Optional) The status of the new vehicles. -1 = light damage (default), 0 = undamaged, 1 = disabled: destroyed seats, controls, tanks, tires, OR engine, 2 = pristine: undamaged, with no faults and no security. Any other value is an error.
 } } ]
 ```
 
@@ -3273,7 +3754,7 @@ Array of dictionaries defining possible items produced on butchering and their l
 `drop` value should be the `id` string of the item to be produced.
 
 `type` value should refer to an existing `harvest_drop_type` associated with body part the item comes from.
-    Acceptable values are as follows:
+    The vanilla values are as follows (the drop type's rules decide how each butchery treats it, see [Harvest Drop Type](#harvest-drop-type)):
     `flesh`: the "meat" of the creature.
     `offal`: the "organs" of the creature. these are removed when field dressing.
     `skin`: the "skin" of the creature. this is what is ruined while quartering.
@@ -3300,12 +3781,20 @@ For `type`s with "dissect_only" (see below), the following entries can scale the
 
 itype_id of the item dropped as leftovers after butchery or when the monster is gibbed.  Default as "ruined_chunks".
 
+#### `butchery_requirements`
+
+Id of the `butchery_requirement` that says which tools and surfaces each kind of butchery needs for each creature size (default `default`, in `data/json/butchery_requirements.json`). Its keys (`"1.0"`, `"1.2"`, ...) multiply the butchery time: the game picks the requirement with the lowest key that the butcher meets. That makes the butchery time of the monsters using this harvest moddable: a requirement with a `"2.0"` key alone doubles it. The time it multiplies comes from the creature size (a huge one takes 12 times as long as a tiny one), the butchering quality of the tools, the proficiencies of the butcher and the kind of butchery.
+
+Butchering a creature the butcher empathizes with (a human, for most characters) costs morale and trauma, and angers the NPCs who see it and empathize too. The amounts are `EXTERNAL_OPTION`s in `data/core/external_options.json`: `BUTCHERY_EMPATHY_MORALE` (-50) and `BUTCHERY_EMPATHY_TRAUMA` (10) for butchering, `DISSECT_EMPATHY_MORALE` (-40) and `DISSECT_EMPATHY_TRAUMA` (5) for dissecting without `prof_dissect_humans`, `BUTCHERY_EMPATHY_NPC_OPINION` (5) for the NPCs' trust, value and anger. Every butchery sends the `character_butchered_corpse` event with the corpse as beta (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).
+
+How much of a `mass_ratio` harvest entry the butcher gets is a share of its maximum: the butcher's skill (the drop type's `harvest_skills`, survival by default; for dissection, plus the tool's CUT_FINE quality) as a share of level 10, the tool's quality as a share of 50 and dexterity as a share of 20, each capped at 1, weighted by the `EXTERNAL_OPTION`s `BUTCHERY_YIELD_SKILL_WEIGHT` (0.5), `BUTCHERY_YIELD_TOOL_WEIGHT` (0.3) and `BUTCHERY_YIELD_DEX_WEIGHT` (0.2).  With a BUTCHER 20 knife and dexterity 8, that is 0.29 of the maximum at survival 0 and 0.79 from survival 10.
+
 ### Harvest Drop Type
 ```jsonc
 {
   "type": "harvest_drop_type",
   "id": "mutagen",
-  "dissect_only": true,
+  "dissect_only": false,
   "group": false,
   "harvest_skills": [ "firstaid", "chemistry" ],
   "msg_fielddress_fail": "harvest_drop_mutagen_field_dress",
@@ -3317,17 +3806,64 @@ itype_id of the item dropped as leftovers after butchery or when the monster is 
 }
 ```
 
-Harvest drop types are used in harvest drop entries to control how the drop is processed. `dissect_only` only allows the drop to be produced when dissecting. `group` indicates that an associated `drop` refers to an item group instead of a single item type.
+Harvest drop types are used in harvest drop entries to control how the drop is processed. `dissect_only` (boolean, default false) only allows the drop to be produced when dissecting: every other butchery action gives nothing of it, silently. It can't be combined with an `action_yield` for actions other than `DISSECT` (that is reported at load). `group` indicates that an associated `drop` refers to an item group instead of a single item type.
 
 `harvest_skills` refers to the id of skills that affect the yields of this harvest drop type. If omitted, this defaults to the survival skill. For example, dissecting a zomborg for CBMs will produce better results when the "electronics" and "firstaid" skills are high. `harvest_skills` can be either a single string (just one skill) or an array of strings.
 
-`msg_<butcher_type>_<result>` refers to a snippet to be printed when the specified butcher type either succeeds or fails. Currently, the following message types are available:
+`msg_<butcher_type>_<result>` refers to a snippet to be printed when the specified butcher type either succeeds or fails: `fielddress` for field dressing, `butcher` for quick and full butchery and dismembering, `dissect` for dissection (for each entry of the harvest list with a single item, and for each item found in the corpse from its `dissect` list). Currently, the following message types are available:
 - `"msg_fielddress_fail"`
 - `"msg_fielddress_success"`
 - `"msg_butcher_fail"`
 - `"msg_butcher_success"`
 - `"msg_dissect_fail"`
 - `"msg_dissect_success"`
+
+#### Butchery yield rules
+
+A drop type also says how much of its drops each kind of butchery gives, and what earlier butchery or damage to the corpse takes away. These are the rules of the vanilla `skin` type:
+
+```jsonc
+{
+  "type": "harvest_drop_type",
+  "id": "skin",
+  "action_yield": { "FULL": 1, "QUICK": { "mult": 0.5, "min_size": "MEDIUM" }, "SKIN": 1, "DISMEMBER": 0, "DISSECT": 1 },
+  "corpse_damage_yield": [ 1, 1, 0.75, 0.5, 0, 1 ],
+  "gib_yield": 1,
+  "survives_splatter": false,
+  "enables_action": [ "SKIN" ],
+  "corpse_flag_yield": [
+    { "flags": [ "SKINNED", "QUARTERED" ], "skip": true },
+    { "flags": [ "FIELD_DRESS_FAILED" ], "actions": [ "FULL", "QUICK", "SKIN" ], "yield": { "mult": 0, "random": [ 0, 1 ] } }
+  ],
+  "proficiency_penalties": [ { "proficiency": "prof_skinning_basic", "penalty": 2 }, { "proficiency": "prof_skinning_adv", "penalty": 0.15 } ],
+  "trains_proficiencies": [ { "proficiencies": [ "prof_skinning_basic", "prof_skinning_adv" ], "time_fraction": { "FULL": 0.4, "QUICK": 0.15, "SKIN": 1 } } ]
+}
+```
+
+Butchery actions are named `QUICK`, `FULL`, `FIELD_DRESS`, `SKIN`, `BLEED`, `QUARTER`, `DISMEMBER` and `DISSECT` (quartering gives no drops).
+
+A **yield** is either a number, which multiplies the amount, or an object:
+- `mult` (number, default 1): multiplies the amount.
+- `random` (array of two numbers, optional): adds a random amount, between the amount times the first number and the amount times the second.
+- `min_size` (creature size, optional, only in `action_yield`): creatures smaller than this (`TINY`, `SMALL`, `MEDIUM`, `LARGE`, `HUGE`) give nothing of this drop type.
+
+Each part is rounded down. The amount is the number of items, or the weight in grams for entries with `mass_ratio`.
+
+For each harvest entry, the rules apply in this order to the amount rolled from the entry:
+1. `corpse_damage_yield` (array of numbers, optional): multiplier by the corpse's damage level, from 0 (undamaged) to 5 (the most damage); levels past the end of the array use its last number. The result is rounded to the nearest whole number. Without the field the corpse's damage takes nothing away. The entry still gives at least its `base_num` minimum, unless it uses `mass_ratio`.
+2. `gib_yield` (number, default 1): multiplier when the corpse was gibbed.
+3. `proficiency_penalties` (array, optional): each `{ "proficiency": ..., "penalty": ... }` divides the amount by 1 + penalty × (1 − the butcher's practice of the proficiency, from 0 to 1), rounding down.
+4. `action_yield` (object, optional): a yield for each butchery action. **An action not listed gives nothing of this drop type, silently**; a yield of 0 still tries and says that it failed (as dismembering does). Without the field: `FULL`, `FIELD_DRESS` and `DISSECT` give full yield, `DISMEMBER` gives 0 and the others give nothing, which is how drop types worked before they had rules.
+5. `corpse_flag_yield` (array, optional), in order: each rule applies when the corpse has any of its `flags` (any corpse, when there are none) and the action is one of its `actions` (any action, when there are none). It has either a `yield`, or `"skip": true` to give nothing.
+6. A quartered corpse gives a quarter of everything.
+
+`enables_action` (array of `FIELD_DRESS`, `SKIN` or `BLEED`, optional): the butchery menu only offers field dressing, skinning and bleeding when the corpse has an entry of a drop type that enables it. Field dressing is then also offered only before the corpse is field dressed or quartered, skinning only before it is skinned, and bleeding only for a creature that bleeds, before it is bled, field dressed or quartered. A creature with a drop type that enables `FIELD_DRESS` must be field dressed before it can be quartered.
+
+`survives_splatter` (boolean, default false): when the monster dies splattered, drops of this type are scattered around as chunks.
+
+`trains_proficiencies` (array, optional): each `{ "proficiencies": [ ... ], "time_fraction": { "<action>": fraction } }` trains the first proficiency in the list the butcher doesn't have (the last one when they have all of them) for that fraction of the butchery time, when butchering a creature with a drop of this type with one of the listed actions. A list shared by several drop types of the same creature trains once.
+
+The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had, except that a field-dressed corpse now has half to all of its bones left (`"mult": 0, "random": [ 0.5, 1 ]`), so field dressing and butchering together give about the bones of butchering the whole corpse, not up to twice as many. `mutagen`, `mutagen_group`, `bionic` and `bionic_group` have `"action_yield": { "FULL": 1, "DISMEMBER": 0, "DISSECT": 1 }`: the default without `FIELD_DRESS`, so an organ or implant in a creature's `harvest` list (as in Magiclysm and Aftershock) comes from full butchery or dissection, not also from field dressing first. They are not `dissect_only`, as that would keep those drops from full butchery.
 
 ### Weapon Category
 
@@ -3443,6 +3979,18 @@ Same as for terrain, see below in the chapter "Common to furniture and terrain".
 
 (Optional) When the furniture is successfully lockpicked, this is the message that will be printed to the player. When it is missing, a generic `"The lock opens…"` message will be printed instead.
 
+#### `lockpick_difficulty`
+
+(Optional) How hard the lock is to pick: an int, or `[ min, max ]` to roll between for each attempt. The attempt succeeds when the picker's roll (skills, stats, proficiencies and the tool's `LOCKPICK` quality; about 2 for an untrained survivor with a bobby pin) is at least the difficulty, and the lockpicking experience gained grows with it. Without it each attempt rolls 3d5-3 (0 to 12). An `ALARMED` lock may set off an alarm on any attempt that isn't made with a perfect lockpick, more likely the harder the lock.
+
+#### `lockpick_jam_result`
+
+(Optional) The furniture a very clumsy attempt (difficulty more than three times the picker's roll) jams the lock into, e.g. `"f_gunsafe_mj"` for the gun safe. Without it the lock can't jam.
+
+#### `hack_result`
+
+(Optional) For an electronic safe (`"examine_action": "gunsafe_el"`): the furniture it becomes when it is hacked open. Defaults to `f_safe_o`.
+
 #### `light_emitted`
 
 (Optional) How much light the furniture produces.  10 will light the tile it's on brightly, 15 will light that tile and the tiles around it brightly, as well as slightly lighting the tiles two tiles away from the source.
@@ -3552,7 +4100,7 @@ Strength required to move the furniture around. Negative values indicate an unmo
 
 #### `workbench`
 
-(Optional) Can craft here.  Must specify a speed multiplier, allowed mass, and allowed volume.  Mass/volume over these limits incur a speed penalty.  Must be paired with a `"workbench"` `examine_action` to function.
+(Optional) Can craft here.  Must specify a speed multiplier, allowed mass, and allowed volume.  Mass/volume over these limits incur a speed penalty.  Must be paired with a `"workbench"` `examine_action` to function.  An optional `"recipe_filter"` (a string in the crafting menu's search syntax, such as `"p:fabrication"` or `"q:ANVIL"`) is the search the crafting menu starts with when it is opened at this workbench ("Craft items" and "Craft as long as possible"); the player can clear it.  A vehicle part's `workbench` takes the same `"recipe_filter"`.
 
 #### `plant_data`
 
@@ -3653,6 +4201,14 @@ For examples: An overhead light is 120, a utility light, 240, and a console, 10.
 #### `lockpick_message`
 
 (Optional) When the terrain is successfully lockpicked, this is the message that will be printed to the player. When it is missing, a generic `"The lock opens…"` message will be printed instead.
+
+#### `lockpick_difficulty`
+
+(Optional) How hard the lock is to pick, as for [furniture](#lockpick_difficulty). Without it each attempt rolls 3d5-3 (0 to 12). An `ALARMED` lock (like `t_door_locked_alarm`) may set off an alarm.
+
+#### `lockpick_jam_result`
+
+(Optional) The terrain a very clumsy lockpicking attempt jams the lock into. Without it the lock can't jam.
 
 #### `trap`
 
@@ -3820,6 +4376,63 @@ Example:
 
 (Optional) The terrain of the terrain on top of this (the roof).
 
+#### `produces_liquid`
+
+(Optional) Object. A liquid the terrain makes as time passes, poured into the first container on the tile (one that would spill, or a watertight one) when the tile comes back into the reality bubble. Only what fits is kept. The tapped maple tree makes its sap this way:
+
+```jsonc
+"produces_liquid": {
+  "item": "maple_sap",   // the liquid
+  "amount": 224,         // charges made over one whole span (224 charges of sap are 56 L)
+  "active": [ 3.75, 0.5 ], // the span of the year it is made in, in seasons from the start of spring:
+                         // 0 is the start of spring, 1 of summer, 2 of autumn, 3 of winter, and 4 the
+                         // next spring. A span may run past the end of winter, as this one does
+                         // (the last quarter of winter and the first half of spring)
+  "poison_chance": 10    // (optional, default 0 for never) one fill in this many is poisoned
+}
+```
+
+A tile away for a year or more gets one whole span's worth.
+
+#### `rad_scorch`
+
+(Optional) Terrain id. What radiation on the tile scorches the terrain into, as time passes away from the player. Set it to the terrain's own id to make it immune. Without it, a few vanilla plants and trees have their own result, other `SHRUB` terrain dies into `t_dirt` and other `TREE` terrain into `t_tree_dead`. Planted crops (furniture with `PLANT`) on the tile are always destroyed first.
+
+#### `felled`
+
+(Optional) Object, for `TREE` terrain. What cutting the tree down leaves: `"trunk"` is the terrain of the fallen trunk, `"stump"` the terrain left where the tree stood. Each defaults to `t_trunk` and `t_stump`.
+
+```jsonc
+"felled": { "trunk": "t_trunk_palm", "stump": "t_stump_palm" }
+```
+
+#### `churned_into`
+
+(Optional) Terrain id. What a vehicle without enough wheels (dragged along on its frame) churns the terrain into. Set it to the terrain's own id to keep it as it is. Without it, `t_dirt` and `t_grass` become `t_dirtmound` and other terrain is left alone.
+
+#### `chop`
+
+(Optional) What chopping the terrain up with an axe gives (the `CHOP_LOGS` use, the zone job that chops trees and trunks, `u_assign_activity` with `ACT_CHOP_LOGS`). It's a block like [`prying`](#prying-1): `result` (mandatory) is the terrain it becomes, `byproducts` what it leaves (each item spawned one at a time), and `message` (optional) replaces "You finish chopping wood.". `duration` isn't used: the time comes from the axe and the character. Terrain without `chop` can't be chopped. A `copy-from` keeps it; `"delete": { "chop": true }` removes it.
+
+```jsonc
+"chop": {
+  "result": "t_dirt",
+  "byproducts": [ { "item": "log", "count": [ 2, 3 ] }, { "item": "stick_long", "count": [ 0, 3 ] } ]
+}
+```
+
+#### `till`
+
+(Optional) What tilling a `PLOWABLE` terrain (the `MAKEMOUND` use, farm zones) turns it into: `result` (mandatory), `time` (optional, default 3 minutes) and `message` (optional, default "You finish churning up the earth here."). Without it, the terrain becomes `t_dirtmound` in 3 minutes.
+
+```jsonc
+"till": { "result": "t_greenhouse_tilled", "message": "You finish preparing the greenhouse here." }
+```
+
+#### `plant_result`
+
+(Optional) Terrain id. What a `PLANTABLE` terrain becomes when a seed is planted on it (the seed then grows as furniture on it). Default `t_dirt`.
+
 ### Common To Furniture And Terrain
 
 Some values can/must be set for terrain and furniture. They have the same meaning in each case.
@@ -3921,9 +4534,47 @@ Move cost to move through. A value of 0 means it's impassable (e.g. wall). You s
 
 (Optional) Flat damage reduction or increase if negative number. Like falling on a bush or soft chair or mattress or sofa.
 
+#### `sound_attenuation`
+
+(Optional, integer from 0 to 1000, default 0) Volume a sound loses crossing a tile of this terrain or furniture on its way to whoever hears it, on top of what the distance costs (1 per tile). A sound of volume 40 heard 10 tiles away through one wall with `"sound_attenuation": 15` arrives at 40 - 10 - 15 = 15.
+
+What muffles a sound is added up along the straight line from the sound to the listener: the terrain, furniture and fields (`sound_attenuation` of the field's intensity level) of every tile strictly between them, plus the vehicle parts there (`sound_attenuation` of each part that is neither broken nor open). The sound's own tile and the listener's never count, so a wall muffles only what is on its other side, and a field has to cover the tiles between to muffle anything.
+
+This applies to monsters hearing sounds (and so to what they follow), sound-triggered traps, NPCs, and the avatar: the messages, the sound markers on the map, deafening and waking up, `can_hear` checks such as shouted orders to followers, and the volume of sound effects. Horde signals outside the reality bubble ignore it.
+
+Vanilla values, by what the wall, door or window is made of (most are set on the abstract walls in `terrain-walls.json`, so copies of them inherit the value):
+
+| Value | Terrain | Vehicle parts |
+| ----- | ------- | ------------- |
+| 20 | rock and solid earth (`t_abstract_wall_earthen`, colored stone, smoothed rock, basalt), reinforced concrete walls | |
+| 15 | concrete (`t_abstract_wall_concrete`), brick and stone walls; closed reinforced and bulkhead doors | |
+| 12 | metal walls (`t_abstract_wall_metal`, scrap and junk metal walls) | |
+| 10 | log walls and palisades, solid grown wood and bark | heavy-duty boards |
+| 8 | wood, drywall and wattle walls (`t_abstract_wall_wood`); closed metal doors | |
+| 6 | boarded or shuttered windows, boarded doors | boards (metal, wooden, stow boards) |
+| 5 | closed wood doors | closed doors and hatches, reinforced windshields |
+| 4 | closed glass or plastic windows, glass doors and glass walls | |
+| 3 | | windshields |
+| 1 | | cloth boards and cloth doors |
+| 0 | open or broken doors and windows, empty frames, embrasures, half walls, fences, gates, bars and screens, columns, and walls of other materials (paper, wax, resin, flesh, fungus) | quarterpanels, curtains, open doors and hatches |
+
+Furniture and fields set none. A mod changes a value by redefining the object with a `copy-from` of its own id, which keeps everything else the same: `{ "type": "terrain", "id": "t_wall", "copy-from": "t_wall", "sound_attenuation": 12 }` (or a vehicle part's `{ "type": "vehicle_part", "id": "board", "copy-from": "board", "sound_attenuation": 0 }`). A copy takes the value of what it copies when it loads, so redefining an abstract wall in a mod changes only the mod's own copies of it, not the vanilla walls already loaded. The external option `SOUND_ATTENUATION_PERCENT` (`data/core/external_options.json`, default 100) scales every sum: 50 halves what everything muffles, 0 turns muffling off (sounds then skip the walk), 200 doubles it; a mod sets it with `{ "type": "EXTERNAL_OPTION", "name": "SOUND_ATTENUATION_PERCENT", "stype": "int", "value": 50 }`. With nothing loaded that muffles, sounds skip the walk too. The cost of a sound between z-levels comes from the external options `SOUND_Z_LEVEL_MULT` (5: each level counts as 5 tiles), `SOUND_UNDERGROUND_MULT` (5: when the lower of the two is underground, the first level between them counts as 5 levels) and `SOUND_DEEP_UNDERGROUND_MULT` (21: each further level between them below the surface counts as 21); see `data/core/external_options.json`.
+
+#### `max_creature_size`
+
+(Optional, one of `TINY`, `SMALL`, `MEDIUM`, `LARGE` or `HUGE`) The biggest creature that fits on a tile of this terrain or furniture: anything bigger can't move there (the avatar and its mount, monsters, a creature being dragged), and the pathfinder routes it around. The smaller of the terrain's and the furniture's counts, and `SMALL_PASSAGE` is the same as `"MEDIUM"`. A cat flap: `{ "type": "furniture", "id": "f_cat_flap", ..., "max_creature_size": "SMALL" }`.
+
+#### `light_color`
+
+(Optional, array of three integers from 0 to 255) The colour of the `light_emitted`, red, green and blue: `"light_color": [ 255, 120, 40 ]`. Without one the light is white. Colour shows in the tiles version. Field intensity levels, vehicle parts (`light_color` next to `bonus`), items (`light_color` next to `light`) and monsters (next to `luminance`) take the same array.
+
 #### `bonus_fire_warmth_feet`
 
 (Optional) Increase warmth received on feet from nearby fire  (default = 300)
+
+#### `item_temperature`
+
+(Optional) String. The temperature items lying on the tile keep, instead of the weather's: `"root_cellar"` (the ground's year-round temperature, as in `t_rootcellar`), `"fridge"` (no warmer than a fridge), `"freezer"` (no warmer than a freezer), `"heater"` (no colder than room temperature) or `"normal"` (the weather's; the default, and a way to remove an inherited value). Furniture's value is used before the terrain's. Items inside vehicles follow their vehicle part instead.
 
 #### `looks_like`
 
@@ -3942,6 +4593,16 @@ Color of the object as it appears in the game. "color" defines the foreground co
 #### `max_volume`
 
 (Optional) Maximal volume that can be used to store items here. Volume in ml and L can be used - "50 ml" or "2 L"
+
+#### `crafting_pseudo_items`
+
+(Optional) Ids of items (tools) that are available for crafting while this terrain or furniture is in range, as if they were there: a rock outcrop that works as a hammer, a natural oven, a counter with a cutting board and a sink.  Furniture's own [`crafting_pseudo_item`](#crafting_pseudo_item) still comes first and is the only one that holds ammo from the tile; these are plain tools.  A tool with the `NEEDS_SUNLIGHT` flag needs the tile in sunlight.
+
+```jsonc
+"crafting_pseudo_items": [ "brick_oven_pseudo" ]
+```
+
+Terrain with the `TREE` flag and no `crafting_pseudo_items` lends a `butchery_tree_pseudo` (a branch to hang a carcass from); give it `"crafting_pseudo_items": [ ]` for none.  A `copy-from` inherits the list; giving it replaces it.
 
 #### `examine_action`
 
@@ -4034,7 +4695,9 @@ This terrain is the roof of the tile below it, try to destroy that too. Further 
 
 The alpha talker is the creature doing the bashing when the game knows it: the player's or an NPC's smash, a monster bashing its way through or walking over sharp terrain, a melee attack through an obstacle, a spell (its caster), a bionic (its user), crushing frozen liquid, a failed prying attempt, a monster's shriek. Other bashes (explosions, fire, vehicles, projectiles, collapses, creatures thrown into things) get an empty alpha talker with no creature in it, so check `u_is_character` or `u_is_monster` before using `u_` effects or conditions. There is no beta talker. Context variables: `loc` (location of the tile), `old_ter` and `old_furn` (ids before the bash), `new_ter` and `new_furn` (ids now; the same as before for `eoc_on_hit`).
 
-Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc` and `field` (the field type id).
+Both get the context variable `cause`, saying what bashed the tile: `smash` (a creature did it), `explosion`, `fire`, `vehicle` (a crash or a vehicle crushing what it drives into), `collapse`, `projectile`, or `other` when the game doesn't know. Whatever the cause, destroying terrain or furniture on the main map also sends the `tile_destroyed` event (see EFFECT_ON_CONDITION.md), after `eoc_on_destroy`.
+
+Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc`, `cause` and `field` (the field type id).
 
 ```jsonc
 "bash": {
@@ -4119,7 +4782,7 @@ A flat multiplier on the harvest count of the plant. For numbers greater than on
 "restricted": true,        // (optional) If true, clothing must list this mod's flag in "valid_mods" list to use it. Defaults to false.
 "mod_value": [             // List of mod effect.
     {
-        "type": "bash",    // "bash", "cut", "bullet", "fire", "acid", "warmth", and "encumbrance" is available.
+        "type": "bash",    // "warmth", "encumbrance" or the id of any damage type ("bash", "stab", "heat", a modded one...).  "fire" is an old name for "heat".
         "value": 1,        // value of effect.
         "round_up": false, // (optional) round up value of effect. defaults to false.
         "proportion": [    // (optional) value of effect proportions to clothing's parameter.
@@ -4129,6 +4792,8 @@ A flat multiplier on the harvest count of the plant. For numbers greater than on
     }
 ]
 ```
+
+The values come from the flags an item has now: a garment that gets the mod's flag any way (sewn on, from an itemgroup's `custom-flags`, an EOC's `npc_set_flag`) gets the bonus, loses it with the flag, and follows changes to the mod's values.  A damage type the mod has no value for gets the value of the type it is `derived_from`, times its factor (vanilla stab is derived from cut at 0.8, so padding that adds cut protection adds 0.8 of it against stab), as the resistance of materials does.
 
 ### Flags
 
@@ -4144,11 +4809,13 @@ Flags, that can be used in different entries, can also be made in json, allowing
   "restriction": "Item must be an armored skirt", // for pocket restriction, this information would be shown in `restrictions` field in pocket info
   "conflicts": "STURDY", // if something with this flag will met something with conflict flag, only one will be applied
   "taste_mod": -5, // for consumables, it will add -5 to taste, that can't be removed with cooking
+  "rot_multiplier": 0.25, // an item with this flag of its own (not from its type) rots this many times as fast; default 1. Vanilla uses it for IRRADIATED (0.25), MUSHY (3) and FIELD_DRESS (0.75)
   "inherit": true, // is this flag inherited to another thing if it's attached/equipped, like if you put ESAPI plate into plate carrier, their `CANT_WEAR` flag won't be applied to plate carrier, and you could wear it as usually
   "craft_inherit": true, // if true, if you craft something with this flag, this flag would be applied to result also
   "item_prefix": "[...",
   "item_suffix": "...]", // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
-  "vehicle_toggle": { "name": "force field" } // vehicle parts with this flag can be switched on and off together, see below
+  "vehicle_toggle": { "name": "force field" }, // vehicle parts with this flag can be switched on and off together, see below
+  "blocked_actions": [ { "actions": [ "fire", "throw" ], "message": "You have sworn not to fight." } ] // a character with this flag can't take these actions, see below
 },
 
 ```
@@ -4180,6 +4847,28 @@ A switched-on part draws its `epower` when it has `ENABLED_DRAINS_EPOWER`, and e
 }
 ```
 
+#### Blocked actions
+
+A flag with `blocked_actions` stops a character who has it (from a trait or mutation, a bionic, an effect, a body part or a martial arts buff, as `has_flag` checks) from taking some of the avatar's keyed actions. Each entry has `actions`, a list of action ids as they are in the keybindings (`data/raw/keybindings.json`, e.g. `"pickup"`, `"craft"`, `"fire"`, `"throw"`, `"open"`, `"control_vehicle"`), and `message`, shown when the action is refused. An unknown action id is reported at load. The first entry of any of the character's flags that names the action is used. `TEMPORARY_SHAPESHIFT_NO_HANDS` blocks the hand-using actions this way. The in-shell (`SHELL2`/`SHELL3`), incorporeal and riding blocks are still in the game's code.  Refusing to fire is a matter of the `CANNOT_USE_RANGED` and `CANNOT_USE_FIREARMS` character flags (see [JSON_FLAGS.md](JSON_FLAGS.md)), which the `BRAWLER` and `GUNSHY` traits grant.
+
+A trait for a vow of non-violence:
+
+```jsonc
+{
+  "type": "json_flag",
+  "id": "VOW_OF_PEACE",
+  "blocked_actions": [ { "actions": [ "fire", "throw" ], "message": "You have sworn not to fight." } ]
+},
+{
+  "type": "mutation",
+  "id": "PEACEFUL_VOW",
+  "name": "Vow of Peace",
+  "points": -1,
+  "description": "You will not shoot or throw things at anyone.",
+  "flags": [ "VOW_OF_PEACE" ]
+}
+```
+
 # Scenarios
 
 Scenarios are specified as JSON object with `type` member set to `scenario`.
@@ -4203,56 +4892,28 @@ The following properties (mandatory, except if noted otherwise) are supported:
 The in-game description.
 
 ## `name`
-(string or object with members "male" and "female")
+(string)
 
-The in-game name, either one gender-neutral string, or an object with gender specific names. Example:
-```jsonc
-"name": {
-    "male": "Runaway groom",
-    "female": "Runaway bride"
-}
-```
+The in-game name, one gender-neutral string (unlike a profession's, it can't be an object with "male" and "female" names).
 
 ## `points`
 (integer)
 
 Point cost of scenario. Positive values cost points and negative values grant points.
 
-## `items`
-(optional, object with optional members "both", "male" and "female")
-
-Items the player starts with when selecting this scenario. One can specify different items based on the gender of the character. Each lists of items should be an array of items ids. Ids may appear multiple times, in which case the item is created multiple times.
-
-Example:
-```jsonc
-"items": {
-    "both": [
-        "pants",
-        "rock",
-        "rock"
-    ],
-    "male": [ "briefs" ],
-    "female": [ "panties" ]
-}
-```
-This gives the player pants, two rocks and (depending on the gender) briefs or panties.
+A scenario has no `items`, `CBMs`, `skills`, `proficiencies` or `starting_cash` of its own (loading reports them): the character gets those from its profession and hobbies.  A scenario can still give them with its `forced_traits` or its `eoc` (`u_spawn_item`, `u_add_bionic`, `u_set_skill_level`...), or by allowing only professions that have them (`professions`).
 
 ## `flags`
 (optional, array of strings)
 
-A list of flags. TODO: document those flags here.
-
-## `cbms`
-(optional, array of strings)
-
-A list of CBM ids that are implanted in the character.
+A list of flags; see [Scenarios in JSON_FLAGS.md](JSON_FLAGS.md#scenarios) for those the game reads.
 
 ## `traits`, `forced_traits`, `forbidden_traits`
 (optional, array of strings)
 
 Lists of trait/mutation ids. Traits in "forbidden_traits" are forbidden and can't be selected during the character creation. Traits in "forced_traits" are automatically added to character. Traits in "traits" enables them to be chosen, even if they are not starting traits.
 
-`forced_traits` can also be specified with a variant, as `{ "trait": "trait_id", "variant": "variant_id" }` (replacing just `"trait_id"`).
+`forced_traits` can also be specified with a variant, as `{ "trait": "trait_id", "variant": "variant_id" }` (replacing just `"trait_id"`): the character gets the trait with that variant.  Loading reports a variant the trait doesn't have.  A profession's or hobby's `traits` take a variant the same way.
 
 ## `allowed_locs`
 (optional, array of strings)
@@ -4279,7 +4940,22 @@ The name that is shown for the starting location. This is useful if the scenario
 ## `professions`
 (optional, array of strings)
 
-A list of allowed professions that can be chosen when using this scenario. The first entry is the default profession. If this is empty, all professions are allowed.
+A list of allowed professions that can be chosen when using this scenario. If this is empty, all professions are allowed (except those with the `SCEN_ONLY` flag).  The profession selected when the scenario is picked is the generic one (the `GENERIC_PROFESSION_ID` option, "Unemployed") if the scenario allows it, otherwise the cheapest one the player can pick (the first listed of those that cost the same).
+
+## `blacklist_professions`
+(optional, bool)
+
+Defaults false.  When true, `professions` lists the professions that _can't_ be chosen with this scenario; every other one (except those with the `SCEN_ONLY` flag) can.
+
+## `add_professions`
+(optional, bool)
+
+Defaults false.  When true, the professions in `professions` are allowed in addition to every profession without the `SCEN_ONLY` flag, instead of only them.
+
+## `default_backgrounds`
+(optional, string)
+
+The profession group of hobbies new characters in this scenario start with, unless their profession has its own `default_backgrounds` (see [Profession groups](#profession-groups)).  `""` gives none, as the `SKIP_DEFAULT_BACKGROUND` flag does.  Defaults to `adult_basic_background`.
 
 ## `hobbies`
 (optional, array of strings)
@@ -4291,10 +4967,26 @@ A list of allowed hobbies that can be chosen when using this scenario. If this i
 
 When set to false, the hobbies in `hobbies` are hobbies that _cannot_ be chosen when using this scenario. This value defaults to true.
 
-## `map_special`
+`professions`, `hobbies` and `whitelist_hobbies` limit the player's own character. Randomly generated NPCs take both their profession and their hobbies from the generic scenario (the `GENERIC_SCENARIO_ID` external option, `evacuee` by default, or the first scenario not blacklisted if that one is), whatever scenario the player picked.
+
+## `map_extra`
 (optional, string)
 
-Add a map special to the starting location, see JSON_FLAGS for the possible specials.
+A map extra (`"type": "map_extra"`) placed at the starting location, such as `mx_helicopter` for the helicopter crash.
+
+## `vehicle`
+(optional, string)
+
+A vehicle prototype id.  The character starts with this vehicle at the closest road, as a profession's `vehicle`, and the scenario's replaces the profession's.  `"vehicle": "null"` in a copy removes the copied one.
+
+## `surround_groups`
+(optional, array of [ monster group id, density ])
+
+The start is surrounded by monsters from these groups, each at the given density (as the "surrounded start" world option does with `GROUP_BLACK_ROAD` at 70).
+
+```jsonc
+"surround_groups": [ [ "GROUP_BLACK_ROAD", 70.0 ] ]
+```
 
 ## `requirement`
 
@@ -4364,6 +5056,33 @@ Allows customization of game start date. If `start_of_game` is not set the corre
 `season`               | (optional, integer) Season of the year. Default value is `spring`.
 `year`                 | (optional, integer) Year. Default value is 1.
 
+## `starting_npc`
+(optional, object)
+
+The NPC that starts next to the player (scenarios with the `LONE_START` flag have none). It stays at the start as a shelter NPC and offers a mission. Without this object it is an `NC_DOCTOR` half of the time and a randomly made character otherwise, and talks with `TALK_SHELTER`.
+
+```jsonc
+"starting_npc": {
+  "classes": [ [ "NC_HUNTER", 2 ], [ "NC_SCAVENGER", 1 ] ],
+  "chat": "TALK_MY_SHELTER_NPC",
+  "eocs": [ "EOC_MY_STARTING_NPC" ]
+}
+```
+
+ Identifier            | Description
+---                    | ---
+`classes`              | (optional, array of [ npc class id, weight ]) The NPC's class, picked by weight. `NC_NONE` is a randomly made character.
+`chat`                 | (optional, string) The talk topic it starts conversations with. Default `TALK_SHELTER`.
+`eocs`                 | (optional, array of eoc ids or inline eocs) Run once the NPC is made, with the NPC as `u` and the avatar as `npc`.
+
+## Copying a scenario
+
+A scenario can `copy-from` another one, and keeps every member it doesn't name.  In `start_of_cataclysm` and `start_of_game` it changes only the parts it names (`{ "start_of_game": { "season": "winter" } }` keeps the copied hour, day and year).  `surround_groups`, when given, replaces the copied list; `extend` adds groups and `delete` removes them by id.  `extend` and `delete` work on `add_professions`, `allowed_locs`, `blacklist_professions`, `eoc`, `flags`, `forbidden_traits`, `forced_traits`, `hobbies`, `missions`, `professions`, `surround_groups` and `traits`; loading reports any other member in them (which would otherwise do nothing).
+
+```jsonc
+{ "type": "scenario", "id": "heli_crash", "copy-from": "heli_crash", "extend": { "professions": [ "my_pilot" ] } }
+```
+
 # Starting locations
 
 Starting locations are specified as JSON object with "type" member set to "start_location":
@@ -4424,6 +5143,12 @@ If it is an object - it has following attributes:
 * `CONTAINS` - The provided string must be contained within the overmap terrain
   id, but may occur at the beginning, end, or middle and does not have any rules
   about underscore delimiting.
+
+* `FLAG` - The provided string is an overmap terrain flag, an engine flag such as
+  `SOURCE_FOOD` or a mod's own flag (see `Overmap terrains` in
+  [JSON_FLAGS.md](JSON_FLAGS.md)); any overmap terrain with that flag matches.
+  The same values work for mission and EOC `target_params` (`om_terrain_replace`
+  needs a terrain id, so it can't be used with `FLAG`).
 
 `parameters` is an object containing one or more keys to set to a specific value provided, say to pick a safe variant of a map.
 The keys and values must be valid for the overmap terrains in question.
@@ -4568,7 +5293,7 @@ Setting of sprite sheets. Same as `tiles-new` field in `tile_config`. Sprite fil
 
 # Field types
 
-Fields can exist on top of terrain/furniture, and support different intensity levels. Each intensity level inherits its properties from the lower one, so any field not explicitly overwritten will carry over. They affect both characters and monsters, but a lot of fields have hardcoded effects that are potentially different for both (found in `map_field.cpp:creature_in_field`). Gaseous fields that have a chance to do so are spread depending on the local wind force when outside, preferring spreading down to on the same Z-level, which is preferred to spreading upwards. Indoors and by weak winds fields spread randomly.
+Fields can exist on top of terrain/furniture, and support different intensity levels. Each intensity level inherits its properties from the lower one, so any field not explicitly overwritten will carry over. They affect both characters and monsters through their `effects`, `contact_damage` and `eoc_on_contact`, and through the `contact_processors` they pick: the behaviours vanilla fields such as fire, acid and electricity have, which differ for characters and monsters. What a field does every turn besides spreading and decaying (burning, falling, arcing, pushing items...) is picked in its `processors`. Both are described [below](#field-processors). Gaseous fields that have a chance to do so are spread depending on the local wind force when outside, preferring spreading down to on the same Z-level, which is preferred to spreading upwards. Indoors and by weak winds fields spread randomly.
 
 ```jsonc
   {
@@ -4598,29 +5323,42 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "monster_spawn_radius": 15,
         "monster_spawn_group": "GROUP_NETHER", // 1-in-spawn_chance roll to spawn spawn_count entries from spawn_group monstergroup and place them in a spawn_radius radius around the field
         "light_emitted": 2.5, // light level emitted by this intensity
+        "light_color": [ 0, 255, 0 ], // (optional) its colour, red, green and blue from 0 to 255; white if unset
         "light_override": 3.7 }, //light level on the tile occupied by this field will be set at 3.7 no matter the ambient light.
         "translucency": 2.0, // How much light the field blocks (higher numbers mean less light can penetrate through)
         "concentration": 1, // How concentrated this intensity of gas is. Generally the thin/hazy cloud intensity will be 1, the standard gas will be 2, and thick gas will be 4. The amount of time a gas mask filter will last will be divided by this value.
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
-        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on its tile and the 8 around it by this value
+        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on the tiles within scent_neutralization_radius of it by this value. Only a field with the gas phase and a percent_spread does this; on any other field it is an error at load
+        "sound_attenuation": 5, // (default 0, at most 1000) Volume a sound loses crossing a tile with this intensity of the field, added to the terrain's and furniture's (see `sound_attenuation` under "Common To Furniture And Terrain")
+        "heat_radiation": 2, // Heat this intensity radiates to its surroundings, as a terrain's heat_radiation does (fd_fire: its intensity). With has_fire, an intensity that radiates heat is also a fire that can be used to cook and craft (has_nearby_fire)
+        "hot_air_field": "fd_hot_air2", // The hot air the fire, vent_cycle and incendiary processors spread around a field of this intensity. Default none
+        "contact_damage": [ // Damage dealt each turn to a creature on the field that isn't immune to it. See contact_damage below
+          { "damage_type": "heat", "amount": [ 2, 6 ], "body_parts": "ground_contact", "monster_mult": 1.0 }
+        ],
+        "eoc_on_contact": "EOC_HOT_TAR" // EOC id or inline EOC run each turn for a creature on the field that isn't immune to it, with that creature as u. Context variables: loc (the field's location), field (its id), intensity
     ],
+    "processors": [ { "type": "fire" }, "fungicide" ], // What the field does every turn, in this order. See Field processors below. A list given replaces the inherited one
+    "contact_processors": [ "fire" ], // What the field does to creatures on it. See Field processors below. A list given replaces the inherited one
+    "decay_mode": "exponential", // How the field loses intensity as it ages: "exponential" (default, one intensity after a random time, two half lives on average), "linear" (one intensity every half life) or "fire" (fd_fire's: one intensity once half_life in turns is less than 2d(age in turns))
+    "opaque_variant": "fd_electricity_unlit", // On a tile that isn't transparent (a wall, thick smoke) this field is placed as opaque_variant, which turns back into this field on a transparent tile. The variant must not have an opaque_variant of its own, and only one field can name it
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below
     "decay_amount_factor": 2, // The field's rain decay amount is divided by this when processing the field, the rain decay is a function of the weather type's precipitation class: very_light = 5s, light = 15s, heavy = 45 s
     "half_life": "3 minutes", // If above 0 the field will disappear after two half-lifes on average
     "underwater_age_speedup": "25 minutes", // Increase the field's age by this time every tick if it's on a terrain with the SWIMMABLE flag
     "block_mtypes": [ "zombie", "animal" ], // these monster types cannot move on tile with this field
-    "linear_half_life": "true", // If true the half life decay is converted to a non-random, linear wait based on the defined half_life time. 
+    "linear_half_life": true, // The older spelling of "decay_mode": "linear" (false is "exponential"). Give either this or decay_mode
     "outdoor_age_speedup": "20 minutes", // Increase the field's age by this duration if it's on an outdoor tile
     "accelerated_decay": true, // If the field should use a more simple decay calculation, used for cosmetic fields like gibs
     "percent_spread": 90, // The field must succeed on a `rng( 1, 100 - local windpower ) > percent_spread` roll to spread. The field must have a non-zero spread percent and the GAS phase to be eligible to spread in the first place
+    "scent_neutralization_radius": 1, // How far, in tiles, the field's scent_neutralization reaches: 0 is only its own tile, the default 1 its tile and the 8 around it. At most 3
     "phase": "gas", // Phase of the field. Gases can spread after spawning and can be spawned out of emitters through impassable terrain with the PERMEABLE flag
     "apply_slime_factor": 10, // Each turn the field raises the scent on its tile to at least its intensity times this value (of the scent map's single scent type, normally the player's)
     "gas_absorption_factor": "80m", // Length a full 100 charge gas mask filter will last in this gas. Will be divided by the concentration of the gas, and should be 80m for concentration 1 toxic gas or similar. The worst gas should still be kept out for 20 minutes in a concentration 4 thick gas.
     "is_splattering": true, // If splatters of this field should bloody vehicle parts
     "dirty_transparency_cache": true, // Should the transparency cache be recalculated when the field is modified (used for nontransparent, spreading fields)
-    "has_fire": false, // Is this field a kind of fire (for immunity, monster avoidance and similar checks)
+    "has_fire": false, // Is this field a kind of fire (for immunity and similar checks). With heat_radiation, a usable fire for cooking and crafting. It doesn't make the field burn or hurt: pick the fire processor and contact processor for that
     "has_acid": false, // See has_fire
     "has_elec": false, // See has_fire
     "has_fume": false, // See has_fire, non-breathing monsters are immune to this field
@@ -4654,6 +5392,70 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     },
     "indestructible": true // Field cannot be bashed or destroyed, but may still expire over time.  Useful when combined with the bash field because it can allow fields to prevent bashing terrain but not be destructible.
   }
+```
+
+## Field processors
+
+A field type picks the behaviours of the vanilla fields it wants in `processors` (run on each of its fields every turn) and `contact_processors` (run for each creature on one of its fields). A processor acts as the field itself: a field with the `fire` processor spreads, fuels and joins fields of its own type, not `fd_fire`. Processors other members imply (spreading gas, `wandering_field`, radiation, intensity upgrades, monster spawns, slime, dissolving in water) run before the listed ones and aren't listed.
+
+### `processors`
+
+Each entry is a processor's name, or an object with its `type` and parameters. A parameter left out takes the value the vanilla field had; an object may only hold its own type's parameters.
+
+| Type | Vanilla field | What it does | Parameters |
+|---|---|---|---|
+| `fire` | `fd_fire` | Burns and destroys items (setting off explosives), damages vehicles, feeds on and bashes flammable terrain and furniture, falls through open air, fuels weaker fires of its type next to it, grows with fuel and burning neighbours, spreads to flammable neighbours and up, makes smoke and its intensity's `hot_air_field`. A fire in a pit only spreads to other pits; a `FIRE_CONTAINER` stops it spreading and burning the tile | `spread_chance` (25: percent per intensity above 1 to spread to a flammable neighbour), `smoke_field` (`fd_smoke`; `fd_null` for none), `fuel_field` (`fd_web`: a field next to it that it spreads into readily and destroys), `ash_item` (`ash`, left by burnt `FLAMMABLE_ASH` terrain and furniture; `null` for none), `ash_furniture` (`f_ash`, what burnt `FLAMMABLE_ASH` furniture becomes) |
+| `fungicide` | `fd_fungicidal_gas`, `fd_fire` | One turn in 10 / intensity, fungal terrain becomes `terrain` and fungal furniture goes away | `terrain` (`t_dirt`) |
+| `fall` | `fd_acid` | Falls a z-level through open air, joining the same field below (up to its highest intensity) | none |
+| `extinguish` | `fd_extinguisher` | Puts out the listed fields on its tile, one intensity of its own for each | `fields` (required) |
+| `arc` | `fd_electricity`, `fd_electricity_unlit` | Spreads its intensity to the tiles around it, choosing walls, creatures and open ground by weight, as `field` (placed as that field's `opaque_variant` where it applies) | `field` (itself), `grounded_weight` (6), `creature_weight` (6), `other_weight` (1): the weights from a passable tile; from inside a wall they are 1, 5 and 0 |
+| `push_items` | `fd_push_items` | Pushes the listed items at least a turn old to a neighbouring tile holding the same field, hitting a creature there | `items` (every item if empty; `fd_push_items` lists `rock`), `damage_type` (`bash`), `damage` (6) |
+| `vent_cycle` | `fd_fire_vent`, `fd_flame_burst` | Above intensity 1, loses an intensity one turn in `weaken_chance` and spreads its `hot_air_field`; at 1, turns into `next_field` | `next_field` (required), `weaken_chance` (1), `next_intensity` (3) |
+| `shock_vent` | `fd_shock_vent` | Recharges, losing an intensity one turn in 5; at 1, goes back to 3 and shoots 3 to 6 bolts of `field` 4 to 12 tiles long | `field` (`fd_electricity`) |
+| `acid_vent` | `fd_acid_vent` | Recharges, losing an intensity a minute; at 1, goes back to 3 and spills `field` around it | `field` (`fd_acid`) |
+| `incendiary` | `fd_incendiary` | Sets a random flammable neighbour (terrain, furniture or items) alight with `field` and spreads its `hot_air_field` | `field` (`fd_fire`) |
+| `fungal_haze` | `fd_fungal_haze` | One turn in 10 - 2 × intensity, spreads fungus to its tile | none |
+| `last_known` | `fd_last_known` | Goes away once older than `max_age`, or when a creature other than the avatar is on it | `max_age` (5 seconds) |
+
+```jsonc
+"processors": [ { "type": "fire", "smoke_field": "fd_hellsmoke", "ash_item": "null" }, "fungicide" ]
+```
+
+### `contact_processors`
+
+A list of names. Each does to a creature on the field what it did to creatures on the vanilla field named, by its intensity:
+
+| Name | Vanilla field | Characters | Monsters |
+|---|---|---|---|
+| `acid` | `fd_acid` | Burns the parts touching the ground (or most of the body lying down), unless in a vehicle or `ACIDPROOF` | Acid damage, unless flying |
+| `sap` | `fd_sap` | Uses up an intensity, unless in a vehicle | Slows; uses up an intensity. Fliers are immune |
+| `sludge` | `fd_sludge` | Costs moves and clears the field, unless `GASTROPOD_FOOT` or in a vehicle | The same, unless digging, flying or `SLUDGEPROOF`. Fliers are immune |
+| `fire` | `fd_fire` | Burns more of the body the stronger it is (none at intensity 1, one turn in 10 at 2), less in or on a vehicle; `HEATSINK` and `HEAT_IMMUNE` stop it | Heat damage by material, may set alight; tramples the fire. Not `FIREPROOF` or `FIREY` monsters, nor in a `FIRE_CONTAINER`. Monsters that avoid fire avoid fields with it |
+| `tear_gas` | `fd_tear_gas` | Tear gas and blindness | Stuns and blinds breathing flesh and plants |
+| `fungal_haze` | `fd_fungal_haze` | Fungal infection, unless `M_IMMUNE` | Damages and slows, or turns fungal. Non-breathers and fungi are immune |
+| `flame_burst` | `fd_flame_burst` | Burns the legs and torso, unless inside a vehicle or `HEATSINK` | Heat damage by material |
+| `electricity` | `fd_electricity`, `fd_electricity_unlit` | Electric damage to the torso, then to the other main parts, unless electricity-immune or in a vehicle | Electric damage. Monsters that avoid simple dangers avoid fields with it |
+| `teleport` | `fd_fatigue` | Hurts and teleports the avatar, unless in a vehicle | Hurts and teleports |
+| `shut_off` | `fd_shock_vent`, `fd_acid_vent` | Stepping on it shuts it down | nothing |
+| `incendiary` | `fd_incendiary` | Burns, and melts into the skin above intensity 1 (`M_SKIN2`, `M_SKIN3` take only the burn) | Heat damage by material, may set alight |
+| `fungicidal_gas`, `insecticidal_gas` | `fd_fungicidal_gas`, `fd_insecticidal_gas` | Poison, worse past the Mycus or Marloss threshold (and the insect or spider one for `insecticidal_gas`), unless inside a vehicle or in a gas-proof suit | Damages fungi (`fungicidal_gas`) or insect flesh that isn't `INSECTICIDEPROOF`, which alone aren't immune |
+| `smoke`, `relax_gas`, `dazzling`, `toxic_gas`, `nuke_gas` | the vanilla field of that name | nothing | Slows, stuns, blinds or damages as that field does |
+
+### `contact_damage`
+
+Each intensity may list damage dealt each turn to a creature on the field that isn't immune to the field (`immunity_data`, `immune_mtypes`, `has_fire` and the like). It is dealt after the contact processors, with the field's causer as the attacker, through armor and resistances.
+
+```jsonc
+"contact_damage": [
+  {
+    "damage_type": "heat", // A damage type id
+    "amount": [ 2, 6 ], // A number, or [ min, max ] rolled for each body part
+    "body_parts": "ground_contact", // "ground_contact" (default): the feet, hands and feet on all fours, every main part lying down, nothing in a vehicle; "all": every main part; or a list of body part ids
+    "monster_mult": 1.0, // A monster takes the amount times this, once, on its torso; 0 spares monsters. Fliers take no ground_contact damage, and digging monsters and monsters in vehicles none
+    "message": "The tar burns you!", // Shown when it hurts a character (optional)
+    "message_npc": "The tar burns <npcname>!"
+  }
+]
 ```
 
 ## Emits

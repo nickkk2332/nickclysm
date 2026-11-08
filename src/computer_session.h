@@ -44,6 +44,14 @@ class computer_session
 
         // Called by use()
         void activate_function( computer_action action );
+        /**
+         * Runs eocs with the avatar as alpha, the computer as beta and the context value "pos"
+         * (the computer's location). Whether the computer is still there afterwards (an EOC
+         * may have moved the avatar away or replaced the console).
+         */
+        bool run_eocs( const std::vector<effect_on_condition_id> &eocs );
+        // The option's action, then its eocs; whether the computer is still there
+        bool activate_option( const computer_option &opt );
         // ...but we can also choose a specific failure.
         void activate_failure( computer_failure_type fail );
         // Generally called when we fail a hack attempt

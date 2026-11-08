@@ -776,6 +776,11 @@
   },
   {
     "type": "item_action",
+    "id": "wash",
+    "name": { "str": "Wash items" }
+  },
+  {
+    "type": "item_action",
     "id": "WATER_PURIFIER",
     "name": { "str": "Purify some water" }
   },
@@ -818,6 +823,11 @@
     "type": "item_action",
     "id": "heal",
     "name": { "str": "Apply to wound" }
+  },
+  {
+    "type": "item_action",
+    "id": "smoke",
+    "name": { "ctxt": "SMOKING", "str": "Smoke" }
   },
   {
     "type": "item_action",

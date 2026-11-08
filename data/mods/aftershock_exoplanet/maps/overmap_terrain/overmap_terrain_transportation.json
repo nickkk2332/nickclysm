@@ -16,7 +16,14 @@
     "copy-from": "generic_bridge",
     "travel_cost_type": "road",
     "color": "blue",
-    "flags": [ "RAVINE" ]
+    "//": "REQUIRES_PREDECESSOR as in vanilla: the vanilla bridge mapgen (weight 0 here) expects one.",
+    "flags": [ "RAVINE", "REQUIRES_PREDECESSOR" ],
+    "bridge": {
+      "overpass": "bridge_road",
+      "support": "bridge",
+      "bridgehead_ground": "bridgehead_ground",
+      "bridgehead_ramp": "bridgehead_ramp"
+    }
   },
   {
     "type": "overmap_terrain",
@@ -34,7 +41,8 @@
     "travel_cost_type": "road",
     "sym": "v",
     "extras": "road",
-    "flags": [ "RAVINE_EDGE" ]
+    "//": "REQUIRES_PREDECESSOR as in vanilla: the vanilla bridgehead mapgen (weight 0 here) expects one.",
+    "flags": [ "RAVINE_EDGE", "REQUIRES_PREDECESSOR", "RAMP" ]
   },
   {
     "type": "overmap_terrain",
@@ -43,6 +51,6 @@
     "name": "bridgehead structure",
     "sym": "^",
     "travel_cost_type": "road",
-    "flags": [ "RAVINE_EDGE" ]
+    "flags": [ "RAVINE_EDGE", "RAMP" ]
   }
 ]

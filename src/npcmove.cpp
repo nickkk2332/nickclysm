@@ -47,9 +47,11 @@
 #include "creature.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "dialogue_chatbin.h"
 #include "dispersion.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "errand.h"
 #include "event.h"
@@ -90,6 +92,7 @@
 #include "messages.h"
 #include "mission.h"
 #include "monster.h"
+#include "move_mode.h"
 #include "mtype.h"
 #include "npc.h"
 #include "npc_ai_tuning.h"
@@ -191,6 +194,7 @@ static const field_type_str_id field_fd_last_known( "fd_last_known" );
 
 static const flag_id json_flag_FIRESTARTER( "FIRESTARTER" );
 static const flag_id json_flag_MARLOSS( "MARLOSS" );
+static const flag_id json_flag_NPC_DRINKABLE( "NPC_DRINKABLE" );
 
 static const item_category_id item_category_food( "food" );
 
@@ -199,7 +203,6 @@ static const itype_id itype_lsd( "lsd" );
 static const itype_id itype_oxygen_tank( "oxygen_tank" );
 static const itype_id itype_smoxygen_tank( "smoxygen_tank" );
 static const itype_id itype_thorazine( "thorazine" );
-static const itype_id itype_water( "water" );
 static const itype_id itype_water_clean( "water_clean" );
 static const json_character_flag json_flag_BIONIC_GUN( "BIONIC_GUN" );
 static const json_character_flag json_flag_BIONIC_NPC_USABLE( "BIONIC_NPC_USABLE" );
@@ -207,6 +210,8 @@ static const json_character_flag json_flag_BIONIC_WEAPON( "BIONIC_WEAPON" );
 static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 
 static const move_mode_id move_mode_run( "run" );
 static const move_mode_id move_mode_walk( "walk" );
@@ -220,8 +225,6 @@ static const string_id<behavior::node_t> behavior_node_t_npc_needs( "npc_needs" 
 static const trait_id trait_IGNORE_SOUND( "IGNORE_SOUND" );
 static const trait_id trait_NPC_STASIS( "NPC_STASIS" );
 static const trait_id trait_RETURN_TO_START_POS( "RETURN_TO_START_POS" );
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 static const zone_type_id zone_type_NO_NPC_PICKUP( "NO_NPC_PICKUP" );
 static const zone_type_id zone_type_NPC_NO_GO( "NPC_NO_GO" );
@@ -328,7 +331,8 @@ static std::optional<decision_category> danger_reaction_category( const danger_r
 
 namespace
 {
-// The installed bionics whose JSON "npc_use" is `use`, each id once, in installation order.
+// The installed bionics whose JSON "npc_use" is `use`, each id once, highest "priority" first,
+// then in installation order.
 // Ids rather than references: switching one on runs its EOCs, which may add or remove bionics.
 std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
 {
@@ -339,6 +343,9 @@ std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
             ret.push_back( bio.id );
         }
     }
+    std::stable_sort( ret.begin(), ret.end(), []( const bionic_id & a, const bionic_id & b ) {
+        return a->npc_use_priority > b->npc_use_priority;
+    } );
     return ret;
 }
 
@@ -369,10 +376,14 @@ std::vector<bionic_id> npc_weapon_cbms( const Character &guy )
 }
 
 // Switches on the NPC's bionics with this "npc_use"; true if any of them is on afterwards.
+// A spell CBM casts its spell (bionic::activate_spell()); only the first one that can.
 bool use_npc_cbms( npc &guy, bionic_npc_use use )
 {
     bool any_on = false;
     for( const bionic_id &bio_id : npc_cbms_for( guy, use ) ) {
+        if( bio_id->spell_on_activate && guy.Character::has_activity( ACT_SPELLCASTING ) ) {
+            continue;
+        }
         if( guy.use_bionic_by_id( bio_id ) ) {
             any_on = true;
         }
@@ -1002,7 +1013,14 @@ void npc::assess_danger()
 
         if( has_faction_relationship( guy, npc_factions::relationship::watch_your_back ) ) {
             ai_cache.friends.emplace_back( g->shared_from( guy ) );
-        } else if( attitude_to( guy ) != Attitude::NEUTRAL && sees( here, guy.pos_bub( here ) ) ) {
+            continue;
+        }
+        // NPC-B16: sorted the way attitude_to() sees them, as the attacks are; every NPC that
+        // wasn't NEUTRAL, FRIENDLY ones too, used to count as hostile
+        const Attitude att = attitude_to( guy );
+        if( att == Attitude::FRIENDLY ) {
+            ai_cache.friends.emplace_back( g->shared_from( guy ) );
+        } else if( att == Attitude::HOSTILE && sees( here, guy.pos_bub( here ) ) ) {
             ai_cache.hostile_guys.emplace_back( g->shared_from( guy ) );
         }
     }
@@ -1023,8 +1041,9 @@ void npc::assess_danger()
             friendly_count += 1;
             continue;
         }
-        if( att != Attitude::HOSTILE && ( critter.friendly || !is_enemy() ) ) {
-            ai_cache.neutral_guys.emplace_back( g->shared_from( critter ) );
+        // NPC-B16: a monster neither hostile to the NPC nor one it is hostile to (a deer for a
+        // bandit) is no threat and no target: attitude_to() rates no attack on it
+        if( att != Attitude::HOSTILE && attitude_to( critter ) != Attitude::HOSTILE ) {
             continue;
         }
         if( !sees( here, critter ) ) {
@@ -1128,10 +1147,24 @@ void npc::assess_danger()
         }
     }
 
+    // update the threat cache
+    const auto commit_threat_map = [this, &cur_threat_map]() {
+        for( size_t i = 0; i < 8; i++ ) {
+            direction threat_dir = npc_threat_dir[i];
+            direction dir_right = npc_threat_dir[( i + 1 ) % 8];
+            direction dir_left = npc_threat_dir[( i + 7 ) % 8 ];
+            ai_cache.threat_map[threat_dir] = cur_threat_map[threat_dir] + 0.1f *
+                                              ( cur_threat_map[dir_right] + cur_threat_map[dir_left] );
+        }
+    };
+
     if( mem_combat.assess_enemy == 0.0 && ai_cache.hostile_guys.empty() ) {
         if( mem_combat.panic > 0 ) {
             mem_combat.panic -= 1;
         }
+        // NPC-B09: with nobody hostile in sight the map is still committed, so nearby fire
+        // counts and the last fight's threats fade instead of staying for good
+        commit_threat_map();
         ai_cache.danger_assessment = mem_combat.assess_enemy;
         return;
     }
@@ -1166,7 +1199,13 @@ void npc::assess_danger()
             if( self_defense_only ) {
                 break;
             }
-            is_too_close |= too_close( foe.pos_bub(), guy.lock()->pos_bub(), def_radius );
+            // NPC-B15: g->shared_from() can give a null friend (see the HACK above), which
+            // the other loops over friends skip but this one dereferenced
+            const shared_ptr_fast<Creature> ally = guy.lock();
+            if( !ally ) {
+                continue;
+            }
+            is_too_close |= too_close( foe.pos_bub(), ally->pos_bub(), def_radius );
             if( is_too_close ) {
                 break;
             }
@@ -1300,14 +1339,7 @@ void npc::assess_danger()
         add_msg_debug( debugmode::DF_NPC, "Enemy Danger: %1f, Ally Strength: %2f.", mem_combat.assess_enemy,
                        mem_combat.assess_ally );
     }
-    // update the threat cache
-    for( size_t i = 0; i < 8; i++ ) {
-        direction threat_dir = npc_threat_dir[i];
-        direction dir_right = npc_threat_dir[( i + 1 ) % 8];
-        direction dir_left = npc_threat_dir[( i + 7 ) % 8 ];
-        ai_cache.threat_map[threat_dir] = cur_threat_map[threat_dir] + 0.1f *
-                                          ( cur_threat_map[dir_right] + cur_threat_map[dir_left] );
-    }
+    commit_threat_map();
     if( mem_combat.assess_enemy <= 2.0f ) {
         ai_cache.danger_assessment = -10.0f + 5.0f *
                                      mem_combat.assess_enemy; // Low danger if no monsters around
@@ -1476,7 +1508,6 @@ void npc::regen_ai_cache()
     float old_assessment = ai_cache.danger_assessment;
     ai_cache.friends.clear();
     ai_cache.hostile_guys.clear();
-    ai_cache.neutral_guys.clear();
     ai_cache.target = shared_ptr_fast<Creature>();
     ai_cache.ally = shared_ptr_fast<Creature>();
     ai_cache.can_heal.clear_all();
@@ -2315,7 +2346,10 @@ void npc::execute_action( npc_action action )
             if( can_use_offensive_cbm() ) {
                 use_npc_cbms( *this, bionic_npc_use::melee );
             }
-            reach_attack( tar );
+            // A spell CBM it started casting is its attack this turn
+            if( !Character::has_activity( ACT_SPELLCASTING ) ) {
+                reach_attack( tar );
+            }
             break;
         case npc_melee:
             update_path( tar );
@@ -2326,7 +2360,10 @@ void npc::execute_action( npc_action action )
                     if( can_use_offensive_cbm() ) {
                         use_npc_cbms( *this, bionic_npc_use::melee );
                     }
-                    melee_attack( *cur, true );
+                    // A spell CBM it started casting is its attack this turn
+                    if( !Character::has_activity( ACT_SPELLCASTING ) ) {
+                        melee_attack( *cur, true );
+                    }
                 }
             } else {
                 look_for_player( player_character );
@@ -2642,7 +2679,10 @@ void npc::evaluate_best_attack( const Creature *target )
             }
             same_type.push_back( it );
         }
-        if( can_wield( *it ).success() ) {
+        // NPC-B01: a CBM weapon the NPC has out (a bionic gun or blade) is NO_UNWIELD and
+        // BIONIC_WEAPON, so can_wield() refuses it, but the attacks only need it in hand
+        const bool wielded_cbm_weapon = is_using_bionic_weapon() && is_wielding( *it );
+        if( wielded_cbm_weapon || can_wield( *it ).success() ) {
             // you can theoretically melee with anything.
             compare( std::make_shared<npc_attack_melee>( *it ), "(as MELEE) ", it.get_item() );
             if( !is_wielding( *it ) || !it->has_flag( flag_NO_UNWIELD ) ) {
@@ -2669,12 +2709,17 @@ void npc::evaluate_best_attack( const Creature *target )
         }
         return VisitResponse::NEXT;
     } );
-    if( magic->spells().empty() ) {
+    const std::vector<spell_id> known_spells = magic->spells();
+    // NPC-B06: a caster runs the opens_spellbook EOCs (caster level, cost and casting time
+    // adjustments) before rating its spells. The check was inverted: only NPCs without spells
+    // sent the event, on every combat decision. Once a turn is enough.
+    if( !known_spells.empty() && ai_cache.opens_spellbook_turn != calendar::turn ) {
+        ai_cache.opens_spellbook_turn = calendar::turn;
         magic->clear_opens_spellbook_data();
         get_event_bus().send<event_type::opens_spellbook>( getID() );
-        magic->evaluate_opens_spellbook_data();
+        magic->evaluate_opens_spellbook_data( *this );
     }
-    for( const spell_id &sp : magic->spells() ) {
+    for( const spell_id &sp : known_spells ) {
         compare( std::make_shared<npc_attack_spell>( sp ), sp.c_str(), nullptr );
     }
 
@@ -3008,7 +3053,7 @@ void npc::cleanup_on_no_danger()
     deactivate_combat_items();
 }
 
-healing_options npc::patient_assessment( const Character &c )
+healing_options npc::patient_assessment( const Character &c ) const
 {
     healing_options try_to_fix;
     try_to_fix.clear_all();
@@ -3024,13 +3069,15 @@ healing_options npc::patient_assessment( const Character &c )
             try_to_fix.infect = true;
         }
 
-        int part_threshold = 75;
+        // NPC-J08: the percentages are the healer's "ai_tuning" (first_aid); the old code
+        // meant +20 for the head and +10 for the torso but capped both at 80
+        const npc_ai_tuning &tuning = ai_tuning_of( *this );
+        int part_threshold = tuning.first_aid_limb;
         if( part_id.id() == body_part_head ) {
-            part_threshold += 20;
+            part_threshold = tuning.first_aid_head;
         } else if( part_id.id() == body_part_torso ) {
-            part_threshold += 10;
+            part_threshold = tuning.first_aid_torso;
         }
-        part_threshold = std::min( 80, part_threshold );
         part_threshold = part_threshold * c.get_part_hp_max( part_id ) / 100;
 
         if( c.get_part_hp_cur( part_id ) <= part_threshold ) {
@@ -3040,6 +3087,13 @@ healing_options npc::patient_assessment( const Character &c )
             if( !c.has_effect( effect_disinfected, part_id ) ) {
                 try_to_fix.disinfect = true;
             }
+        }
+    }
+    // NPC-J08: any effect a healing item cures (heal_actor "cures"), not only bleed, bite and
+    // infection
+    for( const efftype_id &curable : heal_actor::curable_effects() ) {
+        if( c.has_effect( curable ) ) {
+            try_to_fix.cure.insert( curable );
         }
     }
     return try_to_fix;
@@ -3087,15 +3141,21 @@ npc_action npc::address_needs( float danger )
     // ( also we can get huge performance boosts )
     if( one_in( 3 ) ) {
         healing_options try_to_fix_me = patient_assessment( *this );
-        if( try_to_fix_me.any_true() ) {
-            if( !use_npc_cbms( *this, bionic_npc_use::wounds ) ) {
-                ai_cache.can_heal = has_healing_options( try_to_fix_me );
-                if( ai_cache.can_heal.any_true() ) {
-                    return npc_heal;
-                }
+        if( try_to_fix_me.any_wound() ) {
+            if( use_npc_cbms( *this, bionic_npc_use::wounds ) ) {
+                // the wounds CBM sees to the wounds; an effect only an item cures still needs it
+                const std::set<efftype_id> cure = try_to_fix_me.cure;
+                try_to_fix_me.clear_all();
+                try_to_fix_me.cure = cure;
             }
         } else {
             deactivate_npc_cbms( *this, bionic_npc_use::wounds );
+        }
+        if( try_to_fix_me.any_true() ) {
+            ai_cache.can_heal = has_healing_options( try_to_fix_me );
+            if( ai_cache.can_heal.any_true() ) {
+                return npc_heal;
+            }
         }
         if( static_cast<int>( get_skill_level( skill_firstaid ) ) > 0 ) {
             if( is_player_ally() ) {
@@ -3132,6 +3192,10 @@ npc_action npc::address_needs( float danger )
             }
         } else {
             deactivate_npc_cbms( *this, bionic_npc_use::pain );
+        }
+        // NPC-J07: other medicine, when its "npc_use" condition holds
+        if( take_medicine() ) {
+            return npc_noop;
         }
     }
 
@@ -3981,6 +4045,20 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
             }
             add_effect( effect_cramped_space, 2_turns, true );
         }
+        // CHAR-J07: a mode whose JSON condition stopped holding falls back to walking
+        if( !current_movement_mode()->condition_allows( *this ) && can_switch_to( move_mode_walk ) ) {
+            set_movement_mode( move_mode_walk );
+        }
+        // CHAR-J10: a step any character takes; the avatar's are sent with avatar_moves
+        if( !is_hallucination() ) {
+            const tripoint_bub_ms new_pos = pos_bub( here );
+            mtype_id mount_type;
+            if( is_mounted() ) {
+                mount_type = mounted_creature->type->id;
+            }
+            get_event_bus().send<event_type::character_moves>( getID(), mount_type,
+                    here.ter( new_pos ).id(), current_movement_mode(), is_underwater(), new_pos.z() );
+        }
     }
 }
 
@@ -4120,13 +4198,17 @@ void npc::avoid_friendly_fire()
         }
     }
 
-    tripoint_bub_ms center = midpoint_round_to_nearest( fr_pts );
+    // NPC-B13: a lone NPC (a gunman behind a closed window) has no friends to move away from,
+    // and the midpoint of no points divided 0 by 0
+    const std::optional<tripoint_bub_ms> center = fr_pts.empty() ? std::nullopt :
+            std::optional<tripoint_bub_ms>( midpoint_round_to_nearest( fr_pts ) );
 
     std::vector<tripoint_bub_ms> candidates = closest_points_first( pos_bub(), 1, 1 );
-    std::sort( candidates.begin(), candidates.end(),
-    [&tar, &center]( const tripoint_bub_ms & l, const tripoint_bub_ms & r ) {
-        return ( rl_dist( l, tar ) - rl_dist( l, center ) ) <
-               ( rl_dist( r, tar ) - rl_dist( r, center ) );
+    // a tile with a clear line of fire first, then near the target and away from friends
+    cata::sort_by_rating( candidates.begin(), candidates.end(),
+    [&tar, &center]( const tripoint_bub_ms & p ) {
+        return std::make_pair( !clear_shot_reach( p, tar ),
+                               rl_dist( p, tar ) - ( center ? rl_dist( p, *center ) : 0 ) );
     } );
 
     for( const tripoint_bub_ms &pt : candidates ) {
@@ -4463,7 +4545,8 @@ void npc::find_item()
 
     fetching_item = false;
     wanted_item = {};
-    int best_value = minimum_item_value();
+    // value of the item picked so far; good_for_pickup() already holds back what's too cheap
+    std::optional<double> best_value;
     // Not perfect, but has to mirror pickup code
     units::volume volume_allowed = free_space();
     units::mass   weight_allowed = weight_capacity() - weight_carried();
@@ -4490,8 +4573,14 @@ void npc::find_item()
             return false;
         }
         if( ::good_for_pickup( it, *this, p ) ) {
+            // NPC-B10: keep the best item, not the last one: tiles are scanned nearest first,
+            // so the last was the farthest. Of equally good items the nearest stays.
+            const double item_value = has_item_whitelist() ? 1000 : value( it );
+            if( best_value && item_value <= *best_value ) {
+                return false;
+            }
             wanted_item_pos = p;
-            best_value = has_item_whitelist() ? 1000 : value( it );
+            best_value = item_value;
             return true;
         } else {
             // whether an open container can be emptied first depends on NPC, not tile
@@ -5528,6 +5617,18 @@ void npc::use_painkiller()
     }
 }
 
+bool npc::take_medicine()
+{
+    item *it = medicine_to_take();
+    if( it == nullptr ) {
+        return false;
+    }
+    add_msg_if_player_sees( *this, _( "%1$s takes some %2$s." ), disp_name(), it->tname() );
+    item_location loc( *this, it );
+    mod_moves( -to_moves<int>( get_consume_time( *loc ) ) );
+    return consume( loc ) != trinary::NONE;
+}
+
 // We want our food to:
 // Provide enough nutrition and quench
 // Not provide too much of either (don't waste food)
@@ -5544,8 +5645,8 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
         return 0.0f;
     }
 
-    const bool can_consume_rot = who.has_trait( trait_SAPROPHAGE ) ||
-                                 who.has_trait( trait_SAPROVORE );
+    const bool can_consume_rot = who.has_flag( json_flag_SAPROPHAGE_DIET ) ||
+                                 who.has_flag( json_flag_SAPROVORE_DIET );
 
     // Don't eat it if it's filled with parasites (saprophages/saprovores are fine with it)
     if( food->parasites && !it.has_flag( flag_NO_PARASITES ) && !can_consume_rot ) {
@@ -5561,7 +5662,7 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
         return 0.0f;
     }
 
-    // Don't eat medicine as food (NPC self-medication is handled in use_painkiller)
+    // Don't eat medicine as food (NPCs take it by its "npc_use": use_painkiller, take_medicine)
     if( food->comesttype == "MED" ) {
         return 0.0f;
     }
@@ -5572,7 +5673,7 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
     }
 
     // Reject tainted/poisonous items (saprophages/saprovores can handle it)
-    if( it.type->use_methods.count( "POISON" ) && !can_consume_rot ) {
+    if( it.type->can_use( "POISON" ) && !can_consume_rot ) {
         return 0.0f;
     }
 
@@ -5981,8 +6082,8 @@ void npc::mug_player( Character &mark )
     }
     double best_value = minimum_item_value() * value_mod;
     item *to_steal = nullptr;
-    std::vector<const item *> pseudo_items = mark.get_pseudo_items();
-    const auto inv_valuables = mark.items_with( [this, pseudo_items]( const item & itm ) {
+    const std::vector<const item *> &pseudo_items = mark.get_pseudo_items();
+    const auto inv_valuables = mark.items_with( [this, &pseudo_items]( const item & itm ) {
         return std::find( pseudo_items.begin(), pseudo_items.end(), &itm ) == pseudo_items.end() &&
                !craft_reservation::contains_reserved( itm ) &&
                !itm.has_flag( flag_INTEGRATED ) && !itm.has_flag( flag_NO_TAKEOFF ) && value( itm ) > 0;
@@ -6684,6 +6785,18 @@ void npc::do_reload( const item_location &it )
     mod_moves( -reload_time );
     recoil = MAX_RECOIL;
 
+    {
+        // The item reloaded may be the magazine in the gun
+        item_location reloaded = &target == it.get_item() ? it : item_location( it, &target );
+        cata::event e = cata::event::make<event_type::character_reloads_item>( getID(),
+                        target.typeId(), target.ammo_current(), target.ammo_remaining() );
+        get_event_bus().send_with_talker( this, &reloaded, e );
+        // An EOC may have used the item up
+        if( !it ) {
+            return;
+        }
+    }
+
     if( get_player_view().sees( here, *this ) ) {
         add_msg( _( "%1$s reloads their %2$s." ), get_name(), it->tname() );
         sfx::play_variant_sound( "reload", it->typeId().str(), sfx::get_heard_volume( pos_bub() ),
@@ -6738,20 +6851,30 @@ bool npc::take_shelter_nearby()
     return false;
 }
 
+// NPC-J09: an endless liquid source of a liquid flagged NPC_DRINKABLE (water and clean water in
+// vanilla), not a list of item ids
 static bool is_allowed_water_source( const ter_t &t )
 {
-    static const std::set<itype_id> allowed = {
-        itype_water, itype_water_clean
-    };
     return !t.liquid_source_item_id.is_null() &&
            t.liquid_source_count == std::make_pair( 0, 0 ) &&
-           allowed.count( t.liquid_source_item_id ) > 0;
+           t.liquid_source_item_id.is_valid() && t.liquid_source_item_id->comestible &&
+           t.liquid_source_item_id->has_flag( json_flag_NPC_DRINKABLE );
 }
 
 std::vector<npc::scored_water_source> npc::find_nearby_water_sources() const
 {
     std::vector<scored_water_source> results;
     const map &here = get_map();
+    // NPC-J09: and only a liquid this NPC can drink (its diet, its mutations' eat_conditions...)
+    std::map<itype_id, bool> drinkable;
+    const auto can_drink = [this, &drinkable]( const itype_id & liquid ) {
+        auto known = drinkable.find( liquid );
+        if( known == drinkable.end() ) {
+            const item charge( liquid, calendar::turn, 1 );
+            known = drinkable.emplace( liquid, can_eat( charge ).success() ).first;
+        }
+        return known->second;
+    };
     for( const tripoint_bub_ms &p : closest_points_first( pos_bub(), 6 ) ) {
         if( is_no_go_position( here.get_abs( p ) ) ) {
             continue;
@@ -6759,7 +6882,8 @@ std::vector<npc::scored_water_source> npc::find_nearby_water_sources() const
         if( !sees( here, p ) ) {
             continue;
         }
-        if( !is_allowed_water_source( here.ter( p ).obj() ) ) {
+        const ter_t &source = here.ter( p ).obj();
+        if( !is_allowed_water_source( source ) || !can_drink( source.liquid_source_item_id ) ) {
             continue;
         }
         results.push_back( { p, rl_dist( pos_bub(), p ) } );
@@ -6914,9 +7038,33 @@ std::vector<npc::scored_item> npc::find_nearby_warm_clothing()
     return results;
 }
 
+// NPC-J09: what drinking a charge of a liquid does besides filling the stomach, as consume() and
+// eat() do it for anyone: the consumption EOCs and the consume events. Not its contamination
+// (raw water's 1% bad_food): NPCs drinking from rivers getting food poisoning is the owner's call.
+static void drink_charge_effects( npc &guy, item &liquid )
+{
+    const islot_comestible &comest = *liquid.get_comestible();
+    // the liquid is the beta talker, as when eating
+    item_location drunk( guy, &liquid );
+    if( !comest.consumption_eocs.empty() ) {
+        dialogue d( get_talker_for( guy ), get_talker_for( drunk ) );
+        for( const effect_on_condition_id &eoc : comest.consumption_eocs ) {
+            eoc->activate( d );
+        }
+    }
+    get_event_bus().send_with_talker( &guy, &drunk,
+                                      cata::event::make<event_type::character_eats_item>( guy.getID(), liquid.typeId() ) );
+    get_event_bus().send_with_talker( &guy, &drunk,
+                                      cata::event::make<event_type::character_consumes_item>( guy.getID(), liquid.typeId() ) );
+}
+
 bool npc::drink_from_water_source( const tripoint_bub_ms &water_pos )
 {
     if( get_thirst() <= 0 ) {
+        return false;
+    }
+    const ter_t &source = get_map().ter( water_pos ).obj();
+    if( !is_allowed_water_source( source ) ) {
         return false;
     }
     const units::volume want = std::max( 0_ml,
@@ -6925,7 +7073,25 @@ bool npc::drink_from_water_source( const tripoint_bub_ms &water_pos )
     if( intake <= 0_ml ) {
         return false;
     }
-    stomach.ingest( { intake, 0_ml, {} } );
+    // NPC-J09: the sip is of the source's liquid: its water and nutrients, for the part of a
+    // charge the sip is (all of it is water for water)
+    item liquid( source.liquid_source_item_id, calendar::turn, 1 );
+    const int charge_ml = std::max( 1, units::to_milliliter( liquid.volume() ) );
+    const int water_ml = std::max( 0, liquid.get_comestible()->quench * 5 );
+    units::volume water = intake;
+    if( water_ml != charge_ml ) {
+        water = units::from_milliliter( static_cast<int>( std::lround(
+                                            static_cast<double>( units::to_milliliter( intake ) ) * water_ml / charge_ml ) ) );
+    }
+    nutrients nutr = compute_effective_nutrients( liquid );
+    nutr *= static_cast<double>( units::to_milliliter( intake ) ) / charge_ml;
+    // the first sip of each charge does the rest of what drinking that charge does
+    if( ai_cache.terrain_sip_left <= 0_ml ) {
+        drink_charge_effects( *this, liquid );
+        ai_cache.terrain_sip_left = units::from_milliliter( charge_ml );
+    }
+    ai_cache.terrain_sip_left -= intake;
+    stomach.ingest( { water, 0_ml, nutr } );
     mod_moves( -sip_moves() );
     add_msg_debug( debugmode::DF_NPC_NEEDS,
                    "NPC %s: drank from terrain at %s", get_name(),
@@ -8505,8 +8671,12 @@ bool outfit::adjust_worn( npc &guy )
 void npc::set_movement_mode( const move_mode_id &new_mode )
 {
     mod_moves( -move_mode_switch_cost( move_mode, new_mode ) );
+    const move_mode_id old_mode = move_mode;
     move_mode = new_mode;
     // Enchantments based on move modes can stack inappropriately without a recalc here.
     // Recalculate after the new mode is set, so the cache reflects it.
     recalculate_enchantment_cache();
+    if( old_mode != new_mode ) {
+        get_event_bus().send<event_type::character_changes_move_mode>( getID(), old_mode, new_mode );
+    }
 }

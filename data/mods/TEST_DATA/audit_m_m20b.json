@@ -1,0 +1,126 @@
+[
+  {
+    "//": "MONDT-B15: a pull with the strength of its damage.",
+    "type": "SPELL",
+    "id": "test_m20b_pull",
+    "name": { "str": "Test Strong Pull", "//~": "NO_I18N" },
+    "description": { "str": "Pulls the target with a strength of 1000.", "//~": "NO_I18N" },
+    "valid_targets": [ "hostile", "ally" ],
+    "effect": "pull_target",
+    "shape": "blast",
+    "min_damage": 1000,
+    "max_damage": 1000,
+    "min_range": 20,
+    "max_range": 20
+  },
+  {
+    "//": "MONDT-J04: a drop type only dissection gives.",
+    "type": "harvest_drop_type",
+    "id": "test_m20b_dissect_only",
+    "dissect_only": true
+  },
+  {
+    "type": "harvest",
+    "id": "test_m20b_tissue_harvest",
+    "entries": [ { "drop": "meat", "type": "flesh", "base_num": [ 0, 0 ], "scale_num": [ 0, 0 ] } ]
+  },
+  {
+    "//": "MONDT-J04: its flesh comes to nothing, so dissecting it says so.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_tissue",
+    "name": { "str": "test tissue beast", "//~": "NO_I18N" },
+    "description": { "str": "A beast with nothing to harvest.", "//~": "NO_I18N" },
+    "default_faction": "herbivore",
+    "material": [ "flesh" ],
+    "harvest": "test_m20b_tissue_harvest",
+    "symbol": "B",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 100,
+    "speed": 50,
+    "flags": [ "SEES", "HEARS", "SMELLS", "ANIMAL", "WARM" ]
+  },
+  {
+    "//": "MONDT-J06: not a zombie, but roams with the hordes.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_roamer",
+    "copy-from": "mon_dog",
+    "name": { "str": "test roaming dog", "//~": "NO_I18N" },
+    "extend": { "flags": [ "HORDE_ROAMER" ] }
+  },
+  {
+    "//": "MONDT-J07: special defenses as EOCs.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_defender",
+    "name": { "str": "test defender", "//~": "NO_I18N" },
+    "description": { "str": "A beast that reacts to hits.", "//~": "NO_I18N" },
+    "default_faction": "herbivore",
+    "material": [ "flesh" ],
+    "symbol": "B",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 100,
+    "speed": 50,
+    "flags": [ "SEES", "HEARS", "SMELLS", "ANIMAL", "WARM" ],
+    "special_when_hit": [
+      {
+        "eoc": {
+          "id": "EOC_TEST_M20B_HIT_ANY",
+          "effect": [
+            { "math": [ "u_test_m20b_hits += 1" ] },
+            { "math": [ "u_test_m20b_ranged = _is_ranged" ] },
+            {
+              "if": { "compare_string": [ "torso", { "context_val": "bodypart" } ] },
+              "then": { "math": [ "u_test_m20b_torso += 1" ] }
+            },
+            { "if": "has_beta", "then": { "math": [ "n_test_m20b_attacked += 1" ] } }
+          ]
+        }
+      },
+      {
+        "eoc": { "id": "EOC_TEST_M20B_HIT_MELEE", "effect": [ { "math": [ "u_test_m20b_melee += 1" ] } ] },
+        "ranged": false
+      },
+      { "id": "NONE", "chance": 100 }
+    ]
+  },
+  {
+    "//": "MONDT-J07 and MONDT-J10: a steel ZAPBACK monster in the new form, immune to electricity and heat.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_zapper",
+    "copy-from": "mon_test_m20b_defender",
+    "name": { "str": "test zapper", "//~": "NO_I18N" },
+    "material": [ "steel" ],
+    "special_when_hit": [ { "id": "ZAPBACK", "chance": 75 } ]
+  },
+  {
+    "//": "MONDT-J08: rides with melee skill.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_mount",
+    "copy-from": "mon_horse",
+    "name": { "str": "test melee horse", "//~": "NO_I18N" },
+    "mount_rules": { "skill": "melee", "unsaddled_level": 3 }
+  },
+  {
+    "//": "MONDT-J08: sheared only in winter, with a better tool, every two days.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_sheep",
+    "copy-from": "mon_sheep",
+    "name": { "str": "test winter sheep", "//~": "NO_I18N" },
+    "shearing": {
+      "entries": [ { "result": "wool_staple", "amount": 5 } ],
+      "seasons": [ "WINTER" ],
+      "regrow": "2 days",
+      "quality_level": 2
+    }
+  },
+  {
+    "//": "MONDT-J08: a mech activated with another card.",
+    "type": "MONSTER",
+    "id": "mon_test_m20b_mech",
+    "copy-from": "mon_mech_recon",
+    "name": { "str": "test science mech", "//~": "NO_I18N" },
+    "broken_itype": "broken_mech_recon",
+    "mech_activation_item": "id_science"
+  }
+]

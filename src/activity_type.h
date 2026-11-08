@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_ACTIVITY_TYPE_H
 #define CATA_SRC_ACTIVITY_TYPE_H
 
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -123,6 +124,13 @@ class activity_type
         static void check_consistency();
         static void reset();
         static const std::vector<activity_type> &get_all();
+
+        /** Loads an activity_migration: the type of a saved activity renamed, or the activity
+         *  dropped */
+        static void load_migration( const JsonObject &jo );
+        /** The type a saved activity of type @p id loads as: @p id itself without a migration,
+         *  none when a migration drops the activity */
+        static std::optional<activity_id> migrate_saved( const activity_id &id );
 };
 
 #endif // CATA_SRC_ACTIVITY_TYPE_H

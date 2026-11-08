@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -44,6 +45,8 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "flag.h"
 #include "flat_set.h" // IWYU pragma: keep
@@ -53,6 +56,7 @@
 #include "handle_liquid.h"
 #include "input_popup.h"
 #include "iexamine.h"
+#include "inventory.h"
 #include "item.h"
 #include "item_components.h"
 #include "item_location.h"
@@ -106,14 +110,9 @@ static const activity_id ACT_CRAFT( "ACT_CRAFT" );
 static const activity_id ACT_CRAFT_WAIT( "ACT_CRAFT_WAIT" );
 static const activity_id ACT_DISASSEMBLE( "ACT_DISASSEMBLE" );
 
-static const efftype_id effect_contacts( "contacts" );
-static const efftype_id effect_transition_contacts( "transition_contacts" );
-
 static const furn_str_id furn_f_fake_bench_hands( "f_fake_bench_hands" );
 static const furn_str_id furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
 
-static const itype_id itype_brick_oven_pseudo( "brick_oven_pseudo" );
-static const itype_id itype_butchery_tree_pseudo( "butchery_tree_pseudo" );
 static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_fire( "fire" );
 static const itype_id itype_pickaxe( "pickaxe" );
@@ -122,18 +121,12 @@ static const itype_id itype_shovel( "shovel" );
 static const itype_id itype_water_faucet( "water_faucet" );
 
 static const json_character_flag json_flag_CRAFT_IN_DARKNESS( "CRAFT_IN_DARKNESS" );
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 
 static const limb_score_id limb_score_manip( "manip" );
 
 static const morale_type morale_failure( "morale_failure" );
 
 static const quality_id qual_BOIL( "BOIL" );
-
-static const skill_id skill_electronics( "electronics" );
-static const skill_id skill_tailor( "tailor" );
-
-static const ter_str_id ter_t_brick_oven( "t_brick_oven" );
 
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
@@ -460,10 +453,11 @@ void Character::recraft( const std::optional<tripoint_bub_ms> &loc )
 }
 
 void Character::long_craft( const std::optional<tripoint_bub_ms> &loc,
-                            const recipe_id &goto_recipe )
+                            const recipe_id &goto_recipe, const std::string &filterstring )
 {
     int batch_size = 0;
-    const auto [crafter, rec] = select_crafter_and_crafting_recipe( batch_size, goto_recipe, this );
+    const auto [crafter, rec] = select_crafter_and_crafting_recipe( batch_size, goto_recipe, this,
+                                filterstring );
     if( rec ) {
         if( crafting_allowed( *crafter, *rec ) ) {
             crafter->make_all_craft( rec->ident(), batch_size, loc );
@@ -509,10 +503,15 @@ int Character::available_assistant_count( const recipe &rec ) const
 
 int64_t Character::expected_time_to_craft( const recipe &rec, int batch_size ) const
 {
+    return expected_time_to_craft( rec, batch_size, crafting_cost_context::for_recipe( *this, rec ) );
+}
+
+int64_t Character::expected_time_to_craft( const recipe &rec, int batch_size,
+        const crafting_cost_context &ctx ) const
+{
     const size_t assistants = available_assistant_count( rec );
     float modifier = crafting_speed_multiplier( rec );
-    return rec.batch_time( *this, batch_size, modifier, assistants,
-                           crafting_cost_context::for_recipe( *this, rec ) );
+    return rec.batch_time( *this, batch_size, modifier, assistants, ctx );
 }
 
 bool Character::check_eligible_containers_for_crafting( const recipe &rec, int batch_size ) const
@@ -654,6 +653,19 @@ bool Character::can_make( const recipe *r, int batch_size ) const
                this, crafting_inv, r->get_component_filter(), batch_size );
 }
 
+bool Character::can_craft_now( const recipe &making, int batch_size ) const
+{
+    if( making.is_null() || making.obsolete || making.is_nested() || !has_recipe( &making ) ) {
+        return false;
+    }
+    std::string reason;
+    if( is_npc() && !making.npc_can_craft( reason ) ) {
+        return false;
+    }
+    return has_morale_to_craft() && lighting_craft_speed_multiplier( making ) > 0.0f &&
+           can_start_craft( &making, recipe_filter_flags::none, std::max( batch_size, 1 ) );
+}
+
 bool Character::can_start_craft( const recipe *rec, recipe_filter_flags flags,
                                  int batch_size ) const
 {
@@ -696,6 +708,7 @@ const temp_crafting_inventory &Character::crafting_inventory( map *here,
     if( crafting_cache.valid
         && moves == crafting_cache.moves
         && radius == crafting_cache.radius
+        && clear_path == crafting_cache.clear_path
         && calendar::turn == crafting_cache.time
         && inv_pos == crafting_cache.position
         && reservation_generation == crafting_cache.reservation_generation
@@ -745,6 +758,7 @@ const temp_crafting_inventory &Character::crafting_inventory( map *here,
     crafting_cache.time = calendar::turn;
     crafting_cache.position = inv_pos;
     crafting_cache.radius = radius;
+    crafting_cache.clear_path = clear_path;
     return *crafting_cache.crafting_inventory;
 }
 
@@ -1567,15 +1581,18 @@ static std::vector<provider_candidate> enumerate_admitted_providers(
         }
     }
 
-    // Terrain has no pseudo item field, so trees and brick ovens reach the pool through
-    // the same hardcoded pair form_from_map uses.
+    // CRAFT-J08: terrain and furniture "crafting_pseudo_items", read as form_from_map reads them
+    // (trees and the brick oven used to be a hardcoded pair in both places).
+    const auto pseudo_lit = [&m]( const tripoint_bub_ms & p, const itype_id & pseudo ) {
+        return pseudo.is_valid() && ( !pseudo->has_flag( flag_NEEDS_SUNLIGHT ) ||
+                                      tile_has_sufficient_sunlight( m, p ) );
+    };
     for( const tripoint_bub_ms &p : reachable ) {
         const ter_id &t = m.ter( p );
-        const itype_id terrain_pseudo =
-            t->has_flag( ter_furn_flag::TFLAG_TREE ) ? itype_butchery_tree_pseudo
-            : t == ter_t_brick_oven ? itype_brick_oven_pseudo
-            : itype_id::NULL_ID();
-        if( !terrain_pseudo.is_null() ) {
+        for( const itype_id &terrain_pseudo : t->crafting_pseudo_tools() ) {
+            if( !pseudo_lit( p, terrain_pseudo ) ) {
+                continue;
+            }
             provider_candidate cand;
             cand.kind = craft_reservation::provider_kind::terrain;
             cand.tile = m.get_abs( p );
@@ -1589,8 +1606,22 @@ static std::vector<provider_candidate> enumerate_admitted_providers(
     // Unlike ground items, these face no accessibility or ownership check.
     for( const tripoint_bub_ms &p : reachable ) {
         const furn_id &f = m.furn( p );
-        if( f != furn_str_id::NULL_ID() && !f->crafting_pseudo_item.is_empty() &&
-            furniture_pseudo_available( m, p, f ) ) {
+        if( f == furn_str_id::NULL_ID() ) {
+            continue;
+        }
+        for( const itype_id &extra : f->crafting_pseudo_tools() ) {
+            if( !pseudo_lit( p, extra ) ) {
+                continue;
+            }
+            provider_candidate cand;
+            cand.kind = craft_reservation::provider_kind::furniture;
+            cand.tile = m.get_abs( p );
+            cand.furn = f;
+            cand.pseudo_type = extra;
+            cand.synthesized = item( extra, calendar::turn );
+            out.push_back( cand );
+        }
+        if( !f->crafting_pseudo_item.is_empty() && furniture_pseudo_available( m, p, f ) ) {
             provider_candidate cand;
             cand.kind = craft_reservation::provider_kind::furniture;
             cand.tile = m.get_abs( p );
@@ -2571,6 +2602,68 @@ static void park_craft_for_collection( item &craft )
     get_item_wakeups().cancel_all( craft.uid().get_value() );
 }
 
+// CRAFT-B02: a craft left past its step's max_time and grace used to vanish without a word.  The
+// crafter now hears of it as of a finished step, and the step's "on_ruin" runs its EOCs (alpha
+// the crafter, beta the craft) and names what is left where the craft was.
+static std::list<item> ruin_unattended_craft( item &craft, const item_location &loc )
+{
+    const recipe &rec = craft.get_making();
+    const int step_idx = craft.get_current_step();
+    const recipe_step *step = step_idx >= 0 && step_idx < static_cast<int>( rec.steps().size() ) ?
+                              &rec.steps()[step_idx] : nullptr;
+    Character *crafter = resolve_crafter( craft.get_crafter_id() );
+    if( crafter == nullptr && !craft.get_crafter_id().is_valid() ) {
+        // A craft with no crafter recorded can only be the avatar's.
+        crafter = &get_avatar();
+    }
+    const bool custom_message = step != nullptr && !step->ruin_message.empty();
+    if( crafter != nullptr && crafter->is_avatar() ) {
+        const std::string msg = custom_message ? step->ruin_message.translated() :
+                                string_format( _( "Your %s was ruined while unattended." ),
+                                               rec.result_name() );
+        add_msg( m_bad, msg );
+        if( !activity_targets_loc( get_avatar(), loc ) && uistate.distraction_craft_step_complete ) {
+            g->cancel_activity_or_ignore_query( distraction_type::craft_step_complete, msg );
+        }
+    } else if( loc ) {
+        const std::string msg = custom_message ? step->ruin_message.translated() :
+                                crafter != nullptr ?
+                                //~ %1$s: NPC name, %2$s: the craft's result
+                                string_format( _( "%1$s's %2$s was ruined while unattended." ),
+                                               crafter->get_name(), rec.result_name() ) :
+                                string_format( _( "The %s was ruined while unattended." ),
+                                               rec.result_name() );
+        add_msg_if_player_sees( loc.pos_bub( get_map() ), m_bad, msg );
+    }
+
+    std::list<item> left;
+    if( step == nullptr ) {
+        return left;
+    }
+    if( !step->ruin_eocs.empty() ) {
+        item_location craft_loc = loc;
+        dialogue d( crafter != nullptr ? get_talker_for( *crafter ) : nullptr,
+                    get_talker_for( craft_loc ) );
+        d.set_value( "recipe_id", rec.ident().str() );
+        d.set_value( "batch_size", craft.get_making_batch_size() );
+        d.set_value( "step", step_idx );
+        for( const effect_on_condition_id &eoc : step->ruin_eocs ) {
+            eoc->activate_activation_only( d, "a recipe step", "ruin", "on_ruin" );
+        }
+    }
+    if( !step->ruin_result.is_null() ) {
+        const int count = step->ruin_count * std::max( craft.get_making_batch_size(), 1 );
+        item ruined( step->ruin_result, calendar::turn );
+        if( ruined.count_by_charges() ) {
+            ruined.charges = count;
+            left.push_back( ruined );
+        } else {
+            left.insert( left.end(), static_cast<size_t>( count ), ruined );
+        }
+    }
+    return left;
+}
+
 static void craft_actualize_fail( item &craft, time_point now,
                                   const item_location &loc )
 {
@@ -2580,11 +2673,24 @@ static void craft_actualize_fail( item &craft, time_point now,
     if( now < craft.get_fail_at() ) {
         return;
     }
+    const std::optional<tripoint_bub_ms> ruin_pos = craft_loc_for_complete( loc );
+    std::list<item> left = ruin_unattended_craft( craft, loc );
     release_step_resources( craft );
     end_live_wait_for( loc );
     get_item_wakeups().cancel_all( craft.uid().get_value() );
+    // Held by a character when there is no tile: the ruin is theirs.
+    Character *holder = ruin_pos ? nullptr : loc.carrier();
     item_location mut_loc = loc;
-    mut_loc.remove_item();
+    if( mut_loc ) {
+        mut_loc.remove_item();
+    }
+    for( item &it : left ) {
+        if( ruin_pos ) {
+            get_map().add_item_or_charges( *ruin_pos, it );
+        } else if( holder != nullptr ) {
+            holder->i_add_or_drop( it );
+        }
+    }
 }
 
 static void finalize_passive_craft( item &craft, const item_location &loc )
@@ -3177,6 +3283,16 @@ void Character::start_craft( craft_command &command, const std::optional<tripoin
             add_msg_if_player( m_info, _( "%s helps with crafting…" ), guy->get_name() );
         }
     }
+
+    // last, so an EOC sees the craft started (and may cancel it)
+    if( !making.start_eocs.empty() && craft_in_world.get_item() != nullptr ) {
+        dialogue d( get_talker_for( *this ), get_talker_for( craft_in_world ) );
+        d.set_value( "recipe_id", making.ident().str() );
+        d.set_value( "batch_size", craft_in_world->get_making_batch_size() );
+        for( const effect_on_condition_id &eoc : making.start_eocs ) {
+            eoc->activate_activation_only( d, "a recipe", "crafting start", "recipe" );
+        }
+    }
 }
 
 bool Character::craft_skill_gain( const item &craft, const int &num_practice_ticks )
@@ -3312,6 +3428,22 @@ bool Character::craft_proficiency_gain( const item &craft, const time_duration &
 
 
 
+// UIINV-J04: the recipe's primary skill sets both; without one (an invalid skill) there is no
+// vision penalty and the stat is intelligence / 4
+float Character::crafting_vision_penalty( const recipe &making ) const
+{
+    if( !has_uncorrected_farsight() ) {
+        return 0.0f;
+    }
+    return making.skill_used->vision_penalty();
+}
+
+float Character::crafting_stat_bonus( const recipe &making ) const
+{
+    const Skill &skill = making.skill_used.obj();
+    return get_primary_stat_value( skill.crafting_stat() ) / skill.crafting_stat_divisor();
+}
+
 float Character::get_recipe_weighted_skill_average( const recipe &making ) const
 {
     float secondary_skill_total = 0;
@@ -3340,19 +3472,8 @@ float Character::get_recipe_weighted_skill_average( const recipe &making ) const
 
     float total_skill_modifiers = 0.0f;
 
-    // farsightedness can impose a penalty on electronics and tailoring success
-    // This should be changed to a json-defined penalty by skill (vision_penalty) in skills.json
-    if( has_flag( json_flag_HYPEROPIC ) && !worn_with_flag( flag_FIX_FARSIGHT ) &&
-        !has_effect( effect_contacts ) &&
-        !has_effect( effect_transition_contacts ) ) {
-        float vision_penalty = 0.0f;
-        if( making.skill_used == skill_electronics ) {
-            vision_penalty = 2.0f;
-        } else if( making.skill_used == skill_tailor ) {
-            vision_penalty = 1.0f;
-        }
-        total_skill_modifiers -= vision_penalty;
-    }
+    // farsightedness can impose a penalty, set by the skill's vision_penalty
+    total_skill_modifiers -= crafting_vision_penalty( making );
 
     // Mutations can define specific skill bonuses and penalties.  Gotta include those.
     for( const trait_id &mut : get_functioning_mutations() ) {
@@ -3363,12 +3484,13 @@ float Character::get_recipe_weighted_skill_average( const recipe &making ) const
         }
     }
 
-    // TO DO: Attribute role should also be data-driven either in skills.json or in the recipe itself.
-    // For now let's just use Intelligence.  For the average intelligence of 8, give +2.  Inc/dec by 0.25 per stat point.
-    // This ensures that at parity, where skill = difficulty, you have a roughly 85% chance of success at average intelligence.
-    total_skill_modifiers += get_int() / 4.0f;
-    add_msg_debug( debugmode::DF_CRAFTING, "Total skill modifiers: %g (+%g from int)",
-                   total_skill_modifiers, get_int() / 4.f );
+    // The skill's crafting stat, intelligence by default.  For the average intelligence of 8, give +2.
+    // Inc/dec by 0.25 per stat point.  This ensures that at parity, where skill = difficulty, you have
+    // a roughly 85% chance of success at average intelligence.
+    const float stat_bonus = crafting_stat_bonus( making );
+    total_skill_modifiers += stat_bonus;
+    add_msg_debug( debugmode::DF_CRAFTING, "Total skill modifiers: %g (+%g from stat)",
+                   total_skill_modifiers, stat_bonus );
 
     // Missing proficiencies penalize skill level
     for( const recipe_proficiency &recip : making.get_proficiencies() ) {
@@ -3842,7 +3964,7 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
             const double time_to_learn = 1000 * 8 * std::pow( difficulty, 4 ) / learning_speed;
             const crafting_cost_context ctx{ book_bonuses_nearby(), {} };
             if( x_in_y( making.time_to_craft_moves( *this, ctx ), time_to_learn ) ) {
-                learn_recipe( &making );
+                learn_recipe( &making, false, "crafting" );
                 if( is_avatar() ) {
                     add_msg( m_good, _( "You memorized the recipe for %s!" ),
                              making.result_name() );
@@ -3885,6 +4007,8 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
             eoc->activate_activation_only( d, "a recipe", "crafting", "recipe" );
         }
     }
+    get_event_bus().send<event_type::character_crafts_item>( getID(), making.ident().str(),
+            making.result(), batch_size );
 }
 
 bool Character::can_continue_craft( item &craft )
@@ -5255,9 +5379,16 @@ void Character::consume_tools( map &m, const comp_selection<tool_comp> &tool, in
     int quantity = tool.comp.count * batch * tmp->charge_factor();
 
     if( tool.use_from == usage_from::player || tool.use_from == usage_from::both ) {
-        use_charges( tool.comp.type, quantity, unreserved_filter );
+        // CRAFT-B06: Character::use_charges takes the count by value, so take off what it
+        // drew (charges and the carried UPS) or the map draws the whole amount again.
+        const units::energy ups_before = available_ups();
+        for( const item &used : use_charges( tool.comp.type, quantity, unreserved_filter ) ) {
+            quantity -= used.charges;
+        }
+        quantity -= static_cast<int>( units::to_kilojoule( ups_before - available_ups() ) );
+        quantity = std::max( quantity, 0 );
     }
-    if( tool.use_from == usage_from::map || tool.use_from == usage_from::both ) {
+    if( ( tool.use_from == usage_from::map || tool.use_from == usage_from::both ) && quantity > 0 ) {
         m.use_charges( reachable_pts, tool.comp.type, quantity, unreserved_filter, bcp );
         // Map::use_charges() does not handle UPS charges.
         if( quantity > 0 ) {
@@ -5322,12 +5453,15 @@ ret_val<void> Character::can_disassemble( const item &obj,
     }
     const requirement_data &dis = r.disassembly_requirements();
 
+    // CRAFT-B04: a group lists alternatives, as zone disassembly reads it
     for( const auto &opts : dis.get_qualities() ) {
-        for( const quality_requirement &qual : opts ) {
-            if( !qual.has( this, inv, return_true<item> ) ) {
-                // Here should be no dot at the end of the string as 'to_string()' provides it.
-                return ret_val<void>::make_failure( _( "You need %s" ), qual.to_string() );
-            }
+        const bool found = opts.empty() || std::any_of( opts.begin(), opts.end(),
+        [&]( const quality_requirement & qual ) {
+            return qual.has( this, inv, return_true<item> );
+        } );
+        if( !found ) {
+            // Here should be no dot at the end of the string as 'to_string()' provides it.
+            return ret_val<void>::make_failure( _( "You need %s" ), opts.front().to_string() );
         }
     }
 
@@ -5730,8 +5864,9 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
                 recover_tally[it_type_id] += newit.count();
             }
 
-            // Use item from components list, or (if not contained)
-            // use newit, the default constructed.
+            // CRAFT-B05: newit is the stored component itself (`components` copies them, with
+            // the inherited faults) or a default one, so the adjustments below land on what is
+            // dropped.  Swapping in the stored copy afterwards threw them all away.
             item act_item = newit;
 
             if( act_item.has_temperature() ) {
@@ -5750,11 +5885,6 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
 
             act_item.set_relative_rot( dis_item.get_relative_rot() );
             act_item.set_owner( *this );
-
-            ret_val<item> removed = dis_item.components.remove( newit.typeId() );
-            if( removed.success() ) {
-                act_item = removed.value();
-            }
 
             if( act_item.made_of( phase_id::LIQUID ) ) {
                 liquid_handler::handle_all_or_npc_liquid( *this, act_item, PICKUP_RANGE );
@@ -5801,7 +5931,7 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
             // TODO: make this depend on intelligence
             if( one_in( 4 ) ) {
                 // TODO: change to forward an id or a reference
-                learn_recipe( &dis.ident().obj() );
+                learn_recipe( &dis.ident().obj(), false, "disassembly" );
                 add_msg_if_player( m_good, _( "You learned a recipe for %s from disassembling it!" ),
                                    dis_item.tname() );
             } else {
@@ -5823,6 +5953,8 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
             eoc->activate_activation_only( d, "a recipe", "disassembly", "recipe" );
         }
     }
+    get_event_bus().send<event_type::character_disassembles_item>( getID(), dis.ident().str(),
+            dis_item.typeId() );
 }
 
 void remove_ammo( std::list<item> &dis_items, Character &p )

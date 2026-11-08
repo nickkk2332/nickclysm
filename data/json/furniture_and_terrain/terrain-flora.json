@@ -1234,6 +1234,7 @@
     "coverage": 80,
     "flags": [ "FLAMMABLE_ASH", "SEALED", "PLACE_ITEM", "SUPPORTS_ROOF", "TREE", "REDUCE_SCENT", "LIQUIDCONT", "CLIMB_ADJACENT" ],
     "examine_action": "tree_maple_tapped",
+    "produces_liquid": { "item": "maple_sap", "amount": 224, "active": [ 3.75, 0.5 ], "poison_chance": 10 },
     "bash": {
       "str_min": 80,
       "str_max": 180,
@@ -2055,6 +2056,10 @@
     "move_cost": 4,
     "coverage": 45,
     "flags": [ "TRANSPARENT", "FLAMMABLE_ASH", "DIGGABLE", "REDUCE_SCENT", "MOUNTABLE", "SHORT" ],
+    "chop": {
+      "result": "t_dirt",
+      "byproducts": [ { "item": "log", "count": [ 2, 3 ] }, { "item": "stick_long", "count": [ 0, 3 ] } ]
+    },
     "bash": {
       "str_min": 80,
       "str_max": 180,
@@ -2077,6 +2082,10 @@
     "move_cost": 3,
     "coverage": 35,
     "flags": [ "TRANSPARENT", "FLAMMABLE_ASH", "DIGGABLE", "REDUCE_SCENT", "MOUNTABLE", "SHORT", "FLAT_SURF" ],
+    "chop": {
+      "result": "t_dirt",
+      "byproducts": [ { "item": "log", "count": [ 0, 2 ] }, { "item": "splinter", "count": [ 5, 15 ] } ]
+    },
     "bash": {
       "str_min": 80,
       "str_max": 180,

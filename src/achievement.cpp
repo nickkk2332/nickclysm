@@ -440,6 +440,8 @@ void achievement::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "hidden_by", hidden_by_ );
     optional( jo, was_loaded, "time_constraint", time_constraint_ );
     optional( jo, was_loaded, "manually_given", manually_given_ );
+    optional( jo, was_loaded, "allow_late_tracking", allow_late_tracking_, false );
+    optional( jo, was_loaded, "unlocks_all_content", unlocks_all_content_, false );
     mandatory( jo, was_loaded, "requirements", requirements_ );
 }
 
@@ -830,6 +832,11 @@ achievement_completion achievements_tracker::is_completed( const achievement_id 
     return it->second.completion;
 }
 
+bool achievements_tracker::is_tracked( const achievement_id &id ) const
+{
+    return initial_achievements_.count( id ) > 0;
+}
+
 bool achievements_tracker::is_hidden( const achievement *ach ) const
 {
     // hard code for arcade mode achievement
@@ -947,6 +954,17 @@ void achievements_tracker::init_watchers()
 {
     if( !active_ ) {
         return;
+    }
+
+    // EVT-J05: these are tracked from when they are first loaded, for example when their mod is
+    // added to the save.  Their statistics count everything since the game started.  A tracker
+    // that tracks nothing has no game yet: it gets them all when its game starts.
+    if( !initial_achievements_.empty() ) {
+        for( const achievement &ach : achievement::get_all() ) {
+            if( ach.allows_late_tracking() ) {
+                initial_achievements_.insert( ach.id );
+            }
+        }
     }
 
     for( const achievement *a : valid_achievements() ) {

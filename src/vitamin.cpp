@@ -1,35 +1,35 @@
 #include "vitamin.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <map>
 
 #include "calendar.h"
 #include "debug.h"
 #include "enum_conversions.h"
 #include "flexbuffer_json.h"
+#include "generic_factory.h"
 #include "options.h"
 #include "units.h"
 #include "units_utility.h"
 
-static std::map<vitamin_id, vitamin> vitamins_all;
+namespace
+{
+generic_factory<vitamin> vitamin_factory( "vitamin" );
+} // namespace
 
 /** @relates string_id */
 template<>
 bool string_id<vitamin>::is_valid() const
 {
-    return vitamins_all.count( *this );
+    return vitamin_factory.is_valid( *this );
 }
 
 /** @relates string_id */
 template<>
 const vitamin &string_id<vitamin>::obj() const
 {
-    const auto found = vitamins_all.find( *this );
-    if( found == vitamins_all.end() ) {
-        debugmsg( "Tried to get invalid vitamin: %s", c_str() );
-        static const vitamin null_vitamin{};
-        return null_vitamin;
-    }
-    return found->second;
+    return vitamin_factory.obj( *this );
 }
 
 int vitamin::severity( int qty ) const
@@ -49,74 +49,129 @@ int vitamin::severity( int qty ) const
     return 0;
 }
 
-void vitamin::load_vitamin( const JsonObject &jo )
+void vitamin::load_vitamin( const JsonObject &jo, const std::string &src_name )
 {
-    vitamin vit;
+    vitamin_factory.load( jo, src_name );
+}
 
-    vit.id_ = vitamin_id( jo.get_string( "id" ) );
-    jo.read( "name", vit.name_ );
-    vit.deficiency_ = efftype_id::NULL_ID();
-    jo.read( "deficiency", vit.deficiency_ );
-    vit.excess_ = efftype_id::NULL_ID();
-    jo.read( "excess", vit.excess_ );
-    vit.min_ = jo.get_int( "min" );
-    vit.max_ = jo.get_int( "max", 0 );
-    vit.rate_ = read_from_json_string<time_duration>( jo.get_member( "rate" ), time_duration::units );
+// [ [ low, high ], ... ]: one range of quantities per intensity
+static void read_disease_ranges( const JsonObject &jo, const std::string_view member,
+                                 std::vector<std::pair<int, int>> &ranges )
+{
+    if( !jo.has_member( member ) ) {
+        return;
+    }
+    ranges.clear();
+    for( JsonArray e : jo.get_array( member ) ) {
+        ranges.emplace_back( e.get_int( 0 ), e.get_int( 1 ) );
+    }
+}
+
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void vitamin::load( const JsonObject &jo, std::string_view )
+{
+    optional( jo, was_loaded, "name", name_ );
+    optional( jo, was_loaded, "deficiency", deficiency_, efftype_id::NULL_ID() );
+    optional( jo, was_loaded, "excess", excess_, efftype_id::NULL_ID() );
+    mandatory( jo, was_loaded, "min", min_ );
+    optional( jo, was_loaded, "max", max_, 0 );
+    if( jo.has_member( "rate" ) || !was_loaded ) {
+        rate_ = read_from_json_string<time_duration>( jo.get_member( "rate" ), time_duration::units );
+    }
 
     if( jo.has_string( "weight_per_unit" ) ) {
-        vit.weight_per_unit = read_from_json_string( jo.get_member( "weight_per_unit" ),
-                              vitamin_units::mass_units );
+        weight_per_unit = read_from_json_string( jo.get_member( "weight_per_unit" ),
+                          vitamin_units::mass_units );
     }
 
-    if( !jo.has_string( "vit_type" ) ) {
+    if( jo.has_string( "vit_type" ) ) {
+        type_ = jo.get_enum_value<vitamin_type>( "vit_type" );
+    } else if( !was_loaded ) {
         jo.throw_error_at( "vit_type", "vitamin must have a vitamin type" );
     }
-    vit.type_ = jo.get_enum_value<vitamin_type>( "vit_type" );
 
-    for( JsonArray e : jo.get_array( "disease" ) ) {
-        vit.disease_.emplace_back( e.get_int( 0 ), e.get_int( 1 ) );
+    read_disease_ranges( jo, "disease", disease_ );
+    read_disease_ranges( jo, "disease_excess", disease_excess_ );
+
+    if( jo.has_member( "decays_into" ) ) {
+        decays_into_.clear();
+        for( JsonArray e : jo.get_array( "decays_into" ) ) {
+            decays_into_.emplace_back( vitamin_id( e.get_string( 0 ) ), e.get_int( 1 ) );
+        }
     }
 
-    for( JsonArray e : jo.get_array( "disease_excess" ) ) {
-        vit.disease_excess_.emplace_back( e.get_int( 0 ), e.get_int( 1 ) );
-    }
+    optional( jo, was_loaded, "flags", flags_, string_reader{} );
+}
 
-    for( JsonArray e : jo.get_array( "decays_into" ) ) {
-        vit.decays_into_.emplace_back( vitamin_id( e.get_string( 0 ) ), e.get_int( 1 ) );
-    }
-
-    for( std::string e : jo.get_array( "flags" ) ) {
-        vit.flags_.insert( e );
-    }
-
-    if( vitamins_all.find( vit.id_ ) != vitamins_all.end() ) {
-        jo.throw_error_at( "id", "parsed vitamin overwrites existing definition" );
-    } else {
-        vitamins_all[ vit.id_ ] = vit;
-    }
+void vitamin::finalize_all()
+{
+    vitamin_factory.finalize();
 }
 
 const std::map<vitamin_id, vitamin> &vitamin::all()
 {
-    return vitamins_all;
+    // By id, as they always were; rebuilt when the factory changes.
+    static std::map<vitamin_id, vitamin> by_id;
+    static generic_factory<vitamin>::Version built;
+    if( !vitamin_factory.is_valid( built ) ) {
+        by_id.clear();
+        for( const vitamin &vit : vitamin_factory.get_all() ) {
+            by_id.emplace( vit.id, vit );
+        }
+        built = vitamin_factory.get_version();
+    }
+    return by_id;
 }
 
 void vitamin::check_consistency()
 {
-    for( const auto &v : vitamins_all ) {
-        if( !( v.second.deficiency_.is_null() || v.second.deficiency_.is_valid() ) ) {
-            debugmsg( "vitamin %s has unknown deficiency %s", v.second.id_.c_str(),
-                      v.second.deficiency_.c_str() );
-        }
-        if( !( v.second.excess_.is_null() || v.second.excess_.is_valid() ) ) {
-            debugmsg( "vitamin %s has unknown excess %s", v.second.id_.c_str(), v.second.excess_.c_str() );
+    for( const vitamin &v : vitamin_factory.get_all() ) {
+        v.check();
+    }
+}
+
+void vitamin::check() const
+{
+    if( !( deficiency_.is_null() || deficiency_.is_valid() ) ) {
+        debugmsg( "vitamin %s has unknown deficiency %s", id.c_str(), deficiency_.c_str() );
+    }
+    if( !( excess_.is_null() || excess_.is_valid() ) ) {
+        debugmsg( "vitamin %s has unknown excess %s", id.c_str(), excess_.c_str() );
+    }
+    // HLTH-J05: the rest of what a vitamin refers to and the ranges it sets
+    if( min_ > max_ ) {
+        debugmsg( "vitamin %s has a min (%d) above its max (%d)", id.c_str(), min_, max_ );
+    }
+    for( const std::pair<vitamin_id, int> &into : decays_into_ ) {
+        if( into.first == id ) {
+            debugmsg( "vitamin %s decays into itself", id.c_str() );
+        } else if( !into.first.is_valid() ) {
+            debugmsg( "vitamin %s decays into unknown vitamin %s", id.c_str(), into.first.c_str() );
         }
     }
+    // A level stays within [min, max], so an intensity whose range lies outside it is never
+    // reached (the order of the two bounds of a range doesn't matter)
+    const auto check_ranges = [this]( const std::vector<std::pair<int, int>> &ranges,
+    const char *member ) {
+        for( size_t i = 0; i < ranges.size(); ++i ) {
+            const int low = std::min( ranges[i].first, ranges[i].second );
+            const int high = std::max( ranges[i].first, ranges[i].second );
+            if( high < min_ || low > max_ ) {
+                debugmsg( "vitamin %s: intensity %d of its \"%s\" ([%d, %d]) is outside its "
+                          "range [%d, %d] and can never be reached", id.c_str(),
+                          static_cast<int>( i ) + 1, member, ranges[i].first, ranges[i].second,
+                          min_, max_ );
+            }
+        }
+    };
+    check_ranges( disease_, "disease" );
+    check_ranges( disease_excess_, "disease_excess" );
 }
 
 void vitamin::reset()
 {
-    vitamins_all.clear();
+    vitamin_factory.reset();
 }
 
 float vitamin::RDA_to_default( int percent ) const
@@ -137,7 +192,7 @@ int vitamin::units_from_mass( vitamin_units::mass val ) const
 {
     if( !weight_per_unit.has_value() ) {
         debugmsg( "Tried to convert vitamin in mass to units, but %s doesn't support mass for vitamins",
-                  id_.str() );
+                  id.str() );
         return 1;
     }
     return val / *weight_per_unit;

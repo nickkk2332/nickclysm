@@ -1,4 +1,5 @@
 #include <imgui/imgui.h>
+#include <algorithm>
 #include <cstdlib>
 #include <functional>
 #include <map>
@@ -349,7 +350,9 @@ static std::string draw_speed_summary( const Character &you )
 
     int pen = 0;
     if( you.weight_carried() > you.weight_capacity() ) {
-        pen = 25 * ( you.weight_carried() - you.weight_capacity() ) / you.weight_capacity();
+        // As in Character::recalc_speed_bonus: a capacity of 0 counts as 1 mg
+        const units::mass weight_cap = std::max( you.weight_capacity(), 1_milligram );
+        pen = 25 * ( you.weight_carried() - weight_cap ) / weight_cap;
         pge_str = pgettext( "speed penalty", "Overburdened" );
         desc += colorize( string_format( _( "%s: -%2d%%" ), pge_str, pen ), c_red );
         desc += "\n";

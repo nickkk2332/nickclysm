@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include "avatar.h"
@@ -16,6 +17,8 @@
 #include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "global_vars.h"
+#include "math_parser_diag_value.h"
 #include "mtype.h"
 #include "options.h"
 #include "rng.h"
@@ -210,9 +213,13 @@ static bool is_spawn_valid(
         return false;
     }
 
-    // The dialogue condition is the most expensive check, so it runs last.
+    // The dialogue condition is the most expensive check, so it runs last. Its "loc" is where
+    // the monsters would spawn, if the caller said (mongroup_spawn_location_scope).
     if( entry.condition ) {
-        const const_dialogue d( get_const_talker_for( get_avatar() ), nullptr );
+        const avatar &u = get_avatar();
+        global_variables::impl_t context;
+        context["loc"] = diag_value( mongroup_spawn_location_scope::current().value_or( u.pos_abs() ) );
+        const const_dialogue d( get_const_talker_for( u ), nullptr, {}, context );
         if( !entry.condition( d ) ) {
             return false;
         }
@@ -502,7 +509,9 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
     } else if( extending && !jo.has_string( "default" ) && g.defaultMonster == mon_null ) {
         explicit_def_null = true;
     }
-    g.is_animal = jo.get_bool( "is_animal", false );
+    // a definition that adds to a group keeps what the group had unless it says otherwise
+    // (MONDT-B13); a new group starts from the defaults
+    g.is_animal = jo.get_bool( "is_animal", g.is_animal );
     if( jo.has_array( "monsters" ) ) {
         for( JsonObject mon : jo.get_array( "monsters" ) ) {
             bool isgroup = false;
@@ -554,14 +563,9 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
             const time_duration starts = read_scaled_time( "starts" );
             const time_duration ends = read_scaled_time( "ends" );
             spawn_data data;
+            // the same spawn_data as a mapgen monster's: ammo, patrol, effects, variables, faction
             if( mon.has_object( "spawn_data" ) ) {
-                const JsonObject &sd = mon.get_object( "spawn_data" );
-                if( sd.has_array( "ammo" ) ) {
-                    const JsonArray &ammos = sd.get_array( "ammo" );
-                    for( const JsonObject adata : ammos ) {
-                        data.ammo.emplace( itype_id( adata.get_string( "ammo_id" ) ), jmapgen_int( adata, "qty" ) );
-                    }
-                }
+                data.deserialize( mon.get_object( "spawn_data" ) );
             }
             MonsterGroupEntry new_mon_group = isgroup ?
                                               MonsterGroupEntry( mongroup_id( id_name ), freq, cost,
@@ -592,13 +596,16 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
             g.defaultMonster = max_freq.first;
         }
     }
-    g.replace_monster_group = jo.get_bool( "replace_monster_group", false );
-    g.new_monster_group = mongroup_id( jo.get_string( "new_monster_group_id",
-                                       mongroup_id::NULL_ID().str() ) );
+    g.replace_monster_group = jo.get_bool( "replace_monster_group", g.replace_monster_group );
+    if( jo.has_string( "new_monster_group_id" ) ) {
+        g.new_monster_group = mongroup_id( jo.get_string( "new_monster_group_id" ) );
+    } else if( !extending ) {
+        g.new_monster_group = mongroup_id::NULL_ID();
+    }
     if( jo.has_member( "replacement_time" ) ) {
         mandatory( jo, false, "replacement_time", g.monster_group_time, time_bound_reader{ 1_days } );
     }
-    g.is_safe = jo.get_bool( "is_safe", false );
+    g.is_safe = jo.get_bool( "is_safe", g.is_safe );
 
     g.freq_total = jo.get_int( "freq_total", ( extending ? g.freq_total : 0 ) + freq_total );
     if( jo.get_bool( "auto_total", false ) ) { //Fit the max size to the sum of all freqs
@@ -630,9 +637,48 @@ void MonsterGroupManager::ClearMonsterGroups()
     monster_species_whitelist.clear();
 }
 
+// The innermost mongroup_spawn_location_scope's location, if any
+static std::optional<tripoint_abs_ms> &spawn_location()
+{
+    static std::optional<tripoint_abs_ms> where;
+    return where;
+}
+
+mongroup_spawn_location_scope::mongroup_spawn_location_scope( const tripoint_abs_ms &where ) :
+    previous( spawn_location() )
+{
+    spawn_location() = where;
+}
+
+mongroup_spawn_location_scope::~mongroup_spawn_location_scope()
+{
+    spawn_location() = previous;
+}
+
+std::optional<tripoint_abs_ms> mongroup_spawn_location_scope::current()
+{
+    return spawn_location();
+}
+
 static void check_group_def( const mongroup_id &g )
 {
     for( const MonsterGroupEntry &m : g.obj().monsters ) {
+        for( const spawn_effect &eff : m.data.effects ) {
+            if( !eff.id.is_valid() ) {
+                debugmsg( "monster group %s gives the unknown effect %s in its spawn_data", g.c_str(),
+                          eff.id.c_str() );
+            }
+        }
+        if( !m.data.faction.is_empty() && !m.data.faction.is_valid() ) {
+            debugmsg( "monster group %s gives the unknown monster faction %s in its spawn_data",
+                      g.c_str(), m.data.faction.c_str() );
+        }
+        for( const effect_on_condition_id &eoc : m.data.eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "monster group %s runs the unknown effect_on_condition %s in its "
+                          "spawn_data", g.c_str(), eoc.c_str() );
+            }
+        }
         if( m.is_group() ) {
             if( !m.group.is_valid() ) {
                 debugmsg( "monster group %s contains unknown subgroup %s", g.c_str(), m.group.c_str() );

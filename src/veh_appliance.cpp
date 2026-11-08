@@ -16,6 +16,7 @@
 #include "color.h"
 #include "debug.h"
 #include "enums.h"
+#include "event.h"
 #include "game.h"
 #include "handle_liquid.h"
 #include "input_enums.h"
@@ -153,6 +154,9 @@ bool place_appliance( map &here, const tripoint_bub_ms &p, const vpart_id &vpart
         orient_part( here, veh, vpinfo, partnum );
     }
     veh->set_owner( owner );
+    // VINT-J06
+    veh_utils::send_vehicle_event( *veh, cata::event::make<event_type::appliance_placed>(
+                                       owner.getID(), vpart.str() ) );
     return true;
 }
 

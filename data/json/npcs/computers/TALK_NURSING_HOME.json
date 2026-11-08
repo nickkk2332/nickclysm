@@ -347,7 +347,7 @@
     "type": "talk_topic",
     "id": "COMP_NURSING_HOME_COO_ERROR3",
     "dynamic_line": "ERROR ACCESSING SERVER",
-    "responses": [ { "text": "RETURN TO LEGAL FILES", "topic": "COMP_NURSING_HOME_LEGAL" } ]
+    "responses": [ { "text": "RETURN TO LEGAL FILES", "topic": "COMP_NURSING_HOME_COO_LEGAL" } ]
   },
   {
     "type": "talk_topic",

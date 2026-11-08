@@ -5,6 +5,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "dialogue_helpers.h"
 #include "faction.h"
 #include "item.h"
 #include "item_location.h"
@@ -123,8 +124,8 @@ TEST_CASE( "faction_price_rules", "[npc][factions][trade]" )
     }
     WHEN( "faction desperately needs this item (premium=25)" ) {
         item const multitool( itype_test_multitool );
-        REQUIRE( fac.get_price_rules( multitool, guy )->premium == 25 );
-        REQUIRE( fac.get_price_rules( multitool, guy )->markup == 1.1 );
+        REQUIRE( fac.get_price_rules( multitool, guy )->premium.constant() == 25 );
+        REQUIRE( fac.get_price_rules( multitool, guy )->markup.constant() == 1.1 );
         THEN( "NPC selling to avatar includes premium and markup" ) {
             REQUIRE( npc_trading::adjusted_price( &multitool, 1, get_avatar(), guy ) ==
                      Approx( units::to_cent( multitool.type->price_post ) * 25 * 1.1 ).margin( 1 ) );
@@ -156,7 +157,7 @@ TEST_CASE( "faction_price_rules", "[npc][factions][trade]" )
     }
     WHEN( "condition for price rules satisfied" ) {
         guy.set_value( "bool_allnighter_thirsty", "yes" );
-        REQUIRE( fac.get_price_rules( carafe, guy )->markup == 2.0 );
+        REQUIRE( fac.get_price_rules( carafe, guy )->markup.constant() == 2.0 );
         THEN( "NPC selling to avatar includes markup and positive fixed adjustment" ) {
             REQUIRE( npc_trading::adjusted_price( &carafe, 1, get_avatar(), guy ) ==
                      Approx( units::to_cent( carafe.type->price_post ) * 2.0 * 1.1 ).margin( 1 ) );
@@ -167,11 +168,11 @@ TEST_CASE( "faction_price_rules", "[npc][factions][trade]" )
         }
     }
     WHEN( "personal price rule overrides faction rule" ) {
-        double const fmarkup = fac.get_price_rules( pants_fur, guy )->markup;
-        REQUIRE( guy.get_price_rules( pants_fur )->markup == fmarkup );
+        double const fmarkup = fac.get_price_rules( pants_fur, guy )->markup.constant();
+        REQUIRE( guy.get_price_rules( pants_fur )->markup.constant() == fmarkup );
         REQUIRE( fmarkup != - 100 );
         guy.set_value( "bool_preference_vegan", "yes" );
-        REQUIRE( guy.get_price_rules( pants_fur )->markup == -100 );
+        REQUIRE( guy.get_price_rules( pants_fur )->markup.constant() == -100 );
     }
     WHEN( "price rule affects magazine contents" ) {
         clear_character( guy );

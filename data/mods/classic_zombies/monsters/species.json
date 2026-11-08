@@ -5,6 +5,8 @@
     "description": "a zombie",
     "fear_triggers": [ "FIRE" ],
     "footsteps": "shuffling.",
-    "bleeds": "fd_blood"
+    "bleeds": "fd_blood",
+    "effect_immunities": [ "badpoison", "paralyzepoison", "poison", "venom_weaken" ],
+    "flags": [ "HORDE_ROAMER" ]
   }
 ]

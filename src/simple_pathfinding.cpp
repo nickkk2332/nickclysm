@@ -415,7 +415,7 @@ omt_score::omt_score( int node_cost, bool allow_z_change ) : node_cost( node_cos
 simple_path<tripoint_abs_omt> find_overmap_path( const tripoint_abs_omt &source,
         const tripoint_abs_omt &dest, const int radius, const omt_scoring_fn &scorer,
         const std::function<void( size_t, size_t )> &progress_fn, const std::optional<int> &max_cost,
-        bool allow_diagonal )
+        bool allow_diagonal, int min_node_cost )
 {
     cata_assert( progress_fn != nullptr );
     simple_path<tripoint_abs_omt> ret;
@@ -435,8 +435,18 @@ simple_path<tripoint_abs_omt> find_overmap_path( const tripoint_abs_omt &source,
     constexpr std::chrono::milliseconds report_period = std::chrono::milliseconds( 100 );
     std::chrono::steady_clock::time_point report_next = std::chrono::steady_clock::now();
     int progress = 0;
+    // The estimate of a path through the node at p that cost cumulative_cost to enter, and costs
+    // node_cost to cross: no OMT left to cross is cheaper than min_node_cost.
+    const auto estimate_total_cost = [&dest, min_node_cost]( const tripoint_abs_omt & p,
+    int cumulative_cost, int node_cost ) {
+        const int xy_score = octile_dist( p.xy(), dest.xy(), min_node_cost );
+        // Z travel is much faster than X/Y travel
+        const int z_score = std::abs( p.z() - dest.z() ) * cost_z( min_node_cost );
+        return cumulative_cost + node_cost + xy_score + z_score;
+    };
     while( !open_set.empty() ) {
-        const node_address cur_addr = open_set.top().addr;
+        const scored_address cur_entry = open_set.top();
+        const node_address cur_addr = cur_entry.addr;
         open_set.pop();
         if( progress++ >= 100 ) { // stagger progress checks to 1 in 100 nodes
             progress = 0;
@@ -448,6 +458,11 @@ simple_path<tripoint_abs_omt> find_overmap_path( const tripoint_abs_omt &source,
         }
         const tripoint_abs_omt cur_point = cur_addr.to_tripoint( source );
         const navigation_node &cur_node = known_nodes.at( cur_addr );
+        if( cur_entry.score > estimate_total_cost( cur_point, cur_node.cumulative_cost,
+                cur_node.node_cost ) ) {
+            // queued before a cheaper way here was found, which was queued too
+            continue;
+        }
         if( cur_point == dest ) {
             ret.dist = omt_cost_to_cross( 24, direction::CENTER, cur_node.get_prev_dir() );
             node_address addr = cur_addr;
@@ -486,6 +501,10 @@ simple_path<tripoint_abs_omt> find_overmap_path( const tripoint_abs_omt &source,
                 if( next_node.cumulative_cost > cumulative_cost ) {
                     next_node.cumulative_cost = cumulative_cost;
                     next_node.prev_dir = static_cast<int8_t>( rev_dir );
+                    // Queue it again at its new cost, or the cheaper way never reaches the nodes
+                    // after it; the old entry is skipped when it comes up.
+                    open_set.push( scored_address{ next_addr, estimate_total_cost( next_addr.to_tripoint( source ),
+                                                   cumulative_cost, next_node.node_cost ) } );
                 }
             } else if( known_nodes.size() < max_search_count ) {
                 const tripoint_abs_omt next_point = next_addr.to_tripoint( source );
@@ -497,11 +516,8 @@ simple_path<tripoint_abs_omt> find_overmap_path( const tripoint_abs_omt &source,
                     // TODO: add to closed set to avoid re-visiting
                     continue;
                 }
-                // TODO: pass in the 24 (default terrain cost)
-                const int xy_score = octile_dist( next_point.xy(), dest.xy(), 24 );
-                const int z_score = std::abs( next_point.z() - dest.z() ) *
-                                    4; // Z travel is much faster than X/Y travel
-                const int estimated_total_cost = cumulative_cost + next_score.node_cost + xy_score + z_score;
+                const int estimated_total_cost = estimate_total_cost( next_point, cumulative_cost,
+                                                 next_score.node_cost );
                 if( max_cost && estimated_total_cost > *max_cost ) {
                     continue;
                 }

@@ -7,6 +7,7 @@
     "symbol": "[",
     "color": "dark_gray",
     "name": { "str": "RM13 combat armor" },
+    "active_form": "rm13_armor_on",
     "description": "A full-body suit of sleek black military armor representing the pinnacle of powered armor technology.  A battery pack is slotted into the lower back, while the upper back houses connections for the built-in rebreather system.  Use it to turn it on.",
     "flags": [
       "STURDY",

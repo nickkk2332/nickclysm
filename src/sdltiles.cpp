@@ -2380,6 +2380,16 @@ void renderer_recovery_test_support::log_draw_light( cata_tiles &tiles,
     tiles.test_draw_light_log = log;
 }
 
+size_t renderer_recovery_test_support::lookup_memo_size( const cata_tiles &tiles )
+{
+    return tiles.lookup_memo.size();
+}
+
+bool renderer_recovery_test_support::lookup_memo_enabled( const cata_tiles &tiles )
+{
+    return tiles.lookup_memo.is_enabled();
+}
+
 void renderer_recovery_test_support::set_has_animated_tiles( cata_tiles &tiles,
         const bool animated )
 {
@@ -2558,16 +2568,19 @@ std::shared_ptr<const tileset> renderer_recovery_test_support::install_tiles_bun
     for( const std::pair<std::string, tile_type> &t : tiles ) {
         ts->create_tile_type( t.first, tile_type( t.second ) );
     }
+    // as tileset_cache::loader::load does once tile_ids is final
+    ts->link_multitile_subtiles();
     atlas_replay_descriptor desc;
     desc.image_path_u8 = "tests/data/renderer_recovery_atlas.png";
     desc.sprite_width = 1;
     desc.sprite_height = 1;
     desc.atlas_offset = 0;
     desc.expected_tilecount = 1;
+    // the atlas's sprites are 1x1, so is the tile: a draw divides by the tile size, and the
+    // highlight texture takes it
+    ts->tile_width = 1;
+    ts->tile_height = 1;
     if( with_highlight ) {
-        // highlight texture takes the tile size
-        ts->tile_width = 1;
-        ts->tile_height = 1;
         ts->set_default_item_highlight_index( 1 );
     }
     return upload_test_bundle( std::move( ts ), desc, memory_map_mode, renderer_instance_generation,
@@ -5788,6 +5801,11 @@ static void CheckMessages()
     bool text_refresh = false;
     bool is_repeat = false;
 
+#if defined(SDL_SOUND)
+    // REND-B06: a music track that ended on the mixer's audio thread starts the next one
+    // here; the audio thread wakes a blocked input wait for it
+    sound_backend::poll_music();
+#endif
     drain_renderer_recovery();
     // drain blanked the buffer; nothing else draws while input waits
     if( renderer_coordinator.take_repaint_request() ) {

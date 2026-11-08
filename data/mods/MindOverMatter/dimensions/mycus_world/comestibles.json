@@ -8,6 +8,7 @@
     "description": "Water, the stuff of life.  Specifically, fungal life.  This water is cloudy, transformed into a fungal sea.  You probably should not drink this.",
     "quench": 30,
     "parasites": 5,
-    "contamination": [ { "disease": "fungal_contamination", "probability": 100 } ]
+    "contamination": [ { "disease": "fungal_contamination", "probability": 100 } ],
+    "delete": { "flags": [ "NPC_DRINKABLE" ] }
   }
 ]

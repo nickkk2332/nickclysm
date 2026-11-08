@@ -102,6 +102,12 @@ struct level_cache_default_zero_members {
     std::bitset<MAPSIZE_X *MAPSIZE_Y> map_memory_cache_dec;
     std::bitset<MAPSIZE_X *MAPSIZE_Y> map_memory_cache_ter;
     std::bitset<MAPSIZE *MAPSIZE> field_cache;
+
+    // volume a sound loses crossing the tile: the sound_attenuation of its terrain,
+    // furniture and fields (vehicle parts are read when a sound crosses them)
+    cata::mdarray<uint16_t, point_bub_ms> sound_attenuation_cache;
+    // tiles of each submap (smx * MAPSIZE + smy) whose sound_attenuation_cache isn't 0
+    std::array<uint8_t, MAPSIZE *MAPSIZE> sound_attenuating_tiles;
 };
 // The only way to memset the above without UB is if it is trivially copyable
 // and that all zeros is a valid representation. We can't assert the latter.
@@ -116,6 +122,12 @@ struct level_cache : level_cache_default_zero_members {
         void clear();
 
         std::bitset<MAPSIZE *MAPSIZE> transparency_cache_dirty;
+        // submaps whose sound_attenuation_cache is out of date; set wherever the
+        // transparency cache is, and where only a sound_attenuation changed
+        std::bitset<MAPSIZE *MAPSIZE> sound_attenuation_dirty;
+        // sum of sound_attenuating_tiles: with none, nothing on the level muffles sound
+        // but vehicles
+        int sound_attenuating_total = 0;
         // submaps the transparency build rewrote since the vision build last
         // copied them
         std::bitset<MAPSIZE *MAPSIZE> vision_transparency_dirty;

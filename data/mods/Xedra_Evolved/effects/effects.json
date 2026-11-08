@@ -360,7 +360,6 @@
     "name": [ "Flush", "Engorged", "Tick-like" ],
     "rating": "mixed",
     "max_intensity": 100,
-    "blocks_effects": [ "vampire_virus_hunger" ],
     "blood_analysis_description": "Patient has had extensive battlefield blood transfusions.  Serious risk of bloodborne infections.",
     "base_mods": { "speed_mod": [ -10 ], "dex_mod": [ -1 ], "dodge_mod": [ -1 ] },
     "scaling_mods": { "speed_mod": [ -20 ], "dex_mod": [ -1 ], "dodge_mod": [ -1 ] }
@@ -1460,8 +1459,14 @@
     "enchantments": [
       {
         "values": [
-          { "value": "REGEN_MANA", "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.04" ] } },
-          { "value": "MAX_MANA", "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.1" ] } }
+          {
+            "value": "REGEN_MANA",
+            "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.04" ], "optional_ids": true }
+          },
+          {
+            "value": "MAX_MANA",
+            "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.1" ], "optional_ids": true }
+          }
         ]
       }
     ],
@@ -1770,7 +1775,7 @@
     "name": [ "Weakening Pollen" ],
     "desc": [ "The pollen makes it hard to breathe!" ],
     "miss_messages": [ [ "You cough out pollen.", 1 ] ],
-    "resist_traits": [ "ARVORE_POLLEN_IMMUNE" ],
+    "immune_flags": [ "ARVORE_POLLEN_IMMUNE" ],
     "rating": "bad",
     "harmful_cough": true,
     "pain_sizing": true,
@@ -2054,7 +2059,6 @@
       "poison",
       "venom_dmg",
       "venom_weaken",
-      "stung",
       "badpoison",
       "foodpoison",
       "paralyzepoison",
@@ -3023,7 +3027,10 @@
       {
         "condition": "u_has_weapon",
         "values": [ { "value": "LUMINATION", "add": 25 } ],
-        "hit_you_effect": [ { "id": "changeling_noble_burning_weapon_fire_damage" }, { "id": "changeling_noble_burning_weapon_anti_nether" } ]
+        "hit_you_effect": [
+          { "id": "changeling_noble_burning_weapon_fire_damage", "hit_types": [ "melee" ] },
+          { "id": "changeling_noble_burning_weapon_anti_nether", "hit_types": [ "melee" ] }
+        ]
       }
     ]
   },
@@ -3772,7 +3779,7 @@
     "rating": "good",
     "max_intensity": 1,
     "show_in_info": true,
-    "enchantments": [ { "hit_you_effect": [ { "id": "xedra_eater_erosion_attack" } ] } ]
+    "enchantments": [ { "hit_you_effect": [ { "id": "xedra_eater_erosion_attack", "hit_types": [ "melee" ] } ] } ]
   },
   {
     "type": "effect_type",
@@ -3810,7 +3817,7 @@
     "max_intensity": 1,
     "show_in_info": true,
     "enchantments": [
-      { "hit_you_effect": [ { "id": "xedra_chronomancer_destabilizing_strikes_attack" } ] },
+      { "hit_you_effect": [ { "id": "xedra_chronomancer_destabilizing_strikes_attack", "hit_types": [ "melee" ] } ] },
       {
         "values": [
           {
@@ -4235,7 +4242,6 @@
       "poison",
       "venom_dmg",
       "venom_weaken",
-      "stung",
       "badpoison",
       "foodpoison",
       "paralyzepoison",

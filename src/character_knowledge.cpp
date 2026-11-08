@@ -1,5 +1,3 @@
-#include "character.h"
-
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -14,6 +12,7 @@
 
 #include "bionics.h"
 #include "calendar.h"
+#include "character.h"
 #include "character_martial_arts.h"
 #include "construction.h"
 #include "coordinates.h"
@@ -21,7 +20,10 @@
 #include "debug.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "flag.h"
+#include "game_constants.h"
 #include "item.h"
 #include "itype.h"
 #include "magic.h"
@@ -44,30 +46,24 @@
 
 static const bionic_id bio_memory( "bio_memory" );
 
-static const efftype_id effect_contacts( "contacts" );
-static const efftype_id effect_transition_contacts( "transition_contacts" );
+static const flag_id json_flag_ENJOYED_BY_CANNIBALS( "ENJOYED_BY_CANNIBALS" );
 
-static const flag_id json_flag_FIX_FARSIGHT( "FIX_FARSIGHT" );
-
-static const itype_id itype_cookbook_human( "cookbook_human" );
-
+static const json_character_flag json_flag_CANNIBAL( "CANNIBAL" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
+static const json_character_flag json_flag_HATES_BOOKS( "HATES_BOOKS" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
+static const json_character_flag json_flag_LOVES_BOOKS( "LOVES_BOOKS" );
+static const json_character_flag
+json_flag_NO_BOOK_COMPLEXITY_PENALTY( "NO_BOOK_COMPLEXITY_PENALTY" );
 static const json_character_flag json_flag_PRED2( "PRED2" );
 static const json_character_flag json_flag_PRED3( "PRED3" );
 static const json_character_flag json_flag_PRED4( "PRED4" );
 static const json_character_flag json_flag_PSYCHOPATH( "PSYCHOPATH" );
 static const json_character_flag json_flag_READ_IN_DARKNESS( "READ_IN_DARKNESS" );
+static const json_character_flag json_flag_SAPIOVORE( "SAPIOVORE" );
+static const json_character_flag json_flag_SPIRITUAL( "SPIRITUAL" );
 
 static const skill_id skill_speech( "speech" );
-
-static const trait_id trait_CANNIBAL( "CANNIBAL" );
-static const trait_id trait_HATES_BOOKS( "HATES_BOOKS" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
-static const trait_id trait_LOVES_BOOKS( "LOVES_BOOKS" );
-static const trait_id trait_PROF_DICEMASTER( "PROF_DICEMASTER" );
-static const trait_id trait_SAPIOVORE( "SAPIOVORE" );
-static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 
 std::vector<matype_id> Character::known_styles( bool teachable_only ) const
 {
@@ -258,6 +254,13 @@ void Character::do_skill_rust()
     for( std::pair<const skill_id, SkillLevel> &pair : *_skills ) {
         const Skill &aSkill = *pair.first;
         SkillLevel &skill_level_obj = pair.second;
+        if( aSkill.max_level() < MAX_SKILL && skill_level_obj.level() >= aSkill.max_level() ) {
+            // Like any skill at MAX_SKILL, one at its own cap doesn't rust
+            continue;
+        }
+        if( !aSkill.rusts() ) {
+            continue;
+        }
 
         if( aSkill.is_combat_skill() &&
             ( ( has_flag( json_flag_PRED2 ) && calendar::once_every( 8_hours ) ) ||
@@ -283,8 +286,14 @@ void Character::do_skill_rust()
         const int rust_resist = enchantment_cache->get_value_add( enchant_vals::mod::SKILL_RUST_RESIST );
         const float rust_resist_mult = 1.0f + enchantment_cache->get_value_multiply(
                                            enchant_vals::mod::SKILL_RUST_RESIST );
-        if( skill_level_obj.rust( rust_resist, rust_resist_mult ) ) {
+        const int old_level = skill_level_obj.level();
+        if( skill_level_obj.rust( rust_resist, rust_resist_mult * aSkill.rust_multiplier(),
+                                  aSkill.rust_grace_period(), aSkill.rust_max_levels() ) ) {
             mod_power_level( -bio_memory->power_trigger );
+        }
+        if( skill_level_obj.level() < old_level ) {
+            get_event_bus().send<event_type::loses_skill_level>( getID(), pair.first,
+                    skill_level_obj.level(), "practical" );
         }
     }
 }
@@ -392,24 +401,29 @@ int Character::book_fun_for( const item &book, const Character &p ) const
         return 0;
     }
 
-    // If you don't have a problem with eating humans, To Serve Man becomes rewarding
-    if( ( p.has_trait( trait_CANNIBAL ) || p.has_flag( json_flag_PSYCHOPATH ) ||
-          p.has_trait( trait_SAPIOVORE ) ) &&
-        book.typeId() == itype_cookbook_human ) {
+    // If you don't have a problem with eating humans, To Serve Man becomes rewarding.  These
+    // rules check character flags and book flags, not trait ids and one book's id, so that any
+    // trait, bionic or effect (and any book) can use them (PROG-J03).
+    if( ( p.has_flag( json_flag_CANNIBAL ) || p.has_flag( json_flag_PSYCHOPATH ) ||
+          p.has_flag( json_flag_SAPIOVORE ) ) &&
+        book.has_flag( json_flag_ENJOYED_BY_CANNIBALS ) ) {
         fun_bonus = std::abs( fun_bonus );
-    } else if( p.has_trait( trait_SPIRITUAL ) && book.has_flag( flag_INSPIRATIONAL ) ) {
+    } else if( p.has_flag( json_flag_SPIRITUAL ) && book.has_flag( flag_INSPIRATIONAL ) ) {
         fun_bonus = std::abs( fun_bonus * 3 );
     }
 
-    if( p.has_trait( trait_LOVES_BOOKS ) ) {
+    if( p.has_flag( json_flag_LOVES_BOOKS ) ) {
         fun_bonus++;
-    } else if( p.has_trait( trait_HATES_BOOKS ) ) {
+    } else if( p.has_flag( json_flag_HATES_BOOKS ) ) {
         if( book.type->book->fun > 0 ) {
             fun_bonus = 0;
         } else {
             fun_bonus--;
         }
     }
+    // Then the reader's enchantments (PROG-J03)
+    fun_bonus = static_cast<int>( std::lround( p.enchantment_cache->modify_value(
+                                      enchant_vals::mod::BOOK_FUN, static_cast<double>( fun_bonus ) ) ) );
 
     if( fun_bonus > 1 && book.get_chapters() > 0 && book.get_remaining_chapters( p ) == 0 ) {
         fun_bonus /= 2;
@@ -444,14 +458,10 @@ read_condition_result Character::check_read_condition( const item &book ) const
         }
 
         const bool book_requires_intelligence = book.type->book->intel > 0;
-        if( book_requires_intelligence && has_trait( trait_ILLITERATE ) ) {
+        if( book_requires_intelligence && has_flag( json_flag_ILLITERATE ) ) {
             result |= read_condition_result::ILLITERATE;
         }
-        if( has_flag( json_flag_HYPEROPIC ) &&
-            !worn_with_flag( json_flag_FIX_FARSIGHT ) &&
-            !has_effect( effect_contacts ) &&
-            !has_effect( effect_transition_contacts ) &&
-            !has_flag( json_flag_ENHANCED_VISION ) ) {
+        if( has_uncorrected_farsight() && !has_flag( json_flag_ENHANCED_VISION ) ) {
             result |= read_condition_result::NEED_GLASSES;
         }
         if( fine_detail_vision_mod() > 4 && !book.has_flag( flag_CAN_USE_IN_DARK ) ) {
@@ -591,7 +601,8 @@ time_duration Character::time_to_read( const item &book, const Character &reader
     retval *= std::min( fine_detail_vision_mod(), reader.fine_detail_vision_mod() );
 
     const int effective_int = std::min( { get_int(), reader.get_int(), learner ? learner->get_int() : INT_MAX } );
-    if( type->intel > effective_int && !reader.has_trait( trait_PROF_DICEMASTER ) ) {
+    if( type->intel > effective_int &&
+        !reader.has_flag( json_flag_NO_BOOK_COMPLEXITY_PENALTY ) ) {
         retval += type->time * ( time_duration::from_seconds( type->intel - effective_int ) / 1_minutes );
     }
     if( !has_identified( book.typeId() ) ) {

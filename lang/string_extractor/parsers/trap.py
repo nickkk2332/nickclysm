@@ -1,5 +1,6 @@
 from ..helper import get_singular_name
 from ..write_text import write_text
+from .effect import parse_effect_on_condition
 
 
 def parse_trap(json, origin):
@@ -20,3 +21,11 @@ def parse_trap(json, origin):
 
     write_text(json.get("trigger_message_npc"), origin,
                comment=f"Message when NPC triggers trap '{name}'")
+
+    write_text(json.get("disarm_condition_msg"), origin,
+               comment=f"Message when the disarm condition of trap '{name}'"
+               " isn't met")
+
+    for key in ["eocs", "item_eocs", "disarm_eocs", "disarm_fail_eocs"]:
+        for eoc in json.get(key, []):
+            parse_effect_on_condition(eoc, origin, f"{key} of trap '{name}'")

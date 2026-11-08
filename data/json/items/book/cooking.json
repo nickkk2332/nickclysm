@@ -209,7 +209,8 @@
     "intelligence": 4,
     "time": "10 m",
     "read_skill": "cooking",
-    "read_fun": -5
+    "read_fun": -5,
+    "flags": [ "ENJOYED_BY_CANNIBALS" ]
   },
   {
     "id": "cookbook_italian",

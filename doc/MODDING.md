@@ -296,7 +296,7 @@ Finally, if you're trying to blacklist something that spawns inside of cities, y
 ### Disabling certain scenarios
 The `SCENARIO_BLACKLIST` can be either a blacklist or a whitelist.
 When it is a whitelist, it blacklists all scenarios but the ones specified.
-No more than one blacklist can be specified at one time - this is in all json loaded for a particular game (all mods + base game), not just your specific mod.
+Every blacklist loaded for a game (the base game's and every mod's) adds its scenarios to the hidden ones.  A whitelist replaces any whitelist loaded before it (so a mod_interactions file can restate a whitelist to add or remove scenarios), and while a whitelist is in force only the scenarios it lists can be chosen, whatever the blacklists say.  (Before 2.0 each list replaced every earlier one, so a mod's blacklist could unhide the base game's.)
 The format is as follows:
 ```jsonc
 [
@@ -313,7 +313,7 @@ Valid values for `subtype` are `whitelist` and `blacklist`.
 ### Disabling certain professions or hobbies
 The `profession_blacklist` can be either a blacklist or a whitelist.
 When it is a whitelist, only the professions/hobbies specified may be chosen.
-No more than one blacklist can be specified at one time - this is in all json loaded for a particular game (all mods + base game), not just your specific mod.
+Lists combine as `SCENARIO_BLACKLIST`s do: blacklists add up, a whitelist replaces an earlier whitelist, and while a whitelist is in force only what it lists can be chosen.
 The format is as follows:
 ```jsonc
 [
@@ -354,9 +354,11 @@ Monster stats can be adjusted using the `monster_adjustment` JSON element.
   }
 ```
 Using this syntax allows modification of the following things:
-**stat**: `speed` and `hp` are supported.  Modifier is a multiplier of the base speed or HP stat.
+**stat**: `speed`, `hp` and `bleed_rate` are supported.  Modifier is a multiplier of the base stat.  Any other name is an error.
 **flag**: add or remove a monster flag.
-**special**: currently only supports `nightvision` which makes the specified monster species gain nightvision equal to its dayvision.
+**special**: currently only supports `nightvision` which makes the specified monster species gain nightvision equal to its dayvision.  Any other value is an error.
+
+The adjustment applies to the monsters of `species`.  Instead of a species, or as well as one, `monsters` (an array of monster ids) limits it to those monsters: `"monsters": [ "mon_zombie", "mon_zombie_fat" ]`.  One of the two is needed.
 
 Currently, adjusting multiple stats or flags requires separate `monster_adjustment` entries.
 

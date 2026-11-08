@@ -2956,5 +2956,12 @@
       },
       { "text": "Quit.", "topic": "TALK_DONE" }
     ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_PERK_MENU_PSIONICS",
+    "//": "Only shown with Mind Over Matter, whose mod_interactions replace this with the psionic perks.",
+    "dynamic_line": "Psionic Perks:",
+    "responses": [ { "text": "Back", "topic": "TALK_PERK_MENU_MAIN" } ]
   }
 ]

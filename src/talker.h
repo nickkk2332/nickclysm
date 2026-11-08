@@ -889,6 +889,7 @@ class talker: virtual public const_talker
         virtual void clear_ai_rule( const std::string &, const std::string & ) {}
         virtual void set_class( const npc_class_id & ) {}
         virtual void set_addiction_turns( const addiction_id &, int ) {}
+        virtual void set_addiction_intensity( const addiction_id &, int ) {}
         virtual void mod_stored_kcal( int, bool ) {}
         virtual void set_stored_kcal( int ) {}
         virtual void set_stim( int ) {}

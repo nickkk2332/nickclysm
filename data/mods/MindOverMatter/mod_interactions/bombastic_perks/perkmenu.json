@@ -2,6 +2,8 @@
   {
     "type": "talk_topic",
     "id": "TALK_PERK_MENU_PSIONICS",
+    "//": "Replaces the stub BombasticPerks defines.",
+    "replace_responses": true,
     "dynamic_line": "Psionic Perks:\nLevel <u_val:current_level>.\n<u_val:num_perks> perk points to spend.\nCurrent EXP: <u_val:available_exp>.\nEXP to next level: <u_val:exp_to_perk>.",
     "responses": [
       {

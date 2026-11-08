@@ -25,15 +25,20 @@
 #include "character_id.h"
 #include "character_martial_arts.h"
 #include "color.h"
+#include "condition.h"
 #include "coordinates.h"
 #include "craft_command.h"
 #include "craft_reservation.h"
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect.h" // for weed_msg
+#include "effect_on_condition.h"
 #include "enum_bitset.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "fault.h"
 #include "field_type.h"
@@ -110,8 +115,8 @@ static const efftype_id effect_weed_high( "weed_high" );
 
 static const fault_id fault_emp_reboot( "fault_emp_reboot" );
 
-static const furn_str_id furn_f_metal_smoking_rack_active( "f_metal_smoking_rack_active" );
-static const furn_str_id furn_f_smoking_rack_active( "f_smoking_rack_active" );
+static const flag_id json_flag_NO_UNCRAFT( "NO_UNCRAFT" );
+
 static const furn_str_id furn_f_water_mill_active( "f_water_mill_active" );
 static const furn_str_id furn_f_wind_mill_active( "f_wind_mill_active" );
 
@@ -440,6 +445,8 @@ item &item::convert( const itype_id &new_type, Character *carrier )
 {
     // Carry over relative rot similar to crafting
     const double rel_rot = get_relative_rot();
+    // read before the type changes: afterwards it would read the new type too
+    const bool was_count_by_charges = count_by_charges();
     type = find_type( new_type );
     set_relative_rot( rel_rot );
     requires_tags_processing = true; // new type may have "active" flags
@@ -454,7 +461,9 @@ item &item::convert( const itype_id &new_type, Character *carrier )
     temp.contents.combine( contents, true );
     contents = temp.contents;
     current_phase = new_type->phase;
-    if( count_by_charges() != new_type->count_by_charges() ) {
+    // A stack counted by charges that becomes a type that isn't is one item here: whoever holds it
+    // (item_pocket::process, map item processing) adds a copy for each other charge it had.
+    if( was_count_by_charges != new_type->count_by_charges() ) {
         charges = new_type->charges_default();
     }
 
@@ -2717,14 +2726,16 @@ bool item::ready_to_revive( map &here, const tripoint_bub_ms &pos ) const
     if( damage_level() > 0 ) {
         age_in_hours /= ( damage_level() + 1 );
     }
-    int rez_factor = 48 - age_in_hours;
+    // the monster's revive_delay: not before min, and surely by guaranteed
+    int rez_factor = to_hours<int>( corpse->revive_guaranteed ) - age_in_hours;
 
     // Arbitrary limit allowing you to take breaks to eat, instruct companions, etc., but not long enough to
     // easily be abused to keep corpses from rising as a strategy.
     bool butchery_block = calendar::turn - ( calendar::start_of_cataclysm +
                           time_duration::from_turns<double>(
                               get_var( butcher_progress_time_var(), 0.0 ) ) ) < 30_minutes;
-    if( age_in_hours > 6 && !butchery_block && ( rez_factor <= 0 || one_in( rez_factor ) ) ) {
+    if( age_in_hours > to_hours<int>( corpse->revive_min_age ) && !butchery_block &&
+        ( rez_factor <= 0 || one_in( rez_factor ) ) ) {
         // If we're a special revival zombie, wait to get up until the player is nearby.
         const bool isReviveSpecial = has_flag( flag_REVIVE_SPECIAL );
         if( isReviveSpecial ) {
@@ -3316,7 +3327,7 @@ std::string item::get_book_skill() const
 bool item::is_map() const
 {
     return get_category_shallow().get_id() == item_category_maps ||
-           type->use_methods.count( "reveal_map" );
+           type->can_use( "reveal_map" );
 }
 
 bool item::is_engine() const
@@ -3364,7 +3375,8 @@ bool item::is_salvageable() const
 
 bool item::is_disassemblable() const
 {
-    return !ethereal && !has_var( "power_grant_application" ) &&
+    // CRAFT-J03: NO_UNCRAFT opts an item out of disassembly
+    return !ethereal && !has_var( "power_grant_application" ) && !has_flag( json_flag_NO_UNCRAFT ) &&
            ( recipe_dictionary::get_uncraft( typeId() ) || typeId() == itype_disassembly );
 }
 
@@ -3399,7 +3411,7 @@ bool item::is_deployable() const
 
 bool item::is_transformable() const
 {
-    return type->use_methods.find( "transform" ) != type->use_methods.end();
+    return type->can_use( "transform" );
 }
 
 bool item::is_relic() const
@@ -4516,7 +4528,14 @@ void item::overwrite_relic( const relic &nrelic )
 
 bool item::use_relic( Character &guy, const tripoint_bub_ms &pos )
 {
-    return relic_data->activate( guy, pos );
+    // relic::activate refuses when the charges can't pay for it
+    const bool activates = relic_data->charges_per_use() == 0 ||
+                           relic_data->charges() >= relic_data->charges_per_use();
+    const int charges_used = relic_data->activate( guy, pos );
+    if( activates ) {
+        get_event_bus().send<event_type::activates_artifact>( guy.getID(), tname(), typeId() );
+    }
+    return charges_used != 0;
 }
 
 void item::process_relic( Character *carrier, const tripoint_bub_ms &pos )
@@ -4600,9 +4619,9 @@ bool item::process_fake_mill( map &here, Character * /*carrier*/, const tripoint
 
 bool item::process_fake_smoke( map &here, Character * /*carrier*/, const tripoint_bub_ms &pos )
 {
+    // ACT-J11: a lit smoking rack, by its "smoker" object
     const furn_id &f = here.furn( pos );
-    if( f != furn_f_smoking_rack_active &&
-        f != furn_f_metal_smoking_rack_active ) {
+    if( !f->smoker || f->smoker->unlit.is_empty() ) {
         item_counter = 0;
         return true; //destroy fake smoke
     }
@@ -4615,6 +4634,18 @@ bool item::process_fake_smoke( map &here, Character * /*carrier*/, const tripoin
     return false;
 }
 
+// The EOCs of a lit smokable's "smoke" block, with the smoker (if any) as u and the lit item's
+// id as _id. The item isn't a talker: an EOC could destroy it while it's processed.
+static void run_smoke_eocs( const std::vector<effect_on_condition_id> &eocs, Character *smoker,
+                            const itype_id &lit )
+{
+    for( const effect_on_condition_id &eoc : eocs ) {
+        dialogue d( smoker != nullptr ? get_talker_for( *smoker ) : nullptr, nullptr );
+        write_var_value( var_type::context, "id", &d, lit.str() );
+        eoc->activate( d );
+    }
+}
+
 bool item::process_litcig( map &here, Character *carrier, const tripoint_bub_ms &pos )
 {
     // cig dies out
@@ -4622,10 +4653,16 @@ bool item::process_litcig( map &here, Character *carrier, const tripoint_bub_ms 
         if( carrier != nullptr ) {
             carrier->add_msg_if_player( m_neutral, _( "You finish your %s." ), type_name() );
         }
+        // read before the item turns into its butt
+        const itype_smoke_data *const smoke = type->smoke.get();
+        const itype_id lit = typeId();
         if( type->transform_into ) {
             type->transform_into.value().transform( carrier, *this, true );
         } else {
             type->invoke( carrier, *this, pos, "transform" );
+        }
+        if( smoke != nullptr ) {
+            run_smoke_eocs( smoke->burn_out_eocs, carrier, lit );
         }
         if( typeId() == itype_joint_lit && carrier != nullptr ) {
             carrier->add_effect( effect_weed_high, 1_minutes ); // one last puff
@@ -4669,7 +4706,23 @@ bool item::process_litcig( map &here, Character *carrier, const tripoint_bub_ms 
             duration = 30_seconds;
         }
         carrier->add_msg_if_player( m_neutral, _( "You take a puff of your %s." ), type_name() );
-        if( has_flag( flag_TOBACCO ) ) {
+        if( const itype_smoke_data *const smoke = type->smoke.get() ) {
+            // USE-J09: the item's own puff, with the traits scaling it as they do the default
+            duration = smoke->puff_duration;
+            if( carrier->has_trait( trait_TOLERANCE ) ) {
+                duration = duration / 2;
+            } else if( carrier->has_trait( trait_LIGHTWEIGHT ) ) {
+                duration = duration * 2;
+            }
+            if( !smoke->puff_effect.is_null() ) {
+                carrier->add_effect( smoke->puff_effect, duration );
+            }
+            run_smoke_eocs( smoke->puff_eocs, carrier, typeId() );
+            // the puff's EOCs may have put it out
+            if( !active ) {
+                return false;
+            }
+        } else if( has_flag( flag_TOBACCO ) ) {
             carrier->add_effect( effect_cig, duration );
         } else {
             carrier->add_effect( effect_weed_high, duration / 2 );
