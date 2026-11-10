@@ -75,7 +75,14 @@ TEST_CASE( "powers_damage_keeps_receiver_and_source_separate", "[audit][powers][
 
     SECTION( "a Character receiver" ) {
         npc &victim = spawn_npc( attacker.pos_bub().xy() + point_rel_ms( 2, 0 ), "thug" );
+        // Its random traits can leave it at 1 HP everywhere (FLIMSY3 with magiclysm's
+        // GOBLIN_BUILD take away all its max HP), so it starts with none
+        victim.clear_mutations();
+        victim.recalculate_enchantment_cache();
+        victim.recalc_hp();
+        victim.set_all_parts_hp_to_max();
         const int hp = victim.get_part_hp_cur( bodypart_id( "torso" ) );
+        REQUIRE( hp > 8 );
         dialogue d( get_talker_for( attacker ), get_talker_for( victim ) );
         effect.apply( d );
         CHECK( victim.get_part_hp_cur( bodypart_id( "torso" ) ) == hp - 8 );
