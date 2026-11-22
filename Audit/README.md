@@ -852,6 +852,19 @@ With the sync the full suite passes, 2983 of 2983 test cases with seed 4242 and 
 - **Limb shielding (#89470)** needs a defense roll and a conscious defender, so an unseen or unrolled hit lands where it was aimed.
 - **Two tests that depended on test order** were fixed.
 
+**CI fixes before PR #27 merged:**
+- **GCC 9 LTO build.** GCC's link-time pass reported uninitialized-variable false positives, in unrelated functions and at source lines it had lost track of (line 40881647 of a 200-line header), where a `#pragma` can't silence them. The Makefile no longer treats them as errors at the link step. Compiling each file still does.
+- **macOS SDL3 build.** pkg-config couldn't find `sdl3-mixer`: fluid-synth, which it uses, names readline, and Homebrew keeps readline off pkg-config's path. The workflow adds readline's directory.
+- **`spell::caster_level_adjustment`** was never initialized, so a magic test failed now and then (0 == 4). Upstream has the same bug. It now starts at 0.
+- **clang-tidy and include-what-you-use** findings in the merged code.
+
+**CI failures left open.** None is caused by the merge:
+- **`grapple_tm_automatic_choice_unchanged` fails on macOS:** its rare technique isn't picked there. It failed the same way on master before the merge (PR #26), so macOS CI stays red until it is fixed.
+- **`overmap_terrain_coverage` fails now and then with Xedra Evolved:** a crystalline spire or the old cabin is missing from the generated sample. Before the merge it failed 2 of 16 seeds, and after it 2 of 19.
+- **`grounded_flier_takes_off_when_fleeing` failed once in the oldest-Clang job.** It failed 0 of 30 seeds locally, both before and after the merge.
+
+In PR #27's CI runs, the oldest-Clang job always stopped at an earlier failure, so its executions and powers demo mod pass never ran. With those mods loaded, the full suite passes locally: 4092 of 4092 test cases with seed 4242.
+
 With the merge the full suite passes, 4092 of 4092 test cases with seed 4242 and no errors logged, and every mod set loads with no errors. 18 test cases are new, in `tests/audit_mmerge_*_test.cpp`.
 
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
